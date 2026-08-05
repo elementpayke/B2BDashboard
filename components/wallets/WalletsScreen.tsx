@@ -55,14 +55,14 @@ export default function WalletsScreen(p: WalletsScreenProps) {
       <div className="ep-scroll-hint" style={{ display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch" }}>
         {(p.accounts || []).map((acc: any, __i1: number) => (
           <React.Fragment key={__i1}>
-            <div onClick={acc.openDetail} style={{ flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer" }}>
+            <button type="button" onClick={acc.openDetail} style={{ flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{ width: "38px", height: "38px", borderRadius: "12px", background: "var(--indigo-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: "800", color: "var(--indigo-text)", overflow: "hidden" }}>{(acc.flagUrl) ? (<><div style={{ width: "100%", height: "100%", backgroundImage: `url(${acc.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center" }} /></>) : (<>$</>)}</span>
                 <div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700" }}>{acc.name}</div><div style={{ fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600" }}>{acc.rail}</div></div>
               </div>
               <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "21px", fontWeight: "500", marginTop: "2px" }}>{acc.balance}</div>
               <div style={{ fontSize: "11.5px", color: "var(--muted)", fontFamily: "'DM Mono',monospace" }}>{acc.detail}</div>
-            </div>
+            </button>
           </React.Fragment>
         ))}
         <button onClick={p.openCreateAccount("bank")} style={{ flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>

@@ -53,7 +53,7 @@ export default function SendModal(p: SendModalProps) {
             <div style={{ display: "flex", gap: "6px" }}>
               {(p.sendStepDots || []).map((d: any, __i1: number) => (
                 <React.Fragment key={__i1}>
-                  <span style={{ height: "4px", flex: "1", borderRadius: "999px", background: d.on }} />
+                  <span style={{ height: "4px", flex: "1", borderRadius: "999px", background: d.on ? "var(--indigo)" : "var(--surface3)" }} />
                 </React.Fragment>
               ))}
             </div>

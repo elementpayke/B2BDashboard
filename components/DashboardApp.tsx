@@ -1443,7 +1443,12 @@ Create payment
 </>) : null}
 
 {(isModalAcctDetail) ? (<>
-<AccountDetailModal acctDetail={acctDetail} openModalSwapFromAcct={openModalSwapFromAcct} />
+<AccountDetailModal
+  acctDetail={acctDetail}
+  openModalSwapFromAcct={openModalSwapFromAcct}
+  onCopyDetail={copyField("acctDetail", acctDetail.detail)}
+  copyLabel={s.copiedField === "acctDetail" ? "Copied" : "Copy"}
+/>
 </>) : null}
 
 {(isModalCardDetail) ? (<>

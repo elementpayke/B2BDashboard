@@ -41,7 +41,7 @@ export default function DepositModal(p: DepositModalProps) {
       <div style={{ display: "flex", gap: "6px" }}>
         {(p.depositStepDots || []).map((d: any, __i1: number) => (
           <React.Fragment key={__i1}>
-            <span style={{ height: "4px", flex: "1", borderRadius: "999px", background: d.on }} />
+            <span style={{ height: "4px", flex: "1", borderRadius: "999px", background: d.on ? "var(--indigo)" : "var(--surface3)" }} />
           </React.Fragment>
         ))}
       </div>

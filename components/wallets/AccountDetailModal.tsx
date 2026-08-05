@@ -4,9 +4,16 @@ import React from "react";
 export type AccountDetailModalProps = {
   acctDetail: any;
   openModalSwapFromAcct: () => void;
+  onCopyDetail: () => void;
+  copyLabel?: string;
 };
 
-export default function AccountDetailModal({ acctDetail, openModalSwapFromAcct }: AccountDetailModalProps) {
+export default function AccountDetailModal({
+  acctDetail,
+  openModalSwapFromAcct,
+  onCopyDetail,
+  copyLabel = "Copy",
+}: AccountDetailModalProps) {
   if (!acctDetail) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -17,9 +24,9 @@ export default function AccountDetailModal({ acctDetail, openModalSwapFromAcct }
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "12px 14px", borderRadius: "12px", background: "var(--surface2)" }}>
         <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "12.5px", fontWeight: "600" }}>{acctDetail.detail}</span>
-        <button style={{ flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>Copy</button>
+        <button type="button" onClick={onCopyDetail} style={{ flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>{copyLabel}</button>
       </div>
-      <button onClick={openModalSwapFromAcct} style={{ padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Convert</button>
+      <button type="button" onClick={openModalSwapFromAcct} style={{ padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Convert</button>
     </div>
   );
 }
