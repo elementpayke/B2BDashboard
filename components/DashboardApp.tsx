@@ -19,19 +19,25 @@ import {
   depositAccountsApi,
   mapDepositAccountToCardView,
   buildDepositAccountDetailRows,
+  currencyIso,
+  currencyLabel,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
   buildSendQuotePayload,
+  buildDepositQuotePayload,
+  buildPaymentInstructionRows,
   formatQuoteFees,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
+  newIdempotencyKey,
 } from "@/lib/services/orders";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
-import { offRampProvidersForRail, networkIdForProvider } from "@/lib/services/catalog";
+import { offRampProvidersForRail, onRampProvidersForRail, networkIdForProvider } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
 import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
+import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
@@ -67,7 +73,8 @@ export default function DashboardApp(props: Props = {}) {
     modal: qp("modal") || null,
     sendStep: 1, sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
-    depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
@@ -141,6 +148,9 @@ export default function DashboardApp(props: Props = {}) {
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
   });
+  const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
+    enabled: state.modal === "deposit" && state.depositDone && !!state.depositAccept,
+  });
   const invoicesQuery = useQuery({
     queryKey: ["invoices"],
     queryFn: () => invoicesApi.list(),
@@ -179,6 +189,28 @@ export default function DashboardApp(props: Props = {}) {
       return { sendProviderIdx: options.length - 1 };
     });
   }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
+
+  useEffect(() => {
+    const country = COUNTRIES[state.depositCountryIdx];
+    if (!country) return;
+    const rail = country.rails[state.depositRailIdx] || country.rails[0];
+    if (!rail) return;
+    const catalogProviders = onRampProvidersForRail(
+      sendCatalogQuery.data,
+      country.iso,
+      rail.type,
+      country.code,
+    );
+    const options =
+      catalogProviders && catalogProviders.length > 0
+        ? catalogProviders.map((p) => p.name)
+        : rail.options;
+    if (!options.length) return;
+    setState((s: any) => {
+      if (s.depositProviderIdx < options.length) return {};
+      return { depositProviderIdx: options.length - 1 };
+    });
+  }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, setState]);
 
   // Listing/creating deposit accounts requires KYB approval — check eligibility
   // first so an unverified business sees a clear gate instead of a raw 400
@@ -231,6 +263,7 @@ export default function DashboardApp(props: Props = {}) {
     modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
+    depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
     newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
@@ -296,8 +329,79 @@ export default function DashboardApp(props: Props = {}) {
     setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
   };
   const sendBack = () => setState((s: any) => ({ sendStep: Math.max(1, s.sendStep - 1), sendQuoteError: "" }));
-  const depositNext = () => setState(s => ({ depositStep: Math.min(2, s.depositStep + 1) }));
-  const depositBack = () => setState(s => ({ depositStep: Math.max(1, s.depositStep - 1) }));
+  const depositNext = async () => {
+    if (state.depositGroup === "crypto") {
+      setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1) }));
+      return;
+    }
+    if (state.depositStep === 2) {
+      if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
+      setState({ depositQuoteLoading: true, depositQuoteError: "" });
+      try {
+        const walletAddress = summaryQuery.data?.totals.wallet_address;
+        if (!walletAddress) {
+          throw new Error("No treasury wallet is provisioned for this business yet.");
+        }
+        const country = COUNTRIES[state.depositCountryIdx];
+        const rail = country.rails[state.depositRailIdx] || country.rails[0];
+        const catalogProviders = onRampProvidersForRail(
+          sendCatalogQuery.data,
+          country.iso,
+          rail.type,
+          country.code,
+        );
+        const providerOptions =
+          catalogProviders && catalogProviders.length > 0
+            ? catalogProviders.map((p) => p.name)
+            : rail.options;
+        const providerIdx =
+          providerOptions.length === 0
+            ? 0
+            : Math.min(state.depositProviderIdx, providerOptions.length - 1);
+        const providerName = providerOptions[providerIdx] || providerOptions[0];
+        const networkId = networkIdForProvider(catalogProviders, providerName);
+        const payerName =
+          meQuery.data?.business?.legal_name ||
+          meQuery.data?.business?.name ||
+          "Business account";
+        const idempotencyKey = newIdempotencyKey();
+        const payload = buildDepositQuotePayload({
+          currency: country.code,
+          countryIso: country.iso,
+          railType: rail.type,
+          payerAccountNumber: state.depositPhone.trim(),
+          payerName,
+          amount: state.depositAmount.trim(),
+          walletAddress,
+          dialCode: country.dialCode,
+          networkId,
+        });
+        const quote = await ordersApi.quote(payload, idempotencyKey);
+        setState({
+          depositQuoteLoading: false,
+          depositQuote: quote,
+          depositStep: 3,
+          depositIdempotencyKey: idempotencyKey,
+        });
+      } catch (err) {
+        setState({
+          depositQuoteLoading: false,
+          depositQuoteError:
+            err instanceof ApiRequestError || err instanceof Error
+              ? err.message
+              : "Couldn't get a quote. Try again.",
+        });
+      }
+      return;
+    }
+    setState((s: any) => ({ depositStep: Math.min(3, s.depositStep + 1) }));
+  };
+  const depositBack = () =>
+    setState((s: any) => ({
+      depositStep: Math.max(1, s.depositStep - 1),
+      depositQuoteError: "",
+      depositAcceptError: "",
+    }));
   const closeModal = () => setState({ modal: null });
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
@@ -359,12 +463,62 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
 
-  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false });
-  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false });
-  const selectDepositRail = (i) => () => setState({ depositRailIdx: i, depositProviderIdx: 0, depositPromptSent: false });
-  const selectDepositProvider = (i) => () => setState({ depositProviderIdx: i, depositPromptSent: false });
+  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false, depositStep: 1, depositQuote: null, depositQuoteError: "", depositAccept: null, depositAcceptError: "", depositDone: false });
+  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
+  const selectDepositRail = (i) => () => setState({ depositRailIdx: i, depositProviderIdx: 0, depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
+  const selectDepositProvider = (i) => () => setState({ depositProviderIdx: i, depositQuote: null, depositQuoteError: "" });
   const setDepositPhone = (e) => setState({ depositPhone: e.target.value });
-  const sendDepositPrompt = () => { if (state.depositPhone.trim()) setState({ depositPromptSent: true }); };
+  const setDepositAmount = (e) => setState({ depositAmount: e.target.value });
+  const submitDeposit = async () => {
+    if (state.depositGroup !== "country") return;
+    if (!state.depositQuote) return;
+    const country = COUNTRIES[state.depositCountryIdx];
+    const rail = country.rails[state.depositRailIdx] || country.rails[0];
+    setState({ depositAccepting: true, depositAcceptError: "" });
+    try {
+      const accepted = await ordersApi.accept(
+        state.depositQuote.quote_id,
+        undefined,
+        state.depositQuote.quote_id,
+      );
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      const isMobile = rail.type === "mobile";
+      setState({
+        depositAccepting: false,
+        depositAccept: accepted,
+        depositDone: true,
+        depositPromptSent: isMobile,
+      });
+    } catch (err) {
+      if (isQuoteExpiredError(err)) {
+        setState({
+          depositAccepting: false,
+          depositQuote: null,
+          depositStep: 2,
+          depositAcceptError: "",
+          depositQuoteError: "That quote expired. Press Review to get a fresh price, then try again.",
+        });
+        return;
+      }
+      if (isQuoteAlreadyAcceptedError(err)) {
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        setState({
+          depositAccepting: false,
+          depositAccept: null,
+          depositDone: true,
+          depositPromptSent: rail.type === "mobile",
+        });
+        return;
+      }
+      setState({
+        depositAccepting: false,
+        depositAcceptError:
+          err instanceof ApiRequestError ? err.message : "Couldn't confirm the top-up. Try again.",
+      });
+    }
+  };
   const setSendAsset = (k) => () => setState({ sendAsset: k });
   const setSendChain = (k) => () => setState({ sendChain: k });
   const setDepositAsset = (k) => () => setState({ depositAsset: k });
@@ -589,8 +743,27 @@ export default function DashboardApp(props: Props = {}) {
     const depositCountry = COUNTRIES[s.depositCountryIdx];
     const depositRailChips = depositCountry.rails.map((r, i) => ({ label: r.label, select: selectDepositRail(i), bg: i === s.depositRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.depositRailIdx ? "var(--bg)" : "var(--ink)" }));
     const depositRail = depositCountry.rails[s.depositRailIdx] || depositCountry.rails[0];
-    const depositProvider = depositRail.options[s.depositProviderIdx] || depositRail.options[0];
-    const depositProviderChips = depositRail.options.map((name, i) => ({ name, select: selectDepositProvider(i), bg: i === s.depositProviderIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.depositProviderIdx ? "var(--indigo)" : "transparent" }));
+    const depositCatalogProviders = onRampProvidersForRail(
+      sendCatalogQuery.data,
+      depositCountry.iso,
+      depositRail.type,
+      depositCountry.code,
+    );
+    const depositProviderOptions =
+      depositCatalogProviders && depositCatalogProviders.length > 0
+        ? depositCatalogProviders.map((p) => p.name)
+        : depositRail.options;
+    const depositProviderIdx =
+      depositProviderOptions.length === 0
+        ? 0
+        : Math.min(s.depositProviderIdx, depositProviderOptions.length - 1);
+    const depositProvider = depositProviderOptions[depositProviderIdx] || depositProviderOptions[0];
+    const depositProviderChips = depositProviderOptions.map((name, i) => ({
+      name,
+      select: selectDepositProvider(i),
+      bg: i === depositProviderIdx ? "var(--indigo-tint)" : "var(--surface2)",
+      border: i === depositProviderIdx ? "var(--indigo)" : "transparent",
+    }));
 
     const bulkCountryChips = COUNTRIES.slice(0, 10).map((c, i) => ({
       flagUrl: flagUrl(c.iso), code: c.code, toggleBulk: toggleBulkCountry(i),
@@ -991,18 +1164,28 @@ export default function DashboardApp(props: Props = {}) {
   const depositIsBankRail = depositRail.type === "bank";
   const depositOperator = depositProvider;
   const depositMobileCode = depositCountry.code;
-  const depositProviderHasChoice = depositRail.options.length > 1;
+  const depositProviderHasChoice = depositProviderOptions.length > 1;
   const depositPhone = s.depositPhone;
+  const depositAmount = s.depositAmount;
   const depositPromptSent = s.depositPromptSent;
-  const depositPromptNotSent = !s.depositPromptSent;
   const depositBankLabel = depositRail.label;
   const depositBankArrival = depositRail.arrival;
-  const depositBankLines = depositRail.type === "bank" ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Bank", v: depositProvider }] : [];
+  const depositPaymentInstructionRows = s.depositAccept
+    ? buildPaymentInstructionRows(s.depositAccept.payment_instructions).map((row) => ({
+        k: row.k,
+        v: row.v,
+      }))
+    : [];
+  const depositBankLines =
+    s.depositAccept?.payment_instructions?.type === "bank"
+      ? depositPaymentInstructionRows
+      : depositRail.type === "bank" && !s.depositAccept
+        ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Bank", v: depositProvider }]
+        : depositPaymentInstructionRows;
+  const depositNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const treasuryWalletAddress = summaryQuery.data?.totals.wallet_address ?? null;
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
   const depositAssetCode = s.depositAsset.toUpperCase();
-  const depositNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
-  const depositNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.depositNetwork).label;
-  const depositAddress = DEPOSIT_ADDRESSES[s.depositNetwork];
   const sendStep = s.sendStep;
   const sendStepDots = buildSendStepDots(s.sendStep);
   const sendStepIs1 = s.sendStep === 1;
@@ -1034,22 +1217,79 @@ export default function DashboardApp(props: Props = {}) {
       : sendRail.arrival;
   const sendQuoteRateText = sendQuote?.amounts.rate ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}` : null;
   const depositStep = s.depositStep;
-  const depositStepDots = [1,2].map(n => ({ on: n <= s.depositStep }));
+  const depositStepDots = buildDepositStepDots(s.depositStep, s.depositGroup === "country" ? 3 : 2);
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
-  const depositDestinationSummary = s.depositGroup === "crypto" ? `${s.depositAsset.toUpperCase()} · ${DEPOSIT_NETWORKS.find(n=>n.key===s.depositNetwork).label}` : `${depositCountry.name} · ${depositProvider}`;
+  const depositStepIs3 = s.depositStep === 3;
+  const depositNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.depositNetwork).label;
+  const depositAddress = treasuryWalletAddress || DEPOSIT_ADDRESSES[s.depositNetwork] || "—";
+  const depositDestinationSummary = buildDepositDestinationSummary({
+    depositGroup: s.depositGroup,
+    depositAsset: s.depositAsset,
+    depositNetworkLabel,
+    countryName: depositCountry.name,
+    providerName: depositProvider,
+  });
+  const depositNotDone = !s.depositDone;
+  const depositDone = s.depositDone;
+  const depositPayerLabel = depositIsMobileRail ? "Your mobile number" : "Your bank account number";
+  const depositPayerPlaceholder = depositIsMobileRail ? "712 345 678" : depositRail.placeholder;
+  const depositAmountLabel = `Amount (${depositCountry.code})`;
+  const depositQuote = s.depositQuote;
+  const depositQuoteLoading = s.depositQuoteLoading;
+  const depositQuoteError = s.depositQuoteError;
+  const depositAccepting = s.depositAccepting;
+  const depositAcceptError = s.depositAcceptError;
+  const depositFeeText = depositQuote ? formatQuoteFees(depositQuote.amounts.fees) : (depositRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+  const depositArrivalText = depositQuote?.expires_at
+    ? new Date(depositQuote.expires_at).toLocaleTimeString()
+    : depositRail.arrival;
+  const depositQuoteRateText = depositQuote?.amounts.rate
+    ? `${depositQuote.amounts.user_receives.amount} ${depositQuote.amounts.user_receives.currency}`
+    : null;
+  const depositResultText = s.depositAccept
+    ? `Order #${s.depositAccept.merchant_order_id} · ${s.depositAccept.status}`
+    : null;
+  const depositLiveOrderStatus = s.depositAccept ? depositStatusQuery.data?.status ?? "processing" : null;
+  const [depositLiveLabel, depositLiveColor, depositLiveSoft] = depositLiveOrderStatus
+    ? TX_STATUS_DISPLAY[depositLiveOrderStatus] || ["Unknown", "var(--muted)", "var(--surface2)"]
+    : [null, null, null];
+  const depositLiveStatus = depositLiveOrderStatus
+    ? { label: depositLiveLabel as string, color: depositLiveColor as string, soft: depositLiveSoft as string, isSettling: !depositStatusQuery.isTerminal }
+    : null;
   const receiveGroups = ["fiat","crypto"].map(g => ({ key: g, label: g === "fiat" ? "Fiat account" : "Stablecoin", select: setReceiveGroup(g), bg: s.receiveGroup === g ? "var(--ink)" : "var(--surface2)", color: s.receiveGroup === g ? "var(--bg)" : "var(--muted)" }));
   const receiveIsFiat = s.receiveGroup === "fiat";
   const receiveIsCrypto = s.receiveGroup === "crypto";
-  const receiveAcctChips = ACCOUNTS.filter(a => !a.rail.includes("Stablecoin")).map((a,i) => ({ flagUrl: flagUrl(a.iso), code: a.code, select: selectReceiveAcct(i), bg: i === s.receiveAcctIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.receiveAcctIdx ? "var(--indigo)" : "transparent" }));
-  const receiveAcctLines = (() => { const a = ACCOUNTS.filter(x => !x.rail.includes("Stablecoin"))[s.receiveAcctIdx] || ACCOUNTS[0]; return (a.receiveLines||[]).map(([k,v]) => ({ k, v, copy: copyReceiveField(k, v), copied: s.copiedKey === k })); })();
-  const receiveAcctRail = (ACCOUNTS.filter(x => !x.rail.includes("Stablecoin"))[s.receiveAcctIdx] || ACCOUNTS[0]).rail;
+  const receiveAccountsList = depositAccountsQuery.data?.accounts ?? [];
+  const receiveAcctChips = receiveAccountsList.map((a, i) => ({
+    flagUrl: flagUrl(currencyIso(a.currency) ?? "eu"),
+    code: a.currency,
+    select: selectReceiveAcct(i),
+    bg: i === s.receiveAcctIdx ? "var(--indigo-tint)" : "var(--surface2)",
+    border: i === s.receiveAcctIdx ? "var(--indigo)" : "transparent",
+  }));
+  const selectedReceiveAccount = receiveAccountsList[s.receiveAcctIdx] ?? null;
+  const receiveAcctLines = selectedReceiveAccount
+    ? buildDepositAccountDetailRows(selectedReceiveAccount).map((row) => ({
+        k: row.label,
+        v: row.value,
+        copy: copyReceiveField(row.label, row.copyValue ?? row.value),
+        copied: s.copiedKey === row.label,
+      }))
+    : [];
+  const receiveAcctRail = selectedReceiveAccount
+    ? `${currencyLabel(selectedReceiveAccount.currency)} bank deposit`
+    : receiveAccountsList.length === 0
+      ? "Issue a currency account from Wallets to receive bank transfers."
+      : "—";
   const receiveAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setReceiveAsset(k), bg: s.receiveAsset === k ? "var(--ink)" : "var(--surface2)", color: s.receiveAsset === k ? "var(--bg)" : "var(--ink)" }));
   const receiveNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const receiveNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.receiveNetwork).label;
   const receiveAssetCode = s.receiveAsset.toUpperCase();
-  const receiveAddress = DEPOSIT_ADDRESSES[s.receiveNetwork];
-  const copyReceiveAddress = copyReceiveField("addr", DEPOSIT_ADDRESSES[s.receiveNetwork]);
+  const receiveAddress = treasuryWalletAddress || "—";
+  const copyReceiveAddress = treasuryWalletAddress
+    ? copyReceiveField("addr", treasuryWalletAddress)
+    : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
   const bulkRows = BULK_ROWS.map(r => ({ ...r, flagUrl: flagUrl(r.iso) }));
   const bulkCountryLabel = "KE, GH, NG, DE, RW";
@@ -1556,9 +1796,12 @@ Create payment
 
 {(isModalDeposit) ? (<>
 <DepositModal
+  depositNotDone={depositNotDone}
+  depositDone={depositDone}
   depositStepDots={depositStepDots}
   depositStepIs1={depositStepIs1}
   depositStepIs2={depositStepIs2}
+  depositStepIs3={depositStepIs3}
   depositMethods={depositMethods}
   depositIsCountry={depositIsCountry}
   depositIsCrypto={depositIsCrypto}
@@ -1574,19 +1817,33 @@ Create payment
   depositDestinationSummary={depositDestinationSummary}
   depositIsMobileRail={depositIsMobileRail}
   depositIsBankRail={depositIsBankRail}
-  depositPromptNotSent={depositPromptNotSent}
-  depositPromptSent={depositPromptSent}
+  depositPayerLabel={depositPayerLabel}
+  depositPayerPlaceholder={depositPayerPlaceholder}
   depositOperator={depositOperator}
   depositMobileCode={depositMobileCode}
   depositPhone={depositPhone}
   setDepositPhone={setDepositPhone}
-  sendDepositPrompt={sendDepositPrompt}
+  depositAmount={depositAmount}
+  setDepositAmount={setDepositAmount}
+  depositAmountLabel={depositAmountLabel}
+  depositQuoteError={depositQuoteError}
+  depositQuoteLoading={depositQuoteLoading}
+  depositQuoteRateText={depositQuoteRateText}
+  depositFeeText={depositFeeText}
+  depositArrivalText={depositArrivalText}
+  depositAcceptError={depositAcceptError}
+  depositAccepting={depositAccepting}
+  submitDeposit={submitDeposit}
+  depositResultText={depositResultText}
+  depositLiveStatus={depositLiveStatus}
+  depositPromptSent={depositPromptSent}
   depositBankLabel={depositBankLabel}
   depositBankArrival={depositBankArrival}
   depositBankLines={depositBankLines}
   depositAssetCode={depositAssetCode}
   depositNetworkLabel={depositNetworkLabel}
   depositAddress={depositAddress}
+  closeModal={closeModal}
 />
 </>) : null}
 
