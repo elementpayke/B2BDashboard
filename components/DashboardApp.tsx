@@ -1,145 +1,66 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import {
+  flagUrl, COUNTRIES, CURRENCIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
+  DEPOSIT_NETWORKS, DEPOSIT_ADDRESSES, ACCOUNTS, ROLES, TEAM_MEMBERS,
+  CORRIDORS, BULK_ROWS, CARDS, STATUS_MAP,
+  LIGHT, DARK, DARK_HC_OVERRIDES, qp,
+} from "./mockData";
+import { dashboardApi } from "@/lib/services/dashboard";
+import { transactionsApi, type Transaction } from "@/lib/services/transactions";
+import { TX_FILTERS, filterTransactions } from "@/lib/services/transactionFilters";
+import { authApi } from "@/lib/services/auth";
+import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
+import { apiKeysApi } from "@/lib/services/apiKeys";
+import {
+  depositAccountsApi, CURRENCY_OPTIONS, STABLECOIN_OPTIONS, NETWORK_OPTIONS,
+  isCurrencySupported,
+} from "@/lib/services/depositAccounts";
+import { ordersApi, buildSendQuotePayload, formatQuoteFees } from "@/lib/services/orders";
+import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
+import { useViewport } from "@/lib/responsive";
+import ActivityList from "@/components/ui/ActivityList";
+import InvoiceList from "@/components/ui/InvoiceList";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 type Props = {
   boostDarkContrast?: boolean;
   forceMobile?: boolean;
-  startInApp?: boolean;
   startScreen?: string;
   startTheme?: string;
 };
 
+export default function DashboardApp(props: Props = {}) {
+  const router = useRouter();
+  const exitApp = () => router.push("/");
+  const viewport = useViewport(props.forceMobile);
+  const isCompact = viewport.isCompact;
+  const isMobile = viewport.isMobile;
 
-const flagUrl = (iso) => iso ? `https://flagcdn.com/w40/${iso}.png` : null;
-const COUNTRIES = [
-  {code:"KES",name:"Kenya",iso:"ke",rails:[
-    {type:"mobile",label:"Mobile money",options:["M-Pesa (Safaricom)","Airtel Money"],field:"Recipient phone number",placeholder:"0712 345 678",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["KCB Bank","Equity Bank","Co-operative Bank"],field:"Recipient account number",placeholder:"0100234567",arrival:"Arrives within minutes"},
-  ]},
-  {code:"NGN",name:"Nigeria",iso:"ng",rails:[
-    {type:"mobile",label:"Mobile money",options:["OPay","PalmPay"],field:"Recipient phone number",placeholder:"0803 123 4567",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["GTBank","Access Bank","Zenith Bank"],field:"Recipient account number",placeholder:"0123456789",arrival:"Arrives within minutes"},
-  ]},
-  {code:"UGX",name:"Uganda",iso:"ug",rails:[
-    {type:"mobile",label:"Mobile money",options:["MTN Mobile Money","Airtel Money"],field:"Recipient phone number",placeholder:"0772 345 678",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["Stanbic Bank","Centenary Bank"],field:"Recipient account number",placeholder:"9030012345678",arrival:"Arrives within 1 business day"},
-  ]},
-  {code:"GHS",name:"Ghana",iso:"gh",rails:[
-    {type:"mobile",label:"Mobile money",options:["MTN MoMo","AirtelTigo Money"],field:"Recipient phone number",placeholder:"024 123 4567",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["GCB Bank","Ecobank Ghana"],field:"Recipient account number",placeholder:"1021304050",arrival:"Arrives within 1 business day"},
-  ]},
-  {code:"TZS",name:"Tanzania",iso:"tz",rails:[
-    {type:"mobile",label:"Mobile money",options:["M-Pesa Tanzania","Tigo Pesa"],field:"Recipient phone number",placeholder:"0754 123 456",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["CRDB Bank","NMB Bank"],field:"Recipient account number",placeholder:"015200123456",arrival:"Arrives within 1 business day"},
-  ]},
-  {code:"ZAR",name:"South Africa",iso:"za",rails:[
-    {type:"bank",label:"Bank transfer (EFT)",options:["FNB","Standard Bank","Absa"],field:"Recipient account number",placeholder:"62883910234",arrival:"Arrives same business day"},
-  ]},
-  {code:"EGP",name:"Egypt",iso:"eg",rails:[
-    {type:"bank",label:"Bank transfer",options:["CIB Egypt","National Bank of Egypt"],field:"Recipient account number",placeholder:"100234567890",arrival:"Arrives within 1 business day"},
-  ]},
-  {code:"USD",name:"United States",iso:"us",rails:[
-    {type:"bank",label:"Wire (ACH/SWIFT)",options:["Circle IBAN Partner"],field:"Recipient routing + account number",placeholder:"026073150 / 8811226789",arrival:"Arrives same business day"},
-  ]},
-  {code:"GBP",name:"United Kingdom",iso:"gb",rails:[
-    {type:"bank",label:"Faster Payments",options:["ClearBank Ltd"],field:"Recipient sort code + account",placeholder:"04-00-04 / 22148890",arrival:"Arrives same business day"},
-  ]},
-  {code:"EUR",name:"Eurozone",iso:"de",rails:[
-    {type:"bank",label:"SEPA transfer",options:["Modulr FS"],field:"Recipient IBAN",placeholder:"FR76 3000 6000 0112 3456 7890 189",arrival:"Arrives in 1-2 business days"},
-  ]},
-];
-const CURRENCIES = COUNTRIES;
-const MOBILE_CURRENCIES = COUNTRIES.filter(c=>c.rails.some(r=>r.type==="mobile"));
-const BANK_CURRENCIES = COUNTRIES;
-const DEPOSIT_NETWORKS = [{key:"base",label:"Base"},{key:"ethereum",label:"Ethereum"},{key:"polygon",label:"Polygon"},{key:"solana",label:"Solana"}];
-const DEPOSIT_ADDRESSES = {base:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",ethereum:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",polygon:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",solana:"8f6QeR3v2N4pXo1WkYtLc9Zb5jHs7DrMnA2VuT3xPqK"};
-const ACCOUNTS = [
-  {code:"KES",iso:"ke",name:"Kenyan Shilling",balance:"2,481,300.00",rail:"Mobile money",detail:"Paybill 400200",receiveLines:[["Paybill number","400200"],["Account name","ElementPay Business Ltd"]]},
-  {code:"USD",iso:"us",name:"US Dollar",balance:"184,220.55",rail:"IBAN · SWIFT",detail:"DE89 3704 ·· 4210",receiveLines:[["Routing number","026073150"],["Account number","8811226789"],["SWIFT","CRESUSXX"]]},
-  {code:"EUR",iso:"de",name:"Euro",balance:"92,014.30",rail:"IBAN · SEPA",detail:"FR76 3000 ·· 0189",receiveLines:[["IBAN","FR76 3000 6000 0112 3456 7890 189"],["BIC","MODRFR21"]]},
-  {code:"GBP",iso:"gb",name:"British Pound",balance:"40,880.00",rail:"IBAN · Faster Pay",detail:"GB29 NWBK ·· 1608",receiveLines:[["Sort code","04-00-04"],["Account number","22148890"]]},
-  {code:"USDC",iso:null,name:"USD Coin",balance:"180,860.00",rail:"Stablecoin · multi-chain",detail:"Base, Ethereum, Solana"},
-  {code:"USDT",iso:null,name:"Tether",balance:"12,900.00",rail:"Stablecoin · multi-chain",detail:"Polygon, Ethereum"},
-];
-const ROLES = [  {key:"admin", label:"Admin", desc:"Full access, including team and API keys"},
-  {key:"finance", label:"Finance", desc:"Move money, view all balances and reports"},
-  {key:"operator", label:"Operator", desc:"Create payouts, no access to keys or team"},
-  {key:"viewer", label:"Viewer", desc:"Read-only access to balances and activity"},
-];
-const TEAM_MEMBERS = [
-  {id:"u1", name:"Amara Nwosu", email:"amara@yourapp.com", role:"admin", status:"active"},
-  {id:"u2", name:"Kwame Asante", email:"kwame@yourapp.com", role:"finance", status:"active"},
-  {id:"u3", name:"Fatima Al-Sayed", email:"fatima@yourapp.com", role:"operator", status:"active"},
-  {id:"u4", name:"Daniel Otieno", email:"daniel@yourapp.com", role:"viewer", status:"invited"},
-];
-const API_KEYS = [
-  {id:"prod", label:"Production", mode:"live", key:"ep_live_sk_9c41b2d8a7e30f56b1c2", webhookUrl:"https://api.yourapp.com/webhooks/elementpay", events:"payment.settled · payment.failed · deposit.credited", webhookSecret:"whsec_7f2a9d4e1c88b0f3a6d5"},
-  {id:"sandbox", label:"Sandbox", mode:"test", key:"ep_test_sk_1a2b3c4d5e6f7081920a", webhookUrl:"https://staging.yourapp.com/webhooks/elementpay", events:"payment.settled · payment.failed", webhookSecret:"whsec_2b8e5f7a3d19c4b0e6a1"},
-];
-const CORRIDORS = [
-  {code:"KES",iso:"ke",label:"M-Pesa mobile money",provider:"Safaricom (priority 1)",status:"live"},
-  {code:"NGN",iso:"ng",label:"Bank transfer",provider:"Wema Bank (priority 1)",status:"live"},
-  {code:"GHS",iso:"gh",label:"MTN MoMo",provider:"MTN (priority 1)",status:"degraded"},
-  {code:"EUR",iso:"de",label:"SEPA transfer",provider:"Modulr FS (priority 1)",status:"live"},
-];
-const TRANSACTIONS = [
-  {client:"Wanjiru Njeri",iso:"ke",type:"Payout",amount:"-KES 42,300",status:"done",ref:"EP-T88213"},
-  {client:"Acme GmbH",iso:"de",type:"Invoice",amount:"+EUR 4,500.00",status:"done",ref:"EP-T88214"},
-  {client:"Kwame Osei",iso:"gh",type:"Payout",amount:"-GHS 1,850",status:"pending",ref:"EP-T88215"},
-  {client:"Lagos Freight Co",iso:"ng",type:"Payout",amount:"-NGN 960,000",status:"done",ref:"EP-T88216"},
-  {client:"USDC deposit",iso:null,type:"Deposit",amount:"+USDC 12,000",status:"done",ref:"EP-T88217"},
-  {client:"Kigali Roasters",iso:"rw",type:"Payout",amount:"-RWF 540,000",status:"failed",ref:"EP-T88218"},
-];
-const BULK_ROWS = [
-  {name:"Wanjiru Njeri",iso:"ke",rail:"M-Pesa",amount:"$318.40"},
-  {name:"Kwame Osei",iso:"gh",rail:"MTN MoMo",amount:"$150.00"},
-  {name:"Lagos Freight Co",iso:"ng",rail:"GTBank",amount:"$960.00"},
-  {name:"Acme GmbH",iso:"de",rail:"SEPA",amount:"$1,204.00"},
-  {name:"Kigali Roasters",iso:"rw",rail:"Bank transfer",amount:"$420.00"},
-];
-const INVOICES = [
-  {id:"INV-0231",client:"Acme GmbH",amount:"EUR 4,500.00",status:"paid"},
-  {id:"INV-0232",client:"Lagos Freight Co",amount:"USD 3,200.00",status:"pending"},
-  {id:"INV-0233",client:"Kigali Roasters",amount:"USD 980.00",status:"overdue"},
-];
-const CARDS = [
-  {label:"Marketing Ads",last4:"4471",balance:"$1,240.00",bg:"#131126",status:"active"},
-  {label:"Ops Spend",last4:"9982",balance:"$620.50",bg:"#3B2ED3",status:"active"},
-  {label:"Contractor Pay",last4:"1120",balance:"$0.00",bg:"#131126",status:"frozen"},
-];
-const STATUS_MAP = {
-  done:["Settled","var(--indigo-text)","var(--indigo-tint)"],
-  pending:["Pending","var(--amber)","var(--amber-tint)"],
-  failed:["Failed","var(--red)","var(--red-tint)"],
-  paid:["Paid","var(--indigo-text)","var(--indigo-tint)"],
-  overdue:["Overdue","var(--red)","var(--red-tint)"],
-};
-
-const LIGHT = {"--bg":"#F6F4EF","--surface":"rgba(255,255,255,0.55)","--surface2":"rgba(19,17,38,0.045)","--surface3":"rgba(19,17,38,0.09)","--border":"rgba(19,17,38,0.08)","--glass-border":"rgba(19,17,38,0.08)","--sheen":"rgba(255,255,255,0.5)","--ink":"#131126","--muted":"#4C4A66","--muted2":"#8B89A6","--muted3":"#8B89A6","--indigo":"#3B2ED3","--indigo-bright":"#3B2ED3","--indigo-on":"#fff","--indigo-text":"#3B2ED3","--indigo-tint":"#EEEDFB","--red":"#E5484D","--red-tint":"#FCEBEC","--amber":"#B47700","--amber-tint":"#FBF2DE","--ink-panel":"#131126","--ink-panel-text":"#8B89A6","--input-bg":"rgba(255,255,255,0.6)","--input-border":"rgba(19,17,38,0.11)","--modal-bg":"rgba(251,250,247,0.85)","--overlay-bg":"rgba(19,17,38,0.32)","--panel":"#FFFFFF"};
-const DARK = {"--bg":"#000000","--surface":"rgba(255,255,255,0.045)","--surface2":"rgba(255,255,255,0.055)","--surface3":"rgba(255,255,255,0.11)","--border":"rgba(255,255,255,0.1)","--glass-border":"rgba(255,255,255,0.1)","--sheen":"rgba(255,255,255,0.16)","--ink":"#F2F0FA","--muted":"#B4B1D0","--muted2":"#807D9E","--muted3":"#807D9E","--indigo":"#7C6FFF","--indigo-bright":"#7C6FFF","--indigo-on":"#0E0D1C","--indigo-text":"#A79EFF","--indigo-tint":"#221E4A","--red":"#FF6B70","--red-tint":"#3A1B22","--amber":"#F5B84B","--amber-tint":"#332A14","--ink-panel":"#0B0A14","--ink-panel-text":"#8B89A6","--input-bg":"rgba(255,255,255,0.05)","--input-border":"rgba(255,255,255,0.14)","--modal-bg":"rgba(14,13,22,0.82)","--overlay-bg":"rgba(0,0,0,0.6)","--panel":"#121116"};
-const DARK_HC_OVERRIDES = {"--surface2":"rgba(255,255,255,0.09)","--surface3":"rgba(255,255,255,0.16)","--border":"rgba(255,255,255,0.18)","--glass-border":"rgba(255,255,255,0.18)","--muted2":"#9E9BC0","--input-bg":"rgba(255,255,255,0.09)","--input-border":"rgba(255,255,255,0.28)","--modal-bg":"rgba(10,9,17,0.97)","--panel":"#17161d"};
-
-function qp(k){ try { return new URLSearchParams(window.location.search).get(k) || ""; } catch(e){ return ""; } }
-
-export default function ElementPayDashboard(props: Props = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const [state, setStateRaw] = useState<any>(() => ({
-    theme: qp("theme") || props.startTheme || "light", appEntered: (props.startInApp === true) || (qp("app") === "1"), screen: qp("screen") || props.startScreen || "home",
-    isMobile: props.forceMobile || (typeof window !== "undefined" && window.innerWidth < 900), sidebarOpen: false,
+    theme: qp("theme") || props.startTheme || "light", screen: qp("screen") || props.startScreen || "home",
+    sidebarOpen: false,
     modal: qp("modal") || null,
-    sendStep: 1, sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendStep: 1, sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
     stableSel: "USDC", txFilter: "all",
-    lcAmt: "1,000", lcCountryIdx: 0,
     selectedTxIdx: 0, selectedAcctIdx: 0, selectedCardIdx: 0,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
+    apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyCreating: false, apiKeyError: "", newlyCreatedKey: null as any,
+    addAccountMenu: false, createAccountKind: "bank", createAccountName: "",
+    createAccountCurrency: "", createAccountStablecoin: "", createAccountNetwork: "",
+    createAccountSaving: false, createAccountError: "",
     teamMembers: TEAM_MEMBERS, inviteOpen: false, inviteName: "", inviteEmail: "", inviteRole: "operator",
     newCardLabel: "", newCardDone: false,
-    invClient: "", invAmount: "", invoiceDone: false,
+    invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     fundAmount: "250.00", fundCardDone: false,
     balanceView: "all", sendGroup: "country",
@@ -150,33 +71,121 @@ export default function ElementPayDashboard(props: Props = {}) {
 
   useEffect(() => {
     const timer = setInterval(() => setState((s: any) => ({ quoteSeconds: Math.max(0, s.quoteSeconds - 1) })), 1000);
-    const onResize = () => { if (props.forceMobile) return; const m = window.innerWidth < 900; setState((s: any) => s.isMobile === m ? null : { isMobile: m, sidebarOpen: false }); };
-    window.addEventListener("resize", onResize);
-    return () => { clearInterval(timer); window.removeEventListener("resize", onResize); };
+    return () => clearInterval(timer);
+  }, [setState]);
+
+  // Close the drawer when crossing into desktop chrome.
+  useEffect(() => {
+    if (!isCompact && state.sidebarOpen) setState({ sidebarOpen: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isCompact]);
+
+  // Real backend data. Session-expiry from any of these bounces to /login —
+  // registered once here rather than per-call, matching the mobile client's
+  // single global session-lost handler.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    setSessionLostHandler(() => router.push("/login"));
+    return () => setSessionLostHandler(null);
+  }, [router]);
+
+  const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
+  const summaryQuery = useQuery({ queryKey: ["dashboard-summary"], queryFn: dashboardApi.summary, retry: false });
+  const transactionsQuery = useQuery({
+    queryKey: ["transactions"],
+    queryFn: transactionsApi.list,
+    retry: false,
+    refetchInterval: 15_000,
+  });
+  const invoicesQuery = useQuery({
+    queryKey: ["invoices"],
+    queryFn: () => invoicesApi.list(),
+    retry: false,
+  });
+  const apiKeysQuery = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => apiKeysApi.list(),
+    retry: false,
+  });
+  // The list endpoint deliberately omits webhook_url / webhook_secret
+  // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
+  // details so the Developer screen's webhook rows show real values.
+  const apiKeyDetailQueries = useQueries({
+    queries: (apiKeysQuery.data ?? []).map((k) => ({
+      queryKey: ["api-key", k.id],
+      queryFn: () => apiKeysApi.get(k.id),
+      retry: false,
+    })),
+  });
+  const apiKeyDetailById = new Map<number, any>();
+  (apiKeysQuery.data ?? []).forEach((k, i) => {
+    const d = apiKeyDetailQueries[i]?.data;
+    if (d) apiKeyDetailById.set(k.id, d);
+  });
+
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      queryClient.clear();
+      router.push("/login");
+    }
+  };
 
 
 
-  const enterApp = () => setState({ appEntered: true });
-  const exitApp = () => setState({ appEntered: false });
   const toggleTheme = () => setState(s => ({ theme: s.theme === "light" ? "dark" : "light" }));
   const toggleSidebar = () => setState(s => ({ sidebarOpen: !s.sidebarOpen }));
   const closeSidebar = () => setState({ sidebarOpen: false });
   const setScreen = (s) => () => setState({ screen: s, sidebarOpen: false });
   const goTransactions = () => setState({ screen: "transactions" });
-  const setLcAmt = (e) => setState({ lcAmt: e.target.value });
-  const selectLcCountry = (i) => () => setState({ lcCountryIdx: i });
 
   const openModal = (name) => () => setState({
-    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
+    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
+    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
-    newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false,
+    newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
   });
-  const sendNext = () => setState(s => ({ sendStep: Math.min(3, s.sendStep + 1) }));
-  const sendBack = () => setState(s => ({ sendStep: Math.max(1, s.sendStep - 1) }));
+  const sendNext = async () => {
+    // Step 2 -> 3 is where a real payout ("by country") fetches a real
+    // quote; step 1 -> 2 is just gathering rail/country choice, and the
+    // simulated crypto tab never calls the backend (no such endpoint).
+    if (state.sendStep === 2 && state.sendGroup === "country") {
+      if (!state.sendRecipient.trim() || !state.sendRecipientName.trim() || !state.sendAmount.trim()) return;
+      setState({ sendQuoteLoading: true, sendQuoteError: "" });
+      try {
+        const refundAddress = summaryQuery.data?.totals.wallet_address;
+        if (!refundAddress) {
+          throw new Error("No treasury wallet is provisioned for this business yet.");
+        }
+        const country = COUNTRIES[state.sendCountryIdx];
+        const rail = country.rails[state.sendRailIdx] || country.rails[0];
+        const payload = buildSendQuotePayload({
+          currency: country.code,
+          countryIso: country.iso,
+          railType: rail.type,
+          recipientAccountNumber: state.sendRecipient.trim(),
+          recipientName: state.sendRecipientName.trim(),
+          amount: state.sendAmount.trim(),
+          refundAddress,
+          // Mobile rails need E.164; the field's placeholder is local format.
+          dialCode: country.dialCode,
+        });
+        const quote = await ordersApi.quote(payload);
+        setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
+      } catch (err) {
+        setState({
+          sendQuoteLoading: false,
+          sendQuoteError: err instanceof ApiRequestError || err instanceof Error ? err.message : "Couldn't get a quote. Try again.",
+        });
+      }
+      return;
+    }
+    setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
+  };
+  const sendBack = () => setState((s: any) => ({ sendStep: Math.max(1, s.sendStep - 1), sendQuoteError: "" }));
   const depositNext = () => setState(s => ({ depositStep: Math.min(2, s.depositStep + 1) }));
   const depositBack = () => setState(s => ({ depositStep: Math.max(1, s.depositStep - 1) }));
   const closeModal = () => setState({ modal: null });
@@ -185,7 +194,7 @@ export default function ElementPayDashboard(props: Props = {}) {
   const openAcctDetail = (i) => () => setState({ modal: "acctDetail", selectedAcctIdx: i });
   const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
   const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
-  const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false });
+  const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
   const openModalTier = () => setState({ modal: "tier", tierDone: false });
   const openModalSwapFromAcct = () => setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
 
@@ -193,8 +202,29 @@ export default function ElementPayDashboard(props: Props = {}) {
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
+  const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
-  const submitSend = () => { if (state.sendRecipient.trim() && state.sendAmount.trim()) setState({ sendDone: true }); };
+  const submitSend = async () => {
+    if (state.sendGroup !== "country") {
+      // Direct stablecoin transfers have no backend endpoint yet — stays
+      // a local simulation (see docs/api-contract.md).
+      if (state.sendRecipient.trim() && state.sendAmount.trim()) setState({ sendDone: true });
+      return;
+    }
+    if (!state.sendQuote) return;
+    setState({ sendAccepting: true, sendAcceptError: "" });
+    try {
+      const accepted = await ordersApi.accept(state.sendQuote.quote_id);
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      setState({ sendAccepting: false, sendAccept: accepted, sendDone: true });
+    } catch (err) {
+      setState({
+        sendAccepting: false,
+        sendAcceptError: err instanceof ApiRequestError ? err.message : "Couldn't send the payment. Try again.",
+      });
+    }
+  };
 
   const setDepositGroup = (g) => () => setState({ depositGroup: g, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false });
   const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false });
@@ -223,13 +253,35 @@ export default function ElementPayDashboard(props: Props = {}) {
   const refreshQuote = () => setState({ quoteSeconds: 87 });
   const acceptQuote = () => { if (state.quoteSeconds > 0) setState({ swapAccepted: true }); };
   const setTxFilter = (f) => () => setState({ txFilter: f });
-  const openCreateAccount = () => setState({ modal: "deposit", depositGroup: "mobile", depositCountryIdx: 0 });
+  // Add Account: a small menu that branches into two create modals.
+  const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
+  const closeAddAccountMenu = () => setState({ addAccountMenu: false });
+  const openCreateAccount = (kind) => () => setState({
+    modal: "createAccount", addAccountMenu: false, createAccountKind: kind,
+    createAccountName: "", createAccountCurrency: "", createAccountStablecoin: "",
+    createAccountNetwork: "", createAccountError: "",
+  });
+  const setCreateAccountName = (e) => setState({ createAccountName: e.target.value });
+  const setCreateAccountCurrency = (e) => setState({ createAccountCurrency: e.target.value, createAccountError: "" });
+  const setCreateAccountStablecoin = (e) => setState({ createAccountStablecoin: e.target.value, createAccountError: "" });
+  const setCreateAccountNetwork = (e) => setState({ createAccountNetwork: e.target.value, createAccountError: "" });
 
+  const copyField = (fieldKey, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedField: fieldKey }); };
   const toggleRevealKey = (id) => () => setState(s => ({ apiKeyRevealed: { ...s.apiKeyRevealed, [id]: !s.apiKeyRevealed[id] } }));
   const toggleRevealSecret = (id) => () => setState(s => ({ secretRevealed: { ...s.secretRevealed, [id]: !s.secretRevealed[id] } }));
-  const copyField = (fieldKey, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedField: fieldKey }); };
-  const createApiKey = () => {};
-  const revokeApiKey = (id) => () => {};
+
+  // Cards + Team have no backend yet, so these stay local/simulated exactly
+  // as the original design prototype had them. See docs/api-contract.md.
+  const setNewCardLabel = (e) => setState({ newCardLabel: e.target.value });
+  const issueCard = () => { if (state.newCardLabel.trim()) setState({ newCardDone: true }); };
+  const toggleFreezeCard = () => setState(s => ({ cardFrozen: !s.cardFrozen }));
+  const fundCard = () => setState({ modal: "fundCard", fundCardDone: false });
+  const withdrawCard = () => setState({ modal: "fundCard", fundCardDone: false });
+  const openFundCardDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
+  const openWithdrawDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
+  const terminateCard = () => setState({ modal: null });
+  const setFundAmount = (e) => setState({ fundAmount: e.target.value });
+  const submitFundCard = () => { if (state.fundAmount.trim()) setState({ fundCardDone: true }); };
 
   const openInvite = () => setState({ inviteOpen: true, inviteName: "", inviteEmail: "", inviteRole: "operator" });
   const closeInvite = () => setState({ inviteOpen: false });
@@ -250,21 +302,86 @@ export default function ElementPayDashboard(props: Props = {}) {
     setState(s => ({ teamMembers: s.teamMembers.map(m => m.id === id ? { ...m, role } : m) }));
   };
   const removeMember = (id) => () => setState(s => ({ teamMembers: s.teamMembers.filter(m => m.id !== id) }));
-  const setNewCardLabel = (e) => setState({ newCardLabel: e.target.value });
-  const issueCard = () => { if (state.newCardLabel.trim()) setState({ newCardDone: true }); };
+
+  const openCreateApiKeyModal = () => setState({ modal: "apiKey", apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyError: "" });
+  const setApiKeyName = (e) => setState({ apiKeyName: e.target.value });
+  const setApiKeyEnvironment = (env: string) => () => setState({ apiKeyEnvironment: env });
+  const submitApiKey = async () => {
+    if (!state.apiKeyName.trim()) return;
+    setState({ apiKeyCreating: true, apiKeyError: "" });
+    try {
+      const created = await apiKeysApi.create({ name: state.apiKeyName.trim(), environment: state.apiKeyEnvironment });
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      // Auto-reveal the new key in its own row — it's the only moment the
+      // plaintext exists, so it must be visible without an extra click.
+      setState((prev: any) => ({
+        apiKeyCreating: false,
+        modal: null,
+        newlyCreatedKey: created,
+        apiKeyRevealed: { ...prev.apiKeyRevealed, [created.id]: true },
+      }));
+    } catch (err) {
+      setState({ apiKeyCreating: false, apiKeyError: err instanceof ApiRequestError ? err.message : "Couldn't create the key." });
+    }
+  };
+  const submitCreateAccount = async () => {
+    if (!state.createAccountName.trim()) {
+      return setState({ createAccountError: "Give the account a name." });
+    }
+    // Stablecoin accounts have no backend concept yet — there is no endpoint
+    // that issues one, so this branch stays local rather than pretending.
+    if (state.createAccountKind === "stablecoin") {
+      if (!state.createAccountStablecoin || !state.createAccountNetwork) {
+        return setState({ createAccountError: "Choose a stablecoin and a network." });
+      }
+      return setState({ createAccountError: "Stablecoin accounts aren't available yet — the API doesn't issue them." });
+    }
+    if (!state.createAccountCurrency) {
+      return setState({ createAccountError: "Choose a currency." });
+    }
+    setState({ createAccountSaving: true, createAccountError: "" });
+    try {
+      await depositAccountsApi.create({
+        currency: state.createAccountCurrency,
+        accountName: state.createAccountName.trim(),
+      });
+      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      setState({ createAccountSaving: false, modal: null });
+    } catch (err) {
+      setState({
+        createAccountSaving: false,
+        createAccountError: err instanceof Error ? err.message : "Couldn't create the account.",
+      });
+    }
+  };
+  const revokeApiKey = (id: number) => async () => {
+    await apiKeysApi.revoke(id);
+    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+  };
+  const deleteApiKey = (id: number) => async () => {
+    await apiKeysApi.remove(id);
+    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+  };
+
   const setInvClient = (e) => setState({ invClient: e.target.value });
   const setInvAmount = (e) => setState({ invAmount: e.target.value });
-  const submitInvoice = () => { if (state.invClient.trim() && state.invAmount.trim()) setState({ invoiceDone: true }); };
-  const toggleFreezeCard = () => setState(s => ({ cardFrozen: !s.cardFrozen }));
+  const submitInvoice = async () => {
+    if (!state.invClient.trim() || !state.invAmount.trim()) return;
+    setState({ invoiceSubmitting: true, invoiceError: "" });
+    try {
+      const draft = await invoicesApi.createDraft(null, buildSimpleDraftPayload(state.invClient, state.invAmount));
+      await invoicesApi.issue(draft.id, "none");
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      setState({ invoiceDone: true, invoiceSubmitting: false });
+    } catch (err) {
+      setState({
+        invoiceSubmitting: false,
+        invoiceError: err instanceof ApiRequestError ? err.message : "Couldn't create the invoice. Try again.",
+      });
+    }
+  };
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
-  const fundCard = () => setState({ modal: "fundCard", fundCardDone: false });
-  const withdrawCard = () => setState({ modal: "fundCard", fundCardDone: false });
-  const openFundCardDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
-  const openWithdrawDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
-  const terminateCard = () => setState({ modal: null });
-  const setFundAmount = (e) => setState({ fundAmount: e.target.value });
-  const submitFundCard = () => { if (state.fundAmount.trim()) setState({ fundCardDone: true }); };
   const setBalanceView = (v) => () => setState({ balanceView: v });
   const setSendGroup = (g) => () => setState({ sendGroup: g, sendCountryIdx: 0 });
 
@@ -323,56 +440,45 @@ export default function ElementPayDashboard(props: Props = {}) {
 
     const quoteExpired = s.quoteSeconds <= 0;
     const isOnrampDir = s.onrampDir === "onramp";
-    const decorateTx = (t, i) => {
-      const [label, color, soft] = STATUS_MAP[t.status];
-      return { ...t, flagUrl: flagUrl(t.iso), statusLabel: label, statusColor: color, statusSoft: soft, amountColor: t.amount.startsWith("+") ? "var(--indigo-text)" : "var(--ink)", openDetail: openTxDetail(i) };
+
+    // Real transactions from the backend (thin read-view over merchant_orders).
+    // TransactionOut has no counterparty name/country — those fields are
+    // display-only stand-ins, not fabricated financial data.
+    const TX_STATUS_DISPLAY: Record<string, [string, string, string]> = {
+      processing: ["Pending", "var(--amber)", "var(--amber-tint)"],
+      completed: ["Settled", "var(--indigo-text)", "var(--indigo-tint)"],
+      failed: ["Failed", "var(--red)", "var(--red-tint)"],
+      canceled: ["Canceled", "var(--muted)", "var(--surface2)"],
+      frozen: ["Frozen", "var(--red)", "var(--red-tint)"],
     };
-    const decoratedAll = TRANSACTIONS.map(decorateTx);
-    const filteredTransactions = s.txFilter === "all" ? decoratedAll : decoratedAll.filter(t => t.status === s.txFilter);
+    const decorateTx = (t: Transaction, i: number) => {
+      const [label, color, soft] = TX_STATUS_DISPLAY[t.status] || ["Unknown", "var(--muted)", "var(--surface2)"];
+      const sign = t.direction === "out" ? "-" : t.direction === "in" ? "+" : "";
+      const clientLabel = t.external_order_id || t.aggregator_order_id || `Order #${t.id}`;
+      const typeLabel = t.direction === "in" ? "Deposit" : t.direction === "out" ? "Payout" : "Transaction";
+      return {
+        ...t,
+        flagUrl: null,
+        client: clientLabel,
+        type: typeLabel,
+        amount: `${sign}${t.currency} ${t.amount_fiat}`,
+        ref: t.aggregator_order_id || t.external_order_id || `EP-${t.id}`,
+        statusLabel: label,
+        statusColor: color,
+        statusSoft: soft,
+        amountColor: sign === "+" ? "var(--indigo-text)" : "var(--ink)",
+        openDetail: openTxDetail(i),
+      };
+    };
+    const decoratedAll = (transactionsQuery.data?.items ?? []).map(decorateTx);
+    const filteredTransactions = filterTransactions(transactionsQuery.data?.items ?? [], s.txFilter).map((t) =>
+      decorateTx(t, (transactionsQuery.data?.items ?? []).indexOf(t)),
+    );
     const txDetail = decoratedAll[s.selectedTxIdx];
     const acctDetail = { ...ACCOUNTS[s.selectedAcctIdx], flagUrl: flagUrl(ACCOUNTS[s.selectedAcctIdx].iso) };
     const cardSel = CARDS[s.selectedCardIdx];
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
-  const isLanding = !s.appEntered;
-  const isApp = s.appEntered;
-  const lcAmt = s.lcAmt;
-  const lcCountryChips = CURRENCIES.slice(0,6).map((c,i) => ({ flagUrl: flagUrl(c.iso), code: c.code, select: selectLcCountry(i), bg: i === s.lcCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.lcCountryIdx ? "var(--indigo)" : "transparent" }));
-  const lcOut = (parseFloat(s.lcAmt.replace(/,/g,"")||"0") * 131.64).toLocaleString(undefined,{maximumFractionDigits:0}) + " " + CURRENCIES[s.lcCountryIdx % 6].code;
-  const lcRate = "1 USD = 131.64 " + CURRENCIES[s.lcCountryIdx % 6].code;
-  const allCountryFlags = CURRENCIES.map(c => ({ flagUrl: flagUrl(c.iso), code: c.code }));
-  const landingFeatures = [
-        { letter: "A", title: "Global accounts & IBANs", desc: "Get a EUR IBAN, UK sort code and US ACH details in your business name." },
-        { letter: "P", title: "Instant payouts", desc: "Pay vendors and teams to mobile money, banks and wallets across 20+ countries in minutes." },
-        { letter: "S", title: "Stablecoin engine", desc: "USDC and USDT on Base and Polygon power settlement under the hood." },
-        { letter: "T", title: "Multi-currency treasury", desc: "Hold and swap between fiat and digital assets with a 90-second rate lock." },
-        { letter: "C", title: "Virtual cards", desc: "USD virtual cards for team spend with limits and freeze controls." },
-        { letter: "E", title: "Enterprise controls", desc: "Role-based access, approval workflows, tiered KYB limits, full audit trail." },
-      ];
-  const engineRails = [
-        { dot: "var(--indigo)", label: "Collect", tag: "fiat in" },
-        { dot: "#2151F5", label: "Settle", tag: "~seconds" },
-        { dot: "#8247E5", label: "Convert", tag: "mid-market" },
-        { dot: "#fff", label: "Payout", tag: "fiat out" },
-      ];
-  const engineStats = [
-        { value: "20+", label: "countries live" },
-        { value: "3m 41s", label: "avg settlement" },
-        { value: "98.6%", label: "success rate" },
-        { value: "2", label: "chains" },
-      ];
-  const isMobile = s.isMobile;
-  const overlayStyle: React.CSSProperties = { display: s.isMobile && s.sidebarOpen ? "block" : "none", position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 30 };
-  const asideStyle: React.CSSProperties = {
-        background: "var(--surface)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)",
-        borderRight: "1px solid var(--glass-border)", display: "flex", flexDirection: "column", padding: "18px 14px", gap: "0",
-        ...(s.isMobile
-          ? { position: "fixed", top: 0, left: 0, bottom: 0, width: "250px", zIndex: 40, overflowY: "auto", transform: s.sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.2s ease" }
-          : { position: "relative", width: "250px", flexShrink: 0, zIndex: 1 }),
-      };
-  const headerPad = s.isMobile ? "18px 16px 12px" : "28px 32px 18px";
-  const contentPad = s.isMobile ? "16px 14px 40px" : "24px 32px 48px";
-  const titleSize = s.isMobile ? "20px" : "26px";
   const mainNavItems = navMap.map(n => {
         const active = s.screen === n.key;
         return { label: n.label, groupLabel: n.group, select: setScreen(n.key), bg: active ? "var(--indigo)" : "transparent", color: active ? "var(--indigo-on)" : "var(--muted)", weight: active ? 700 : 600, shadow: active ? "0 8px 18px -8px rgba(59,46,211,0.5)" : "none" };
@@ -398,8 +504,18 @@ export default function ElementPayDashboard(props: Props = {}) {
         return { label: n.label, icon: n.icon, select, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "var(--indigo-on)" }));
-  const homeTotalBalance = s.balanceView === "stablecoin" ? "≈ $193,760.00" : s.balanceView === "fiat" ? "≈ $355,070.55" : "≈ $548,830.55";
-  const balanceViewSub = s.balanceView === "stablecoin" ? "USDC + USDT across chains" : s.balanceView === "fiat" ? "KES, USD, EUR, GBP accounts" : "Across all wallets and accounts";
+  // No real total-balance source exists yet: it is a currency-accounts
+  // aggregate (IBAN/Wallets scope, deferred), and the only backend field in
+  // this neighborhood — `totals.user_balance` — is an untyped Privy
+  // passthrough that reports null whenever Privy has no balance to give.
+  //
+  // So this renders an em dash rather than a number. It previously showed a
+  // hardcoded "$548,830.55", which is worse than showing nothing: on a real
+  // account with no money in it, an invented balance is indistinguishable
+  // from a true one. Restore a figure here only when it is computed from a
+  // real source. See docs/api-contract.md.
+  const homeTotalBalance = "—";
+  const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
   const homeCurrencyChips = ACCOUNTS.filter(a => s.balanceView === "all" || (s.balanceView === "stablecoin" ? a.rail.includes("Stablecoin") : !a.rail.includes("Stablecoin"))).map(a => ({ flagUrl: flagUrl(a.iso), code: a.code, balance: a.balance }));
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: openModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
@@ -407,10 +523,13 @@ export default function ElementPayDashboard(props: Props = {}) {
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: openModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: openModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
+  const totals = summaryQuery.data?.totals;
+  const fmtUsd = (v: string | number | undefined) =>
+    v == null ? "—" : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const homeStats = [
-        { label: "Money in · 30 days", value: "$284,510", icon: "↑", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
-        { label: "Money out · 30 days", value: "$127,790", icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
-        { label: "Awaiting settlement", value: "$18,340", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
+        { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
   const homeRecent = decoratedAll.slice(0, 4);
   const mainWalletBalance = "USDC 180,860.00";
@@ -428,37 +547,139 @@ export default function ElementPayDashboard(props: Props = {}) {
         statusSoft: c.status === "live" ? "var(--indigo-tint)" : "var(--amber-tint)",
       }));
   const cards = CARDS.map((c,i) => ({ ...c, openDetail: openCardDetail(i), statusLabel: c.status === "active" ? "Active" : "Frozen", filter: c.status === "frozen" ? "saturate(0.2) opacity(0.7)" : "none", fund: openFundCardDirect(i), withdraw: openWithdrawDirect(i), freeze: openCardDetail(i) }));
-  const txFilters = ["all","done","pending","failed"].map(f => ({ label: f === "all" ? "All" : f === "done" ? "Settled" : f === "pending" ? "Pending" : "Failed", select: setTxFilter(f), bg: s.txFilter === f ? "var(--indigo)" : "var(--surface2)", color: s.txFilter === f ? "var(--indigo-on)" : "var(--muted)" }));
-  const invoices = INVOICES.map(inv => { const [l,c,soft] = STATUS_MAP[inv.status]; return { ...inv, statusLabel: l, statusColor: c, statusSoft: soft }; });
+  const txFilters = TX_FILTERS.map((f) => ({ label: f.label, select: setTxFilter(f.key), bg: s.txFilter === f.key ? "var(--indigo)" : "var(--surface2)", color: s.txFilter === f.key ? "var(--indigo-on)" : "var(--muted)" }));
+  const invoices = (invoicesQuery.data?.items ?? []).map((inv) => {
+    const [l, c, soft] = STATUS_MAP[inv.status] || ["Draft", "var(--muted)", "var(--surface2)"];
+    const clientName = inv.payload?.client_name || "—";
+    const lineItem = inv.payload?.line_items?.[0];
+    const amount = lineItem
+      ? `${inv.payload.currency} ${lineItem.unit_amount ?? lineItem.amount ?? ""}`.trim()
+      : inv.payload?.currency || "";
+    return { id: inv.invoice_number, client: clientName, amount, statusLabel: l, statusColor: c, statusSoft: soft };
+  });
+
+  // Reports: computed from real transactions rather than fabricated numbers.
+  // "Avg settlement time" derives from updated_at - created_at on completed
+  // orders (a genuine proxy for settlement duration); anything we can't
+  // honestly compute from what the backend returns (e.g. real per-day
+  // volume beyond what's in the fetched page) is shown as "—" rather than
+  // invented.
+  const allTx = transactionsQuery.data?.items ?? [];
+  const completedTx = allTx.filter((t) => t.status === "completed");
+  const totalVolume30d = totals ? Number(totals.money_in_30d) + Number(totals.money_out_30d) : null;
+  const successRate = allTx.length ? Math.round((completedTx.length / allTx.length) * 100) : null;
+  const avgSettlementMs = completedTx.length
+    ? completedTx.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
+      completedTx.length
+    : null;
+  const fmtDuration = (ms: number | null) => {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+    const totalSeconds = Math.round(ms / 1000);
+    const m = Math.floor(totalSeconds / 60);
+    const sec = totalSeconds % 60;
+    return `${m}m ${sec}s`;
+  };
   const reportStats = [
-        { label: "Total volume · 30d", value: "$142,806", color: "var(--ink)" },
-        { label: "Avg settlement time", value: "3m 41s", color: "var(--ink)" },
-        { label: "Success rate", value: "98.6%", color: "var(--indigo-text)" },
+        { label: "Total volume · 30d", value: totalVolume30d == null ? "—" : fmtUsd(totalVolume30d), color: "var(--ink)" },
+        { label: "Avg settlement time", value: fmtDuration(avgSettlementMs), color: "var(--ink)" },
+        { label: "Success rate", value: successRate == null ? "—" : `${successRate}%`, color: "var(--indigo-text)" },
       ];
-  const reportBars = [40,65,50,80,45,90,60,75,55,70].map(h => ({ h }));
+  const reportBars = (() => {
+    const days: { key: string; total: number }[] = [];
+    for (let i = 9; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      days.push({ key: d.toISOString().slice(0, 10), total: 0 });
+    }
+    for (const t of allTx) {
+      const key = new Date(t.created_at).toISOString().slice(0, 10);
+      const bucket = days.find((d) => d.key === key);
+      if (bucket) bucket.total += Number(t.amount_fiat) || 0;
+    }
+    const max = Math.max(1, ...days.map((d) => d.total));
+    return days.map((d) => ({ h: Math.round((d.total / max) * 100) }));
+  })();
   const coverageChips = CURRENCIES.map(c => ({ flagUrl: flagUrl(c.iso), code: c.code }));
+  // Tier 1 reflects real account/email verification. Tier 2 reflects the
+  // real KYB status (the backend's one actual verification flow — see
+  // docs/api-contract.md for why the upload/submit step stays simulated).
+  // Tier 3 is a product concept with no backend counterpart at all yet, so
+  // it's gated on the real Tier 2 outcome but its own "upgrade" stays local.
+  const emailVerified = !!meQuery.data?.user.email_verified;
+  const kybStatus = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+  const KYB_TIER_DISPLAY: Record<string, [string, string, string]> = {
+    approved: ["Complete", "var(--indigo-text)", "var(--indigo-tint)"],
+    submitted: ["In review", "var(--amber)", "var(--amber-tint)"],
+    rejected: ["Rejected", "var(--red)", "var(--red-tint)"],
+    expired: ["Expired", "var(--red)", "var(--red-tint)"],
+    pending: ["Not started", "var(--muted)", "var(--surface2)"],
+  };
+  const [tier2Label, tier2Color, tier2Soft] = KYB_TIER_DISPLAY[kybStatus] || KYB_TIER_DISPLAY.pending;
+  const tier2Approved = kybStatus === "approved";
   const tiers = [
-        { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: "Complete", statusColor: "var(--indigo-text)", statusSoft: "var(--indigo-tint)", locked: false },
-        { num: "TIER 2", title: "Registered Business", reqs: ["Certificate of incorporation","Tax registration","Proof of address"], limit: "Limit · $25,000 / day", statusLabel: "Complete", statusColor: "var(--indigo-text)", statusSoft: "var(--indigo-tint)", locked: false },
-        { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !s.tierDone },
+        { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: emailVerified ? "Complete" : "Pending", statusColor: emailVerified ? "var(--indigo-text)" : "var(--muted)", statusSoft: emailVerified ? "var(--indigo-tint)" : "var(--surface2)", locked: false },
+        { num: "TIER 2", title: "Registered Business", reqs: ["Certificate of incorporation","Tax registration","Proof of address"], limit: "Limit · $25,000 / day", statusLabel: tier2Label, statusColor: tier2Color, statusSoft: tier2Soft, locked: false },
+        { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
       ];
-  const apiKeys = API_KEYS.map(k => ({
+  // The backend only ever returns the full plaintext key once, in the
+  // create/rotate response — list/detail always return it masked. So
+  // "Reveal"/"Copy" on the secret-key row can only do something real for a
+  // key minted in this session (held in `newlyCreatedKey`); for every other
+  // key they render in the same place but disabled, with a title saying why.
+  // The webhook rows come from the per-key detail endpoint, since the list
+  // endpoint omits them.
+  const justMintedKey = s.newlyCreatedKey;
+  const apiKeys = (apiKeysQuery.data ?? [])
+    .filter((k) => !k.revoked)
+    .map((k) => {
+      const detail = apiKeyDetailById.get(k.id);
+      const plaintext = justMintedKey && justMintedKey.id === k.id ? justMintedKey.key : null;
+      const revealed = !!s.apiKeyRevealed[k.id];
+      const secretRevealed = !!s.secretRevealed[k.id];
+      const webhookSecret = detail?.webhook_secret ?? null;
+      return {
         ...k,
-        modeLabel: k.mode === "live" ? "Live" : "Test",
-        modeBg: k.mode === "live" ? "var(--indigo-tint)" : "var(--surface2)",
-        modeColor: k.mode === "live" ? "var(--indigo-text)" : "var(--muted)",
-        keyDisplay: s.apiKeyRevealed[k.id] ? k.key : k.key.slice(0, k.key.indexOf("_", k.key.indexOf("_")+1)+1) + "••••••••••••••••",
-        revealLabel: s.apiKeyRevealed[k.id] ? "Hide" : "Reveal",
-        toggleReveal: toggleRevealKey(k.id),
-        copyKey: copyField("key:"+k.id, k.key),
-        copyKeyLabel: s.copiedField === "key:"+k.id ? "Copied" : "Copy",
-        copyWebhook: copyField("wh:"+k.id, k.webhookUrl),
-        copyWebhookLabel: s.copiedField === "wh:"+k.id ? "Copied" : "Copy",
-        webhookSecretDisplay: s.secretRevealed[k.id] ? k.webhookSecret : "whsec_••••••••••••••••",
-        revealSecretLabel: s.secretRevealed[k.id] ? "Hide" : "Reveal",
-        toggleRevealSecret: toggleRevealSecret(k.id),
+        label: k.name,
+        modeLabel: k.environment === "live" ? "Live" : "Test",
+        modeBg: k.environment === "live" ? "var(--indigo-tint)" : "var(--surface2)",
+        modeColor: k.environment === "live" ? "var(--indigo-text)" : "var(--muted)",
+
+        keyDisplay: plaintext && revealed ? plaintext : k.key,
+        canRevealKey: !!plaintext,
+        revealLabel: revealed ? "Hide" : "Reveal",
+        revealTitle: plaintext ? "" : "The full key is shown only once, when it's created.",
+        toggleReveal: plaintext ? toggleRevealKey(k.id) : () => {},
+        copyKey: plaintext ? copyField("key:" + k.id, plaintext) : () => {},
+        copyKeyLabel: s.copiedField === "key:" + k.id ? "Copied" : "Copy",
+
+        webhookUrl: detail?.webhook_url || "Not configured",
+        copyWebhook: detail?.webhook_url ? copyField("wh:" + k.id, detail.webhook_url) : () => {},
+        copyWebhookLabel: s.copiedField === "wh:" + k.id ? "Copied" : "Copy",
+        canCopyWebhook: !!detail?.webhook_url,
+        events: detail?.scopes?.length ? detail.scopes.join(" · ") : "No scopes set",
+
+        webhookSecretDisplay: webhookSecret ? (secretRevealed ? webhookSecret : "whsec_••••••••••••••••") : "Not configured",
+        canRevealSecret: !!webhookSecret,
+        revealSecretLabel: secretRevealed ? "Hide" : "Reveal",
+        toggleRevealSecret: webhookSecret ? toggleRevealSecret(k.id) : () => {},
+
         revoke: revokeApiKey(k.id),
-      }));
+      };
+    });
+  const isModalApiKey = s.modal === "apiKey";
+  const apiKeyName = s.apiKeyName;
+  const apiKeyError = s.apiKeyError;
+  const apiKeyCreating = s.apiKeyCreating;
+  const apiKeyEnvironmentChips = ["sandbox", "live"].map((env) => ({
+    key: env,
+    label: env === "live" ? "Live" : "Sandbox",
+    select: setApiKeyEnvironment(env),
+    bg: s.apiKeyEnvironment === env ? "var(--ink)" : "var(--surface2)",
+    color: s.apiKeyEnvironment === env ? "var(--bg)" : "var(--ink)",
+  }));
+  // Team has no backend yet — these stay local/simulated exactly as the
+  // original design prototype had them. See docs/api-contract.md.
   const roleOptions = ROLES;
   const teamCount = s.teamMembers.length;
   const inviteOpen = s.inviteOpen;
@@ -478,7 +699,9 @@ export default function ElementPayDashboard(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: "Account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", fundCard: "Fund card" }[s.modal] || "";
+  const modalTitle = { send: "Send money", deposit: "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: "Account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", fundCard: "Fund card", apiKey: "Create API key",
+    createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
+  const isModalCreateAccount = s.modal === "createAccount";
   const isModalSend = s.modal === "send";
   const isModalDeposit = s.modal === "deposit";
   const isModalReceive = s.modal === "receive";
@@ -499,9 +722,17 @@ export default function ElementPayDashboard(props: Props = {}) {
   const sendIsCrypto = s.sendGroup === "crypto";
   const sendRailHasChoice = sendCountry.rails.length > 1;
   const sendRecipient = s.sendRecipient;
+  const sendRecipientName = s.sendRecipientName;
   const sendAmount = s.sendAmount;
   const sendDone = s.sendDone;
   const sendNotDone = !s.sendDone;
+  const sendQuoteLoading = s.sendQuoteLoading;
+  const sendQuoteError = s.sendQuoteError;
+  const sendAccepting = s.sendAccepting;
+  const sendAcceptError = s.sendAcceptError;
+  const sendResultText = s.sendAccept
+    ? `Order #${s.sendAccept.merchant_order_id} · ${s.sendAccept.status}`
+    : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "e.g. 0x9F2c... or .eth" : sendRail.placeholder;
   const sendCorridorText = s.sendGroup === "crypto" ? "Sends USDC directly on Base — no FX conversion." : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
@@ -536,8 +767,20 @@ export default function ElementPayDashboard(props: Props = {}) {
   const sendAssetCode = s.sendAsset.toUpperCase();
   const sendChainLabel = DEPOSIT_NETWORKS.find(n => n.key === s.sendChain).label;
   const sendDestinationSummary = s.sendGroup === "crypto" ? `${s.sendAsset.toUpperCase()} · ${DEPOSIT_NETWORKS.find(n => n.key === s.sendChain).label}` : `${sendCountry.name} · ${sendProvider}`;
-  const sendFeeText = s.sendGroup === "crypto" ? "Network fee ≈ $0.85" : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
-  const sendArrivalText = s.sendGroup === "crypto" ? "Arrives in ~30 seconds" : sendRail.arrival;
+  // Real quote fields for the "by country" flow once a quote has been
+  // fetched; the crypto tab has no backend quote at all (stays simulated).
+  const sendQuote = s.sendQuote;
+  const sendFeeText = s.sendGroup === "crypto"
+    ? "Network fee ≈ $0.85"
+    : sendQuote
+      ? formatQuoteFees(sendQuote.amounts.fees)
+      : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+  const sendArrivalText = s.sendGroup === "crypto"
+    ? "Arrives in ~30 seconds"
+    : sendQuote?.expires_at
+      ? `Quote valid until ${new Date(sendQuote.expires_at).toLocaleTimeString()}`
+      : sendRail.arrival;
+  const sendQuoteRateText = sendQuote?.amounts.rate ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}` : null;
   const depositStep = s.depositStep;
   const depositStepDots = [1,2].map(n => ({ on: n <= s.depositStep }));
   const depositStepIs1 = s.depositStep === 1;
@@ -589,130 +832,20 @@ export default function ElementPayDashboard(props: Props = {}) {
   const invAmount = s.invAmount;
   const invoiceNotDone = !s.invoiceDone;
   const invoiceDone = s.invoiceDone;
+  const invoiceError = s.invoiceError;
+  const invoiceSubmitting = s.invoiceSubmitting;
   const tierDocs = ["Audited financial statements","AML/CFT policy document","Beneficial ownership register"];
   const tierNotDone = !s.tierDone;
   const tierDone = s.tierDone;
 
+
   return (
     <div ref={rootRef} style={rootStyle}>
-{isLanding ? (<>
-<div data-screen-label="Landing" style={{minHeight: "100vh"}}>
-<header style={{position: "sticky", top: "0", zIndex: "20", background: "var(--surface)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", borderBottom: "1px solid var(--glass-border)"}}>
-<div style={{maxWidth: "1140px", margin: "0 auto", padding: "0 24px", height: "66px", display: "flex", alignItems: "center", gap: "26px"}}>
-<div style={{display: "flex", alignItems: "center", gap: "10px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "16px"}}>
-<span style={{width: "32px", height: "32px", borderRadius: "10px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "14px"}}>E</span>ElementPay
-</div>
-<nav style={{display: "flex", gap: "22px", fontSize: "13px", fontWeight: "600", color: "var(--muted)", marginLeft: "8px"}}>
-<span>Features</span><span>Stablecoin engine</span><span>Coverage</span>
-</nav>
-<div style={{marginLeft: "auto", display: "flex", gap: "10px", alignItems: "center"}}>
-<button onClick={toggleTheme} style={{width: "36px", height: "36px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "14px"}}>{themeIcon}</button>
-<button onClick={enterApp} style={{padding: "11px 22px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer"}}>Open dashboard</button>
-</div>
-</div>
-</header>
+<div data-screen-label="App" className={`ep-shell${s.sidebarOpen ? " ep-shell--drawer-open" : ""}`}>
 
-<section style={{maxWidth: "1140px", margin: "0 auto", padding: "76px 24px 40px", display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: "44px", alignItems: "center"}}>
-<div>
-<span style={{display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "12px", fontWeight: "700", padding: "8px 16px", borderRadius: "999px", background: "var(--indigo-tint)", color: "var(--indigo-text)", marginBottom: "20px"}}><span style={{width: "7px", height: "7px", borderRadius: "50%", background: "var(--indigo)"}} />Now in Private Beta</span>
-<h1 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "clamp(32px,4.6vw,52px)", fontWeight: "800", letterSpacing: "-0.03em", lineHeight: "1.08"}}>Move business money<br />at <span style={{background: "var(--indigo)", color: "var(--indigo-on)", padding: "1px 16px 5px", borderRadius: "14px", display: "inline-block"}}>internet speed</span></h1>
-<p style={{fontSize: "16px", color: "var(--muted)", margin: "20px 0 28px", maxWidth: "460px", lineHeight: "1.6"}}>IBANs, stablecoin settlement, payouts to 20+ countries, and treasury in one platform for businesses across Africa and beyond.</p>
-<div style={{display: "flex", gap: "12px", flexWrap: "wrap"}}>
-<button onClick={enterApp} style={{padding: "15px 28px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "14.5px", cursor: "pointer"}}>Open the dashboard</button>
-<button style={{padding: "15px 28px", borderRadius: "999px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "14.5px", cursor: "pointer"}}>See how it works</button>
-</div>
-<div style={{fontSize: "11.5px", color: "var(--muted2)", marginTop: "16px"}}>No credit card required · SOC 2 in progress · 256-bit encryption</div>
-</div>
-
-<div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "24px", padding: "26px"}}>
-<h3 style={{margin: "0 0 4px", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px"}}>See what your money becomes</h3>
-<div style={{fontSize: "12px", color: "var(--muted)", marginBottom: "16px"}}>Live mid-market rates, updated every 30 seconds.</div>
-<div style={{display: "flex", gap: "8px", marginBottom: "10px"}}>
-<input value={lcAmt} onChange={setLcAmt} style={{flex: "1", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", fontFamily: "'DM Mono',monospace", fontSize: "13.5px", color: "var(--ink)", outline: "none", boxSizing: "border-box"}} />
-<span style={{padding: "12px 14px", borderRadius: "14px", background: "var(--surface2)", fontFamily: "'DM Mono',monospace", fontSize: "12.5px", fontWeight: "700"}}>USD</span>
-</div>
-<div style={{display: "flex", gap: "6px", overflowX: "auto", marginBottom: "14px"}}>
-{(lcCountryChips || []).map((lc: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={lc.select} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 11px", borderRadius: "999px", border: `1.5px solid ${(lc.border)}`, background: (lc.bg), color: "var(--ink)", cursor: "pointer", flexShrink: "0"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(lc.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontSize: "11px", fontWeight: "700"}}>{lc.code}</span></button>
-</React.Fragment>
-))}
-</div>
-<div style={{background: "var(--indigo)", color: "var(--indigo-on)", borderRadius: "16px", padding: "18px", textAlign: "center"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "26px", fontWeight: "500", display: "block"}}>{lcOut}</span>
-<span style={{fontSize: "11px", opacity: "0.75", fontFamily: "'DM Mono',monospace"}}>{lcRate}</span>
-</div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "10.5px", color: "var(--muted2)", marginTop: "10px", fontFamily: "'DM Mono',monospace"}}><span>Fee 0.20%</span><span>Arrives ~2 min</span><span>Rate lock 90s</span></div>
-</div>
-</section>
-
-<div style={{borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", padding: "26px 24px", background: "var(--surface2)"}}>
-<div style={{textAlign: "center", fontSize: "11px", fontWeight: "800", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted2)", marginBottom: "14px"}}>Payouts live in 20+ countries</div>
-<div style={{display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", maxWidth: "1000px", margin: "0 auto"}}>
-{(allCountryFlags || []).map((f: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "8px", padding: "9px 16px", borderRadius: "999px", background: "var(--surface)", border: "1.5px solid var(--glass-border)", fontSize: "13px", fontWeight: "700"}}><div style={{width: "20px", height: "15px", borderRadius: "2px", backgroundImage: `url(${(f.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />{f.code}</div>
-</React.Fragment>
-))}
-</div>
-</div>
-
-<section style={{maxWidth: "1140px", margin: "0 auto", padding: "60px 24px"}}>
-<span style={{display: "inline-block", fontSize: "11px", fontWeight: "800", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--indigo-text)", background: "var(--indigo-tint)", padding: "6px 14px", borderRadius: "999px"}}>Features</span>
-<h2 style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "clamp(24px,3.2vw,34px)", fontWeight: "800", letterSpacing: "-0.03em", margin: "14px 0 8px"}}>Everything your finance team needs</h2>
-<p style={{color: "var(--muted)", fontSize: "15px", maxWidth: "560px"}}>One platform to replace your patchwork of banking portals, payment processors and spreadsheets.</p>
-<div style={{display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginTop: "28px"}}>
-{(landingFeatures || []).map((ft: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "24px", display: "flex", flexDirection: "column", gap: "10px"}}>
-<span style={{width: "44px", height: "44px", borderRadius: "14px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "800", fontSize: "16px"}}>{ft.letter}</span>
-<b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "15px"}}>{ft.title}</b>
-<span style={{fontSize: "13px", color: "var(--muted)", lineHeight: "1.6"}}>{ft.desc}</span>
-</div>
-</React.Fragment>
-))}
-</div>
-</section>
-
-<section style={{maxWidth: "1140px", margin: "0 auto", padding: "20px 24px 60px"}}>
-<span style={{display: "inline-block", fontSize: "11px", fontWeight: "800", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--indigo-text)", background: "var(--indigo-tint)", padding: "6px 14px", borderRadius: "999px"}}>The core engine</span>
-<h2 style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "clamp(24px,3.2vw,34px)", fontWeight: "800", letterSpacing: "-0.03em", margin: "14px 0 20px"}}>Stablecoins under the hood.<br />Fiat at the edges.</h2>
-<div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "center"}}>
-<p style={{color: "var(--muted)", fontSize: "15px", lineHeight: "1.7", margin: "0"}}>Every cross-border payment routes through our stablecoin settlement layer. Money enters as KES, NGN, EUR or USD, moves as USDC or USDT, and lands as local currency on the other side.</p>
-<div style={{background: "var(--ink-panel)", borderRadius: "22px", padding: "24px", color: "#fff"}}>
-{(engineRails || []).map((rl: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "10px", padding: "12px 0", borderBottom: "1px dashed rgba(255,255,255,0.15)", fontSize: "12.5px"}}>
-<span style={{width: "9px", height: "9px", borderRadius: "50%", background: (rl.dot)}} /><b>{rl.label}</b><span style={{marginLeft: "auto", color: "var(--ink-panel-text)", fontFamily: "'DM Mono',monospace", fontSize: "11px"}}>{rl.tag}</span>
-</div>
-</React.Fragment>
-))}
-</div>
-</div>
-<div style={{display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "14px", marginTop: "28px"}}>
-{(engineStats || []).map((es: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{background: "var(--surface)", border: "1px solid var(--glass-border)", borderRadius: "18px", padding: "22px", textAlign: "center"}}><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "32px", fontWeight: "800", color: "var(--indigo-text)", display: "block"}}>{es.value}</b><span style={{fontSize: "11.5px", color: "var(--muted2)", fontWeight: "600"}}>{es.label}</span></div>
-</React.Fragment>
-))}
-</div>
-</section>
-
-<section style={{maxWidth: "1092px", margin: "0 auto 60px", padding: "64px 24px", background: "var(--ink-panel)", borderRadius: "32px", color: "#fff", textAlign: "center"}}>
-<h2 style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "clamp(24px,3.4vw,36px)", fontWeight: "800", letterSpacing: "-0.03em", margin: "0"}}>Ready to modernize your<br />business payments?</h2>
-<p style={{color: "var(--ink-panel-text)", margin: "12px 0 26px"}}>Join the businesses already moving money faster, cheaper and more securely.</p>
-<button onClick={enterApp} style={{padding: "15px 28px", borderRadius: "999px", border: "none", background: "var(--indigo-bright)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "14.5px", cursor: "pointer"}}>Open the dashboard</button>
-</section>
-
-<footer style={{borderTop: "1px solid var(--border)", padding: "24px", textAlign: "center", fontSize: "12px", color: "var(--muted2)"}}>© 2026 ElementPay · Move business money at internet speed</footer>
-</div>
-</>) : null}
-{isApp ? (<>
-<div data-screen-label="App" style={{display: "flex", minHeight: "100vh", position: "relative"}}>
-
-<div onClick={closeSidebar} style={overlayStyle} />
-<aside style={asideStyle}>
-<button onClick={exitApp} style={{display: "flex", alignItems: "center", gap: "10px", padding: "6px 8px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left"}}>
+<div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
+<aside className="ep-sidebar" aria-label="Main navigation">
+<button onClick={exitApp} style={{display: "flex", alignItems: "center", gap: "10px", padding: "6px 8px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left", minHeight: "44px"}}>
 <span style={{width: "32px", height: "32px", borderRadius: "10px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "14px", fontWeight: "700", flexShrink: "0"}}>E</span>
 <div><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "14.5px", letterSpacing: "-0.01em", color: "var(--ink)"}}>ElementPay</div><div style={{fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
 </button>
@@ -723,7 +856,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 {(item.groupLabel) ? (<>
 <div style={{fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--muted2)", fontWeight: "700", padding: "14px 12px 6px"}}>{item.groupLabel}</div>
 </>) : null}
-<button onClick={item.select} style={{display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "12px", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", textAlign: "left", background: (item.bg), color: (item.color), boxShadow: (item.shadow)}}>
+<button onClick={item.select} style={{display: "flex", alignItems: "center", gap: "10px", padding: "12px", minHeight: "44px", borderRadius: "12px", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", textAlign: "left", background: (item.bg), color: (item.color), boxShadow: (item.shadow)}}>
 <span style={{fontSize: "13.5px", fontWeight: (item.weight)}}>{item.label}</span>
 </button>
 </React.Fragment>
@@ -738,38 +871,43 @@ export default function ElementPayDashboard(props: Props = {}) {
 </div>
 
 <div style={{display: "flex", alignItems: "center", gap: "10px", padding: "14px 6px 4px"}}>
-<span style={{width: "32px", height: "32px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11.5px", fontWeight: "700", flexShrink: "0"}}>TE</span>
-<div style={{minWidth: "0"}}><div style={{fontSize: "12px", fontWeight: "700"}}>Test Element</div><div style={{fontSize: "10.5px", color: "var(--indigo-text)", fontWeight: "700"}}>Tier 2 verified</div></div>
-<button onClick={toggleTheme} style={{marginLeft: "auto", width: "32px", height: "32px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "14px", flexShrink: "0"}}>{themeIcon}</button>
+<span style={{width: "32px", height: "32px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11.5px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
+<div style={{minWidth: "0"}}><div style={{fontSize: "12px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10.5px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
+<button onClick={toggleTheme} aria-label="Toggle theme" style={{marginLeft: "auto", width: "44px", height: "44px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "14px", flexShrink: "0"}}>{themeIcon}</button>
+<button onClick={logout} title="Log out" aria-label="Log out" style={{width: "44px", height: "44px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>⏻</button>
 </div>
 </aside>
 
-<main style={{flex: "1", minWidth: "0", display: "flex", flexDirection: "column", position: "relative", zIndex: "1"}}>
-<header style={{display: "flex", alignItems: "center", justifyContent: "space-between", padding: (headerPad), gap: "12px", background: "var(--surface)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", borderBottom: "1px solid var(--glass-border)", position: "sticky", top: "0", zIndex: "5"}}>
+<main className="ep-main">
+<header className="ep-header">
 <div style={{display: "flex", alignItems: "center", gap: "12px", minWidth: "0"}}>
-{(isMobile) ? (<>
-<button onClick={toggleSidebar} style={{flexShrink: "0", width: "36px", height: "36px", borderRadius: "10px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "16px", cursor: "pointer"}}>☰</button>
-</>) : null}
+<button type="button" className="ep-header__menu" onClick={toggleSidebar} aria-label="Open navigation">☰</button>
 <div style={{minWidth: "0"}}>
-<h1 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: (titleSize), fontWeight: "800", letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{currentTitle}</h1>
-<p style={{margin: "4px 0 0", fontSize: "13px", color: "var(--muted)"}}>{currentSubtitle}</p>
+<h1>{currentTitle}</h1>
+<p>{currentSubtitle}</p>
 </div>
 </div>
+{!isCompact ? (
+<button type="button" onClick={openModal("send")} className="ep-btn-primary" style={{width: "auto", padding: "10px 18px", minHeight: "44px", flexShrink: 0}}>
+Create payment
+</button>
+) : null}
 </header>
 
-<div style={{flex: "1", overflow: "auto", padding: (contentPad)}}>
+<div className="ep-content ep-content-cap">
 
 {(isHome) ? (<>
-<div data-screen-label="Home" style={{display: "flex", flexDirection: "column", gap: "22px"}}>
+<div data-screen-label="Home" className="ep-home">
 
-<div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(260px,100%),1fr))", gap: "14px", alignItems: "stretch"}}>
-<div style={{borderRadius: "24px", padding: "22px 26px", color: "var(--indigo-on)", background: "var(--indigo)", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden", boxShadow: "0 22px 48px -20px rgba(59,46,211,0.4)"}}>
+{/* 1. Available balance */}
+<div className="ep-grid-home-balance">
+<div style={{borderRadius: "24px", padding: isMobile ? "18px 18px" : "22px 26px", color: "var(--indigo-on)", background: "var(--indigo)", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden", boxShadow: "0 22px 48px -20px rgba(59,46,211,0.4)"}}>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", position: "relative"}}>
-<span style={{fontSize: "11px", letterSpacing: "0.14em", textTransform: "uppercase", opacity: "0.75", fontWeight: "700"}}>Total balance</span>
+<span style={{fontSize: "11px", letterSpacing: "0.14em", textTransform: "uppercase", opacity: "0.75", fontWeight: "700"}}>Available balance</span>
 <div style={{display: "flex", gap: "4px", background: "rgba(255,255,255,0.14)", padding: "3px", borderRadius: "999px"}}>
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (
 <React.Fragment key={__i1}>
-<button onClick={bv.select} style={{padding: "5px 11px", borderRadius: "999px", border: "none", background: (bv.bg), color: (bv.color), fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{bv.label}</button>
+<button onClick={bv.select} style={{padding: "8px 12px", minHeight: "36px", borderRadius: "999px", border: "none", background: (bv.bg), color: (bv.color), fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{bv.label}</button>
 </React.Fragment>
 ))}
 </div>
@@ -777,57 +915,50 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{fontFamily: "'DM Mono',monospace", fontSize: "clamp(26px,3.4vw,36px)", fontWeight: "500", margin: "8px 0 2px", letterSpacing: "-0.02em", position: "relative"}}>{homeTotalBalance}</div>
 <div style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", opacity: "0.7", position: "relative"}}>{balanceViewSub}</div>
 </div>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
+
+{/* Desktop/tablet: full stats column beside balance */}
+<div className="ep-home__stats-desktop">
 {(homeStats || []).map((hs: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{flex: "1", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "16px", padding: "12px 16px", display: "flex", alignItems: "center", gap: "12px"}}>
+<div key={__i1} style={{flex: "1", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "16px", padding: "12px 16px", display: "flex", alignItems: "center", gap: "12px"}}>
 <span style={{width: "34px", height: "34px", borderRadius: "50%", background: (hs.iconBg), color: (hs.iconColor), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", flexShrink: "0"}}>{hs.icon}</span>
 <div><div style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted)"}}>{hs.label}</div><div style={{fontFamily: "'DM Mono',monospace", fontSize: "17px", fontWeight: "500"}}>{hs.value}</div></div>
 </div>
-</React.Fragment>
 ))}
 </div>
 </div>
 
-<div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "14px"}}>
+{/* Mobile: compact status chips (transaction status / pending) */}
+<div className="ep-home__stats-mobile" aria-label="Key metrics">
+{(homeStats || []).map((hs: any, __i1: number) => (
+<div key={__i1} className="ep-home__stat-chip">
+<div className="label">{hs.label}</div>
+<div className="value">{hs.value}</div>
+</div>
+))}
+</div>
+
+{/* 2. Create payment / quick actions */}
+<div className="ep-grid-quick">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={qa.open} style={{textAlign: "left", border: "1px solid var(--border)", background: "var(--panel)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", position: "relative"}}>
+<button key={__i1} onClick={qa.open} className={__i1 === 0 ? undefined : "ep-quick-secondary"} style={{textAlign: "left", border: "1px solid var(--border)", background: "var(--panel)", borderRadius: "20px", padding: "16px", display: __i1 === 0 ? "flex" : undefined, flexDirection: "column", gap: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", position: "relative", minHeight: "44px", gridColumn: isMobile && __i1 === 0 ? "1 / -1" : undefined}}>
 <span style={{width: "40px", height: "40px", borderRadius: "13px", background: (qa.iconBg), color: (qa.iconColor), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px"}}>{qa.icon}</span>
-<div><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", color: "var(--ink)", display: "block"}}>{qa.label}</b><span style={{fontSize: "11.5px", color: "var(--muted)", lineHeight: "1.5"}}>{qa.desc}</span></div>
+<div><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", color: "var(--ink)", display: "block"}}>{qa.label === "Send" ? "Create payment" : qa.label}</b><span style={{fontSize: "11.5px", color: "var(--muted)", lineHeight: "1.5"}}>{qa.desc}</span></div>
 </button>
-</React.Fragment>
 ))}
 </div>
 
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
+<div className="ep-hide-mobile" style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
 {(homeCurrencyChips || []).map((hc: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: "999px", background: "var(--surface2)", border: "1px solid var(--glass-border)"}}>
-<div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(hc.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
+<div key={__i1} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: "999px", background: "var(--surface2)", border: "1px solid var(--glass-border)"}}>
+<span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
 <span style={{fontSize: "12px", fontWeight: "700"}}>{hc.code}</span>
 <span style={{fontFamily: "'DM Mono',monospace", fontSize: "11.5px", color: "var(--muted)"}}>{hc.balance}</span>
 </div>
-</React.Fragment>
 ))}
 </div>
 
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflowX: "auto"}}>
-<div style={{padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "600px"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Recent activity</h2>
-<button onClick={goTransactions} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>View all →</button>
-</div>
-{(homeRecent || []).map((tx: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div onClick={tx.openDetail} style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "13px 20px", fontSize: "12.5px", borderBottom: "1px solid var(--border)", minWidth: "600px", cursor: "pointer"}}>
-<div style={{display: "flex", alignItems: "center", gap: "8px"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(tx.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontWeight: "600"}}>{tx.client}</span></div>
-<span style={{color: "var(--muted)"}}>{tx.type}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", color: (tx.amountColor)}}>{tx.amount}</span>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (tx.statusSoft), color: (tx.statusColor)}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "currentColor"}} />{tx.statusLabel}</span>
-</div>
-</React.Fragment>
-))}
-</section>
+{/* 4. Recent activity */}
+<ActivityList title="Recent activity" items={homeRecent} onViewAll={goTransactions} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
 
 </div>
 </>) : null}
@@ -835,10 +966,10 @@ export default function ElementPayDashboard(props: Props = {}) {
 {(isWallets) ? (<>
 <div data-screen-label="Wallets" style={{display: "flex", flexDirection: "column", gap: "24px"}}>
 
-<div style={{borderRadius: "24px", padding: "26px 30px", background: "var(--panel)", border: "1px solid var(--border)", position: "relative", overflow: "hidden", display: "flex", flexWrap: "wrap", gap: "20px", alignItems: "center"}}>
-<div style={{flex: "1", minWidth: "220px", position: "relative"}}>
+<div style={{borderRadius: "24px", padding: isMobile ? "20px 18px" : "26px 30px", background: "var(--panel)", border: "1px solid var(--border)", position: "relative", overflow: "hidden", display: "flex", flexWrap: "wrap", gap: "20px", alignItems: "center"}}>
+<div style={{flex: "1", minWidth: "min(220px, 100%)", position: "relative"}}>
 <span style={{display: "inline-flex", fontSize: "10.5px", fontWeight: "800", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--indigo-on)", background: "var(--indigo)", padding: "6px 14px", borderRadius: "999px", marginBottom: "12px"}}>Main wallet · settlement layer</span>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "34px", fontWeight: "500", letterSpacing: "-0.02em"}}>{mainWalletBalance}</div>
+<div style={{fontFamily: "'DM Mono',monospace", fontSize: "clamp(24px, 6vw, 34px)", fontWeight: "500", letterSpacing: "-0.02em"}}>{mainWalletBalance}</div>
 <div style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", color: "var(--muted)", marginTop: "2px"}}>{mainWalletSub}</div>
 </div>
 <div style={{display: "flex", gap: "6px", background: "var(--surface2)", padding: "4px", borderRadius: "999px", border: "1px solid var(--glass-border)", position: "relative"}}>
@@ -850,12 +981,21 @@ export default function ElementPayDashboard(props: Props = {}) {
 </div>
 </div>
 
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap"}}>
 <h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>Currency accounts · {accountsCount}</h2>
-<button onClick={openCreateAccount} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New account</button>
+<div style={{position: "relative"}}>
+<button onClick={toggleAddAccountMenu} style={{display: "inline-flex", alignItems: "center", gap: "7px", padding: "9px 16px", borderRadius: "999px", border: "none", background: "var(--ink-panel)", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}><span style={{fontSize: "14px", lineHeight: 1}}>+</span>Add Account</button>
+{s.addAccountMenu ? (<>
+<div onClick={closeAddAccountMenu} style={{position: "fixed", inset: "0", zIndex: 40}} />
+<div style={{position: "absolute", top: "calc(100% + 8px)", right: "0", zIndex: 41, minWidth: "212px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "16px", padding: "8px", boxShadow: "0 18px 40px rgba(19,17,38,0.16)"}}>
+<button onClick={openCreateAccount("bank")} style={{display: "flex", alignItems: "center", gap: "11px", width: "100%", padding: "11px 12px", borderRadius: "11px", border: "none", background: "none", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", fontSize: "13.5px", fontWeight: "600", cursor: "pointer", textAlign: "left"}}><span style={{fontSize: "15px", width: "18px", textAlign: "center"}}>🏛</span>Bank Account</button>
+<button onClick={openCreateAccount("stablecoin")} style={{display: "flex", alignItems: "center", gap: "11px", width: "100%", padding: "11px 12px", borderRadius: "11px", border: "none", background: "none", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", fontSize: "13.5px", fontWeight: "600", cursor: "pointer", textAlign: "left"}}><span style={{fontSize: "15px", width: "18px", textAlign: "center"}}>⊛</span>Stablecoin Account</button>
+</div>
+</>) : null}
+</div>
 </div>
 
-<div style={{display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity"}}>
+<div className="ep-scroll-hint" style={{display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch"}}>
 {(accounts || []).map((acc: any, __i1: number) => (
 <React.Fragment key={__i1}>
 <div onClick={acc.openDetail} style={{flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer"}}>
@@ -868,28 +1008,13 @@ export default function ElementPayDashboard(props: Props = {}) {
 </div>
 </React.Fragment>
 ))}
-<button onClick={openCreateAccount} style={{flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif"}}>
+<button onClick={openCreateAccount("bank")} style={{flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif"}}>
 <span style={{width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "19px"}}>+</span>
 <b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", color: "var(--ink)"}}>New account</b>
 </button>
 </div>
 
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflowX: "auto"}}>
-<div style={{padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "600px"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Recent activity</h2>
-<button onClick={goTransactions} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>View all →</button>
-</div>
-{(walletsRecent || []).map((tx: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div onClick={tx.openDetail} style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "13px 20px", fontSize: "12.5px", borderBottom: "1px solid var(--border)", minWidth: "600px", cursor: "pointer"}}>
-<div style={{display: "flex", alignItems: "center", gap: "8px"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(tx.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontWeight: "600"}}>{tx.client}</span></div>
-<span style={{color: "var(--muted)"}}>{tx.type}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", color: (tx.amountColor)}}>{tx.amount}</span>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (tx.statusSoft), color: (tx.statusColor)}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "currentColor"}} />{tx.statusLabel}</span>
-</div>
-</React.Fragment>
-))}
-</section>
+<ActivityList title="Recent activity" items={walletsRecent} onViewAll={goTransactions} />
 
 </div>
 </>) : null}
@@ -908,31 +1033,16 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{position: "relative"}}><span style={{display: "block", fontSize: "9.5px", fontWeight: "700", letterSpacing: "0.08em", textTransform: "uppercase", opacity: "0.6"}}>Available</span><span style={{fontFamily: "'DM Mono',monospace", fontSize: "19px", fontWeight: "500"}}>{c.balance}</span><div style={{fontFamily: "'DM Mono',monospace", fontSize: "14px", letterSpacing: "0.14em", marginTop: "10px"}}>•••• •••• •••• {c.last4}</div></div>
 </div>
 <div style={{display: "flex", gap: "6px"}}>
-<button onClick={c.fund} style={{flex: "1", padding: "8px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>Fund</button>
-<button onClick={c.withdraw} style={{flex: "1", padding: "8px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>Withdraw</button>
-<button onClick={c.freeze} style={{flex: "1", padding: "8px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>Freeze</button>
+<button onClick={c.fund} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Fund</button>
+<button onClick={c.withdraw} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Withdraw</button>
+<button onClick={c.freeze} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Freeze</button>
 </div>
 </div>
 </React.Fragment>
 ))}
 </div>
 
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflowX: "auto"}}>
-<div style={{padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "600px"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Recent transactions</h2>
-<button onClick={goTransactions} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>View all →</button>
-</div>
-{(cardsRecent || []).map((tx: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div onClick={tx.openDetail} style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "13px 20px", fontSize: "12.5px", borderBottom: "1px solid var(--border)", minWidth: "600px", cursor: "pointer"}}>
-<div style={{display: "flex", alignItems: "center", gap: "8px"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(tx.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontWeight: "600"}}>{tx.client}</span></div>
-<span style={{color: "var(--muted)"}}>{tx.type}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", color: (tx.amountColor)}}>{tx.amount}</span>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (tx.statusSoft), color: (tx.statusColor)}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "currentColor"}} />{tx.statusLabel}</span>
-</div>
-</React.Fragment>
-))}
-</section>
+<ActivityList title="Recent transactions" items={cardsRecent} onViewAll={goTransactions} />
 </div>
 </>) : null}
 
@@ -941,25 +1051,16 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", gap: "6px", flexWrap: "wrap"}}>
 {(txFilters || []).map((tf: any, __i1: number) => (
 <React.Fragment key={__i1}>
-<button onClick={tf.select} style={{fontSize: "12px", fontWeight: "700", padding: "7px 15px", borderRadius: "999px", background: (tf.bg), color: (tf.color), border: "1px solid var(--glass-border)", cursor: "pointer"}}>{tf.label}</button>
+<button onClick={tf.select} style={{fontSize: "12px", fontWeight: "700", padding: "10px 15px", minHeight: "40px", borderRadius: "999px", background: (tf.bg), color: (tf.color), border: "1px solid var(--glass-border)", cursor: "pointer"}}>{tf.label}</button>
 </React.Fragment>
 ))}
 </div>
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflowX: "auto"}}>
-<div style={{display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", padding: "10px 20px", fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)", minWidth: "600px"}}>
-<span>Counterparty</span><span>Rail</span><span>Status</span><span style={{textAlign: "right"}}>Amount</span>
-</div>
-{(filteredTransactions || []).map((tx: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div onClick={tx.openDetail} style={{display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", padding: "13px 20px", fontSize: "12.5px", borderBottom: "1px solid var(--border)", alignItems: "center", minWidth: "600px", cursor: "pointer"}}>
-<div style={{display: "flex", alignItems: "center", gap: "8px"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(tx.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontWeight: "600"}}>{tx.client}</span></div>
-<span style={{color: "var(--muted)"}}>{tx.type}</span>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (tx.statusSoft), color: (tx.statusColor), width: "fit-content"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "currentColor"}} />{tx.statusLabel}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", textAlign: "right", color: (tx.amountColor)}}>{tx.amount}</span>
-</div>
-</React.Fragment>
-))}
-</section>
+<ActivityList
+  title="Transactions"
+  items={filteredTransactions}
+  columns="transactions"
+  emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No transactions match this filter"}
+/>
 </div>
 </>) : null}
 
@@ -968,27 +1069,13 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", justifyContent: "flex-end"}}>
 <button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
 </div>
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflowX: "auto"}}>
-<div style={{display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr 1fr", padding: "10px 20px", fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid var(--border)", minWidth: "560px"}}>
-<span>Invoice</span><span>Client</span><span>Status</span><span style={{textAlign: "right"}}>Amount</span>
-</div>
-{(invoices || []).map((inv: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div style={{display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr 1fr", padding: "13px 20px", fontSize: "12.5px", borderBottom: "1px solid var(--border)", alignItems: "center", minWidth: "560px"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600"}}>{inv.id}</span>
-<span>{inv.client}</span>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (inv.statusSoft), color: (inv.statusColor), width: "fit-content"}}>{inv.statusLabel}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", textAlign: "right"}}>{inv.amount}</span>
-</div>
-</React.Fragment>
-))}
-</section>
+<InvoiceList items={invoices} emptyLabel={invoicesQuery.isLoading ? "Loading…" : "No invoices yet"} />
 </div>
 </>) : null}
 
 {(isReports) ? (<>
 <div data-screen-label="Reports" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "14px"}}>
+<div className="ep-grid-stats">
 {(reportStats || []).map((rs: any, __i1: number) => (
 <React.Fragment key={__i1}>
 <div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "18px", padding: "18px 20px"}}>
@@ -1000,7 +1087,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 </div>
 <section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", padding: "20px"}}>
 <h2 style={{margin: "0 0 14px", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Daily volume · last 10 days</h2>
-<div style={{display: "flex", alignItems: "flex-end", gap: "8px", height: "130px"}}>
+<div className="ep-chart-bars" role="img" aria-label="Daily volume chart">
 {(reportBars || []).map((b: any, __i1: number) => (
 <React.Fragment key={__i1}>
 <div style={{flex: "1", background: "var(--surface3)", borderRadius: "8px 8px 3px 3px", minHeight: "4px", height: "100%", position: "relative"}}>
@@ -1025,7 +1112,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 
 {(isVerification) ? (<>
 <div data-screen-label="Verification" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "14px"}}>
+<div className="ep-grid-3">
 {(tiers || []).map((t: any, __i1: number) => (
 <React.Fragment key={__i1}>
 <div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "22px", position: "relative"}}>
@@ -1050,31 +1137,29 @@ export default function ElementPayDashboard(props: Props = {}) {
 
 {(isTeam) ? (<>
 <div data-screen-label="Team" style={{display: "flex", flexDirection: "column", gap: "14px", maxWidth: "760px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
+<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap"}}>
 <h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>Members · {teamCount}</h2>
-<button onClick={openInvite} style={{padding: "9px 16px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Sora',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Invite person</button>
+<button onClick={openInvite} style={{padding: "10px 16px", minHeight: "44px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Invite person</button>
 </div>
 
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", overflow: "hidden"}}>
+<section className="ep-panel">
 {(teamRows || []).map((m: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "14px", padding: "14px 20px", borderBottom: "1px solid var(--border)"}}>
+<div key={__i1} className="ep-team-row">
 <span style={{width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: "800", flexShrink: "0"}}>{m.initials}</span>
 <div style={{flex: "1", minWidth: "0"}}>
 <div style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700"}}>{m.name}</div>
 <div style={{fontSize: "11.5px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{m.email}</div>
 </div>
-<span style={{display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (m.statusSoft), color: (m.statusColor), flexShrink: "0"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "currentColor"}} />{m.statusLabel}</span>
-<select value={m.role} onChange={m.setRole} style={{flexShrink: "0", padding: "7px 10px", borderRadius: "10px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", fontSize: "12px", fontWeight: "600", cursor: "pointer"}}>
-{(m.roleOptions || []).map((ro: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<option value={ro.key}>{ro.label}</option>
-</React.Fragment>
+<StatusBadge label={m.statusLabel} color={m.statusColor} soft={m.statusSoft} />
+<div className="ep-team-row__actions">
+<select value={m.role} onChange={m.setRole} aria-label={`Role for ${m.name}`}>
+{(m.roleOptions || []).map((ro: any, __i2: number) => (
+<option key={__i2} value={ro.key}>{ro.label}</option>
 ))}
 </select>
-<button onClick={m.remove} style={{flexShrink: "0", background: "none", border: "none", padding: "6px", color: "var(--muted2)", fontSize: "15px", cursor: "pointer", lineHeight: "1"}}>✕</button>
+<button onClick={m.remove} aria-label={`Remove ${m.name}`} style={{flexShrink: "0", background: "none", border: "none", padding: "10px", minWidth: "44px", minHeight: "44px", color: "var(--muted2)", fontSize: "15px", cursor: "pointer", lineHeight: "1"}}>✕</button>
 </div>
-</React.Fragment>
+</div>
 ))}
 </section>
 
@@ -1116,7 +1201,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div data-screen-label="Developer" style={{display: "flex", flexDirection: "column", gap: "14px", maxWidth: "720px"}}>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
 <h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>API keys</h2>
-<button onClick={createApiKey} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Create key</button>
+<button onClick={openCreateApiKeyModal} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Create key</button>
 </div>
 {(apiKeys || []).map((k: any, __i2: number) => (
 <React.Fragment key={__i2}>
@@ -1128,27 +1213,33 @@ export default function ElementPayDashboard(props: Props = {}) {
 
 <div>
 <span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Secret key</span>
-<div style={{display: "flex", alignItems: "center", gap: "10px", marginTop: "6px", padding: "10px 14px", borderRadius: "12px", background: "var(--surface2)", fontFamily: "'DM Mono',monospace", fontSize: "12px"}}>
-<span style={{flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{k.keyDisplay}</span>
-<button onClick={k.toggleReveal} style={{flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontFamily: "'DM Sans',sans-serif", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{k.revealLabel}</button>
-<button onClick={k.copyKey} style={{flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--bg)", fontFamily: "'DM Sans',sans-serif", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{k.copyKeyLabel}</button>
+<div className="ep-secret-row">
+<span className="ep-secret-row__value">{k.keyDisplay}</span>
+<div className="ep-secret-row__actions">
+<button onClick={k.toggleReveal} disabled={!k.canRevealKey} title={k.revealTitle} style={{background: "var(--indigo-tint)", color: "var(--indigo-text)", cursor: k.canRevealKey ? "pointer" : "not-allowed", opacity: k.canRevealKey ? 1 : 0.5}}>{k.revealLabel}</button>
+<button onClick={k.copyKey} disabled={!k.canRevealKey} title={k.revealTitle} style={{background: "var(--ink)", color: "var(--bg)", cursor: k.canRevealKey ? "pointer" : "not-allowed", opacity: k.canRevealKey ? 1 : 0.5}}>{k.copyKeyLabel}</button>
+</div>
 </div>
 </div>
 
 <div>
 <span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Webhook URL</span>
-<div style={{display: "flex", alignItems: "center", gap: "10px", marginTop: "6px", padding: "10px 14px", borderRadius: "12px", background: "var(--surface2)", fontFamily: "'DM Mono',monospace", fontSize: "12px"}}>
-<span style={{flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{k.webhookUrl}</span>
-<button onClick={k.copyWebhook} style={{flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--bg)", fontFamily: "'DM Sans',sans-serif", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{k.copyWebhookLabel}</button>
+<div className="ep-secret-row">
+<span className="ep-secret-row__value">{k.webhookUrl}</span>
+<div className="ep-secret-row__actions">
+<button onClick={k.copyWebhook} disabled={!k.canCopyWebhook} style={{background: "var(--ink)", color: "var(--bg)", cursor: k.canCopyWebhook ? "pointer" : "not-allowed", opacity: k.canCopyWebhook ? 1 : 0.5}}>{k.copyWebhookLabel}</button>
+</div>
 </div>
 <span style={{display: "block", marginTop: "6px", fontSize: "11px", color: "var(--muted)"}}>{k.events}</span>
 </div>
 
 <div>
 <span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Webhook signing secret</span>
-<div style={{display: "flex", alignItems: "center", gap: "10px", marginTop: "6px", padding: "10px 14px", borderRadius: "12px", background: "var(--surface2)", fontFamily: "'DM Mono',monospace", fontSize: "12px"}}>
-<span style={{flex: "1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{k.webhookSecretDisplay}</span>
-<button onClick={k.toggleRevealSecret} style={{flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontFamily: "'DM Sans',sans-serif", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{k.revealSecretLabel}</button>
+<div className="ep-secret-row">
+<span className="ep-secret-row__value">{k.webhookSecretDisplay}</span>
+<div className="ep-secret-row__actions">
+<button onClick={k.toggleRevealSecret} disabled={!k.canRevealSecret} style={{background: "var(--indigo-tint)", color: "var(--indigo-text)", cursor: k.canRevealSecret ? "pointer" : "not-allowed", opacity: k.canRevealSecret ? 1 : 0.5}}>{k.revealSecretLabel}</button>
+</div>
 </div>
 </div>
 </section>
@@ -1159,28 +1250,31 @@ export default function ElementPayDashboard(props: Props = {}) {
 
 </div>
 
-{(isMobile) ? (<>
-<nav style={{flexShrink: "0", display: "flex", alignItems: "stretch", background: "var(--surface)", backdropFilter: "blur(16px) saturate(180%)", WebkitBackdropFilter: "blur(16px) saturate(180%)", borderTop: "1px solid var(--glass-border)", padding: "8px 6px calc(8px + env(safe-area-inset-bottom))", position: "sticky", bottom: "0", zIndex: "6"}}>
+{(isCompact) ? (<>
+<nav className="ep-bottom-nav" aria-label="Primary mobile">
 {(bottomNavItems || []).map((bn: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={bn.select} style={{flex: "1", display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", padding: "6px 2px", background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", color: (bn.color)}}>
-<span style={{fontSize: "18px", lineHeight: "1"}}>{bn.icon}</span>
-<span style={{fontSize: "10px", fontWeight: (bn.weight)}}>{bn.label}</span>
+<button key={__i1} type="button" onClick={bn.select} style={{color: bn.color}}>
+<span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
+<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
 </button>
-</React.Fragment>
 ))}
 </nav>
+{!modalOpen ? (
+<button type="button" className="ep-fab" onClick={openModal("send")} aria-label="Create payment">
+<span aria-hidden>↗</span> Create payment
+</button>
+) : null}
 </>) : null}
 </main>
 </div>
-</>) : null}
-{modalOpen ? (<>
-<div onClick={closeModal} style={{position: "fixed", inset: "0", background: "var(--overlay-bg)", backdropFilter: "blur(14px) saturate(1.2)", WebkitBackdropFilter: "blur(14px) saturate(1.2)", zIndex: "100", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px"}}>
-<div onClick={stopClick} style={{width: "100%", maxWidth: "440px", maxHeight: "88vh", overflow: "auto", background: "var(--modal-bg)", backdropFilter: "blur(36px) saturate(1.8)", WebkitBackdropFilter: "blur(36px) saturate(1.8)", border: "1px solid var(--glass-border)", borderRadius: "28px", boxShadow: "0 34px 90px -22px rgba(19,17,38,0.5)", padding: "22px", display: "flex", flexDirection: "column", gap: "16px", fontFamily: "'DM Sans',sans-serif"}}>
 
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<h3 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px", fontWeight: "700"}}>{modalTitle}</h3>
-<button onClick={closeModal} style={{width: "30px", height: "30px", borderRadius: "50%", border: "none", background: "var(--surface2)", color: "var(--muted)", fontSize: "14px", cursor: "pointer", flexShrink: "0"}}>✕</button>
+{modalOpen ? (<>
+<div onClick={closeModal} className="ep-modal-overlay" role="presentation">
+<div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+
+<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px"}}>
+<h3 id="ep-modal-title" style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px", fontWeight: "700"}}>{modalTitle}</h3>
+<button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
 </div>
 
 {(isModalSend) ? (<>
@@ -1272,6 +1366,12 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
 <span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · Recipient & amount</span>
 <div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontSize: "12px", fontWeight: "600"}}>{sendDestinationSummary}</div>
+{(sendIsCountry) ? (<>
+<div>
+<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Recipient's name</span>
+<input value={sendRecipientName} onChange={setSendRecipientName} placeholder="e.g. Jane Mukami" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
+</div>
+</>) : null}
 <div>
 <span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>{sendRecipientLabel}</span>
 <input value={sendRecipient} onChange={setSendRecipient} placeholder={sendRecipientPlaceholder} style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
@@ -1280,9 +1380,10 @@ export default function ElementPayDashboard(props: Props = {}) {
 <span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Amount (USD)</span>
 <input value={sendAmount} onChange={setSendAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
 </div>
+{sendQuoteError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{sendQuoteError}</div>) : null}
 <div style={{display: "flex", gap: "8px"}}>
 <button onClick={sendBack} style={{flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Back</button>
-<button onClick={sendNext} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Review</button>
+<button onClick={sendNext} disabled={sendQuoteLoading} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: sendQuoteLoading ? "wait" : "pointer", opacity: sendQuoteLoading ? 0.7 : 1}}>{sendQuoteLoading ? "Getting quote…" : "Review"}</button>
 </div>
 </div>
 </>) : null}
@@ -1297,12 +1398,14 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Network</span><b>{sendChainLabel}</b></div>
 </>) : null}
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Amount</span><b style={{fontFamily: "'DM Mono',monospace"}}>${sendAmount}</b></div>
+{sendQuoteRateText ? (<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipient gets</span><b style={{fontFamily: "'DM Mono',monospace"}}>{sendQuoteRateText}</b></div>) : null}
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Fee</span><b>{sendFeeText}</b></div>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Arrival</span><b>{sendArrivalText}</b></div>
 </div>
+{sendAcceptError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{sendAcceptError}</div>) : null}
 <div style={{display: "flex", gap: "8px"}}>
 <button onClick={sendBack} style={{flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Back</button>
-<button onClick={submitSend} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & send ↗</button>
+<button onClick={submitSend} disabled={sendAccepting} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: sendAccepting ? "wait" : "pointer", opacity: sendAccepting ? 0.7 : 1}}>{sendAccepting ? "Sending…" : "Confirm & send ↗"}</button>
 </div>
 </div>
 </>) : null}
@@ -1312,7 +1415,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
 <span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Payment on its way</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>${sendAmount} to {sendRecipient} · {sendArrivalText}</span>
+<span style={{fontSize: "12.5px", color: "var(--muted)"}}>{sendResultText || `$${sendAmount} to ${sendRecipient} · ${sendArrivalText}`}</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
 </>) : null}
@@ -1599,7 +1702,7 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
 <div style={{textAlign: "center", padding: "6px 0 4px"}}>
 <div style={{fontFamily: "'DM Mono',monospace", fontSize: "28px", fontWeight: "500", color: (txDetail.amountColor)}}>{txDetail.amount}</div>
-<div style={{fontSize: "12.5px", color: "var(--muted)", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px"}}><div style={{width: "16px", height: "12px", borderRadius: "2px", backgroundImage: `url(${(txDetail.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />{txDetail.client}</div>
+<div style={{fontSize: "12.5px", color: "var(--muted)", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px"}}>{txDetail.flagUrl ? (<div style={{width: "16px", height: "12px", borderRadius: "2px", backgroundImage: `url(${(txDetail.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />) : null}{txDetail.client}</div>
 <span style={{display: "inline-flex", marginTop: "8px", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (txDetail.statusSoft), color: (txDetail.statusColor)}}>{txDetail.statusLabel}</span>
 </div>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "9px 0", borderBottom: "1px dashed var(--border)"}}><span style={{color: "var(--muted)"}}>Reference</span><b style={{fontFamily: "'DM Mono',monospace", fontWeight: "600"}}>{txDetail.ref}</b></div>
@@ -1679,7 +1782,8 @@ export default function ElementPayDashboard(props: Props = {}) {
 <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Client name</span><input value={invClient} onChange={setInvClient} placeholder="e.g. Acme GmbH" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={invAmount} onChange={setInvAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
-<button onClick={submitInvoice} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Create & get link</button>
+{invoiceError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{invoiceError}</div>) : null}
+<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
 </div>
 </>) : null}
 {(invoiceDone) ? (<>
@@ -1714,8 +1818,76 @@ export default function ElementPayDashboard(props: Props = {}) {
 </>) : null}
 </>) : null}
 
+{(isModalCreateAccount) ? (<>
+<div style={{display: "flex", flexDirection: "column", gap: "16px"}}>
+<div>
+<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Account Name <span style={{color: "var(--red)"}}>*</span></span>
+<input value={s.createAccountName} onChange={setCreateAccountName} placeholder="e.g. Payroll, Operations" style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
+</div>
+
+{s.createAccountKind === "bank" ? (<>
+<div>
+<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Currency <span style={{color: "var(--red)"}}>*</span></span>
+<select value={s.createAccountCurrency} onChange={setCreateAccountCurrency} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountCurrency ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
+<option value="">Select currency</option>
+{CURRENCY_OPTIONS.map((c: any) => (
+  <option key={c.code} value={c.code} disabled={!isCurrencySupported(c.code)}>
+    {c.label} ({c.code}){isCurrencySupported(c.code) ? "" : " — not available yet"}
+  </option>
+))}
+</select>
+<div style={{marginTop: "7px", fontSize: "11px", color: "var(--muted2)"}}>Bank accounts are currently issued in USD and EUR only.</div>
+</div>
+</>) : (<>
+<div>
+<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Stablecoin <span style={{color: "var(--red)"}}>*</span></span>
+<select value={s.createAccountStablecoin} onChange={setCreateAccountStablecoin} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountStablecoin ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
+<option value="">Select stablecoin</option>
+{STABLECOIN_OPTIONS.map((o: any) => (<option key={o.code} value={o.code}>{o.label}</option>))}
+</select>
+</div>
+<div>
+<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Network <span style={{color: "var(--red)"}}>*</span></span>
+<select value={s.createAccountNetwork} onChange={setCreateAccountNetwork} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountNetwork ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
+<option value="">Select network</option>
+{NETWORK_OPTIONS.map((o: any) => (<option key={o.code} value={o.code}>{o.label}</option>))}
+</select>
+</div>
+</>)}
+
+{s.createAccountError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{s.createAccountError}</div>) : null}
+
+<div style={{display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "2px"}}>
+<button onClick={closeModal} style={{padding: "12px 22px", borderRadius: "12px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Cancel</button>
+<button onClick={submitCreateAccount} disabled={s.createAccountSaving} style={{padding: "12px 22px", borderRadius: "12px", border: "none", background: "var(--ink-panel)", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", fontWeight: "700", cursor: s.createAccountSaving ? "wait" : "pointer", opacity: s.createAccountSaving ? 0.7 : 1}}>{s.createAccountSaving ? "Creating…" : "Create Account"}</button>
 </div>
 </div>
+</>) : null}
+
+{(isModalApiKey) ? (<>
+<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+<div>
+<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Key name</span>
+<input value={apiKeyName} onChange={setApiKeyName} placeholder="e.g. Server integration" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
+</div>
+<div>
+<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Environment</span>
+<div style={{display: "flex", gap: "6px", marginTop: "6px"}}>
+{(apiKeyEnvironmentChips || []).map((e: any, __i1: number) => (
+<React.Fragment key={__i1}>
+<button onClick={e.select} style={{padding: "9px 16px", borderRadius: "999px", border: "none", background: (e.bg), color: (e.color), fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>{e.label}</button>
+</React.Fragment>
+))}
+</div>
+</div>
+{apiKeyError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{apiKeyError}</div>) : null}
+<button onClick={submitApiKey} disabled={apiKeyCreating} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: apiKeyCreating ? "wait" : "pointer", opacity: apiKeyCreating ? 0.7 : 1}}>{apiKeyCreating ? "Creating…" : "Create key"}</button>
+</div>
+</>) : null}
+
+</div>
+</div>
+
 </>) : null}
     </div>
   );
