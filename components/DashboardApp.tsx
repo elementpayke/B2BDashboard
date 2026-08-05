@@ -14,16 +14,22 @@ import { TX_FILTERS, filterTransactions } from "@/lib/services/transactionFilter
 import { authApi } from "@/lib/services/auth";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
-import {
-  depositAccountsApi, CURRENCY_OPTIONS, STABLECOIN_OPTIONS, NETWORK_OPTIONS,
-  isCurrencySupported,
-} from "@/lib/services/depositAccounts";
+import { depositAccountsApi } from "@/lib/services/depositAccounts";
 import { ordersApi, buildSendQuotePayload, formatQuoteFees } from "@/lib/services/orders";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
+import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
+import SendModal from "@/components/send/SendModal";
+import TransactionsScreen from "@/components/transactions/TransactionsScreen";
+import TxDetailModal from "@/components/transactions/TxDetailModal";
+import WalletsScreen from "@/components/wallets/WalletsScreen";
+import CreateAccountModal from "@/components/wallets/CreateAccountModal";
+import AccountDetailModal from "@/components/wallets/AccountDetailModal";
+import DepositModal from "@/components/deposit/DepositModal";
+import ReceiveModal from "@/components/deposit/ReceiveModal";
 
 type Props = {
   boostDarkContrast?: boolean;
@@ -761,7 +767,7 @@ export default function DashboardApp(props: Props = {}) {
   const depositNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.depositNetwork).label;
   const depositAddress = DEPOSIT_ADDRESSES[s.depositNetwork];
   const sendStep = s.sendStep;
-  const sendStepDots = [1,2,3].map(n => ({ on: n <= s.sendStep }));
+  const sendStepDots = buildSendStepDots(s.sendStep);
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
@@ -769,7 +775,13 @@ export default function DashboardApp(props: Props = {}) {
   const sendChains = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const sendAssetCode = s.sendAsset.toUpperCase();
   const sendChainLabel = DEPOSIT_NETWORKS.find(n => n.key === s.sendChain).label;
-  const sendDestinationSummary = s.sendGroup === "crypto" ? `${s.sendAsset.toUpperCase()} · ${DEPOSIT_NETWORKS.find(n => n.key === s.sendChain).label}` : `${sendCountry.name} · ${sendProvider}`;
+  const sendDestinationSummary = buildSendDestinationSummary({
+    sendGroup: s.sendGroup,
+    sendAsset: s.sendAsset,
+    sendChainLabel,
+    countryName: sendCountry.name,
+    providerName: sendProvider,
+  });
   // Real quote fields for the "by country" flow once a quote has been
   // fetched; the crypto tab has no backend quote at all (stays simulated).
   const sendQuote = s.sendQuote;
@@ -967,59 +979,20 @@ Create payment
 </>) : null}
 
 {(isWallets) ? (<>
-<div data-screen-label="Wallets" style={{display: "flex", flexDirection: "column", gap: "24px"}}>
-
-<div style={{borderRadius: "24px", padding: isMobile ? "20px 18px" : "26px 30px", background: "var(--panel)", border: "1px solid var(--border)", position: "relative", overflow: "hidden", display: "flex", flexWrap: "wrap", gap: "20px", alignItems: "center"}}>
-<div style={{flex: "1", minWidth: "min(220px, 100%)", position: "relative"}}>
-<span style={{display: "inline-flex", fontSize: "10.5px", fontWeight: "800", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--indigo-on)", background: "var(--indigo)", padding: "6px 14px", borderRadius: "999px", marginBottom: "12px"}}>Main wallet · settlement layer</span>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "clamp(24px, 6vw, 34px)", fontWeight: "500", letterSpacing: "-0.02em"}}>{mainWalletBalance}</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", color: "var(--muted)", marginTop: "2px"}}>{mainWalletSub}</div>
-</div>
-<div style={{display: "flex", gap: "6px", background: "var(--surface2)", padding: "4px", borderRadius: "999px", border: "1px solid var(--glass-border)", position: "relative"}}>
-{(stableTabs || []).map((st: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={st.select} style={{padding: "8px 18px", borderRadius: "999px", border: "none", background: (st.bg), color: (st.color), fontFamily: "'DM Mono',monospace", fontSize: "12.5px", fontWeight: "500", cursor: "pointer"}}>{st.label}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>Currency accounts · {accountsCount}</h2>
-<div style={{position: "relative"}}>
-<button onClick={toggleAddAccountMenu} style={{display: "inline-flex", alignItems: "center", gap: "7px", padding: "9px 16px", borderRadius: "999px", border: "none", background: "var(--ink-panel)", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}><span style={{fontSize: "14px", lineHeight: 1}}>+</span>Add Account</button>
-{s.addAccountMenu ? (<>
-<div onClick={closeAddAccountMenu} style={{position: "fixed", inset: "0", zIndex: 40}} />
-<div style={{position: "absolute", top: "calc(100% + 8px)", right: "0", zIndex: 41, minWidth: "212px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "16px", padding: "8px", boxShadow: "0 18px 40px rgba(19,17,38,0.16)"}}>
-<button onClick={openCreateAccount("bank")} style={{display: "flex", alignItems: "center", gap: "11px", width: "100%", padding: "11px 12px", borderRadius: "11px", border: "none", background: "none", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", fontSize: "13.5px", fontWeight: "600", cursor: "pointer", textAlign: "left"}}><span style={{fontSize: "15px", width: "18px", textAlign: "center"}}>🏛</span>Bank Account</button>
-<button onClick={openCreateAccount("stablecoin")} style={{display: "flex", alignItems: "center", gap: "11px", width: "100%", padding: "11px 12px", borderRadius: "11px", border: "none", background: "none", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", fontSize: "13.5px", fontWeight: "600", cursor: "pointer", textAlign: "left"}}><span style={{fontSize: "15px", width: "18px", textAlign: "center"}}>⊛</span>Stablecoin Account</button>
-</div>
-</>) : null}
-</div>
-</div>
-
-<div className="ep-scroll-hint" style={{display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch"}}>
-{(accounts || []).map((acc: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div onClick={acc.openDetail} style={{flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer"}}>
-<div style={{display: "flex", alignItems: "center", gap: "10px"}}>
-<span style={{width: "38px", height: "38px", borderRadius: "12px", background: "var(--indigo-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: "800", color: "var(--indigo-text)", overflow: "hidden"}}>{(acc.flagUrl) ? (<><div style={{width: "100%", height: "100%", backgroundImage: `url(${(acc.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center"}} /></>) : (<>$</>)}</span>
-<div><div style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>{acc.name}</div><div style={{fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600"}}>{acc.rail}</div></div>
-</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "21px", fontWeight: "500", marginTop: "2px"}}>{acc.balance}</div>
-<div style={{fontSize: "11.5px", color: "var(--muted)", fontFamily: "'DM Mono',monospace"}}>{acc.detail}</div>
-</div>
-</React.Fragment>
-))}
-<button onClick={openCreateAccount("bank")} style={{flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif"}}>
-<span style={{width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "19px"}}>+</span>
-<b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", color: "var(--ink)"}}>New account</b>
-</button>
-</div>
-
-<ActivityList title="Recent activity" items={walletsRecent} onViewAll={goTransactions} />
-
-</div>
+<WalletsScreen
+  isMobile={isMobile}
+  mainWalletBalance={mainWalletBalance}
+  mainWalletSub={mainWalletSub}
+  stableTabs={stableTabs}
+  accountsCount={accountsCount}
+  addAccountMenu={s.addAccountMenu}
+  toggleAddAccountMenu={toggleAddAccountMenu}
+  closeAddAccountMenu={closeAddAccountMenu}
+  openCreateAccount={openCreateAccount}
+  accounts={accounts}
+  walletsRecent={walletsRecent}
+  goTransactions={goTransactions}
+/>
 </>) : null}
 
 {(isCards) ? (<>
@@ -1054,21 +1027,11 @@ Create payment
 </>) : null}
 
 {(isTransactions) ? (<>
-<div data-screen-label="Transactions" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", gap: "6px", flexWrap: "wrap"}}>
-{(txFilters || []).map((tf: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={tf.select} style={{fontSize: "12px", fontWeight: "700", padding: "10px 15px", minHeight: "40px", borderRadius: "999px", background: (tf.bg), color: (tf.color), border: "1px solid var(--glass-border)", cursor: "pointer"}}>{tf.label}</button>
-</React.Fragment>
-))}
-</div>
-<ActivityList
-  title="Transactions"
-  items={filteredTransactions}
-  columns="transactions"
+<TransactionsScreen
+  txFilters={txFilters}
+  filteredTransactions={filteredTransactions}
   emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No transactions match this filter"}
 />
-</div>
 </>) : null}
 
 {(isInvoices) ? (<>
@@ -1289,337 +1252,103 @@ Create payment
 </div>
 
 {(isModalSend) ? (<>
-{(sendNotDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", gap: "6px"}}>
-{(sendStepDots || []).map((d: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<span style={{height: "4px", flex: "1", borderRadius: "999px", background: (d.on)}} />
-</React.Fragment>
-))}
-</div>
-
-{(sendStepIs1) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 1 · Where is this going?</span>
-<div style={{display: "flex", gap: "6px"}}>
-{(sendGroups || []).map((g: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={g.select} style={{padding: "9px 13px", borderRadius: "999px", border: "none", background: (g.bg), color: (g.color), fontSize: "11.5px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{g.label}</button>
-</React.Fragment>
-))}
-</div>
-{(sendIsCountry) ? (<>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Recipient's country</span>
-<div style={{display: "flex", gap: "6px", overflowX: "auto", padding: "8px 0 2px"}}>
-{(sendCountryChips || []).map((c: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={c.selectSend} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 11px", borderRadius: "999px", border: `1.5px solid ${(c.sendBorder)}`, background: (c.sendBg), color: "var(--ink)", cursor: "pointer", flexShrink: "0"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(c.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontSize: "11.5px", fontWeight: "700"}}>{c.code}</span></button>
-</React.Fragment>
-))}
-</div>
-</div>
-{(sendRailHasChoice) ? (<>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Payout rail</span>
-<div style={{display: "flex", gap: "6px", marginTop: "6px"}}>
-{(sendRailChips || []).map((r: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={r.select} style={{padding: "8px 13px", borderRadius: "12px", border: "none", background: (r.bg), color: (r.color), fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>{r.label}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-</>) : null}
-{(sendProviderHasChoice) ? (<>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Choose provider</span>
-<div style={{display: "flex", gap: "6px", overflowX: "auto", padding: "6px 0 2px"}}>
-{(sendProviderChips || []).map((p: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={p.select} style={{padding: "8px 13px", borderRadius: "12px", border: `1.5px solid ${(p.border)}`, background: (p.bg), color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{p.name}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-</>) : null}
-</>) : null}
-{(sendIsCrypto) ? (<>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Sends stablecoin directly on-chain — no bank or mobile money involved.</p>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Asset</span>
-<div style={{display: "flex", gap: "4px", background: "var(--surface2)", padding: "3px", borderRadius: "10px", marginTop: "6px", width: "fit-content"}}>
-{(sendAssets || []).map((as: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={as.select} style={{padding: "6px 12px", borderRadius: "8px", border: "none", background: (as.bg), color: (as.color), fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>{as.label}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Confirm the chain you're sending to</span>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px"}}>
-{(sendChains || []).map((ch: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={ch.select} style={{padding: "9px 14px", borderRadius: "12px", border: `1.5px solid ${(ch.border)}`, background: (ch.bg), color: (ch.color), fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>{ch.label}</button>
-</React.Fragment>
-))}
-</div>
-<div style={{marginTop: "8px", padding: "10px 12px", borderRadius: "12px", background: "var(--amber-tint)", color: "var(--amber)", fontSize: "11.5px", fontWeight: "600", lineHeight: "1.5"}}>Double-check the recipient accepts {sendAssetCode} on {sendChainLabel} — sending to the wrong network can lose funds.</div>
-</div>
-</>) : null}
-<button onClick={sendNext} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Continue</button>
-</div>
-</>) : null}
-
-{(sendStepIs2) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · Recipient & amount</span>
-<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontSize: "12px", fontWeight: "600"}}>{sendDestinationSummary}</div>
-{(sendIsCountry) ? (<>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Recipient's name</span>
-<input value={sendRecipientName} onChange={setSendRecipientName} placeholder="e.g. Jane Mukami" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-</>) : null}
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>{sendRecipientLabel}</span>
-<input value={sendRecipient} onChange={setSendRecipient} placeholder={sendRecipientPlaceholder} style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Amount (USD)</span>
-<input value={sendAmount} onChange={setSendAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-{sendQuoteError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{sendQuoteError}</div>) : null}
-<div style={{display: "flex", gap: "8px"}}>
-<button onClick={sendBack} style={{flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Back</button>
-<button onClick={sendNext} disabled={sendQuoteLoading} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: sendQuoteLoading ? "wait" : "pointer", opacity: sendQuoteLoading ? 0.7 : 1}}>{sendQuoteLoading ? "Getting quote…" : "Review"}</button>
-</div>
-</div>
-</>) : null}
-
-{(sendStepIs3) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 3 · Review & confirm</span>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>To</span><b>{sendRecipient}</b></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Via</span><b>{sendDestinationSummary}</b></div>
-{(sendIsCrypto) ? (<>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Network</span><b>{sendChainLabel}</b></div>
-</>) : null}
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Amount</span><b style={{fontFamily: "'DM Mono',monospace"}}>${sendAmount}</b></div>
-{sendQuoteRateText ? (<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipient gets</span><b style={{fontFamily: "'DM Mono',monospace"}}>{sendQuoteRateText}</b></div>) : null}
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Fee</span><b>{sendFeeText}</b></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Arrival</span><b>{sendArrivalText}</b></div>
-</div>
-{sendAcceptError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{sendAcceptError}</div>) : null}
-<div style={{display: "flex", gap: "8px"}}>
-<button onClick={sendBack} style={{flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Back</button>
-<button onClick={submitSend} disabled={sendAccepting} style={{flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: sendAccepting ? "wait" : "pointer", opacity: sendAccepting ? 0.7 : 1}}>{sendAccepting ? "Sending…" : "Confirm & send ↗"}</button>
-</div>
-</div>
-</>) : null}
-</div>
-</>) : null}
-{(sendDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Payment on its way</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>{sendResultText || `$${sendAmount} to ${sendRecipient} · ${sendArrivalText}`}</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
-</div>
-</>) : null}
+<SendModal
+  sendNotDone={sendNotDone}
+  sendDone={sendDone}
+  sendStepDots={sendStepDots}
+  sendStepIs1={sendStepIs1}
+  sendStepIs2={sendStepIs2}
+  sendStepIs3={sendStepIs3}
+  sendGroups={sendGroups}
+  sendIsCountry={sendIsCountry}
+  sendIsCrypto={sendIsCrypto}
+  sendCountryChips={sendCountryChips}
+  sendRailHasChoice={sendRailHasChoice}
+  sendRailChips={sendRailChips}
+  sendProviderHasChoice={sendProviderHasChoice}
+  sendProviderChips={sendProviderChips}
+  sendAssets={sendAssets}
+  sendChains={sendChains}
+  sendAssetCode={sendAssetCode}
+  sendChainLabel={sendChainLabel}
+  sendNext={sendNext}
+  sendBack={sendBack}
+  sendDestinationSummary={sendDestinationSummary}
+  sendRecipientName={sendRecipientName}
+  setSendRecipientName={setSendRecipientName}
+  sendRecipientLabel={sendRecipientLabel}
+  sendRecipient={sendRecipient}
+  setSendRecipient={setSendRecipient}
+  sendRecipientPlaceholder={sendRecipientPlaceholder}
+  sendAmount={sendAmount}
+  setSendAmount={setSendAmount}
+  sendQuoteError={sendQuoteError}
+  sendQuoteLoading={sendQuoteLoading}
+  sendQuoteRateText={sendQuoteRateText}
+  sendFeeText={sendFeeText}
+  sendArrivalText={sendArrivalText}
+  sendAcceptError={sendAcceptError}
+  sendAccepting={sendAccepting}
+  submitSend={submitSend}
+  sendResultText={sendResultText}
+  closeModal={closeModal}
+/>
 </>) : null}
 
 
 {(isModalDeposit) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", gap: "6px"}}>
-{(depositStepDots || []).map((d: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<span style={{height: "4px", flex: "1", borderRadius: "999px", background: (d.on)}} />
-</React.Fragment>
-))}
-</div>
-
-{(depositStepIs1) ? (<>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 1 · How are you topping up?</span>
-<div style={{display: "flex", gap: "6px"}}>
-{(depositMethods || []).map((dm: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={dm.select} style={{padding: "9px 14px", borderRadius: "999px", border: "none", background: (dm.bg), color: (dm.color), fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{dm.label}</button>
-</React.Fragment>
-))}
-</div>
-
-{(depositIsCountry) ? (<>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
-{(depositCountryChips || []).map((c: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={c.selectDeposit} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px 7px 7px", borderRadius: "999px", border: `1.5px solid ${(c.depositBorder)}`, background: (c.depositBg), color: "var(--ink)", cursor: "pointer"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(c.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontSize: "12px", fontWeight: "700", whiteSpace: "nowrap"}}>{c.name}</span></button>
-</React.Fragment>
-))}
-</div>
-{(depositRailHasChoice) ? (<>
-<div style={{display: "flex", gap: "6px"}}>
-{(depositRailChips || []).map((r: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={r.select} style={{padding: "8px 13px", borderRadius: "12px", border: "none", background: (r.bg), color: (r.color), fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>{r.label}</button>
-</React.Fragment>
-))}
-</div>
-</>) : null}
-{(depositProviderHasChoice) ? (<>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Choose provider</span>
-<div style={{display: "flex", gap: "6px", overflowX: "auto", padding: "6px 0 2px"}}>
-{(depositProviderChips || []).map((p: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={p.select} style={{padding: "8px 13px", borderRadius: "12px", border: `1.5px solid ${(p.border)}`, background: (p.bg), color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{p.name}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-</>) : null}
-</>) : null}
-
-{(depositIsCrypto) ? (<>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Asset</span>
-<div style={{display: "flex", gap: "4px", background: "var(--surface2)", padding: "3px", borderRadius: "10px"}}>
-{(depositAssets || []).map((as: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={as.select} style={{padding: "5px 10px", borderRadius: "8px", border: "none", background: (as.bg), color: (as.color), fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>{as.label}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
-{(depositNetworks || []).map((net: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={net.select} style={{padding: "8px 12px", borderRadius: "12px", border: `1.5px solid ${(net.border)}`, background: (net.bg), color: (net.color), fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{net.label}</button>
-</React.Fragment>
-))}
-</div>
-</>) : null}
-
-<button onClick={depositNext} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Continue</button>
-</>) : null}
-
-{(depositStepIs2) ? (<>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · {depositDestinationSummary}</span>
-
-{(depositIsMobileRail) ? (<>
-{(depositPromptNotSent) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>We'll push a {depositOperator} prompt to your phone.</p>
-<div style={{display: "flex", gap: "8px"}}>
-<div style={{flex: "1", display: "flex", alignItems: "center", gap: "8px", padding: "11px 13px", borderRadius: "14px", background: "var(--input-bg)", border: "1.5px solid var(--input-border)"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>{depositMobileCode}</span>
-<input value={depositPhone} onChange={setDepositPhone} placeholder="712 345 678" style={{flex: "1", border: "none", background: "none", outline: "none", fontSize: "13px", fontWeight: "600", color: "var(--ink)", minWidth: "0"}} />
-</div>
-<button onClick={sendDepositPrompt} style={{padding: "0 16px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>Send</button>
-</div>
-</div>
-</>) : null}
-{(depositPromptSent) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "8px"}}>
-<div style={{display: "flex", alignItems: "center", gap: "8px"}}><span style={{width: "8px", height: "8px", borderRadius: "50%", background: "var(--indigo)", animation: "pulse-dot 1.2s ease-in-out infinite"}} /><span style={{fontSize: "13px", fontWeight: "700"}}>Check your phone</span></div>
-<p style={{margin: "0", fontSize: "12px", color: "var(--muted)"}}>Enter your PIN to approve the {depositOperator} prompt sent to {depositMobileCode} {depositPhone}.</p>
-</div>
-</>) : null}
-</>) : null}
-
-{(depositIsBankRail) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>{depositBankLabel} via {depositOperator} · {depositBankArrival}</p>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", borderRadius: "14px", background: "var(--surface2)"}}>
-{(depositBankLines || []).map((ln: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "12px", fontSize: "12.5px"}}><span style={{color: "var(--muted)", whiteSpace: "nowrap", flexShrink: "0"}}>{ln.k}</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", textAlign: "right", flex: "1"}}>{ln.v}</span></div>
-</React.Fragment>
-))}
-</div>
-</div>
-</>) : null}
-
-{(depositIsCrypto) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: "600"}}>Only send {depositAssetCode} on {depositNetworkLabel} — other networks cannot be recovered.</div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "11px 13px", borderRadius: "12px", background: "var(--surface2)"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", fontWeight: "600", wordBreak: "break-all"}}>{depositAddress}</span>
-<button style={{flexShrink: "0", padding: "6px 11px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>Copy</button>
-</div>
-</div>
-</>) : null}
-
-<button onClick={depositBack} style={{marginTop: "6px", padding: "11px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Back</button>
-</>) : null}
-</div>
+<DepositModal
+  depositStepDots={depositStepDots}
+  depositStepIs1={depositStepIs1}
+  depositStepIs2={depositStepIs2}
+  depositMethods={depositMethods}
+  depositIsCountry={depositIsCountry}
+  depositIsCrypto={depositIsCrypto}
+  depositCountryChips={depositCountryChips}
+  depositRailHasChoice={depositRailHasChoice}
+  depositRailChips={depositRailChips}
+  depositProviderHasChoice={depositProviderHasChoice}
+  depositProviderChips={depositProviderChips}
+  depositAssets={depositAssets}
+  depositNetworks={depositNetworks}
+  depositNext={depositNext}
+  depositBack={depositBack}
+  depositDestinationSummary={depositDestinationSummary}
+  depositIsMobileRail={depositIsMobileRail}
+  depositIsBankRail={depositIsBankRail}
+  depositPromptNotSent={depositPromptNotSent}
+  depositPromptSent={depositPromptSent}
+  depositOperator={depositOperator}
+  depositMobileCode={depositMobileCode}
+  depositPhone={depositPhone}
+  setDepositPhone={setDepositPhone}
+  sendDepositPrompt={sendDepositPrompt}
+  depositBankLabel={depositBankLabel}
+  depositBankArrival={depositBankArrival}
+  depositBankLines={depositBankLines}
+  depositAssetCode={depositAssetCode}
+  depositNetworkLabel={depositNetworkLabel}
+  depositAddress={depositAddress}
+/>
 </>) : null}
 
 
 {(isModalReceive) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Share these coordinates with whoever is paying you — no action needed on your end until funds land.</p>
-<div style={{display: "flex", gap: "6px"}}>
-{(receiveGroups || []).map((rg: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={rg.select} style={{padding: "9px 14px", borderRadius: "999px", border: "none", background: (rg.bg), color: (rg.color), fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{rg.label}</button>
-</React.Fragment>
-))}
-</div>
-
-{(receiveIsFiat) ? (<>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
-{(receiveAcctChips || []).map((c: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={c.select} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px 7px 7px", borderRadius: "999px", border: `1.5px solid ${(c.border)}`, background: (c.bg), color: "var(--ink)", cursor: "pointer"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(c.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontSize: "12px", fontWeight: "700"}}>{c.code}</span></button>
-</React.Fragment>
-))}
-</div>
-<p style={{margin: "0", fontSize: "11.5px", color: "var(--muted2)"}}>{receiveAcctRail}</p>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", borderRadius: "14px", background: "var(--surface2)"}}>
-{(receiveAcctLines || []).map((ln: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px"}}>
-<span style={{color: "var(--muted)", whiteSpace: "nowrap", flexShrink: "0", width: "120px"}}>{ln.k}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600", flex: "1", wordBreak: "break-all"}}>{ln.v}</span>
-<button onClick={ln.copy} style={{flexShrink: "0", padding: "5px 10px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "10.5px", fontWeight: "700", cursor: "pointer"}}>{(ln.copied) ? (<>Copied</>) : (<>Copy</>)}</button>
-</div>
-</React.Fragment>
-))}
-</div>
-</>) : null}
-
-{(receiveIsCrypto) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Asset</span>
-<div style={{display: "flex", gap: "4px", background: "var(--surface2)", padding: "3px", borderRadius: "10px"}}>
-{(receiveAssets || []).map((as: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={as.select} style={{padding: "5px 10px", borderRadius: "8px", border: "none", background: (as.bg), color: (as.color), fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>{as.label}</button>
-</React.Fragment>
-))}
-</div>
-</div>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
-{(receiveNetworks || []).map((net: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={net.select} style={{padding: "8px 12px", borderRadius: "12px", border: `1.5px solid ${(net.border)}`, background: (net.bg), color: (net.color), fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}>{net.label}</button>
-</React.Fragment>
-))}
-</div>
-<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--amber-tint)", color: "var(--amber)", fontSize: "12px", fontWeight: "600", lineHeight: "1.5"}}>Only accept {receiveAssetCode} on {receiveNetworkLabel} — funds sent on other networks cannot be recovered.</div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 10px 10px 16px", borderRadius: "14px", background: "var(--surface2)", border: "1.5px solid var(--glass-border)"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "14.5px", fontWeight: "600", letterSpacing: "0.02em", wordBreak: "break-all", lineHeight: "1.5"}}>{receiveAddress}</span>
-<button onClick={copyReceiveAddress} style={{flexShrink: "0", display: "flex", alignItems: "center", gap: "6px", padding: "9px 14px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--bg)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap"}}><span style={{fontSize: "14px"}}>⧉</span>{(receiveAddressCopied) ? (<>Copied</>) : (<>Copy</>)}</button>
-</div>
-</div>
-</>) : null}
-</div>
+<ReceiveModal
+  receiveGroups={receiveGroups}
+  receiveIsFiat={receiveIsFiat}
+  receiveIsCrypto={receiveIsCrypto}
+  receiveAcctChips={receiveAcctChips}
+  receiveAcctRail={receiveAcctRail}
+  receiveAcctLines={receiveAcctLines}
+  receiveAssets={receiveAssets}
+  receiveNetworks={receiveNetworks}
+  receiveAssetCode={receiveAssetCode}
+  receiveNetworkLabel={receiveNetworkLabel}
+  receiveAddress={receiveAddress}
+  copyReceiveAddress={copyReceiveAddress}
+  receiveAddressCopied={receiveAddressCopied}
+/>
 </>) : null}
 
 {(isModalBulk) ? (<>
@@ -1710,31 +1439,16 @@ Create payment
 </>) : null}
 
 {(isModalTxDetail) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div style={{textAlign: "center", padding: "6px 0 4px"}}>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "28px", fontWeight: "500", color: (txDetail.amountColor)}}>{txDetail.amount}</div>
-<div style={{fontSize: "12.5px", color: "var(--muted)", marginTop: "2px", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px"}}>{txDetail.flagUrl ? (<div style={{width: "16px", height: "12px", borderRadius: "2px", backgroundImage: `url(${(txDetail.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />) : null}{txDetail.client}</div>
-<span style={{display: "inline-flex", marginTop: "8px", alignItems: "center", gap: "6px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (txDetail.statusSoft), color: (txDetail.statusColor)}}>{txDetail.statusLabel}</span>
-</div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "9px 0", borderBottom: "1px dashed var(--border)"}}><span style={{color: "var(--muted)"}}>Reference</span><b style={{fontFamily: "'DM Mono',monospace", fontWeight: "600"}}>{txDetail.ref}</b></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "9px 0", borderBottom: "1px dashed var(--border)"}}><span style={{color: "var(--muted)"}}>Rail</span><b>{txDetail.type}</b></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "9px 0"}}><span style={{color: "var(--muted)"}}>Settlement layer</span><b>USDC · Base</b></div>
-</div>
+<TxDetailModal txDetail={txDetail} />
 </>) : null}
 
 {(isModalAcctDetail) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div style={{textAlign: "center", padding: "2px 0 8px"}}>
-<div style={{display: "flex", justifyContent: "center"}}>{(acctDetail.flagUrl) ? (<><div style={{width: "36px", height: "27px", borderRadius: "4px", backgroundImage: `url(${(acctDetail.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center"}} /></>) : (<><span style={{width: "36px", height: "36px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "800", fontSize: "16px"}}>$</span></>)}</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "26px", fontWeight: "500", marginTop: "4px"}}>{acctDetail.balance}</div>
-<div style={{fontSize: "12px", color: "var(--muted)"}}>{acctDetail.name} · {acctDetail.rail}</div>
-</div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "12px 14px", borderRadius: "12px", background: "var(--surface2)"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "12.5px", fontWeight: "600"}}>{acctDetail.detail}</span>
-<button style={{flexShrink: "0", padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>Copy</button>
-</div>
-<button onClick={openModalSwapFromAcct} style={{padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Convert</button>
-</div>
+<AccountDetailModal
+  acctDetail={acctDetail}
+  openModalSwapFromAcct={openModalSwapFromAcct}
+  onCopyDetail={copyField("acctDetail", acctDetail.detail)}
+  copyLabel={s.copiedField === "acctDetail" ? "Copied" : "Copy"}
+/>
 </>) : null}
 
 {(isModalCardDetail) ? (<>
@@ -1830,49 +1544,21 @@ Create payment
 </>) : null}
 
 {(isModalCreateAccount) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "16px"}}>
-<div>
-<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Account Name <span style={{color: "var(--red)"}}>*</span></span>
-<input value={s.createAccountName} onChange={setCreateAccountName} placeholder="e.g. Payroll, Operations" style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-
-{s.createAccountKind === "bank" ? (<>
-<div>
-<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Currency <span style={{color: "var(--red)"}}>*</span></span>
-<select value={s.createAccountCurrency} onChange={setCreateAccountCurrency} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountCurrency ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
-<option value="">Select currency</option>
-{CURRENCY_OPTIONS.map((c: any) => (
-  <option key={c.code} value={c.code} disabled={!isCurrencySupported(c.code)}>
-    {c.label} ({c.code}){isCurrencySupported(c.code) ? "" : " — not available yet"}
-  </option>
-))}
-</select>
-<div style={{marginTop: "7px", fontSize: "11px", color: "var(--muted2)"}}>Bank accounts are currently issued in USD and EUR only.</div>
-</div>
-</>) : (<>
-<div>
-<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Stablecoin <span style={{color: "var(--red)"}}>*</span></span>
-<select value={s.createAccountStablecoin} onChange={setCreateAccountStablecoin} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountStablecoin ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
-<option value="">Select stablecoin</option>
-{STABLECOIN_OPTIONS.map((o: any) => (<option key={o.code} value={o.code}>{o.label}</option>))}
-</select>
-</div>
-<div>
-<span style={{fontSize: "12px", fontWeight: "600", color: "var(--ink)"}}>Network <span style={{color: "var(--red)"}}>*</span></span>
-<select value={s.createAccountNetwork} onChange={setCreateAccountNetwork} style={{width: "100%", marginTop: "8px", padding: "13px 14px", borderRadius: "12px", border: "1.5px solid var(--input-border)", background: "var(--surface2)", outline: "none", fontSize: "13.5px", color: s.createAccountNetwork ? "var(--ink)" : "var(--muted2)", boxSizing: "border-box", appearance: "none", cursor: "pointer"}}>
-<option value="">Select network</option>
-{NETWORK_OPTIONS.map((o: any) => (<option key={o.code} value={o.code}>{o.label}</option>))}
-</select>
-</div>
-</>)}
-
-{s.createAccountError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{s.createAccountError}</div>) : null}
-
-<div style={{display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "2px"}}>
-<button onClick={closeModal} style={{padding: "12px 22px", borderRadius: "12px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Cancel</button>
-<button onClick={submitCreateAccount} disabled={s.createAccountSaving} style={{padding: "12px 22px", borderRadius: "12px", border: "none", background: "var(--ink-panel)", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", fontWeight: "700", cursor: s.createAccountSaving ? "wait" : "pointer", opacity: s.createAccountSaving ? 0.7 : 1}}>{s.createAccountSaving ? "Creating…" : "Create Account"}</button>
-</div>
-</div>
+<CreateAccountModal
+  createAccountName={s.createAccountName}
+  setCreateAccountName={setCreateAccountName}
+  createAccountKind={s.createAccountKind}
+  createAccountCurrency={s.createAccountCurrency}
+  setCreateAccountCurrency={setCreateAccountCurrency}
+  createAccountStablecoin={s.createAccountStablecoin}
+  setCreateAccountStablecoin={setCreateAccountStablecoin}
+  createAccountNetwork={s.createAccountNetwork}
+  setCreateAccountNetwork={setCreateAccountNetwork}
+  createAccountError={s.createAccountError}
+  createAccountSaving={s.createAccountSaving}
+  closeModal={closeModal}
+  submitCreateAccount={submitCreateAccount}
+/>
 </>) : null}
 
 {(isModalApiKey) ? (<>
