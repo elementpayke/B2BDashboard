@@ -106,6 +106,27 @@ export type Order = {
   updated_at: string;
 };
 
+// GET /v1/orders — paginated list response. Unlike `GET /v1/transactions`
+// (no query params, hard `limit=50`), this endpoint accepts and echoes back
+// `status`/`limit`/`offset`, so the Transactions screen's server-side
+// filtering/pagination sources pages from here — see
+// lib/services/transactions.ts `listPage` and docs/api-contract.md
+// "Transaction history filters & pagination".
+export type OrderList = {
+  items: Order[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type OrderListParams = {
+  /** Exact match on the backend's 6 canonical statuses. Omit for "all". */
+  status?: OrderStatus;
+  /** Backend caps this at 200 (`le=200` on the route). */
+  limit?: number;
+  offset?: number;
+};
+
 export const ordersApi = {
   quote: (payload: OffRampQuoteIn) => apiEnvelope<OrderQuote>("POST", "/v1/orders/quote", payload),
   getQuote: (quoteId: string) => apiEnvelope<OrderQuote>("GET", `/v1/orders/quote/${quoteId}`),
@@ -113,6 +134,14 @@ export const ordersApi = {
     apiEnvelope<OrderAccept>("POST", `/v1/orders/${quoteId}/accept`, { payment_method: paymentMethod ?? null }),
   // Post-accept status read, used for polling (see lib/hooks/useOrderStatus.ts).
   get: (merchantOrderId: number | string) => apiEnvelope<Order>("GET", `/v1/orders/${merchantOrderId}`),
+  list: (params: OrderListParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set("status", params.status);
+    if (params.limit != null) qs.set("limit", String(params.limit));
+    if (params.offset != null) qs.set("offset", String(params.offset));
+    const query = qs.toString();
+    return apiEnvelope<OrderList>("GET", `/v1/orders${query ? `?${query}` : ""}`);
+  },
 };
 
 const RAIL_TYPE_TO_ACCOUNT_TYPE: Record<string, AccountBlock["accountType"]> = {

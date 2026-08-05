@@ -27,19 +27,15 @@ the exact failure mode). See
 |---|---|---|
 | Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes. Reset email/code are handed off via tab `sessionStorage` (never left in the URL); if Mboka email links still arrive with `?email=&code=`, the reset page migrates them into sessionStorage and immediately strips the query. Access/refresh tokens remain httpOnly cookies. |
 | Dashboard (Home) | `GET /v1/dashboard/summary` | Money in/out 30d, pending count. Total-balance hero number stays mock — see Gaps. |
-| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. |
-| Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
+| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}`, `GET /v1/orders` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. The dedicated Transactions screen's status filter + Prev/Next pagination are server-side via `GET /v1/orders?status=&limit=&offset=` — see Transaction history pagination below for why. |
+| Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transactions-page"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
 | Invoices | `POST /v1/invoices/drafts`, `POST /v1/invoices`, `GET /v1/invoices`, `POST /v1/invoices/{id}/mark-paid`, `GET /v1/invoices/{id}/public-link` | The dashboard's simple 2-field ("client" + "amount") modal composes a minimal `DraftPayloadIn` and calls create-draft → issue in sequence. |
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status` | Tier badges reflect real KYB status. The "upload documents" submission flow stays simulated — see Gaps. |
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
 | Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The list call only runs once eligibility confirms `eligible: true`. Account cards show real `currency`/`status`/masked `iban`/`bank_name`/`bic` — `DepositAccountOut` has **no balance field**, so cards never show one (see Simulated table below). |
-<<<<<<< HEAD
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
-=======
-| Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept` | OffRamp payout flow. See mapping notes below. |
->>>>>>> 95ccdb3 (Fix CodeRabbit findings on wallets eligibility gating.)
 
 ## Simulated (local only, no backend call)
 
@@ -107,6 +103,39 @@ the exact failure mode). See
   (`isQuoteAlreadyAcceptedError`). The success screen falls back to its
   generic amount/recipient summary line since the 409 response doesn't
   carry the original accept payload.
+
+## Transaction history filters & pagination (`lib/services/transactions.ts`, `lib/hooks/useTransactionsPage.ts`)
+
+`GET /v1/transactions` takes **no query parameters** — it always returns the
+newest 50 rows for the authenticated business/user (`TransactionListOut` is
+just `{items, total}`, no `limit`/`offset` echo, and the repository call
+underneath hard-defaults to `limit=50, offset=0`). There is no way to move
+past row 50 or filter server-side through that endpoint today.
+
+`GET /v1/orders` is a **same-scope, same-underlying-row** view (both read
+`merchant_orders`, filtered by the same `business_id`/`user_id` principal
+rule) that *does* accept `status`, `limit` (≤200), and `offset`, and echoes
+them back in `OrderListOut`. So the dedicated Transactions screen's status
+filter chips and Prev/Next pagination are powered by
+`ordersApi.list({status, limit, offset})`
+(`lib/services/orders.ts`), with each `OrderOut` row mapped back into the
+existing `Transaction` shape via `mapOrderToTransaction`
+(`lib/services/transactions.ts`) — including deriving `direction` from
+`order_type` (`OnRamp` → `in`, `OffRamp` → `out`), which mirrors the
+backend's own projection (`app/domain/order_direction.py`) since `OrderOut`
+has no `direction` field of its own. `OrderOut.id` is the same
+`MerchantOrder.id` used by `GET /v1/transactions/{id}` and
+`useOrderStatus`, so the tx detail modal and live-status polling work
+unchanged against rows sourced from either endpoint.
+
+Home's "Recent activity", the Wallets/Cards "recent transactions" widgets,
+and Reports (see below) intentionally keep using the original unpaginated
+`transactionsApi.list()` — they already only ever showed the fetched page's
+worth of data, so leaving them as-is doesn't change what they report, it
+just doesn't extend pagination to surfaces that were never asking for it.
+Reports' "don't invent" rule (see below) is unaffected: it still only
+computes from the newest 50 rows, exactly as it did before this pagination
+work, never from a status-filtered `/v1/orders` page.
 
 ## Order status lifecycle (`lib/hooks/useOrderStatus.ts`)
 
