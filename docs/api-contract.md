@@ -25,7 +25,7 @@ the exact failure mode). See
 
 | Area | Endpoints | Notes |
 |---|---|---|
-| Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes; reset codes remain in the email URL, and access/refresh tokens remain httpOnly cookies. |
+| Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes. Reset email/code are handed off via tab `sessionStorage` (never left in the URL); if Mboka email links still arrive with `?email=&code=`, the reset page migrates them into sessionStorage and immediately strips the query. Access/refresh tokens remain httpOnly cookies. |
 | Dashboard (Home) | `GET /v1/dashboard/summary` | Money in/out 30d, pending count. Total-balance hero number stays mock — see Gaps. |
 | Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}` | Filter chips cover all 5 backend statuses (processing/completed/failed/canceled/frozen), not just the 3 the original mock exposed. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
