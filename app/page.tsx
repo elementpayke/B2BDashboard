@@ -1,5 +1,5 @@
-import ElementPayDashboard from "@/components/ElementPayDashboard";
+import Landing from "@/components/Landing";
 
 export default function Home() {
-  return <ElementPayDashboard />;
+  return <Landing />;
 }
