@@ -35,7 +35,11 @@ the exact failure mode). See
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
 | Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The list call only runs once eligibility confirms `eligible: true`. Account cards show real `currency`/`status`/masked `iban`/`bank_name`/`bic` — `DepositAccountOut` has **no balance field**, so cards never show one (see Simulated table below). |
+<<<<<<< HEAD
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
+=======
+| Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept` | OffRamp payout flow. See mapping notes below. |
+>>>>>>> 95ccdb3 (Fix CodeRabbit findings on wallets eligibility gating.)
 
 ## Simulated (local only, no backend call)
 
@@ -130,12 +134,13 @@ list, that transaction's own detail query, and the dashboard summary.
 > **Track 3 (Wallets / deposit accounts):** `components/wallets/**` now reads
 > real deposit accounts (`GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts`)
 > instead of the `ACCOUNTS` mock, and the existing `POST /v1/iban/accounts`
-> create flow is fully wired end to end (create → list invalidation). Pure
-> display mappers (masking, status labels, detail-row selection) live in
-> `lib/services/depositAccounts.ts` with Vitest coverage. `components/deposit/ReceiveModal.tsx`
-> and the Home screen's "Total balance"/quick-actions still use the `ACCOUNTS`
-> mock for fiat receive coordinates — out of this track's scope (see OnRamp
-> deposit-quote and Home tracks).
+> create flow is fully wired end to end (create → list invalidation), gated on
+> eligibility. Pure display mappers (masking, status labels, detail-row
+> selection) live in `lib/services/depositAccounts.ts` with Vitest coverage.
+> Home "Total balance" stays `—`; its currency chip strip lists real deposit-
+> account currencies (also `—` per chip). `components/deposit/ReceiveModal.tsx`
+> still uses the `ACCOUNTS` mock for fiat receive coordinates — out of this
+> track's scope (see OnRamp deposit-quote track).
 
 1. **Team backend**: add `GET/POST /api/businesses/{id}/members`,
    `POST .../members/invite`, `PATCH .../members/{user_id}`,

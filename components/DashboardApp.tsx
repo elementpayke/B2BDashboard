@@ -453,6 +453,11 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const submitCreateAccount = async () => {
+    if (depositEligibilityQuery.data?.eligible !== true) {
+      return setState({
+        createAccountError: "Complete business verification before issuing currency accounts.",
+      });
+    }
     if (!state.createAccountName.trim()) {
       return setState({ createAccountError: "Give the account a name." });
     }

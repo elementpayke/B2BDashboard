@@ -63,6 +63,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
         <h2 style={{ margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase" }}>Currency accounts · {p.accountsCount}</h2>
+        {p.eligible ? (
         <div style={{ position: "relative" }}>
           <button onClick={p.toggleAddAccountMenu} style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "9px 16px", borderRadius: "999px", border: "none", background: "var(--ink-panel)", color: "#fff", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}><span style={{ fontSize: "14px", lineHeight: 1 }}>+</span>Add Account</button>
           {p.addAccountMenu ? (
@@ -75,6 +76,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
             </>
           ) : null}
         </div>
+        ) : null}
       </div>
 
       {showGate ? (
@@ -116,10 +118,12 @@ export default function WalletsScreen(p: WalletsScreenProps) {
               </React.Fragment>
             ))
           )}
+          {p.eligible ? (
           <button onClick={p.openCreateAccount("bank")} style={{ flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
             <span style={{ width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "19px" }}>+</span>
             <b style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", color: "var(--ink)" }}>New account</b>
           </button>
+          ) : null}
         </div>
       ) : null}
 
