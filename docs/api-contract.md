@@ -36,6 +36,7 @@ the exact failure mode). See
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
 | Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The list call only runs once eligibility confirms `eligible: true`. Account cards show real `currency`/`status`/masked `iban`/`bank_name`/`bic` — `DepositAccountOut` has **no balance field**, so cards never show one (see Simulated table below). |
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
+| Send money ("Stablecoin" tab) | `GET /v1/entities`, `GET /v1/entities/{id}/accounts`, `POST /v1/accounts/{account_id}/sends/preview`, `POST /v1/accounts/{account_id}/sends` | Phase 4 account-native USDC send (Base/Polygon). Preview → confirm with **required** `Idempotency-Key`. Not Privy wallet transfer. See Account-send mapping notes below. |
 | Deposit / Top up ("by country" tab) | `POST /v1/orders/quote` (`order_type: OnRamp`), `POST /v1/orders/{quote_id}/accept` | Fiat-in top-up to the business treasury wallet. Shows `payment_instructions` after accept (momo STK prompt or bank coordinates). Reuses `GET /v1/supported/catalog` for OnRamp provider `networkId`, `useOrderStatus` for post-accept polling, and `Idempotency-Key` on quote. See OnRamp mapping notes below. |
 | Receive (fiat tab) | `GET /v1/iban/accounts` | Shows real IBAN/bank deposit coordinates from issued currency accounts (Track 3). No balances — coordinates only. |
 | Receive (stablecoin tab) | `GET /v1/dashboard/summary` → `totals.wallet_address` | Shows the business treasury wallet address for on-chain deposits. Network/asset picker stays UI-only until a real multi-chain deposit endpoint exists. |
@@ -49,13 +50,29 @@ the exact failure mode). See
 | Home "Total balance" | **No real source exists.** It is a currency-accounts aggregate (individual accounts have no balance field either — see above), and `totals.user_balance` is an untyped Privy passthrough that reports `null` when Privy has no balance. Renders `—` rather than a number. It previously showed a hardcoded `$548,830.55`, which on a real empty account was indistinguishable from a true balance — do not restore a figure here until it is computed from a real source. The currency chip strip beneath it now lists real deposit-account currencies (from `GET /v1/iban/accounts`) with `—` in place of the old per-currency mock balances. |
 | Deposit / Top up — **Stablecoin** tab | No standalone stablecoin deposit endpoint — the tab shows the treasury wallet from dashboard summary (same address OnRamp settles to) rather than faking a separate account. |
 | Swap / Bulk-payout modals | Real on/off-ramp swap and bulk CSV payouts are each a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
-| Send money "Stablecoin" tab (direct on-chain transfer) | No backend endpoint exists for a direct wallet-to-wallet crypto send — only the fiat-rail order flow. |
 | Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
 | Cards screen (+ card detail / fund / issue modals) | **No backend at all**, not even a data model. The original design renders in full against local mock data; all card actions are local-only. |
 
 > ⚠️ Team and Cards render mock data behind an in-product **Preview** banner
 > so demo balances, card numbers, and teammates are clearly marked as
 > simulated. Wiring them to real backends is tracked in Gaps 1 and 2 below.
+
+## Account-send mapping notes (`lib/services/accountSends.ts`)
+
+- Uses Phase 4 partner accounts — **not** the Privy treasury wallet on
+  dashboard summary. Source accounts come from `GET /v1/entities` →
+  `GET /v1/entities/{id}/accounts`, filtered to ready `stablecoin` / `USDC`
+  on **Base** or **Polygon** (`lib/services/entities.ts`).
+- Preview: `POST /v1/accounts/{account_id}/sends/preview` with
+  `{ to_address, amount, network }`. `to_address` must be a 20-byte `0x`
+  EVM address (ENS / `.eth` rejected). Min amount **1.00 USDC**.
+- Confirm: `POST /v1/accounts/{account_id}/sends` with `{ preview_token }`
+  and a required `Idempotency-Key` header (8–64 chars). The dashboard mints
+  a fresh UUID per confirm attempt.
+- USDT / Ethereum / Solana chips are intentionally not offered — the backend
+  rejects them (`assert_stablecoin_account`).
+- If no ready account exists for the chosen network, the Stablecoin tab
+  fails closed with a clear message rather than simulating a send.
 
 ## OnRamp (deposit) mapping notes (`lib/services/orders.ts`)
 
@@ -192,8 +209,12 @@ list, that transaction's own detail query, and the dashboard summary.
 2. **Cards**: no data model exists; would need a card-issuing integration
    (own scope, own review).
 3. **KYB wizard**: ~~build the real multi-step business-verification form~~ **Done (Track 5)** — `components/verification/*` + `lib/services/kyb.ts` drive `POST/PATCH …/kyb/profile`, `PUT …/kyb/address`, `POST …/kyb/initiate`, multipart `POST …/kyb/documents`, `POST …/documents/submit`, `POST …/shareholders`, `POST …/shareholders/documents`, `POST …/kyb/submit`. Tier 3 institutional upgrade modal remains simulated.
-4. **Send modal — Stablecoin tab**: no backend endpoint for direct
-   wallet-to-wallet transfers; stays simulated until one exists.
+4. **Send modal — Stablecoin tab**: ~~no backend endpoint for direct
+   wallet-to-wallet transfers~~ **Done (Track 8)** — Phase 4
+   `POST /v1/accounts/{id}/sends/preview` → confirm with required
+   `Idempotency-Key` (`lib/services/accountSends.ts`). Opening new
+   partner FinancialAccounts (`POST /v1/entities/{id}/accounts`) is still
+   a separate product surface (Add Account → Stablecoin still refuses).
 5. **Supported catalog**: ~~wire `GET /v1/supported/catalog` into the Send/
    Deposit modals' country+provider pickers instead of the hardcoded list,
    which would also unlock real `networkId` routing.~~ **Done for Send** —
