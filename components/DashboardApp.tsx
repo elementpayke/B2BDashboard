@@ -148,6 +148,31 @@ export default function DashboardApp(props: Props = {}) {
   // resolve a real aggregator networkId per provider instead of relying on
   // the hardcoded corridor list alone. See lib/services/catalog.ts.
   const sendCatalogQuery = useSendCatalog();
+
+  // When the catalog (or corridor) changes the provider list, clamp the
+  // selection so sendProviderIdx never points past the active options.
+  useEffect(() => {
+    const country = COUNTRIES[state.sendCountryIdx];
+    if (!country) return;
+    const rail = country.rails[state.sendRailIdx] || country.rails[0];
+    if (!rail) return;
+    const catalogProviders = offRampProvidersForRail(
+      sendCatalogQuery.data,
+      country.iso,
+      rail.type,
+      country.code,
+    );
+    const options =
+      catalogProviders && catalogProviders.length > 0
+        ? catalogProviders.map((p) => p.name)
+        : rail.options;
+    if (!options.length) return;
+    setState((s: any) => {
+      if (s.sendProviderIdx < options.length) return {};
+      return { sendProviderIdx: options.length - 1 };
+    });
+  }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
+
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
   // details so the Developer screen's webhook rows show real values.
@@ -219,7 +244,11 @@ export default function DashboardApp(props: Props = {}) {
           catalogProviders && catalogProviders.length > 0
             ? catalogProviders.map((p) => p.name)
             : rail.options;
-        const providerName = providerOptions[state.sendProviderIdx] || providerOptions[0];
+        const providerIdx =
+          providerOptions.length === 0
+            ? 0
+            : Math.min(state.sendProviderIdx, providerOptions.length - 1);
+        const providerName = providerOptions[providerIdx] || providerOptions[0];
         const networkId = networkIdForProvider(catalogProviders, providerName);
         const payload = buildSendQuotePayload({
           currency: country.code,
@@ -295,6 +324,8 @@ export default function DashboardApp(props: Props = {}) {
         // A duplicate accept (e.g. a double-click) already produced an
         // order for this quote_id — the payout went through, so this is
         // not a failure to show the user.
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         setState({ sendAccepting: false, sendAccept: null, sendDone: true });
         return;
       }
@@ -514,8 +545,17 @@ export default function DashboardApp(props: Props = {}) {
       sendCatalogProviders && sendCatalogProviders.length > 0
         ? sendCatalogProviders.map((p) => p.name)
         : sendRail.options;
-    const sendProvider = sendProviderOptions[s.sendProviderIdx] || sendProviderOptions[0];
-    const sendProviderChips = sendProviderOptions.map((name, i) => ({ name, select: selectSendProvider(i), bg: i === s.sendProviderIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendProviderIdx ? "var(--indigo)" : "transparent" }));
+    const sendProviderIdx =
+      sendProviderOptions.length === 0
+        ? 0
+        : Math.min(s.sendProviderIdx, sendProviderOptions.length - 1);
+    const sendProvider = sendProviderOptions[sendProviderIdx] || sendProviderOptions[0];
+    const sendProviderChips = sendProviderOptions.map((name, i) => ({
+      name,
+      select: selectSendProvider(i),
+      bg: i === sendProviderIdx ? "var(--indigo-tint)" : "var(--surface2)",
+      border: i === sendProviderIdx ? "var(--indigo)" : "transparent",
+    }));
 
     const depositCountryChips = allCountryChips(s.depositCountryIdx, selectDepositCountry).map(c => ({ ...c, selectDeposit: c.select, depositBg: c.bg, depositBorder: c.border }));
     const depositCountry = COUNTRIES[s.depositCountryIdx];
@@ -850,7 +890,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "e.g. 0x9F2c... or .eth" : sendRail.placeholder;
   const sendCorridorText = s.sendGroup === "crypto" ? "Sends USDC directly on Base — no FX conversion." : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
-  const sendProviderHasChoice = sendRail.options.length > 1;
+  const sendProviderHasChoice = sendProviderOptions.length > 1;
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
