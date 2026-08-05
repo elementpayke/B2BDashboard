@@ -128,6 +128,39 @@ export function offRampProvidersForRail(
 }
 
 /**
+ * Real, enabled OnRamp providers the catalog offers for a given country +
+ * rail type — same shape as `offRampProvidersForRail` but reads
+ * `data.onramp.countries` and `international_bank.currencies[].onramp`.
+ */
+export function onRampProvidersForRail(
+  data: SupportedCatalogData | null | undefined,
+  countryIso: string,
+  railType: string,
+  currency?: string,
+): CatalogProvider[] | null {
+  const quoteType = RAIL_TYPE_TO_QUOTE_TYPE[railType];
+  if (!quoteType || !data) return null;
+
+  const country = data.onramp?.countries?.[countryIso.toUpperCase()];
+  if (country?.enabled) {
+    const method = findMethodByQuoteType(country.payment_methods, quoteType);
+    const enabled = method?.enabled ? method.providers.filter((p) => p.enabled) : [];
+    if (enabled.length > 0) return enabled;
+  }
+
+  if (currency) {
+    const intl = data.international_bank?.currencies?.[currency.toUpperCase()];
+    if (intl?.onramp) {
+      const method = findMethodByQuoteType(intl.payment_methods, quoteType);
+      const enabled = method?.enabled ? method.providers.filter((p) => p.enabled) : [];
+      if (enabled.length > 0) return enabled;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolve the aggregator provider id (`networkId` on the order quote's
  * `destination` block) for a provider selected by display name/code.
  * Case-insensitive match on either `name` or `code` since UI copy and

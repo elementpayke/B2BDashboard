@@ -70,6 +70,13 @@ async function rawFetch(url: string, init: RequestInit = {}): Promise<Response> 
   });
 }
 
+export type RequestOptions = {
+  /** Extra request headers, e.g. `Idempotency-Key` on a mutating call.
+   * `lib/server/mbokaProxy.ts` only strips auth/hop-by-hop headers, so a
+   * custom header set here rides through to the backend untouched. */
+  headers?: Record<string, string>;
+};
+
 async function envelopeFromResponse<T>(res: Response): Promise<T> {
   let json: MbokaEnvelope<T>;
   try {
@@ -102,10 +109,16 @@ async function envelopeFromResponse<T>(res: Response): Promise<T> {
 
 /** For endpoints proxied through /api/mboka/... (everything backed by the
  * Mboka backend's authenticated, cookie-derived session). */
-export async function apiEnvelope<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function apiEnvelope<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options?: RequestOptions,
+): Promise<T> {
   const res = await rawFetch(`${MBOKA_PREFIX}${path}`, {
     method,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: options?.headers,
   });
   return envelopeFromResponse<T>(res);
 }

@@ -1,12 +1,33 @@
 import { describe, it, expect } from "vitest";
 import {
   offRampProvidersForRail,
+  onRampProvidersForRail,
   networkIdForProvider,
   type SupportedCatalogData,
 } from "./catalog";
 
 const CATALOG: SupportedCatalogData = {
   disclaimer: "Indicative catalog.",
+  onramp: {
+    countries: {
+      KE: {
+        country_code: "KE",
+        country_name: "Kenya",
+        currency: "KES",
+        enabled: true,
+        payment_methods: {
+          mobile_money: {
+            enabled: true,
+            label: "Mobile Money",
+            quote_type: "mobile_money",
+            providers: [
+              { code: "M PESA", name: "Mobile Wallet (M-PESA)", enabled: true, id: "yc-mpesa-on-id" },
+            ],
+          },
+        },
+      },
+    },
+  },
   offramp: {
     countries: {
       KE: {
@@ -78,6 +99,20 @@ const CATALOG: SupportedCatalogData = {
           },
         },
       },
+      GBP: {
+        currency: "GBP",
+        label: "Pound Sterling",
+        onramp: false,
+        offramp: true,
+        payment_methods: {
+          bank: {
+            enabled: true,
+            label: "Faster Payments",
+            quote_type: "bank",
+            providers: [{ code: "FPS", name: "Faster Payments", enabled: true, id: "fps-id" }],
+          },
+        },
+      },
     },
   },
 };
@@ -126,6 +161,29 @@ describe("offRampProvidersForRail", () => {
 
   it("returns null for a country the catalog doesn't mention at all", () => {
     expect(offRampProvidersForRail(CATALOG, "gh", "mobile", "GHS")).toBeNull();
+  });
+});
+
+describe("onRampProvidersForRail", () => {
+  it("returns enabled onramp providers for a known country + rail", () => {
+    const providers = onRampProvidersForRail(CATALOG, "ke", "mobile", "KES");
+    expect(providers).toEqual([
+      { code: "M PESA", name: "Mobile Wallet (M-PESA)", enabled: true, id: "yc-mpesa-on-id" },
+    ]);
+  });
+
+  it("resolves cross-border bank currencies via international_bank onramp flag", () => {
+    const providers = onRampProvidersForRail(CATALOG, "de", "bank", "EUR");
+    expect(providers).toEqual([{ code: "SEPA", name: "SEPA Transfer", enabled: true, id: "sepa-id" }]);
+  });
+
+  it("ignores an international_bank currency with onramp: false", () => {
+    const providers = onRampProvidersForRail(CATALOG, "gb", "bank", "GBP");
+    expect(providers).toBeNull();
+  });
+
+  it("returns null when the catalog hasn't loaded yet", () => {
+    expect(onRampProvidersForRail(null, "ke", "mobile", "KES")).toBeNull();
   });
 });
 

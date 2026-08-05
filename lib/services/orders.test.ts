@@ -2,9 +2,13 @@ import { describe, it, expect } from "vitest";
 import { ApiRequestError } from "@/lib/apiClient";
 import {
   buildSendQuotePayload,
+  buildDepositQuotePayload,
+  buildPaymentInstructionRows,
   formatQuoteFees,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
+  newIdempotencyKey,
+  type PaymentInstructions,
 } from "./orders";
 
 const baseParams = {
@@ -187,5 +191,173 @@ describe("formatQuoteFees", () => {
 
   it("ignores non-numeric values", () => {
     expect(formatQuoteFees({ service_fee_usd: "n/a" })).toBe("Included in the rate");
+  });
+});
+
+const depositParams = {
+  currency: "kes",
+  countryIso: "ke",
+  payerAccountNumber: "0712345678",
+  payerName: "Acme Payments Ltd",
+  amount: "800",
+  walletAddress: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe",
+};
+
+describe("buildDepositQuotePayload", () => {
+  it("always sets order_type to OnRamp for a top-up (fiat in, crypto to our own wallet)", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "mobile" });
+    expect(payload.order_type).toBe("OnRamp");
+  });
+
+  it("maps a 'mobile' rail to accountType 'momo'", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "mobile" });
+    expect(payload.source.accountType).toBe("momo");
+  });
+
+  it("maps a 'bank' rail to accountType 'bank'", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "bank" });
+    expect(payload.source.accountType).toBe("bank");
+  });
+
+  it("throws rather than guessing for an unrecognized rail type", () => {
+    expect(() =>
+      buildDepositQuotePayload({ ...depositParams, railType: "carrier_pigeon" }),
+    ).toThrow(/Unsupported rail type/);
+  });
+
+  it("uppercases currency and country per the backend's ISO code requirements", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "mobile" });
+    expect(payload.currency).toBe("KES");
+    expect(payload.country).toBe("KE");
+    expect(payload.source.countryCode).toBe("KE");
+  });
+
+  it("carries the amount as local_amount and the wallet address through untouched", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "bank" });
+    expect(payload.local_amount).toBe("800");
+    expect(payload.wallet_address).toBe(depositParams.walletAddress);
+    expect(payload.source.accountNumber).toBe("0712345678");
+    expect(payload.source.accountName).toBe("Acme Payments Ltd");
+  });
+
+  it("normalises a mobile source number to E.164 using the corridor's dial code", () => {
+    const payload = buildDepositQuotePayload({
+      ...depositParams,
+      railType: "mobile",
+      dialCode: "254",
+    });
+    expect(payload.source.accountNumber).toBe("+254712345678");
+  });
+
+  it("never rewrites a bank account number", () => {
+    const payload = buildDepositQuotePayload({
+      ...depositParams,
+      railType: "bank",
+      payerAccountNumber: "0100234567",
+      dialCode: "254",
+    });
+    expect(payload.source.accountNumber).toBe("0100234567");
+  });
+
+  it("includes source.networkId when a real catalog provider id is supplied", () => {
+    const payload = buildDepositQuotePayload({
+      ...depositParams,
+      railType: "mobile",
+      networkId: "7ea6df5c-6bba-46b2-a7e6-f511959e7edb",
+    });
+    expect(payload.source.networkId).toBe("7ea6df5c-6bba-46b2-a7e6-f511959e7edb");
+  });
+
+  it("omits source.networkId rather than sending an empty string when the catalog has no match", () => {
+    const payload = buildDepositQuotePayload({ ...depositParams, railType: "mobile" });
+    expect(payload.source).not.toHaveProperty("networkId");
+  });
+});
+
+describe("buildPaymentInstructionRows", () => {
+  it("returns no rows for a missing instructions object", () => {
+    expect(buildPaymentInstructionRows(null)).toEqual([]);
+    expect(buildPaymentInstructionRows(undefined)).toEqual([]);
+  });
+
+  it("renders bank instructions from the top-level fields", () => {
+    const instructions: PaymentInstructions = {
+      type: "bank",
+      account_number: "1234567890",
+      bank_name: "Test Bank",
+      account_holder_name: "ElementPay Ltd",
+      reference: "EP-800",
+    };
+    expect(buildPaymentInstructionRows(instructions)).toEqual([
+      { k: "Account number", v: "1234567890" },
+      { k: "Bank", v: "Test Bank" },
+      { k: "Account name", v: "ElementPay Ltd" },
+      { k: "Reference", v: "EP-800" },
+    ]);
+  });
+
+  it("falls back to bank_info when the top-level bank fields are null", () => {
+    const instructions: PaymentInstructions = {
+      type: "bank",
+      bank_info: { accountNumber: "999", bankName: "Fallback Bank" },
+    };
+    expect(buildPaymentInstructionRows(instructions)).toEqual([
+      { k: "Account number", v: "999" },
+      { k: "Bank", v: "Fallback Bank" },
+    ]);
+  });
+
+  it("renders momo instructions from the source block", () => {
+    const instructions: PaymentInstructions = {
+      type: "momo",
+      source: { accountNumber: "+254711111111", networkName: "Mobile Wallet" },
+    };
+    expect(buildPaymentInstructionRows(instructions)).toEqual([
+      { k: "Phone", v: "+254711111111" },
+      { k: "Network", v: "Mobile Wallet" },
+    ]);
+  });
+
+  it("renders crypto_deposit instructions (OffRamp payout side)", () => {
+    const instructions: PaymentInstructions = {
+      type: "crypto_deposit",
+      wallet_address: "0x4444444444444444444444444444444444444444",
+      amount: "20",
+      currency: "USDC",
+      network: "BASE",
+    };
+    expect(buildPaymentInstructionRows(instructions)).toEqual([
+      { k: "Address", v: "0x4444444444444444444444444444444444444444" },
+      { k: "Amount", v: "20" },
+      { k: "Asset", v: "USDC" },
+      { k: "Network", v: "BASE" },
+    ]);
+  });
+
+  it("appends an expiry row when present, regardless of type", () => {
+    const instructions: PaymentInstructions = {
+      type: "momo",
+      source: { accountNumber: "+254711111111" },
+      expires_at: "2026-06-09T12:30:00Z",
+    };
+    const rows = buildPaymentInstructionRows(instructions);
+    expect(rows.at(-1)?.k).toBe("Expires");
+  });
+
+  it("never renders a null field as the literal string 'null'", () => {
+    const instructions: PaymentInstructions = { type: "bank" };
+    const rows = buildPaymentInstructionRows(instructions);
+    expect(rows.some((r) => r.v === "null")).toBe(false);
+  });
+});
+
+describe("newIdempotencyKey", () => {
+  it("returns a non-empty string", () => {
+    expect(typeof newIdempotencyKey()).toBe("string");
+    expect(newIdempotencyKey().length).toBeGreaterThan(0);
+  });
+
+  it("returns a different key on each call", () => {
+    expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });
 });

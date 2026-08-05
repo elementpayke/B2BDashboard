@@ -1,4 +1,4 @@
-import { apiEnvelope, ApiRequestError } from "@/lib/apiClient";
+import { apiEnvelope, ApiRequestError, type RequestOptions } from "@/lib/apiClient";
 
 export type AccountBlock = {
   accountType: "momo" | "bank" | "till" | "paybill";
@@ -18,6 +18,26 @@ export type OffRampQuoteIn = {
   token?: string;
   external_order_id?: string;
 };
+
+/**
+ * OnRamp = fiat -> crypto, used by the "Deposit -> By country" flow to top
+ * up the business's own treasury wallet (see ORDER_FLOW.md "Create Quote").
+ * `source` is how the customer pays fiat in — for a mobile rail that's the
+ * MoMo number the STK/USSD prompt goes to; for a bank rail it's the account
+ * being debited.
+ */
+export type OnRampQuoteIn = {
+  order_type: "OnRamp";
+  currency: string;
+  country: string;
+  local_amount: string;
+  wallet_address: string;
+  source: AccountBlock;
+  token?: string;
+  external_order_id?: string;
+};
+
+export type OrderQuoteIn = OnRampQuoteIn | OffRampQuoteIn;
 
 export type AmountWithCurrency = { amount: string; currency: string; network: string | null };
 
@@ -127,11 +147,26 @@ export type OrderListParams = {
   offset?: number;
 };
 
+/** Builds an `Idempotency-Key` header for a mutating orders call, or `{}`
+ * when no key is supplied. Backend support: `app/routes/orders.py` accepts
+ * this header on both quote and accept, replaying the original response for
+ * a repeat key rather than double-creating a quote / double-charging a
+ * corridor (see `Mboka-Backend/app/routes/orders.py::_replay_or_begin`). */
+function idempotencyHeaders(key?: string): RequestOptions | undefined {
+  return key ? { headers: { "Idempotency-Key": key } } : undefined;
+}
+
 export const ordersApi = {
-  quote: (payload: OffRampQuoteIn) => apiEnvelope<OrderQuote>("POST", "/v1/orders/quote", payload),
+  quote: (payload: OrderQuoteIn, idempotencyKey?: string) =>
+    apiEnvelope<OrderQuote>("POST", "/v1/orders/quote", payload, idempotencyHeaders(idempotencyKey)),
   getQuote: (quoteId: string) => apiEnvelope<OrderQuote>("GET", `/v1/orders/quote/${quoteId}`),
-  accept: (quoteId: string, paymentMethod?: Record<string, unknown>) =>
-    apiEnvelope<OrderAccept>("POST", `/v1/orders/${quoteId}/accept`, { payment_method: paymentMethod ?? null }),
+  accept: (quoteId: string, paymentMethod?: Record<string, unknown>, idempotencyKey?: string) =>
+    apiEnvelope<OrderAccept>(
+      "POST",
+      `/v1/orders/${quoteId}/accept`,
+      { payment_method: paymentMethod ?? null },
+      idempotencyHeaders(idempotencyKey),
+    ),
   // Post-accept status read, used for polling (see lib/hooks/useOrderStatus.ts).
   get: (merchantOrderId: number | string) => apiEnvelope<Order>("GET", `/v1/orders/${merchantOrderId}`),
   list: (params: OrderListParams = {}) => {
@@ -143,6 +178,22 @@ export const ordersApi = {
     return apiEnvelope<OrderList>("GET", `/v1/orders${query ? `?${query}` : ""}`);
   },
 };
+
+/**
+ * A fresh random key for one quote-or-accept attempt. Callers should mint a
+ * new key each time the request payload genuinely changes (new amount,
+ * new corridor, a fresh quote after expiry) and reuse the same key only when
+ * retrying the exact same request after a network failure — reusing it
+ * across different payloads would make the backend replay a stale response
+ * instead of processing the new one.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without `crypto.randomUUID` (older test runners).
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 
 const RAIL_TYPE_TO_ACCOUNT_TYPE: Record<string, AccountBlock["accountType"]> = {
   mobile: "momo",
@@ -244,6 +295,96 @@ export function buildSendQuotePayload(params: {
       ...(params.networkId ? { networkId: params.networkId } : {}),
     },
   };
+}
+
+/**
+ * Builds the OnRamp quote payload for the "Deposit -> By country" flow
+ * (topping up the business's own treasury wallet via mobile money or bank).
+ * Mirrors `buildSendQuotePayload`'s rail handling, but `source` is the payer
+ * account (the business's own MoMo number / bank account), not a recipient.
+ */
+export function buildDepositQuotePayload(params: {
+  currency: string;
+  countryIso: string; // 2-letter, any case
+  railType: string;
+  /** The business's own MoMo number or bank account being debited. */
+  payerAccountNumber: string;
+  /** Account holder name on `payerAccountNumber` — the business's own name. */
+  payerName: string;
+  amount: string;
+  /** EVM address the crypto lands in — the business's treasury wallet. */
+  walletAddress: string;
+  /** Country calling code, digits only (e.g. "254"). Mobile rails only. */
+  dialCode?: string;
+  /** Aggregator provider/institution id, see `buildSendQuotePayload`. */
+  networkId?: string;
+}): OnRampQuoteIn {
+  const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
+  if (!accountType) {
+    throw new Error(`Unsupported rail type for a deposit: "${params.railType}"`);
+  }
+  const accountNumber =
+    params.railType === "mobile"
+      ? toE164(params.payerAccountNumber, params.dialCode)
+      : params.payerAccountNumber;
+  return {
+    order_type: "OnRamp",
+    currency: params.currency.toUpperCase(),
+    country: params.countryIso.toUpperCase(),
+    local_amount: params.amount,
+    wallet_address: params.walletAddress,
+    source: {
+      accountType,
+      accountNumber,
+      accountName: params.payerName,
+      countryCode: params.countryIso.toUpperCase(),
+      ...(params.networkId ? { networkId: params.networkId } : {}),
+    },
+  };
+}
+
+export type PaymentInstructionRow = { k: string; v: string };
+
+/**
+ * Pure mapper from `payment_instructions` (returned by
+ * `POST /orders/{quote_id}/accept`, ORDER_FLOW.md "Accept Response Object")
+ * to display rows for the Deposit modal's bank/momo confirmation screen.
+ * Discriminated on `type` per `PaymentInstructionsOut` in the backend schema
+ * — only renders the fields that type actually carries, rather than
+ * dumping every possibly-null field.
+ */
+export function buildPaymentInstructionRows(
+  instructions: PaymentInstructions | null | undefined,
+): PaymentInstructionRow[] {
+  if (!instructions) return [];
+  const rows: PaymentInstructionRow[] = [];
+
+  if (instructions.type === "bank") {
+    const bankInfo = (instructions.bank_info ?? {}) as Record<string, unknown>;
+    const accountNumber = instructions.account_number ?? (bankInfo.accountNumber as string | undefined);
+    const bankName = instructions.bank_name ?? (bankInfo.bankName as string | undefined);
+    const holderName =
+      instructions.account_holder_name ?? (bankInfo.accountHolderName as string | undefined);
+    if (accountNumber) rows.push({ k: "Account number", v: String(accountNumber) });
+    if (bankName) rows.push({ k: "Bank", v: String(bankName) });
+    if (holderName) rows.push({ k: "Account name", v: String(holderName) });
+    if (instructions.reference) rows.push({ k: "Reference", v: instructions.reference });
+  } else if (instructions.type === "momo") {
+    const source = (instructions.source ?? {}) as Record<string, unknown>;
+    if (source.accountNumber) rows.push({ k: "Phone", v: String(source.accountNumber) });
+    if (source.networkName) rows.push({ k: "Network", v: String(source.networkName) });
+  } else if (instructions.type === "crypto_deposit") {
+    if (instructions.wallet_address) rows.push({ k: "Address", v: instructions.wallet_address });
+    if (instructions.amount) rows.push({ k: "Amount", v: String(instructions.amount) });
+    if (instructions.currency) rows.push({ k: "Asset", v: instructions.currency });
+    if (instructions.network) rows.push({ k: "Network", v: instructions.network });
+  }
+
+  if (instructions.expires_at) {
+    rows.push({ k: "Expires", v: new Date(instructions.expires_at).toLocaleString() });
+  }
+
+  return rows;
 }
 
 /**
