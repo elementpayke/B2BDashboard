@@ -61,15 +61,12 @@ function fromWidth(width: number, forceMobile?: boolean): ViewportState {
 }
 
 /**
- * SSR-safe viewport hook. Defaults to desktop to avoid compact flash on
- * large screens; compact clients correct on the first paint after mount.
+ * SSR-safe viewport hook. Always starts from the desktop SSR default so the
+ * hydration render matches the server; compact clients correct after mount.
  */
 export function useViewport(forceMobile?: boolean): ViewportState {
   const [vp, setVp] = useState<ViewportState>(() =>
-    fromWidth(
-      typeof window !== "undefined" ? window.innerWidth : BP.desktop,
-      forceMobile,
-    ),
+    fromWidth(BP.desktop, forceMobile),
   );
 
   useEffect(() => {

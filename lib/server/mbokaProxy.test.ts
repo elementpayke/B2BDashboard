@@ -135,6 +135,51 @@ describe("proxyRequest", () => {
     expect(res.cookies.get(REFRESH_COOKIE)?.value).toBe("");
   });
 
+  it("refreshes when the access cookie is missing but a refresh cookie is still present", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { status: "error", message: "not authenticated", data: null }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          status: "success",
+          message: "ok",
+          data: { access_token: "new-access", refresh_token: "new-refresh" },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: { totals: {} } }));
+
+    const req = makeRequest({ cookies: { [REFRESH_COOKIE]: "old-refresh" } });
+    const res = await proxyRequest(req, "/api/v1/dashboard/summary");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][0]).toContain("/api/auth/refresh");
+    const retryHeaders = fetchMock.mock.calls[2][1].headers as Headers;
+    expect(retryHeaders.get("authorization")).toBe("Bearer new-access");
+    expect(res.status).toBe(200);
+    expect(res.cookies.get(ACCESS_COOKIE)?.value).toBe("new-access");
+  });
+
+  it("does not forward upstream content-length or set-cookie headers", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "success", message: "ok", data: {} }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "content-length": "999",
+          "set-cookie": "backend_session=abc; Path=/",
+          "content-encoding": "gzip",
+        },
+      }),
+    );
+
+    const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" } });
+    const res = await proxyRequest(req, "/api/v1/dashboard/summary");
+
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(res.headers.get("content-encoding")).toBeNull();
+  });
+
   it("does not attempt a refresh loop when there is an access token but no refresh token", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(401, { status: "error", message: "invalid jwt", data: null }));
 

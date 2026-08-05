@@ -60,8 +60,13 @@ describe("apiClient", () => {
     await expect(apiEnvelope("GET", "/v1/transactions")).rejects.toBeInstanceOf(SessionExpiredError);
   });
 
-  it("throws ApiRequestError (not SessionExpiredError) when data is null on an otherwise-success-looking response", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: null }));
+  it("returns null on a successful envelope with intentional empty data (DELETE)", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "deleted", data: null }));
+    await expect(apiEnvelope<null>("DELETE", "/api-keys/1")).resolves.toBeNull();
+  });
+
+  it("throws ApiRequestError when a success envelope omits the data field entirely", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok" }));
     await expect(apiEnvelope("GET", "/v1/transactions")).rejects.toBeInstanceOf(ApiRequestError);
   });
 

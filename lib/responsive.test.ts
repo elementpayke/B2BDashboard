@@ -18,4 +18,10 @@ describe("responsive breakpoints", () => {
     expect(isCompactWidth(BP.desktop - 1)).toBe(true);
     expect(isCompactWidth(BP.desktop)).toBe(false);
   });
+
+  it("keeps the SSR default at desktop width", () => {
+    expect(BP.desktop).toBe(1024);
+    expect(getBreakpoint(BP.desktop)).toBe("desktop");
+    expect(isCompactWidth(BP.desktop)).toBe(false);
+  });
 });

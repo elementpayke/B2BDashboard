@@ -85,9 +85,12 @@ export default function DashboardApp(props: Props = {}) {
   // single global session-lost handler.
   const queryClient = useQueryClient();
   useEffect(() => {
-    setSessionLostHandler(() => router.push("/login"));
+    setSessionLostHandler(() => {
+      queryClient.clear();
+      router.push("/login");
+    });
     return () => setSessionLostHandler(null);
-  }, [router]);
+  }, [router, queryClient]);
 
   const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
   const summaryQuery = useQuery({ queryKey: ["dashboard-summary"], queryFn: dashboardApi.summary, retry: false });
@@ -1021,6 +1024,10 @@ Create payment
 
 {(isCards) ? (<>
 <div data-screen-label="Cards" style={{display: "flex", flexDirection: "column", gap: "16px"}}>
+<div role="note" style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--amber-tint)", border: "1px solid var(--border)", color: "var(--amber)"}}>
+<span style={{fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: "999px", background: "var(--amber)", color: "#fff"}}>Preview</span>
+<span style={{fontSize: "12.5px", fontWeight: 600, color: "var(--ink)"}}>Card balances and numbers are simulated demo data — not live accounts.</span>
+</div>
 <div style={{display: "flex", justifyContent: "flex-end"}}>
 <button onClick={openNewCard} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New card</button>
 </div>
@@ -1137,6 +1144,10 @@ Create payment
 
 {(isTeam) ? (<>
 <div data-screen-label="Team" style={{display: "flex", flexDirection: "column", gap: "14px", maxWidth: "760px"}}>
+<div role="note" style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--amber-tint)", border: "1px solid var(--border)", color: "var(--amber)"}}>
+<span style={{fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: "999px", background: "var(--amber)", color: "#fff"}}>Preview</span>
+<span style={{fontSize: "12.5px", fontWeight: 600, color: "var(--ink)"}}>Team members are simulated demo data — invites stay local to this session.</span>
+</div>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap"}}>
 <h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>Members · {teamCount}</h2>
 <button onClick={openInvite} style={{padding: "10px 16px", minHeight: "44px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Invite person</button>
