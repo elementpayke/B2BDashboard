@@ -12,6 +12,7 @@ import {
   authButtonStyle,
   authErrorStyle,
 } from "@/components/auth/authStyles";
+import { stashResetEmail } from "@/lib/auth/resetHandoff";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -47,7 +48,10 @@ export default function ForgotPasswordPage() {
           </p>
           <button
             style={authButtonStyle}
-            onClick={() => router.push(`/reset-password?email=${encodeURIComponent(email)}`)}
+            onClick={() => {
+              stashResetEmail(email);
+              router.push("/reset-password");
+            }}
           >
             Enter reset code
           </button>
