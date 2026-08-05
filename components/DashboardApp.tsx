@@ -32,6 +32,14 @@ import {
   isQuoteAlreadyAcceptedError,
   newIdempotencyKey,
 } from "@/lib/services/orders";
+import {
+  accountSendsApi,
+  buildSendPreviewPayload,
+} from "@/lib/services/accountSends";
+import {
+  accountForNetwork,
+  listSendableStablecoinAccounts,
+} from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { offRampProvidersForRail, onRampProvidersForRail, networkIdForProvider } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
@@ -39,6 +47,11 @@ import { useViewport } from "@/lib/responsive";
 import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
+
+/** Phase 4 account-sends support Base + Polygon USDC only. */
+const SEND_STABLECOIN_NETWORKS = DEPOSIT_NETWORKS.filter(
+  (n) => n.key === "base" || n.key === "polygon",
+);
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -78,6 +91,7 @@ export default function DashboardApp(props: Props = {}) {
     modal: qp("modal") || null,
     sendStep: 1, sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
+    sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
@@ -278,16 +292,48 @@ export default function DashboardApp(props: Props = {}) {
   const openModal = (name) => () => setState({
     modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
     newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
   });
+
+  // Ready USDC Base/Polygon FinancialAccounts for the Stablecoin send tab
+  // (Phase 4 `/v1/accounts/{id}/sends`). Fetched when the Send modal opens.
+  const sendableAccountsQuery = useQuery({
+    queryKey: ["sendable-stablecoin-accounts"],
+    queryFn: listSendableStablecoinAccounts,
+    enabled: state.modal === "send",
+    retry: false,
+    staleTime: 30_000,
+  });
+
   const sendNext = async () => {
-    // Step 2 -> 3 is where a real payout ("by country") fetches a real
-    // quote; step 1 -> 2 is just gathering rail/country choice, and the
-    // simulated crypto tab never calls the backend (no such endpoint).
+    // Stablecoin tab step 1 → 2: require a ready USDC account on the chosen
+    // network before collecting the recipient (Phase 4).
+    if (state.sendStep === 1 && state.sendGroup === "crypto") {
+      const accounts = sendableAccountsQuery.data ?? [];
+      const account = accountForNetwork(accounts, state.sendChain);
+      if (!account) {
+        setState({
+          sendQuoteError: sendableAccountsQuery.isLoading
+            ? "Loading your USDC accounts…"
+            : `No ready USDC account on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label || state.sendChain}. Open a Base or Polygon USDC account first.`,
+        });
+        return;
+      }
+      setState({
+        sendStep: 2,
+        sendAccountId: account.id,
+        sendQuoteError: "",
+        sendPreview: null,
+        sendAcceptError: "",
+      });
+      return;
+    }
+    // Step 2 -> 3: OffRamp quote (by country) or account-send preview (stablecoin).
     if (state.sendStep === 2 && state.sendGroup === "country") {
       if (!state.sendRecipient.trim() || !state.sendRecipientName.trim() || !state.sendAmount.trim()) return;
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
@@ -342,9 +388,49 @@ export default function DashboardApp(props: Props = {}) {
       }
       return;
     }
+    if (state.sendStep === 2 && state.sendGroup === "crypto") {
+      if (!state.sendRecipient.trim() || !state.sendAmount.trim()) return;
+      setState({ sendQuoteLoading: true, sendQuoteError: "" });
+      try {
+        const accounts = sendableAccountsQuery.data ?? [];
+        const account =
+          accountForNetwork(accounts, state.sendChain) ||
+          accounts.find((a) => a.id === state.sendAccountId);
+        if (!account) {
+          throw new Error("No ready USDC account on this network.");
+        }
+        const payload = buildSendPreviewPayload({
+          toAddress: state.sendRecipient.trim(),
+          amount: state.sendAmount.trim(),
+          networkKey: state.sendChain,
+        });
+        const preview = await accountSendsApi.preview(account.id, payload);
+        setState({
+          sendQuoteLoading: false,
+          sendPreview: preview,
+          sendAccountId: account.id,
+          sendStep: 3,
+        });
+      } catch (err) {
+        setState({
+          sendQuoteLoading: false,
+          sendQuoteError:
+            err instanceof ApiRequestError || err instanceof Error
+              ? err.message
+              : "Couldn't preview this send. Try again.",
+        });
+      }
+      return;
+    }
     setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
   };
-  const sendBack = () => setState((s: any) => ({ sendStep: Math.max(1, s.sendStep - 1), sendQuoteError: "" }));
+  const sendBack = () =>
+    setState((s: any) => ({
+      sendStep: Math.max(1, s.sendStep - 1),
+      sendQuoteError: "",
+      sendAcceptError: "",
+      ...(s.sendStep === 3 ? { sendPreview: null, sendQuote: null } : {}),
+    }));
   const depositNext = async () => {
     if (state.depositGroup === "crypto") {
       setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1) }));
@@ -446,10 +532,33 @@ export default function DashboardApp(props: Props = {}) {
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
   const submitSend = async () => {
-    if (state.sendGroup !== "country") {
-      // Direct stablecoin transfers have no backend endpoint yet — stays
-      // a local simulation (see docs/api-contract.md).
-      if (state.sendRecipient.trim() && state.sendAmount.trim()) setState({ sendDone: true });
+    if (state.sendGroup === "crypto") {
+      if (!state.sendPreview?.preview_token || !state.sendAccountId) return;
+      setState({ sendAccepting: true, sendAcceptError: "" });
+      try {
+        // Idempotency-Key is REQUIRED (8–64 chars) — mint once per confirm
+        // attempt; retries of the exact same confirm should reuse the key,
+        // but a new preview gets a new confirm key.
+        const idempotencyKey = newIdempotencyKey();
+        const confirmed = await accountSendsApi.confirm(
+          state.sendAccountId,
+          { preview_token: state.sendPreview.preview_token },
+          idempotencyKey,
+        );
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        setState({ sendAccepting: false, sendConfirm: confirmed, sendDone: true });
+      } catch (err) {
+        setState({
+          sendAccepting: false,
+          sendAcceptError:
+            err instanceof ApiRequestError || err instanceof Error
+              ? err.message
+              : "Couldn't confirm this send. Try again.",
+        });
+      }
       return;
     }
     if (!state.sendQuote) return;
@@ -546,8 +655,8 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const setSendAsset = (k) => () => setState({ sendAsset: k });
-  const setSendChain = (k) => () => setState({ sendChain: k });
+  const setSendAsset = (k) => () => setState({ sendAsset: k, sendPreview: null, sendQuoteError: "" });
+  const setSendChain = (k) => () => setState({ sendChain: k, sendPreview: null, sendAccountId: "", sendQuoteError: "" });
   const setDepositAsset = (k) => () => setState({ depositAsset: k });
   const setDepositNetwork = (k) => () => setState({ depositNetwork: k });
 
@@ -702,7 +811,17 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
-  const setSendGroup = (g) => () => setState({ sendGroup: g, sendCountryIdx: 0 });
+  const setSendGroup = (g) => () =>
+    setState({
+      sendGroup: g,
+      sendCountryIdx: 0,
+      sendQuoteError: "",
+      sendAcceptError: "",
+      sendPreview: null,
+      sendConfirm: null,
+      sendAccountId: "",
+      sendAsset: "usdc",
+    });
 
 
     const s = state;
@@ -1157,9 +1276,11 @@ export default function DashboardApp(props: Props = {}) {
   const sendQuoteError = s.sendQuoteError;
   const sendAccepting = s.sendAccepting;
   const sendAcceptError = s.sendAcceptError;
-  const sendResultText = s.sendAccept
-    ? `Order #${s.sendAccept.merchant_order_id} · ${s.sendAccept.status}`
-    : null;
+  const sendResultText = s.sendConfirm
+    ? `${s.sendConfirm.amount} ${s.sendConfirm.currency} · ${s.sendConfirm.status}${s.sendConfirm.id ? ` · ${s.sendConfirm.id}` : ""}`
+    : s.sendAccept
+      ? `Order #${s.sendAccept.merchant_order_id} · ${s.sendAccept.status}`
+      : null;
   // Live status on the send-success step, via the same polling hook the tx
   // detail modal uses. `sendStatusQuery.data` starts undefined right after
   // accept (first poll hasn't landed yet) — fall back to the accept
@@ -1172,8 +1293,10 @@ export default function DashboardApp(props: Props = {}) {
     ? { label: sendLiveLabel as string, color: sendLiveColor as string, soft: sendLiveSoft as string, isSettling: !sendStatusQuery.isTerminal }
     : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
-  const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "e.g. 0x9F2c... or .eth" : sendRail.placeholder;
-  const sendCorridorText = s.sendGroup === "crypto" ? "Sends USDC directly on Base — no FX conversion." : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
+  const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "0x… (EVM address)" : sendRail.placeholder;
+  const sendCorridorText = s.sendGroup === "crypto"
+    ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base/Polygon"} via account send — min 1.00 USDC.`
+    : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
@@ -1210,10 +1333,11 @@ export default function DashboardApp(props: Props = {}) {
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
-  const sendAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const sendChains = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  // Phase 4: USDC only (USDT has no account-send path).
+  const sendAssets = ["usdc"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
+  const sendChains = SEND_STABLECOIN_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const sendAssetCode = s.sendAsset.toUpperCase();
-  const sendChainLabel = DEPOSIT_NETWORKS.find(n => n.key === s.sendChain).label;
+  const sendChainLabel = SEND_STABLECOIN_NETWORKS.find(n => n.key === s.sendChain)?.label || s.sendChain;
   const sendDestinationSummary = buildSendDestinationSummary({
     sendGroup: s.sendGroup,
     sendAsset: s.sendAsset,
@@ -1221,20 +1345,26 @@ export default function DashboardApp(props: Props = {}) {
     countryName: sendCountry.name,
     providerName: sendProvider,
   });
-  // Real quote fields for the "by country" flow once a quote has been
-  // fetched; the crypto tab has no backend quote at all (stays simulated).
+  // OffRamp quote (by country) or account-send preview (stablecoin).
   const sendQuote = s.sendQuote;
+  const sendPreview = s.sendPreview;
   const sendFeeText = s.sendGroup === "crypto"
-    ? "Network fee ≈ $0.85"
+    ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} USDC` : "Fee from preview")
     : sendQuote
       ? formatQuoteFees(sendQuote.amounts.fees)
       : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
   const sendArrivalText = s.sendGroup === "crypto"
-    ? "Arrives in ~30 seconds"
+    ? (sendPreview?.expires_at
+      ? `Preview valid until ${new Date(sendPreview.expires_at).toLocaleTimeString()}`
+      : "On-chain settlement · status via account.send.* webhooks")
     : sendQuote?.expires_at
       ? `Quote valid until ${new Date(sendQuote.expires_at).toLocaleTimeString()}`
       : sendRail.arrival;
-  const sendQuoteRateText = sendQuote?.amounts.rate ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}` : null;
+  const sendQuoteRateText = s.sendGroup === "crypto"
+    ? (sendPreview?.receive_amount != null ? `${sendPreview.receive_amount} ${sendPreview.currency || "USDC"}` : null)
+    : sendQuote?.amounts.rate
+      ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}`
+      : null;
   const depositStep = s.depositStep;
   const depositStepDots = buildDepositStepDots(s.depositStep, s.depositGroup === "country" ? 3 : 2);
   const depositStepIs1 = s.depositStep === 1;

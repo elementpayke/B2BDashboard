@@ -139,6 +139,7 @@ export default function SendModal(p: SendModalProps) {
                       </div>
                     </>
                   ) : null}
+                  {p.sendQuoteError && p.sendIsCrypto ? (<div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600 }}>{p.sendQuoteError}</div>) : null}
                   <button onClick={p.sendNext} style={{ padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer" }}>Continue</button>
                 </div>
               </>
