@@ -9,6 +9,7 @@ export const TX_FILTERS: { key: string; label: string; status: TransactionStatus
   { key: "completed", label: "Settled", status: "completed" },
   { key: "processing", label: "Pending", status: "processing" },
   { key: "failed", label: "Failed", status: "failed" },
+  { key: "refunded", label: "Refunded", status: "refunded" },
   { key: "canceled", label: "Canceled", status: "canceled" },
   { key: "frozen", label: "Frozen", status: "frozen" },
 ];

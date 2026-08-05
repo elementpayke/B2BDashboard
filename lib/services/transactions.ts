@@ -1,7 +1,10 @@
 import { apiEnvelope } from "@/lib/apiClient";
 
-// Mboka-normalized status values (backend: processing/completed/failed/canceled/frozen).
-export type TransactionStatus = "processing" | "completed" | "failed" | "canceled" | "frozen";
+// Mboka-normalized status values — all 6 canonical order statuses, since a
+// transaction is a read-view over merchant_orders (app/services/orders/status.py
+// ALL_ORDER_STATUSES). "refunded" was missing here, which meant a refunded
+// order silently fell through to the TX_STATUS_DISPLAY "Unknown" fallback.
+export type TransactionStatus = "processing" | "completed" | "failed" | "refunded" | "canceled" | "frozen";
 export type TransactionDirection = "in" | "out" | "unknown";
 
 export type Transaction = {
