@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildSendQuotePayload, formatQuoteFees } from "./orders";
+import { ApiRequestError } from "@/lib/apiClient";
+import {
+  buildSendQuotePayload,
+  formatQuoteFees,
+  isQuoteExpiredError,
+  isQuoteAlreadyAcceptedError,
+} from "./orders";
 
 const baseParams = {
   currency: "kes",
@@ -45,6 +51,45 @@ describe("buildSendQuotePayload", () => {
     expect(payload.destination.accountNumber).toBe("0712345678");
     expect(payload.destination.accountName).toBe("Jane Mukami");
     expect(payload.refund_address).toBe(baseParams.refundAddress);
+  });
+
+  it("includes destination.networkId when a real catalog provider id is supplied", () => {
+    const payload = buildSendQuotePayload({
+      ...baseParams,
+      railType: "mobile",
+      networkId: "7ea6df5c-6bba-46b2-a7e6-f511959e7edb",
+    });
+    expect(payload.destination.networkId).toBe("7ea6df5c-6bba-46b2-a7e6-f511959e7edb");
+  });
+
+  it("omits destination.networkId rather than sending an empty string when the catalog has no match", () => {
+    const payload = buildSendQuotePayload({ ...baseParams, railType: "mobile" });
+    expect(payload.destination).not.toHaveProperty("networkId");
+  });
+});
+
+describe("isQuoteExpiredError", () => {
+  it("recognizes a 410 as a quote-expired error", () => {
+    expect(isQuoteExpiredError(new ApiRequestError("Quote expired", 410))).toBe(true);
+  });
+
+  it("does not classify other statuses as quote-expired", () => {
+    expect(isQuoteExpiredError(new ApiRequestError("Not found", 404))).toBe(false);
+    expect(isQuoteExpiredError(new Error("network down"))).toBe(false);
+    expect(isQuoteExpiredError(null)).toBe(false);
+  });
+});
+
+describe("isQuoteAlreadyAcceptedError", () => {
+  it("recognizes a 409 as an already-accepted conflict", () => {
+    expect(isQuoteAlreadyAcceptedError(new ApiRequestError("Quote already accepted.", 409))).toBe(
+      true,
+    );
+  });
+
+  it("does not classify other statuses as an accept conflict", () => {
+    expect(isQuoteAlreadyAcceptedError(new ApiRequestError("Quote expired", 410))).toBe(false);
+    expect(isQuoteAlreadyAcceptedError(null)).toBe(false);
   });
 });
 
