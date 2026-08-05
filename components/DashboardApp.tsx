@@ -50,6 +50,11 @@ import CreateAccountModal from "@/components/wallets/CreateAccountModal";
 import AccountDetailModal from "@/components/wallets/AccountDetailModal";
 import DepositModal from "@/components/deposit/DepositModal";
 import ReceiveModal from "@/components/deposit/ReceiveModal";
+import VerificationScreen from "@/components/verification/VerificationScreen";
+import KybWizardModal from "@/components/verification/KybWizardModal";
+import KybGateBanner from "@/components/verification/KybGateBanner";
+import { useKybWizard } from "@/lib/hooks/useKybWizard";
+import { canOpenKybWizard, describeKybStatus, isKybApproved, kybTierDisplay } from "@/lib/services/kyb";
 
 type Props = {
   boostDarkContrast?: boolean;
@@ -120,6 +125,17 @@ export default function DashboardApp(props: Props = {}) {
   }, [router, queryClient]);
 
   const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
+  const businessId = meQuery.data?.business?.id ?? null;
+  const kybWizard = useKybWizard({
+    businessId,
+    kybSummary: meQuery.data?.kyb_summary,
+    business: meQuery.data?.business,
+    enabled: state.modal === "kyb",
+    onSubmitted: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
+    },
+  });
   const summaryQuery = useQuery({ queryKey: ["dashboard-summary"], queryFn: dashboardApi.summary, retry: false });
   const transactionsQuery = useQuery({
     queryKey: ["transactions"],
@@ -410,6 +426,17 @@ export default function DashboardApp(props: Props = {}) {
   const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
   const openModalTier = () => setState({ modal: "tier", tierDone: false });
+  const openModalKyb = () => setState({ modal: "kyb" });
+  const goVerification = () => setState({ screen: "verification", sidebarOpen: false });
+  const guardMoneyModal = (name: string) => () => {
+    const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    if (!isKybApproved(status)) {
+      goVerification();
+      if (canOpenKybWizard(status)) openModalKyb();
+      return;
+    }
+    openModal(name)();
+  };
   const openModalSwapFromAcct = () => setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
 
   const selectSendCountry = (i) => () => setState({ sendCountryIdx: i, sendRailIdx: 0, sendProviderIdx: 0 });
@@ -896,11 +923,13 @@ export default function DashboardApp(props: Props = {}) {
         const view = mapDepositAccountToCardView(a);
         return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
       });
+  const kybStatus = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+  const kybApproved = isKybApproved(kybStatus);
   const quickActionTiles = [
-        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: openModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: openModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
+        { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: openModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
-        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: openModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;
   const fmtUsd = (v: string | number | undefined) =>
@@ -1009,25 +1038,14 @@ export default function DashboardApp(props: Props = {}) {
     return days.map((d) => ({ h: Math.round((d.total / max) * 100) }));
   })();
   const coverageChips = CURRENCIES.map(c => ({ flagUrl: flagUrl(c.iso), code: c.code }));
-  // Tier 1 reflects real account/email verification. Tier 2 reflects the
-  // real KYB status (the backend's one actual verification flow — see
-  // docs/api-contract.md for why the upload/submit step stays simulated).
-  // Tier 3 is a product concept with no backend counterpart at all yet, so
-  // it's gated on the real Tier 2 outcome but its own "upgrade" stays local.
+  // Tier 1 reflects real account/email verification. Tier 2 is the real Mboka
+  // KYB wizard (`/api/businesses/{id}/kyb/*`). Tier 3 has no backend yet.
   const emailVerified = !!meQuery.data?.user.email_verified;
-  const kybStatus = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
-  const KYB_TIER_DISPLAY: Record<string, [string, string, string]> = {
-    approved: ["Complete", "var(--indigo-text)", "var(--indigo-tint)"],
-    submitted: ["In review", "var(--amber)", "var(--amber-tint)"],
-    rejected: ["Rejected", "var(--red)", "var(--red-tint)"],
-    expired: ["Expired", "var(--red)", "var(--red-tint)"],
-    pending: ["Not started", "var(--muted)", "var(--surface2)"],
-  };
-  const [tier2Label, tier2Color, tier2Soft] = KYB_TIER_DISPLAY[kybStatus] || KYB_TIER_DISPLAY.pending;
-  const tier2Approved = kybStatus === "approved";
+  const tier2Display = kybTierDisplay(kybStatus);
+  const tier2Approved = kybApproved;
   const tiers = [
         { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: emailVerified ? "Complete" : "Pending", statusColor: emailVerified ? "var(--indigo-text)" : "var(--muted)", statusSoft: emailVerified ? "var(--indigo-tint)" : "var(--surface2)", locked: false },
-        { num: "TIER 2", title: "Registered Business", reqs: ["Certificate of incorporation","Tax registration","Proof of address"], limit: "Limit · $25,000 / day", statusLabel: tier2Label, statusColor: tier2Color, statusSoft: tier2Soft, locked: false },
+        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: canOpenKybWizard(kybStatus), kybActionLabel: kybStatus === "rejected" || kybStatus === "expired" ? "Continue verification" : "Start verification" },
         { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
       ];
   // The backend only ever returns the full plaintext key once, in the
@@ -1107,7 +1125,7 @@ export default function DashboardApp(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: "Account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: "Account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isModalSend = s.modal === "send";
@@ -1121,6 +1139,7 @@ export default function DashboardApp(props: Props = {}) {
   const isModalNewCard = s.modal === "newCard";
   const isModalInvoice = s.modal === "invoice";
   const isModalTier = s.modal === "tier";
+  const isModalKyb = s.modal === "kyb";
   const isModalFundCard = s.modal === "fundCard";
   const fundAmount = s.fundAmount;
   const fundCardNotDone = !s.fundCardDone;
@@ -1380,7 +1399,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 </div>
 {!isCompact ? (
-<button type="button" onClick={openModal("send")} className="ep-btn-primary" style={{width: "auto", padding: "10px 18px", minHeight: "44px", flexShrink: 0}}>
+<button type="button" onClick={guardMoneyModal("send")} className="ep-btn-primary" style={{width: "auto", padding: "10px 18px", minHeight: "44px", flexShrink: 0}}>
 Create payment
 </button>
 ) : null}
@@ -1428,6 +1447,10 @@ Create payment
 </div>
 ))}
 </div>
+
+{!kybApproved ? (
+<KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
+) : null}
 
 {/* 2. Create payment / quick actions */}
 <div className="ep-grid-quick">
@@ -1578,28 +1601,7 @@ Create payment
 </>) : null}
 
 {(isVerification) ? (<>
-<div data-screen-label="Verification" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div className="ep-grid-3">
-{(tiers || []).map((t: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "22px", position: "relative"}}>
-<span style={{position: "absolute", top: "20px", right: "20px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: (t.statusSoft), color: (t.statusColor)}}>{t.statusLabel}</span>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "11px", color: "var(--indigo-text)", letterSpacing: "0.1em"}}>{t.num}</div>
-<h3 style={{margin: "5px 0 8px", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px"}}>{t.title}</h3>
-<div style={{display: "flex", flexDirection: "column", gap: "7px", fontSize: "12.5px", color: "var(--muted)", margin: "10px 0 14px"}}>
-{(t.reqs || []).map((r: any, __i1: number) => (
-<React.Fragment key={__i1}><div>✓ {r}</div></React.Fragment>
-))}
-</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", color: "var(--muted)", padding: "9px 13px", borderRadius: "12px", background: "var(--surface2)"}}>{t.limit}</div>
-{(t.locked) ? (<>
-<button onClick={openModalTier} style={{width: "100%", marginTop: "14px", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Upgrade to Tier 3</button>
-</>) : null}
-</div>
-</React.Fragment>
-))}
-</div>
-</div>
+<VerificationScreen tiers={tiers} onUpgradeTier3={openModalTier} onStartKyb={openModalKyb} />
 </>) : null}
 
 {(isTeam) ? (<>
@@ -1731,7 +1733,7 @@ Create payment
 ))}
 </nav>
 {!modalOpen ? (
-<button type="button" className="ep-fab" onClick={openModal("send")} aria-label="Create payment">
+<button type="button" className="ep-fab" onClick={guardMoneyModal("send")} aria-label="Create payment">
 <span aria-hidden>↗</span> Create payment
 </button>
 ) : null}
@@ -2029,6 +2031,26 @@ Create payment
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
 </>) : null}
+</>) : null}
+
+{(isModalKyb) ? (<>
+<KybWizardModal
+  step={kybWizard.step}
+  stepDots={kybWizard.stepDots}
+  draft={kybWizard.draft}
+  patchDraft={kybWizard.patchDraft}
+  patchAssociate={kybWizard.patchAssociate}
+  error={kybWizard.error}
+  busy={kybWizard.busy}
+  docRows={kybWizard.docRows}
+  setDocumentFile={kybWizard.setDocumentFile}
+  uploadDocumentRow={kybWizard.uploadDocumentRow}
+  docsComplete={kybWizard.docsComplete}
+  submitted={kybWizard.submitted}
+  nextStep={kybWizard.nextStep}
+  backStep={kybWizard.backStep}
+  closeModal={closeModal}
+/>
 </>) : null}
 
 {(isModalTier) ? (<>
