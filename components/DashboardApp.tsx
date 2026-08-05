@@ -15,11 +15,19 @@ import { authApi } from "@/lib/services/auth";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import { depositAccountsApi } from "@/lib/services/depositAccounts";
-import { ordersApi, buildSendQuotePayload, formatQuoteFees } from "@/lib/services/orders";
+import {
+  ordersApi,
+  buildSendQuotePayload,
+  formatQuoteFees,
+  isQuoteExpiredError,
+  isQuoteAlreadyAcceptedError,
+} from "@/lib/services/orders";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
+import { offRampProvidersForRail, networkIdForProvider } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
 import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
+import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -136,6 +144,10 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: () => apiKeysApi.list(),
     retry: false,
   });
+  // Public supported-catalog, used by the Send ("by country") flow to
+  // resolve a real aggregator networkId per provider instead of relying on
+  // the hardcoded corridor list alone. See lib/services/catalog.ts.
+  const sendCatalogQuery = useSendCatalog();
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
   // details so the Developer screen's webhook rows show real values.
@@ -191,6 +203,24 @@ export default function DashboardApp(props: Props = {}) {
         }
         const country = COUNTRIES[state.sendCountryIdx];
         const rail = country.rails[state.sendRailIdx] || country.rails[0];
+        // Real catalog providers for this corridor, when available, carry
+        // the aggregator's networkId — falling back to the hardcoded
+        // option list (and no networkId, same as pre-catalog behavior)
+        // when the catalog has no match yet. Must mirror the same lookup
+        // used to build the provider chips below so the id sent on quote
+        // always matches what the user actually selected.
+        const catalogProviders = offRampProvidersForRail(
+          sendCatalogQuery.data,
+          country.iso,
+          rail.type,
+          country.code,
+        );
+        const providerOptions =
+          catalogProviders && catalogProviders.length > 0
+            ? catalogProviders.map((p) => p.name)
+            : rail.options;
+        const providerName = providerOptions[state.sendProviderIdx] || providerOptions[0];
+        const networkId = networkIdForProvider(catalogProviders, providerName);
         const payload = buildSendQuotePayload({
           currency: country.code,
           countryIso: country.iso,
@@ -201,6 +231,7 @@ export default function DashboardApp(props: Props = {}) {
           refundAddress,
           // Mobile rails need E.164; the field's placeholder is local format.
           dialCode: country.dialCode,
+          networkId,
         });
         const quote = await ordersApi.quote(payload);
         setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
@@ -248,6 +279,25 @@ export default function DashboardApp(props: Props = {}) {
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       setState({ sendAccepting: false, sendAccept: accepted, sendDone: true });
     } catch (err) {
+      if (isQuoteExpiredError(err)) {
+        // The quote_id is dead server-side — send the user back to fetch a
+        // fresh quote with the same inputs rather than retrying accept.
+        setState({
+          sendAccepting: false,
+          sendQuote: null,
+          sendStep: 2,
+          sendAcceptError: "",
+          sendQuoteError: "That quote expired. Press Review to get a fresh price, then try again.",
+        });
+        return;
+      }
+      if (isQuoteAlreadyAcceptedError(err)) {
+        // A duplicate accept (e.g. a double-click) already produced an
+        // order for this quote_id — the payout went through, so this is
+        // not a failure to show the user.
+        setState({ sendAccepting: false, sendAccept: null, sendDone: true });
+        return;
+      }
       setState({
         sendAccepting: false,
         sendAcceptError: err instanceof ApiRequestError ? err.message : "Couldn't send the payment. Try again.",
@@ -451,8 +501,21 @@ export default function DashboardApp(props: Props = {}) {
     const sendCountry = COUNTRIES[s.sendCountryIdx];
     const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
     const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
-    const sendProvider = sendRail.options[s.sendProviderIdx] || sendRail.options[0];
-    const sendProviderChips = sendRail.options.map((name, i) => ({ name, select: selectSendProvider(i), bg: i === s.sendProviderIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendProviderIdx ? "var(--indigo)" : "transparent" }));
+    // Real catalog providers for this corridor when the aggregator has one
+    // (carries a real networkId — see sendNext); otherwise the existing
+    // hardcoded option list, so an un-onboarded corridor still renders.
+    const sendCatalogProviders = offRampProvidersForRail(
+      sendCatalogQuery.data,
+      sendCountry.iso,
+      sendRail.type,
+      sendCountry.code,
+    );
+    const sendProviderOptions =
+      sendCatalogProviders && sendCatalogProviders.length > 0
+        ? sendCatalogProviders.map((p) => p.name)
+        : sendRail.options;
+    const sendProvider = sendProviderOptions[s.sendProviderIdx] || sendProviderOptions[0];
+    const sendProviderChips = sendProviderOptions.map((name, i) => ({ name, select: selectSendProvider(i), bg: i === s.sendProviderIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendProviderIdx ? "var(--indigo)" : "transparent" }));
 
     const depositCountryChips = allCountryChips(s.depositCountryIdx, selectDepositCountry).map(c => ({ ...c, selectDeposit: c.select, depositBg: c.bg, depositBorder: c.border }));
     const depositCountry = COUNTRIES[s.depositCountryIdx];

@@ -1,4 +1,4 @@
-import { apiEnvelope } from "@/lib/apiClient";
+import { apiEnvelope, ApiRequestError } from "@/lib/apiClient";
 
 export type AccountBlock = {
   accountType: "momo" | "bank" | "till" | "paybill";
@@ -184,6 +184,14 @@ export function buildSendQuotePayload(params: {
   refundAddress: string;
   /** Country calling code, digits only (e.g. "254"). Mobile rails only. */
   dialCode?: string;
+  /**
+   * Aggregator provider/institution id from
+   * `GET /v1/supported/catalog` -> `providers[].id` for the selected
+   * corridor (see `lib/services/catalog.ts`). Omitted when the catalog has
+   * no match for this corridor yet — the aggregator then falls back to its
+   * own default provider for the rail, same as before this was wired up.
+   */
+  networkId?: string;
 }): OffRampQuoteIn {
   const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
   if (!accountType) {
@@ -204,6 +212,26 @@ export function buildSendQuotePayload(params: {
       accountNumber,
       accountName: params.recipientName,
       countryCode: params.countryIso.toUpperCase(),
+      ...(params.networkId ? { networkId: params.networkId } : {}),
     },
   };
+}
+
+/**
+ * `POST /orders/{quote_id}/accept` returns 410 once the quote has expired
+ * server-side (see `Mboka-Backend/docs/api/ORDER_FLOW.md` "Errors FE
+ * Should Branch On"). The contract is "re-quote with the same inputs", not
+ * "retry the same accept" — the quote_id is dead.
+ */
+export function isQuoteExpiredError(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.status === 410;
+}
+
+/**
+ * 409 on accept means a duplicate request (e.g. a double-click) already
+ * produced an order for this exact quote_id — not a failure to surface as
+ * an error, since the payout did go through.
+ */
+export function isQuoteAlreadyAcceptedError(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.status === 409;
 }

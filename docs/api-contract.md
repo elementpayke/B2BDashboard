@@ -34,7 +34,7 @@ the exact failure mode). See
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status` | Tier badges reflect real KYB status. The "upload documents" submission flow stays simulated — see Gaps. |
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
-| Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept` | OffRamp payout flow. See mapping notes below. |
+| Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
 
 ## Simulated (local only, no backend call)
 
@@ -75,10 +75,33 @@ the exact failure mode). See
   mobile-money payout failed. Bank account numbers are passed through
   untouched: they can legitimately start with `0`, and rewriting one would
   send money to a different account.
-- `destination.networkId` (aggregator provider id) is omitted — the send
-  modal's "provider" chips are still the hardcoded `COUNTRIES` list, not
-  wired to `GET /v1/supported/catalog`, so we don't have a real id to send.
-  The aggregator falls back to its own default provider for the rail.
+- `destination.networkId` (aggregator provider id) is now resolved from
+  `GET /v1/supported/catalog` (`lib/services/catalog.ts`,
+  `offRampProvidersForRail`/`networkIdForProvider`), for the country + rail
+  type the user picked in the "by country" tab. When the catalog has a real,
+  enabled provider list for that corridor
+  (`data.offramp.countries[ISO]`, falling back to
+  `data.international_bank.currencies[CCY]` for cross-border wire
+  currencies like EUR/USD/GBP that aren't modeled as "countries" upstream),
+  the send modal's provider chips render those real providers and the
+  selected one's `id` is sent as `networkId`. When the catalog has no match
+  yet for a corridor (not onboarded, still loading, or the aggregator is
+  unreachable), the modal falls back to the existing hardcoded
+  `COUNTRIES[].rails[].options` list and `networkId` is omitted, same as
+  before — the aggregator then falls back to its own default provider for
+  the rail. `refund_address` and mobile E.164 normalisation are unaffected.
+- **410 quote expired** on `POST /orders/{quote_id}/accept`: the UI clears
+  the stale quote, returns to the amount/recipient step, and shows "That
+  quote expired. Press Review to get a fresh price, then try again." —
+  pressing Review re-runs `POST /v1/orders/quote` with the same inputs
+  rather than retrying `accept` on a dead `quote_id`
+  (`isQuoteExpiredError` in `lib/services/orders.ts`).
+- **409 already accepted** on `POST /orders/{quote_id}/accept` (e.g. a
+  double-click): treated as a completed send rather than an error, since a
+  duplicate accept means the order already exists
+  (`isQuoteAlreadyAcceptedError`). The success screen falls back to its
+  generic amount/recipient summary line since the 409 response doesn't
+  carry the original accept payload.
 
 ## Order status lifecycle (`lib/hooks/useOrderStatus.ts`)
 
@@ -114,9 +137,15 @@ list, that transaction's own detail query, and the dashboard summary.
    the simulated "upload 3 documents" modal.
 4. **Send modal — Stablecoin tab**: no backend endpoint for direct
    wallet-to-wallet transfers; stays simulated until one exists.
-5. **Supported catalog**: wire `GET /v1/supported/catalog` into the Send/
+5. **Supported catalog**: ~~wire `GET /v1/supported/catalog` into the Send/
    Deposit modals' country+provider pickers instead of the hardcoded list,
-   which would also unlock real `networkId` routing.
+   which would also unlock real `networkId` routing.~~ **Done for Send** —
+   the "by country" tab's provider chips and `destination.networkId` are now
+   catalog-driven (see mapping notes above), falling back to the hardcoded
+   list for corridors the catalog doesn't cover. The **Deposit modal**'s
+   country+provider pickers are still the hardcoded list — that flow is
+   explicitly out of scope for this change (see `components/deposit/**`)
+   and stays a follow-up.
 6. **Dead code**: a few now-unreachable rendervals/handlers remain from the
    original all-mock prototype (e.g. `modalTitle`'s `cardDetail`/`newCard`/
    `fundCard` entries) — harmless, safe to prune in a follow-up pass.
