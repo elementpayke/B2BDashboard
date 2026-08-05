@@ -123,6 +123,19 @@ export async function apiEnvelope<T>(
   return envelopeFromResponse<T>(res);
 }
 
+/** For multipart uploads proxied through /api/mboka/... (e.g. KYB documents).
+ * Deliberately does not go through `rawFetch` — a `FormData` body needs the
+ * browser to set its own `Content-Type: multipart/form-data; boundary=...`
+ * header, which `rawFetch`'s hardcoded `application/json` would break. */
+export async function apiUpload<T>(method: string, path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${MBOKA_PREFIX}${path}`, {
+    method,
+    body: formData,
+    credentials: "same-origin",
+  });
+  return envelopeFromResponse<T>(res);
+}
+
 /** For our own dedicated auth routes (/api/auth/...), which aren't behind
  * the generic proxy since they need to intercept tokens rather than pass
  * them through. */

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   apiEnvelope,
+  apiUpload,
   authEnvelope,
   ApiRequestError,
   SessionExpiredError,
@@ -86,5 +87,26 @@ describe("apiClient", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: { ok: true } }));
     await authEnvelope("POST", "/api/auth/login", { email: "a@b.com", password: "x" });
     expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/login");
+  });
+
+  it("apiUpload sends the FormData body through the proxy without forcing a JSON content-type", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { status: "success", message: "ok", data: { id: 1 } }));
+    const form = new FormData();
+    form.set("document_type", "certificate_of_incorporation");
+    const data = await apiUpload<{ id: number }>("POST", "/businesses/1/kyb/documents", form);
+    expect(data).toEqual({ id: 1 });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/mboka/businesses/1/kyb/documents");
+    expect(init.body).toBe(form);
+    expect(init.headers).toBeUndefined();
+  });
+
+  it("apiUpload surfaces backend validation errors from the envelope", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(422, { status: "error", message: "Unsupported file type.", data: null }));
+    await expect(apiUpload("POST", "/businesses/1/kyb/documents", new FormData())).rejects.toMatchObject({
+      name: "ApiRequestError",
+      message: "Unsupported file type.",
+      status: 422,
+    });
   });
 });
