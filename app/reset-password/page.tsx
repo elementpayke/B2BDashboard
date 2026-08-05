@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
@@ -12,17 +12,37 @@ import {
   authButtonStyle,
   authErrorStyle,
 } from "@/components/auth/authStyles";
+import {
+  clearResetHandoff,
+  readResetHandoff,
+  takeQueryResetParams,
+} from "@/lib/auth/resetHandoff";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState(searchParams.get("email") || "");
-  const [token, setToken] = useState(searchParams.get("code") || "");
+  const [email, setEmail] = useState("");
+  const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [reset, setReset] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  // Prefer sessionStorage handoff. If Mboka email links still arrive with
+  // ?email=&code=, migrate into sessionStorage and strip the query immediately
+  // so credentials do not linger in history / Referer.
+  useEffect(() => {
+    const fromQuery = takeQueryResetParams(searchParams);
+    if (fromQuery.stripped) {
+      router.replace("/reset-password");
+    }
+    const handoff = readResetHandoff();
+    setEmail(fromQuery.email || handoff.email);
+    setToken(fromQuery.code || handoff.code);
+    setReady(true);
+  }, [router, searchParams]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -40,12 +60,17 @@ function ResetPasswordForm() {
     setSubmitting(true);
     try {
       await authApi.resetPassword(email, token, password);
+      clearResetHandoff();
       setReset(true);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Unable to reset your password.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!ready) {
+    return null;
   }
 
   if (reset) {
