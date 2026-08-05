@@ -16,6 +16,7 @@ import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import { depositAccountsApi } from "@/lib/services/depositAccounts";
 import { ordersApi, buildSendQuotePayload, formatQuoteFees } from "@/lib/services/orders";
+import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
 import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
@@ -58,7 +59,7 @@ export default function DashboardApp(props: Props = {}) {
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
     stableSel: "USDC", txFilter: "all",
-    selectedTxIdx: 0, selectedAcctIdx: 0, selectedCardIdx: 0,
+    selectedTxId: null as number | null, selectedAcctIdx: 0, selectedCardIdx: 0,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
     apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyCreating: false, apiKeyError: "", newlyCreatedKey: null as any,
     addAccountMenu: false, createAccountKind: "bank", createAccountName: "",
@@ -105,6 +106,25 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: transactionsApi.list,
     retry: false,
     refetchInterval: 15_000,
+  });
+  // Tx detail modal fetches by id, not by list index/position — the list can
+  // reorder or refetch (15s poll above) while the modal is open, and an
+  // index would silently point at a different transaction.
+  const txDetailQuery = useQuery({
+    queryKey: ["transaction", state.selectedTxId],
+    queryFn: () => transactionsApi.get(state.selectedTxId as number),
+    enabled: state.selectedTxId != null && state.modal === "txDetail",
+    retry: false,
+  });
+  // Live order-status polling (backoff) for whichever order is currently
+  // in view: the tx detail modal, or the send modal's just-accepted order.
+  // See lib/hooks/useOrderStatus.ts for why this polls rather than using
+  // the backend's WebSocket (which requires a JWT in the browser).
+  const txStatusQuery = useOrderStatus(state.selectedTxId, {
+    enabled: state.modal === "txDetail" && state.selectedTxId != null,
+  });
+  const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
+    enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
   });
   const invoicesQuery = useQuery({
     queryKey: ["invoices"],
@@ -199,7 +219,7 @@ export default function DashboardApp(props: Props = {}) {
   const depositBack = () => setState(s => ({ depositStep: Math.max(1, s.depositStep - 1) }));
   const closeModal = () => setState({ modal: null });
   const stopClick = (e) => e.stopPropagation();
-  const openTxDetail = (i) => () => setState({ modal: "txDetail", selectedTxIdx: i });
+  const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   const openAcctDetail = (i) => () => setState({ modal: "acctDetail", selectedAcctIdx: i });
   const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
   const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
@@ -457,10 +477,11 @@ export default function DashboardApp(props: Props = {}) {
       processing: ["Pending", "var(--amber)", "var(--amber-tint)"],
       completed: ["Settled", "var(--indigo-text)", "var(--indigo-tint)"],
       failed: ["Failed", "var(--red)", "var(--red-tint)"],
+      refunded: ["Refunded", "var(--amber)", "var(--amber-tint)"],
       canceled: ["Canceled", "var(--muted)", "var(--surface2)"],
       frozen: ["Frozen", "var(--red)", "var(--red-tint)"],
     };
-    const decorateTx = (t: Transaction, i: number) => {
+    const decorateTx = (t: Transaction) => {
       const [label, color, soft] = TX_STATUS_DISPLAY[t.status] || ["Unknown", "var(--muted)", "var(--surface2)"];
       const sign = t.direction === "out" ? "-" : t.direction === "in" ? "+" : "";
       const clientLabel = t.external_order_id || t.aggregator_order_id || `Order #${t.id}`;
@@ -476,14 +497,24 @@ export default function DashboardApp(props: Props = {}) {
         statusColor: color,
         statusSoft: soft,
         amountColor: sign === "+" ? "var(--indigo-text)" : "var(--ink)",
-        openDetail: openTxDetail(i),
+        openDetail: openTxDetail(t.id),
       };
     };
     const decoratedAll = (transactionsQuery.data?.items ?? []).map(decorateTx);
-    const filteredTransactions = filterTransactions(transactionsQuery.data?.items ?? [], s.txFilter).map((t) =>
-      decorateTx(t, (transactionsQuery.data?.items ?? []).indexOf(t)),
-    );
-    const txDetail = decoratedAll[s.selectedTxIdx];
+    const filteredTransactions = filterTransactions(transactionsQuery.data?.items ?? [], s.txFilter).map(decorateTx);
+    // Fetched by id (txDetailQuery), independent of the list above — see
+    // openTxDetail. Falls back to the list's cached copy while the detail
+    // fetch is in flight so the modal isn't blank on first open.
+    const txDetail = txDetailQuery.data
+      ? decorateTx(txDetailQuery.data)
+      : decoratedAll.find((t) => t.id === s.selectedTxId);
+    const txLiveStatus =
+      s.modal === "txDetail" && txDetail && !txStatusQuery.isTerminal
+        ? {
+            label: txStatusQuery.isFrozen ? "Frozen — needs review" : "Tracking live — updates automatically",
+            isFetching: txStatusQuery.isFetching,
+          }
+        : null;
     const acctDetail = { ...ACCOUNTS[s.selectedAcctIdx], flagUrl: flagUrl(ACCOUNTS[s.selectedAcctIdx].iso) };
     const cardSel = CARDS[s.selectedCardIdx];
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
@@ -741,6 +772,17 @@ export default function DashboardApp(props: Props = {}) {
   const sendAcceptError = s.sendAcceptError;
   const sendResultText = s.sendAccept
     ? `Order #${s.sendAccept.merchant_order_id} · ${s.sendAccept.status}`
+    : null;
+  // Live status on the send-success step, via the same polling hook the tx
+  // detail modal uses. `sendStatusQuery.data` starts undefined right after
+  // accept (first poll hasn't landed yet) — fall back to the accept
+  // response's own "processing" status rather than showing nothing.
+  const sendLiveOrderStatus = s.sendAccept ? sendStatusQuery.data?.status ?? "processing" : null;
+  const [sendLiveLabel, sendLiveColor, sendLiveSoft] = sendLiveOrderStatus
+    ? TX_STATUS_DISPLAY[sendLiveOrderStatus] || ["Unknown", "var(--muted)", "var(--surface2)"]
+    : [null, null, null];
+  const sendLiveStatus = sendLiveOrderStatus
+    ? { label: sendLiveLabel as string, color: sendLiveColor as string, soft: sendLiveSoft as string, isSettling: !sendStatusQuery.isTerminal }
     : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "e.g. 0x9F2c... or .eth" : sendRail.placeholder;
@@ -1291,6 +1333,7 @@ Create payment
   sendAccepting={sendAccepting}
   submitSend={submitSend}
   sendResultText={sendResultText}
+  sendLiveStatus={sendLiveStatus}
   closeModal={closeModal}
 />
 </>) : null}
@@ -1439,7 +1482,7 @@ Create payment
 </>) : null}
 
 {(isModalTxDetail) ? (<>
-<TxDetailModal txDetail={txDetail} />
+<TxDetailModal txDetail={txDetail} isLoading={txDetailQuery.isLoading} liveStatus={txLiveStatus} />
 </>) : null}
 
 {(isModalAcctDetail) ? (<>

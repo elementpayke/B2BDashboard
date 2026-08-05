@@ -41,6 +41,8 @@ export type SendModalProps = {
   sendAccepting: boolean;
   submitSend: () => void;
   sendResultText: string | null;
+  /** Live order status (polled via lib/hooks/useOrderStatus), null for the simulated stablecoin tab. */
+  sendLiveStatus: { label: string; color: string; soft: string; isSettling: boolean } | null;
   closeModal: () => void;
 };
 
@@ -206,6 +208,14 @@ export default function SendModal(p: SendModalProps) {
             <span style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px" }}>✓</span>
             <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>Payment on its way</span>
             <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>{p.sendResultText || `$${p.sendAmount} to ${p.sendRecipient} · ${p.sendArrivalText}`}</span>
+            {p.sendLiveStatus ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", marginTop: "2px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: p.sendLiveStatus.soft, color: p.sendLiveStatus.color }}>
+                {p.sendLiveStatus.isSettling ? (
+                  <span aria-hidden style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor" }} />
+                ) : null}
+                {p.sendLiveStatus.label}
+              </span>
+            ) : null}
             <button onClick={p.closeModal} style={{ marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}>Done</button>
           </div>
         </>

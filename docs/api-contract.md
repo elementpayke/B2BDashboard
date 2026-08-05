@@ -27,7 +27,8 @@ the exact failure mode). See
 |---|---|---|
 | Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes. Reset email/code are handed off via tab `sessionStorage` (never left in the URL); if Mboka email links still arrive with `?email=&code=`, the reset page migrates them into sessionStorage and immediately strips the query. Access/refresh tokens remain httpOnly cookies. |
 | Dashboard (Home) | `GET /v1/dashboard/summary` | Money in/out 30d, pending count. Total-balance hero number stays mock — see Gaps. |
-| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}` | Filter chips cover all 5 backend statuses (processing/completed/failed/canceled/frozen), not just the 3 the original mock exposed. |
+| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. |
+| Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
 | Invoices | `POST /v1/invoices/drafts`, `POST /v1/invoices`, `GET /v1/invoices`, `POST /v1/invoices/{id}/mark-paid`, `GET /v1/invoices/{id}/public-link` | The dashboard's simple 2-field ("client" + "amount") modal composes a minimal `DraftPayloadIn` and calls create-draft → issue in sequence. |
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status` | Tier badges reflect real KYB status. The "upload documents" submission flow stays simulated — see Gaps. |
@@ -78,6 +79,22 @@ the exact failure mode). See
   modal's "provider" chips are still the hardcoded `COUNTRIES` list, not
   wired to `GET /v1/supported/catalog`, so we don't have a real id to send.
   The aggregator falls back to its own default provider for the rail.
+
+## Order status lifecycle (`lib/hooks/useOrderStatus.ts`)
+
+Backend docs (`ORDER_STATUS_WEBSOCKET.md`) recommend a WebSocket for live
+order-status updates, but that socket authenticates via a raw JWT in the
+query string (`?token=`). This app never puts a JWT in the browser — tokens
+live in httpOnly cookies handled entirely by `lib/server/mbokaProxy.ts` — so
+the socket is unreachable from client code without breaking that rule.
+**Deliberately polling instead**, through the existing cookie-authenticated
+proxy, with exponential backoff (2s → 30s cap) rather than a fixed interval.
+
+`useOrderStatus(merchantOrderId)` polls `GET /v1/orders/{id}` and stops once
+the order is terminal (`completed`/`failed`/`refunded`/`canceled`) or frozen
+(needs manual review; not terminal — Mboka's own transition table allows a
+frozen order to later resolve). On terminal it invalidates the transactions
+list, that transaction's own detail query, and the dashboard summary.
 
 ## Gaps / follow-up tasks
 

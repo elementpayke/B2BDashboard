@@ -77,11 +77,42 @@ export type OrderAccept = {
   payment_instructions: PaymentInstructions;
 };
 
+// Mboka's six canonical order statuses (app/services/orders/status.py
+// ALL_ORDER_STATUSES). `completed`, `failed`, `refunded`, `canceled` are
+// terminal; `frozen` requires manual review and can still resolve later.
+export type OrderStatus = "processing" | "completed" | "failed" | "refunded" | "canceled" | "frozen";
+
+// GET /v1/orders/{merchant_order_id} response (ORDER_FLOW.md "Step 3: Read Order").
+export type Order = {
+  id: number;
+  aggregator_order_id: string | null;
+  external_order_id: string | null;
+  quote_id: string;
+  provider: string;
+  order_type: "OnRamp" | "OffRamp";
+  status: OrderStatus;
+  provider_status: string | null;
+  amount_fiat: string;
+  currency_code: string;
+  amount_crypto: string | null;
+  crypto_currency: string | null;
+  crypto_network: string | null;
+  exchange_rate: string | null;
+  psp_transaction_id: string | null;
+  checkout_url: string | null;
+  wallet_address: string | null;
+  client_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const ordersApi = {
   quote: (payload: OffRampQuoteIn) => apiEnvelope<OrderQuote>("POST", "/v1/orders/quote", payload),
   getQuote: (quoteId: string) => apiEnvelope<OrderQuote>("GET", `/v1/orders/quote/${quoteId}`),
   accept: (quoteId: string, paymentMethod?: Record<string, unknown>) =>
     apiEnvelope<OrderAccept>("POST", `/v1/orders/${quoteId}/accept`, { payment_method: paymentMethod ?? null }),
+  // Post-accept status read, used for polling (see lib/hooks/useOrderStatus.ts).
+  get: (merchantOrderId: number | string) => apiEnvelope<Order>("GET", `/v1/orders/${merchantOrderId}`),
 };
 
 const RAIL_TYPE_TO_ACCOUNT_TYPE: Record<string, AccountBlock["accountType"]> = {
