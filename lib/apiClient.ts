@@ -82,7 +82,7 @@ async function envelopeFromResponse<T>(res: Response): Promise<T> {
     throw new ApiRequestError(`HTTP ${res.status}`, res.status);
   }
 
-  if (!res.ok || json.status !== "success" || json.data == null) {
+  if (!res.ok || json.status !== "success") {
     const message = json.message ?? `Request failed (${res.status})`;
     if (isAuthFailure(res.status, message)) {
       sessionLostHandler?.();
@@ -91,7 +91,13 @@ async function envelopeFromResponse<T>(res: Response): Promise<T> {
     throw new ApiRequestError(message, res.status);
   }
 
-  return json.data;
+  // Successful envelopes may intentionally return `data: null` (e.g. DELETE).
+  // Only reject when the `data` field is missing entirely.
+  if (!Object.prototype.hasOwnProperty.call(json, "data") || json.data === undefined) {
+    throw new ApiRequestError(json.message ?? `Request failed (${res.status})`, res.status);
+  }
+
+  return json.data as T;
 }
 
 /** For endpoints proxied through /api/mboka/... (everything backed by the

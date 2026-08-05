@@ -6,6 +6,7 @@ import {
   clearSessionCookies,
   setSessionCookies,
 } from "./cookies";
+import { MBOKA_FETCH_TIMEOUT_MS } from "./mbokaCall";
 
 // Headers a client could use to try to impersonate a different session or
 // bypass our cookie-derived auth. Stripped from every proxied request —
@@ -17,6 +18,17 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   "host",
   "content-length",
   "connection",
+]);
+
+// Never forward these from upstream: fetch may decompress the body while
+// leaving a compressed content-length, and backend Set-Cookie must not leak
+// onto the app origin (we manage session cookies ourselves).
+const STRIPPED_RESPONSE_HEADERS = new Set([
+  "content-encoding",
+  "transfer-encoding",
+  "connection",
+  "content-length",
+  "set-cookie",
 ]);
 
 function buildForwardHeaders(request: NextRequest, accessToken: string | null): Headers {
@@ -40,6 +52,7 @@ export async function refreshTokens(refreshToken: string): Promise<RefreshResult
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
+      signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as {
@@ -78,6 +91,7 @@ async function doFetch(
     headers,
     body: bodyBuffer,
     redirect: "manual",
+    signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
   });
   if (!REDIRECT_STATUSES.has(first.status)) {
     return first;
@@ -91,6 +105,7 @@ async function doFetch(
     method: request.method,
     headers,
     body: bodyBuffer ? bodyBuffer.slice(0) : null,
+    signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
   });
 }
 
@@ -112,7 +127,10 @@ export async function proxyRequest(
 
   let upstream = await doFetch(request, backendPathWithQuery, accessToken, bodyBuffer);
 
-  if (upstream.status === 401 && accessToken && refreshToken) {
+  // Refresh whenever a refresh cookie is present — including the common case
+  // where the shorter-lived access cookie has already expired and the browser
+  // stopped sending it.
+  if (upstream.status === 401 && refreshToken) {
     const refreshed = await refreshTokens(refreshToken);
     if (!refreshed) {
       const res = await toNextResponse(upstream);
@@ -132,7 +150,7 @@ export async function proxyRequest(
     return res;
   }
 
-  if (upstream.status === 401 && accessToken && !refreshToken) {
+  if (upstream.status === 401 && accessToken) {
     const res = await toNextResponse(upstream);
     clearSessionCookies(res);
     return res;
@@ -148,8 +166,7 @@ async function toNextResponse(upstream: Response): Promise<NextResponse> {
     statusText: upstream.statusText,
   });
   upstream.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (lower === "content-encoding" || lower === "transfer-encoding" || lower === "connection") {
+    if (STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) {
       return;
     }
     res.headers.set(key, value);

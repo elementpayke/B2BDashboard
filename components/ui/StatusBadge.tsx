@@ -20,7 +20,6 @@ export default function StatusBadge({
   const fontSize = size === "md" ? "12px" : "11px";
   return (
     <span
-      role="status"
       aria-label={`Status: ${label}`}
       style={{
         display: "inline-flex",

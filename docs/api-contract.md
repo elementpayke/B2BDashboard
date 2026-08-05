@@ -48,10 +48,9 @@ the exact failure mode). See
 | Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
 | Cards screen (+ card detail / fund / issue modals) | **No backend at all**, not even a data model. The original design renders in full against local mock data; all card actions are local-only. |
 
-> ⚠️ Because Team and Cards render the design's mock data with no "preview"
-> marker (a deliberate product decision), the balances, card numbers and
-> teammates on those two screens are **not real**. Anyone demoing the app
-> should know that. Wiring them up is tracked in Gaps 1 and 2 below.
+> ⚠️ Team and Cards render mock data behind an in-product **Preview** banner
+> so demo balances, card numbers, and teammates are clearly marked as
+> simulated. Wiring them to real backends is tracked in Gaps 1 and 2 below.
 
 ## Send-money mapping notes (`lib/services/orders.ts`)
 
