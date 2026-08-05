@@ -99,6 +99,9 @@ function LoginForm() {
             placeholder="••••••••••••"
           />
         </div>
+        <div style={{ fontSize: "12.5px", textAlign: "right", marginTop: "-8px" }}>
+          <a href="/forgot-password" style={{ color: "#3B2ED3", fontWeight: 700 }}>Forgot password?</a>
+        </div>
         <button type="submit" style={authButtonStyle} disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </button>
