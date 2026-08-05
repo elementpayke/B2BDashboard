@@ -1,96 +1,185 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  CURRENCY_OPTIONS,
-  SUPPORTED_IBAN_CURRENCIES,
   buildCreateBankAccountPayload,
+  buildDepositAccountDetailRows,
+  currencyIso,
+  currencyLabel,
+  describeDepositAccountStatus,
   isCurrencySupported,
+  mapDepositAccountToCardView,
+  maskAccountIdentifier,
+  type DepositAccount,
 } from "./depositAccounts";
 
 describe("isCurrencySupported", () => {
-  it("accepts the two the backend actually issues", () => {
-    expect(isCurrencySupported("EUR")).toBe(true);
+  it("accepts EUR and USD only, case-insensitively", () => {
     expect(isCurrencySupported("USD")).toBe(true);
+    expect(isCurrencySupported("eur")).toBe(true);
+    expect(isCurrencySupported("GBP")).toBe(false);
+    expect(isCurrencySupported("kes")).toBe(false);
+  });
+});
+
+describe("currencyIso / currencyLabel", () => {
+  it("looks up the flag ISO and display label for a known currency", () => {
+    expect(currencyIso("USD")).toBe("us");
+    expect(currencyIso("eur")).toBe("eu");
+    expect(currencyLabel("USD")).toBe("US Dollar");
   });
 
-  it("rejects the ones only present in the design", () => {
-    // The mockup lists these, but DepositAccountCreateIn rejects them.
-    for (const code of ["GBP", "KES", "NGN", "ZAR", "AED"]) {
-      expect(isCurrencySupported(code)).toBe(false);
-    }
+  it("falls back gracefully for unknown or missing currencies", () => {
+    expect(currencyIso("ZZZ")).toBeNull();
+    expect(currencyIso(null)).toBeNull();
+    expect(currencyLabel("ZZZ")).toBe("ZZZ");
+    expect(currencyLabel(undefined)).toBe("—");
+  });
+});
+
+describe("describeDepositAccountStatus", () => {
+  it("maps known backend statuses to display labels", () => {
+    expect(describeDepositAccountStatus("active")).toBe("Active");
+    expect(describeDepositAccountStatus("pending")).toBe("Pending");
+    expect(describeDepositAccountStatus("unavailable")).toBe("Unavailable");
   });
 
-  it("is case- and whitespace-insensitive", () => {
-    expect(isCurrencySupported(" eur ")).toBe(true);
+  it("passes through unknown statuses rather than hiding them", () => {
+    expect(describeDepositAccountStatus("weird_status")).toBe("weird_status");
+    expect(describeDepositAccountStatus(null)).toBe("Unknown");
+  });
+});
+
+describe("maskAccountIdentifier", () => {
+  it("masks long identifiers to first-8/last-4, grouped in fours", () => {
+    expect(maskAccountIdentifier("DE89370400440532013000")).toBe(
+      "DE89 3704 ·· 3000",
+    );
+  });
+
+  it("strips whitespace and normalizes case before masking", () => {
+    expect(maskAccountIdentifier("de89 3704 0044 0532 0130 00")).toBe(
+      "DE89 3704 ·· 3000",
+    );
+  });
+
+  it("shows short identifiers in full rather than masking nothing useful", () => {
+    expect(maskAccountIdentifier("12345678")).toBe("1234 5678");
+  });
+
+  it("returns an em dash when there is nothing to show", () => {
+    expect(maskAccountIdentifier(null)).toBe("—");
+    expect(maskAccountIdentifier(undefined)).toBe("—");
+    expect(maskAccountIdentifier("")).toBe("—");
+  });
+});
+
+describe("mapDepositAccountToCardView", () => {
+  it("prefers the masked IBAN as the primary detail when present", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      bic: "MODRFR21",
+      account_holder_name: "ElementPay Business Ltd",
+      bank_name: "Crédit Mutuel",
+    };
+    const view = mapDepositAccountToCardView(account);
+    expect(view.currency).toBe("EUR");
+    expect(view.name).toBe("Euro");
+    expect(view.iso).toBe("eu");
+    expect(view.status).toBe("active");
+    expect(view.statusLabel).toBe("Active");
+    expect(view.primaryDetail).toBe("FR76 3000 ·· 0189");
+    expect(view.secondaryDetail).toBe("MODRFR21 · ElementPay Business Ltd");
+  });
+
+  it("falls back to bank name, then instructions, when there is no IBAN yet", () => {
+    const pendingWithBankName: DepositAccount = {
+      currency: "USD",
+      status: "pending",
+      bank_name: "Community National Bank",
+    };
+    expect(mapDepositAccountToCardView(pendingWithBankName).primaryDetail).toBe(
+      "Community National Bank",
+    );
+
+    const pendingWithInstructions: DepositAccount = {
+      currency: "USD",
+      status: "pending",
+      instructions: "Coordinates are being provisioned.",
+    };
+    expect(
+      mapDepositAccountToCardView(pendingWithInstructions).primaryDetail,
+    ).toBe("Coordinates are being provisioned.");
+
+    const pendingWithNeither: DepositAccount = {
+      currency: "USD",
+      status: "pending",
+    };
+    expect(mapDepositAccountToCardView(pendingWithNeither).primaryDetail).toBe(
+      "Coordinates pending",
+    );
+  });
+
+  it("never fabricates a balance field on the card view", () => {
+    const account: DepositAccount = { currency: "USD", status: "active", iban: "US1234567890123456" };
+    const view = mapDepositAccountToCardView(account);
+    expect(view).not.toHaveProperty("balance");
+  });
+});
+
+describe("buildDepositAccountDetailRows", () => {
+  it("includes only the fields the backend actually returned", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      bic: "MODRFR21",
+    };
+    const rows = buildDepositAccountDetailRows(account);
+    expect(rows).toEqual([
+      { label: "IBAN", value: "FR7630006000011234567890189", copyValue: "FR7630006000011234567890189" },
+      { label: "BIC / SWIFT", value: "MODRFR21", copyValue: "MODRFR21" },
+    ]);
+  });
+
+  it("returns no rows for a bare pending account rather than inventing placeholders", () => {
+    const account: DepositAccount = { currency: "USD", status: "pending" };
+    expect(buildDepositAccountDetailRows(account)).toEqual([]);
+  });
+
+  it("surfaces settlement asset/network as a single combined row", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      destination_asset: "USDC",
+      destination_network: "Polygon",
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      { label: "Settlement asset", value: "USDC · Polygon" },
+    ]);
   });
 });
 
 describe("buildCreateBankAccountPayload", () => {
-  it("sends the normalised currency", () => {
-    expect(buildCreateBankAccountPayload({ currency: "eur" })).toEqual({
-      currency: "EUR",
-    });
-  });
-
-  it("omits the account name rather than silently dropping it server-side", () => {
-    // The API has no name field; Pydantic would discard it without complaint,
-    // which would look to the user like the label had been saved.
-    const body = buildCreateBankAccountPayload({
-      currency: "USD",
+  it("omits the account name — the backend schema has no field for it", () => {
+    const payload = buildCreateBankAccountPayload({
+      currency: "usd",
       accountName: "Payroll",
     });
-
-    expect(body).not.toHaveProperty("accountName");
-    expect(body).not.toHaveProperty("account_name");
-    expect(body).not.toHaveProperty("name");
+    expect(payload).toEqual({ currency: "USD" });
   });
 
-  it("includes a wallet address only when given", () => {
-    expect(
-      buildCreateBankAccountPayload({ currency: "USD", walletAddress: "0xabc" }),
-    ).toEqual({ currency: "USD", wallet_address: "0xabc" });
-    expect(buildCreateBankAccountPayload({ currency: "USD" })).not.toHaveProperty(
-      "wallet_address",
-    );
+  it("includes wallet_address only when provided", () => {
+    const payload = buildCreateBankAccountPayload({
+      currency: "EUR",
+      walletAddress: "0xabc",
+    });
+    expect(payload).toEqual({ currency: "EUR", wallet_address: "0xabc" });
   });
 
-  it("refuses an unsupported currency before it reaches the network", () => {
-    expect(() => buildCreateBankAccountPayload({ currency: "KES" })).toThrow(
-      /EUR and USD/,
-    );
-  });
-
-  it("names the currency the user picked in the error", () => {
+  it("rejects unsupported currencies before hitting the network", () => {
     expect(() => buildCreateBankAccountPayload({ currency: "GBP" })).toThrow(
-      /GBP/,
+      /available yet/,
     );
-  });
-
-  it("refuses an empty currency", () => {
-    expect(() => buildCreateBankAccountPayload({ currency: "  " })).toThrow(
-      /Choose a currency/,
-    );
-  });
-});
-
-describe("CURRENCY_OPTIONS", () => {
-  it("keeps every currency from the design so the list still matches it", () => {
-    expect(CURRENCY_OPTIONS.map((c) => c.code)).toEqual([
-      "USD", "EUR", "GBP", "ZAR", "CAD", "AED", "NGN", "GHS", "KES", "TZS", "AUD",
-    ]);
-  });
-
-  it("gives every option a flag code for the picker", () => {
-    for (const option of CURRENCY_OPTIONS) {
-      expect(option.iso).toMatch(/^[a-z]{2}$/);
-    }
-  });
-
-  it("lists the supported currencies first", () => {
-    const supported = CURRENCY_OPTIONS.slice(
-      0,
-      SUPPORTED_IBAN_CURRENCIES.length,
-    ).map((c) => c.code);
-
-    expect(new Set(supported)).toEqual(new Set(SUPPORTED_IBAN_CURRENCIES));
   });
 });

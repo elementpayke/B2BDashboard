@@ -1,6 +1,19 @@
 "use client";
 import React from "react";
 import ActivityList from "@/components/ui/ActivityList";
+import StatusBadge from "@/components/ui/StatusBadge";
+
+export type WalletsAccountCard = {
+  currency: string;
+  name: string;
+  flagUrl: string | null;
+  statusLabel: string;
+  statusColor: string;
+  statusSoft: string;
+  primaryDetail: string;
+  secondaryDetail: string;
+  openDetail: () => void;
+};
 
 export type WalletsScreenProps = {
   isMobile: boolean;
@@ -12,12 +25,24 @@ export type WalletsScreenProps = {
   toggleAddAccountMenu: () => void;
   closeAddAccountMenu: () => void;
   openCreateAccount: (kind: string) => () => void;
-  accounts: any[];
+  accounts: WalletsAccountCard[];
+  /** True once verification has confirmed this principal can hold currency accounts. */
+  eligible: boolean;
+  eligibilityLoading: boolean;
+  /** Human status from the eligibility check (e.g. "pending", "approved") when not yet eligible. */
+  verificationStatus?: string;
+  /** Set when the eligibility check itself failed (network/5xx) — distinct from a real "not eligible" result. */
+  eligibilityErrorMessage?: string;
+  accountsLoading: boolean;
+  accountsErrorMessage?: string;
   walletsRecent: any[];
   goTransactions: () => void;
 };
 
 export default function WalletsScreen(p: WalletsScreenProps) {
+  const showGate = !p.eligibilityLoading && !p.eligible && !p.eligibilityErrorMessage;
+  const showAccountsRow = !showGate && !p.eligibilityErrorMessage;
+
   return (
     <div data-screen-label="Wallets" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
@@ -52,24 +77,51 @@ export default function WalletsScreen(p: WalletsScreenProps) {
         </div>
       </div>
 
-      <div className="ep-scroll-hint" style={{ display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch" }}>
-        {(p.accounts || []).map((acc: any, __i1: number) => (
-          <React.Fragment key={__i1}>
-            <button type="button" onClick={acc.openDetail} style={{ flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ width: "38px", height: "38px", borderRadius: "12px", background: "var(--indigo-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: "800", color: "var(--indigo-text)", overflow: "hidden" }}>{(acc.flagUrl) ? (<><div style={{ width: "100%", height: "100%", backgroundImage: `url(${acc.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center" }} /></>) : (<>$</>)}</span>
-                <div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700" }}>{acc.name}</div><div style={{ fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600" }}>{acc.rail}</div></div>
-              </div>
-              <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "21px", fontWeight: "500", marginTop: "2px" }}>{acc.balance}</div>
-              <div style={{ fontSize: "11.5px", color: "var(--muted)", fontFamily: "'DM Mono',monospace" }}>{acc.detail}</div>
-            </button>
-          </React.Fragment>
-        ))}
-        <button onClick={p.openCreateAccount("bank")} style={{ flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
-          <span style={{ width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "19px" }}>+</span>
-          <b style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", color: "var(--ink)" }}>New account</b>
-        </button>
-      </div>
+      {showGate ? (
+        <div role="note" style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--amber-tint)", border: "1px solid var(--border)", color: "var(--amber)" }}>
+          <span style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: "999px", background: "var(--amber)", color: "#fff" }}>Verification required</span>
+          <span style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--ink)" }}>
+            Complete business verification before issuing currency accounts
+            {p.verificationStatus ? ` — current status: ${p.verificationStatus}.` : "."}
+          </span>
+        </div>
+      ) : null}
+
+      {p.eligibilityErrorMessage || p.accountsErrorMessage ? (
+        <div role="alert" style={{ padding: "12px 14px", borderRadius: "14px", background: "var(--red-tint)", border: "1px solid var(--border)", color: "var(--red)", fontSize: "12.5px", fontWeight: 600 }}>
+          {p.eligibilityErrorMessage || p.accountsErrorMessage}
+        </div>
+      ) : null}
+
+      {showAccountsRow ? (
+        <div className="ep-scroll-hint" style={{ display: "flex", gap: "14px", overflowX: "auto", paddingBottom: "6px", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch" }}>
+          {p.accountsLoading ? (
+            <div style={{ flex: "0 0 230px", borderRadius: "20px", border: "1px dashed var(--border)", padding: "18px", color: "var(--muted)", fontSize: "12.5px" }}>Loading accounts…</div>
+          ) : (
+            (p.accounts || []).map((acc, __i1: number) => (
+              <React.Fragment key={`${acc.currency}-${__i1}`}>
+                <button type="button" onClick={acc.openDetail} style={{ flex: "0 0 230px", scrollSnapAlign: "start", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "20px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px", cursor: "pointer", textAlign: "left", font: "inherit", color: "inherit" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ width: "38px", height: "38px", borderRadius: "12px", background: "var(--indigo-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: "800", color: "var(--indigo-text)", overflow: "hidden" }}>{acc.flagUrl ? (<div style={{ width: "100%", height: "100%", backgroundImage: `url(${acc.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center" }} />) : (<>{acc.currency.slice(0, 1)}</>)}</span>
+                      <div><div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700" }}>{acc.name}</div><div style={{ fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600" }}>{acc.currency}</div></div>
+                    </div>
+                    <StatusBadge label={acc.statusLabel} color={acc.statusColor} soft={acc.statusSoft} size="sm" />
+                  </div>
+                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "15.5px", fontWeight: "500", marginTop: "2px", wordBreak: "break-word" }}>{acc.primaryDetail}</div>
+                  {acc.secondaryDetail ? (
+                    <div style={{ fontSize: "11.5px", color: "var(--muted)", fontFamily: "'DM Mono',monospace" }}>{acc.secondaryDetail}</div>
+                  ) : null}
+                </button>
+              </React.Fragment>
+            ))
+          )}
+          <button onClick={p.openCreateAccount("bank")} style={{ flex: "0 0 150px", scrollSnapAlign: "start", border: "2px dashed var(--border)", background: "none", borderRadius: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "9px", color: "var(--muted)", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+            <span style={{ width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "19px" }}>+</span>
+            <b style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "13px", color: "var(--ink)" }}>New account</b>
+          </button>
+        </div>
+      ) : null}
 
       <ActivityList title="Recent activity" items={p.walletsRecent} onViewAll={p.goTransactions} />
 

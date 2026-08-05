@@ -14,7 +14,11 @@ import { TX_FILTERS, filterTransactions } from "@/lib/services/transactionFilter
 import { authApi } from "@/lib/services/auth";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
-import { depositAccountsApi } from "@/lib/services/depositAccounts";
+import {
+  depositAccountsApi,
+  mapDepositAccountToCardView,
+  buildDepositAccountDetailRows,
+} from "@/lib/services/depositAccounts";
 import {
   ordersApi,
   buildSendQuotePayload,
@@ -173,6 +177,20 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
 
+  // Listing/creating deposit accounts requires KYB approval — check eligibility
+  // first so an unverified business sees a clear gate instead of a raw 400
+  // from `GET /v1/iban/accounts` (see docs/api-contract.md).
+  const depositEligibilityQuery = useQuery({
+    queryKey: ["deposit-accounts-eligibility"],
+    queryFn: depositAccountsApi.eligibility,
+    retry: false,
+  });
+  const depositAccountsQuery = useQuery({
+    queryKey: ["deposit-accounts"],
+    queryFn: depositAccountsApi.list,
+    retry: false,
+    enabled: depositEligibilityQuery.data?.eligible === true,
+  });
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
   // details so the Developer screen's webhook rows show real values.
@@ -618,7 +636,33 @@ export default function DashboardApp(props: Props = {}) {
             isFetching: txStatusQuery.isFetching,
           }
         : null;
-    const acctDetail = { ...ACCOUNTS[s.selectedAcctIdx], flagUrl: flagUrl(ACCOUNTS[s.selectedAcctIdx].iso) };
+    // Deposit accounts have no balance field (see docs/api-contract.md) — the
+    // color/soft pair below drives the status pill only, never a number.
+    const depositStatusPalette: Record<string, [string, string]> = {
+      active: ["var(--indigo-text)", "var(--indigo-tint)"],
+      pending: ["var(--amber)", "var(--amber-tint)"],
+      unavailable: ["var(--red)", "var(--red-tint)"],
+    };
+    const depositStatusColors = (status: string): [string, string] =>
+      depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
+    const depositAccountsList = depositAccountsQuery.data?.accounts ?? [];
+    const selectedDepositAccount = depositAccountsList[s.selectedAcctIdx] ?? null;
+    const acctDetail = selectedDepositAccount
+      ? (() => {
+          const view = mapDepositAccountToCardView(selectedDepositAccount);
+          const [statusColor, statusSoft] = depositStatusColors(view.status);
+          return {
+            currency: view.currency,
+            name: view.name,
+            flagUrl: view.iso ? flagUrl(view.iso) : null,
+            statusLabel: view.statusLabel,
+            statusColor,
+            statusSoft,
+            rows: buildDepositAccountDetailRows(selectedDepositAccount),
+            instructions: selectedDepositAccount.instructions,
+          };
+        })()
+      : null;
     const cardSel = CARDS[s.selectedCardIdx];
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
@@ -659,7 +703,15 @@ export default function DashboardApp(props: Props = {}) {
   // real source. See docs/api-contract.md.
   const homeTotalBalance = "—";
   const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
-  const homeCurrencyChips = ACCOUNTS.filter(a => s.balanceView === "all" || (s.balanceView === "stablecoin" ? a.rail.includes("Stablecoin") : !a.rail.includes("Stablecoin"))).map(a => ({ flagUrl: flagUrl(a.iso), code: a.code, balance: a.balance }));
+  // Real currency accounts only — no stablecoin account has a real backend
+  // source (see docs/api-contract.md), so the "Stablecoin" balance-view tab
+  // shows no chips rather than the old mock USDC/USDT entries.
+  const homeCurrencyChips = s.balanceView === "stablecoin"
+    ? []
+    : (depositAccountsQuery.data?.accounts ?? []).map((a) => {
+        const view = mapDepositAccountToCardView(a);
+        return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
+      });
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: openModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: openModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
@@ -675,11 +727,40 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
   const homeRecent = decoratedAll.slice(0, 4);
-  const mainWalletBalance = "USDC 180,860.00";
-  const mainWalletSub = "Settlement layer · Base & Polygon";
+  // No real stablecoin settlement-wallet balance source exists yet — same
+  // reasoning as `homeTotalBalance` above. Previously hardcoded to
+  // "USDC 180,860.00", which read as live on an account with none. Restore
+  // a figure here only once it's computed from a real source.
+  const mainWalletBalance = "—";
+  const mainWalletSub = "Stablecoin balance not yet available";
   const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
-  const accounts = ACCOUNTS.map((a,i) => ({ ...a, flagUrl: flagUrl(a.iso), openDetail: openAcctDetail(i) }));
-  const accountsCount = ACCOUNTS.length;
+  const accounts = depositAccountsList.map((a, i) => {
+    const view = mapDepositAccountToCardView(a);
+    const [statusColor, statusSoft] = depositStatusColors(view.status);
+    return {
+      currency: view.currency,
+      name: view.name,
+      flagUrl: view.iso ? flagUrl(view.iso) : null,
+      statusLabel: view.statusLabel,
+      statusColor,
+      statusSoft,
+      primaryDetail: view.primaryDetail,
+      secondaryDetail: view.secondaryDetail,
+      openDetail: openAcctDetail(i),
+    };
+  });
+  const accountsCount = depositAccountsList.length;
+  const depositEligible = depositEligibilityQuery.data?.eligible === true;
+  const depositEligibilityErrorMessage = depositEligibilityQuery.isError
+    ? (depositEligibilityQuery.error instanceof Error
+        ? depositEligibilityQuery.error.message
+        : "Couldn't check account eligibility. Try again.")
+    : undefined;
+  const depositAccountsErrorMessage = depositAccountsQuery.isError
+    ? (depositAccountsQuery.error instanceof Error
+        ? depositAccountsQuery.error.message
+        : "Couldn't load currency accounts. Try again.")
+    : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
   const cardsRecent = decoratedAll.slice(0, 5);
   const corridors = CORRIDORS.map(c => ({
@@ -1135,6 +1216,12 @@ Create payment
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
   accounts={accounts}
+  eligible={depositEligible}
+  eligibilityLoading={depositEligibilityQuery.isLoading}
+  verificationStatus={depositEligibilityQuery.data?.verification_status}
+  eligibilityErrorMessage={depositEligibilityErrorMessage}
+  accountsLoading={depositEligible && depositAccountsQuery.isLoading}
+  accountsErrorMessage={depositAccountsErrorMessage}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}
 />
@@ -1589,12 +1676,7 @@ Create payment
 </>) : null}
 
 {(isModalAcctDetail) ? (<>
-<AccountDetailModal
-  acctDetail={acctDetail}
-  openModalSwapFromAcct={openModalSwapFromAcct}
-  onCopyDetail={copyField("acctDetail", acctDetail.detail)}
-  copyLabel={s.copiedField === "acctDetail" ? "Copied" : "Copy"}
-/>
+<AccountDetailModal acctDetail={acctDetail} copiedField={s.copiedField} copyField={copyField} openModalSwapFromAcct={openModalSwapFromAcct} />
 </>) : null}
 
 {(isModalCardDetail) ? (<>

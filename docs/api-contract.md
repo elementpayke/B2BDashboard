@@ -34,15 +34,16 @@ the exact failure mode). See
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status` | Tier badges reflect real KYB status. The "upload documents" submission flow stays simulated — see Gaps. |
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
+| Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The list call only runs once eligibility confirms `eligible: true`. Account cards show real `currency`/`status`/masked `iban`/`bank_name`/`bic` — `DepositAccountOut` has **no balance field**, so cards never show one (see Simulated table below). |
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
 
 ## Simulated (local only, no backend call)
 
 | Area | Why |
 |---|---|
-| Wallets / currency account **balances and details** (IBAN) | Explicit scope decision — more IBAN work is coming later; not worth wiring now. The **Add Account → Bank Account** flow is wired (below); the account cards and balances shown are still mock. |
+| Wallets / **per-account balance number** and **"Main wallet" stablecoin balance** | **No real source exists.** `DepositAccountOut` (the list/create response) has no balance field — the aggregator's IBAN rail only ever returns deposit coordinates, not a live balance, and there's no stablecoin-wallet balance endpoint either. Account cards show currency, status, and masked IBAN/bank coordinates instead of a number; the "Main wallet" hero renders `—`. It previously showed a hardcoded per-currency mock balance (e.g. `$184,220.55`) and `USDC 180,860.00` — do not restore either until backed by a real source. |
 | Add Account → **Stablecoin Account** | **No backend concept.** There is no endpoint that issues a standalone stablecoin account — `DepositAccountCreateIn` exposes `crypto_currency`/`crypto_network` only as the payout side of a EUR/USD IBAN. The modal is built to the design and refuses on submit rather than faking success. |
-| Home "Total balance" | **No real source exists.** It is a currency-accounts aggregate (IBAN scope, deferred), and `totals.user_balance` is an untyped Privy passthrough that reports `null` when Privy has no balance. Renders `—` rather than a number. It previously showed a hardcoded `$548,830.55`, which on a real empty account was indistinguishable from a true balance — do not restore a figure here until it is computed from a real source. |
+| Home "Total balance" | **No real source exists.** It is a currency-accounts aggregate (individual accounts have no balance field either — see above), and `totals.user_balance` is an untyped Privy passthrough that reports `null` when Privy has no balance. Renders `—` rather than a number. It previously showed a hardcoded `$548,830.55`, which on a real empty account was indistinguishable from a true balance — do not restore a figure here until it is computed from a real source. The currency chip strip beneath it now lists real deposit-account currencies (from `GET /v1/iban/accounts`) with `—` in place of the old per-currency mock balances. |
 | Deposit / Receive / Swap / Bulk-payout modals | Real money-in flows (deposit-account rails, on/off-ramp swap, bulk CSV payouts) are each a bigger feature than this pass covers; only Send (the core payout action) was wired for real. |
 | Send money "Stablecoin" tab (direct on-chain transfer) | No backend endpoint exists for a direct wallet-to-wallet crypto send — only the fiat-rail order flow. |
 | Verification "Upload documents" submit | The real KYB flow (`app/routes/kyb.py`) is a large multi-step wizard — business type, registered address, associates/UBOs, per-document upload/submit. The dashboard's existing 3-button modal doesn't match that shape; wiring it properly is its own task. |
@@ -125,6 +126,16 @@ list, that transaction's own detail query, and the dashboard summary.
 > UI was extracted from `DashboardApp.tsx` into domain modules under
 > `components/{send,transactions,wallets,deposit}/` for parallel Mboka
 > integration. Extraction-only — **no wiring change**.
+
+> **Track 3 (Wallets / deposit accounts):** `components/wallets/**` now reads
+> real deposit accounts (`GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts`)
+> instead of the `ACCOUNTS` mock, and the existing `POST /v1/iban/accounts`
+> create flow is fully wired end to end (create → list invalidation). Pure
+> display mappers (masking, status labels, detail-row selection) live in
+> `lib/services/depositAccounts.ts` with Vitest coverage. `components/deposit/ReceiveModal.tsx`
+> and the Home screen's "Total balance"/quick-actions still use the `ACCOUNTS`
+> mock for fiat receive coordinates — out of this track's scope (see OnRamp
+> deposit-quote and Home tracks).
 
 1. **Team backend**: add `GET/POST /api/businesses/{id}/members`,
    `POST .../members/invite`, `PATCH .../members/{user_id}`,
