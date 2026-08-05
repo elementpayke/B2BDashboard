@@ -10,7 +10,8 @@ import {
 } from "./mockData";
 import { dashboardApi } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
-import { TX_FILTERS, filterTransactions } from "@/lib/services/transactionFilters";
+import { TX_FILTERS } from "@/lib/services/transactionFilters";
+import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
 import { authApi } from "@/lib/services/auth";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
@@ -119,6 +120,8 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     refetchInterval: 15_000,
   });
+  const txFilterStatus = TX_FILTERS.find((f) => f.key === state.txFilter)?.status ?? "all";
+  const transactionsPageQuery = useTransactionsPage(txFilterStatus);
   // Tx detail modal fetches by id, not by list index/position — the list can
   // reorder or refetch (15s poll above) while the modal is open, and an
   // index would silently point at a different transaction.
@@ -323,6 +326,7 @@ export default function DashboardApp(props: Props = {}) {
     try {
       const accepted = await ordersApi.accept(state.sendQuote.quote_id);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       setState({ sendAccepting: false, sendAccept: accepted, sendDone: true });
     } catch (err) {
@@ -343,6 +347,7 @@ export default function DashboardApp(props: Props = {}) {
         // order for this quote_id — the payout went through, so this is
         // not a failure to show the user.
         queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         setState({ sendAccepting: false, sendAccept: null, sendDone: true });
         return;
@@ -627,13 +632,14 @@ export default function DashboardApp(props: Props = {}) {
       };
     };
     const decoratedAll = (transactionsQuery.data?.items ?? []).map(decorateTx);
-    const filteredTransactions = filterTransactions(transactionsQuery.data?.items ?? [], s.txFilter).map(decorateTx);
+    const filteredTransactions = transactionsPageQuery.items.map(decorateTx);
     // Fetched by id (txDetailQuery), independent of the list above — see
     // openTxDetail. Falls back to the list's cached copy while the detail
     // fetch is in flight so the modal isn't blank on first open.
     const txDetail = txDetailQuery.data
       ? decorateTx(txDetailQuery.data)
-      : decoratedAll.find((t) => t.id === s.selectedTxId);
+      : decoratedAll.find((t) => t.id === s.selectedTxId)
+        ?? filteredTransactions.find((t) => t.id === s.selectedTxId);
     const txLiveStatus =
       s.modal === "txDetail" && txDetail && !txStatusQuery.isTerminal
         ? {
@@ -1267,7 +1273,21 @@ Create payment
 <TransactionsScreen
   txFilters={txFilters}
   filteredTransactions={filteredTransactions}
-  emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No transactions match this filter"}
+  emptyLabel={
+    transactionsPageQuery.isLoading
+      ? "Loading…"
+      : transactionsPageQuery.isError
+        ? "Couldn't load transactions"
+        : "No transactions match this filter"
+  }
+  pageNumber={transactionsPageQuery.pageNumber}
+  pageCount={transactionsPageQuery.pageCount}
+  total={transactionsPageQuery.total}
+  hasNext={transactionsPageQuery.hasNext}
+  hasPrev={transactionsPageQuery.hasPrev}
+  onNextPage={transactionsPageQuery.nextPage}
+  onPrevPage={transactionsPageQuery.prevPage}
+  isFetching={transactionsPageQuery.isFetching}
 />
 </>) : null}
 

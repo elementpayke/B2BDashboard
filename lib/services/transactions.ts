@@ -1,4 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
+import { ordersApi, type Order, type OrderStatus } from "./orders";
 
 // Mboka-normalized status values — all 6 canonical order statuses, since a
 // transaction is a read-view over merchant_orders (app/services/orders/status.py
@@ -25,10 +26,86 @@ export type TransactionList = {
   total: number;
 };
 
+// A server-filtered/paginated page, sourced from `GET /v1/orders` (see
+// mapOrderToTransaction below) rather than `GET /v1/transactions`, which
+// accepts no query params. Mirrors OrderList's shape so callers can tell
+// how far into the full result set the current page sits.
+export type TransactionPage = {
+  items: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type TransactionPageParams = {
+  /** Omit for "all" (the backend has no wildcard status value). */
+  status?: TransactionStatus;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * `OrderOut` has no `direction` field — mirrors the backend's own
+ * projection (`app/domain/order_direction.py`): the `order_type` column
+ * (`OnRamp`/`OffRamp`) wins, falling back to the legacy numeric
+ * `client_metadata.order_type` (`0`/`1`) for rows that predate that column.
+ */
+function directionFromOrder(order: Order): TransactionDirection {
+  const type = order.order_type?.trim().toLowerCase();
+  if (type === "onramp") return "in";
+  if (type === "offramp") return "out";
+  const legacy = (order.client_metadata as Record<string, unknown> | null)?.["order_type"];
+  if (legacy === 0 || legacy === "0") return "in";
+  if (legacy === 1 || legacy === "1") return "out";
+  return "unknown";
+}
+
+/**
+ * `GET /v1/orders` and `GET /v1/transactions` are both thin views over the
+ * same `merchant_orders` row (same `id` — safe to pass into
+ * `transactionsApi.get`/`useOrderStatus` interchangeably); only the wire
+ * shape and the list endpoint's filter/pagination support differ. See
+ * docs/api-contract.md "Transaction history filters & pagination".
+ */
+export function mapOrderToTransaction(order: Order): Transaction {
+  return {
+    id: order.id,
+    direction: directionFromOrder(order),
+    status: order.status,
+    amount_fiat: order.amount_fiat,
+    currency: order.currency_code,
+    aggregator_order_id: order.aggregator_order_id,
+    external_order_id: order.external_order_id,
+    wallet_address: order.wallet_address,
+    created_at: order.created_at,
+    updated_at: order.updated_at,
+  };
+}
+
 export const transactionsApi = {
   // Note: the backend route does not currently accept filter/pagination
-  // query params — it returns the full scoped list. Filtering by status
-  // happens client-side (see lib/services/transactionFilters.ts).
+  // query params — it returns the newest 50 rows for the scoped
+  // business/user. Kept for the surfaces that only ever needed that page
+  // (Home "Recent activity", Wallets/Cards recents, Reports, tx detail's
+  // list-cache fallback) — see listPage below for the paginated screen.
   list: () => apiEnvelope<TransactionList>("GET", "/v1/transactions"),
   get: (id: number) => apiEnvelope<Transaction>("GET", `/v1/transactions/${id}`),
+
+  // Server-side filtered/paginated transaction history for the dedicated
+  // Transactions screen. Sources pages from `GET /v1/orders?status=&limit=
+  // &offset=` (which supports them, unlike `GET /v1/transactions`) and maps
+  // each row back into the Transaction shape the rest of the app renders.
+  async listPage(params: TransactionPageParams = {}): Promise<TransactionPage> {
+    const page = await ordersApi.list({
+      status: params.status as OrderStatus | undefined,
+      limit: params.limit,
+      offset: params.offset,
+    });
+    return {
+      items: page.items.map(mapOrderToTransaction),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    };
+  },
 };

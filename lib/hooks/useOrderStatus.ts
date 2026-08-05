@@ -114,6 +114,7 @@ export function useOrderStatus(
     if (settledIdRef.current === order.id) return;
     settledIdRef.current = order.id;
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
     queryClient.invalidateQueries({ queryKey: ["transaction", order.id] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     onSettled?.(order);
