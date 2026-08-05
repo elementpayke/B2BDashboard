@@ -81,6 +81,11 @@ the exact failure mode). See
 
 ## Gaps / follow-up tasks
 
+> **Track 0 (UI extraction):** Send / Transactions / Wallets / Deposit modal
+> UI was extracted from `DashboardApp.tsx` into domain modules under
+> `components/{send,transactions,wallets,deposit}/` for parallel Mboka
+> integration. Extraction-only — **no wiring change**.
+
 1. **Team backend**: add `GET/POST /api/businesses/{id}/members`,
    `POST .../members/invite`, `PATCH .../members/{user_id}`,
    `DELETE .../members/{user_id}` using the existing `BusinessMembership`
