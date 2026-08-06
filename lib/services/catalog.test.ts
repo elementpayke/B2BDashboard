@@ -3,6 +3,7 @@ import {
   offRampProvidersForRail,
   onRampProvidersForRail,
   networkIdForProvider,
+  providerNamesFromCatalog,
   type SupportedCatalogData,
 } from "./catalog";
 
@@ -206,5 +207,27 @@ describe("networkIdForProvider", () => {
 
   it("returns undefined when there's no provider list", () => {
     expect(networkIdForProvider(null, "Mobile Wallet (M-PESA)")).toBeUndefined();
+  });
+});
+
+describe("providerNamesFromCatalog", () => {
+  const catalogProviders = [
+    { code: "M PESA", name: "Mobile Wallet (M-PESA)", enabled: true, id: "yc-mpesa-id" },
+  ];
+  const fallback = ["M-Pesa (Safaricom)", "Airtel Money"];
+
+  it("uses catalog names when providers are present", () => {
+    expect(providerNamesFromCatalog(catalogProviders, fallback, false)).toEqual([
+      "Mobile Wallet (M-PESA)",
+    ]);
+  });
+
+  it("returns empty while catalog is still loading", () => {
+    expect(providerNamesFromCatalog(null, fallback, false)).toEqual([]);
+  });
+
+  it("falls back to hardcoded options after catalog settles with no match", () => {
+    expect(providerNamesFromCatalog(null, fallback, true)).toEqual(fallback);
+    expect(providerNamesFromCatalog([], fallback, true)).toEqual(fallback);
   });
 });

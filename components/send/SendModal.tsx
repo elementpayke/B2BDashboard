@@ -17,6 +17,8 @@ export type SendModalProps = {
   sendRailChips: any[];
   sendProviderHasChoice: boolean;
   sendProviderChips: any[];
+  /** True while GET /v1/supported/catalog has not settled — hide hardcoded chips. */
+  sendCatalogLoading: boolean;
   sendAssets: any[];
   sendChains: any[];
   sendAssetCode: string;
@@ -97,7 +99,10 @@ export default function SendModal(p: SendModalProps) {
                           </div>
                         </>
                       ) : null}
-                      {p.sendProviderHasChoice ? (
+                      {p.sendCatalogLoading ? (
+                        <div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--surface2)", color: "var(--muted)", fontSize: "12px", fontWeight: 600 }}>Loading providers…</div>
+                      ) : null}
+                      {!p.sendCatalogLoading && p.sendProviderHasChoice ? (
                         <>
                           <div>
                             <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Choose provider</span>
@@ -140,7 +145,24 @@ export default function SendModal(p: SendModalProps) {
                     </>
                   ) : null}
                   {p.sendQuoteError && p.sendIsCrypto ? (<div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600 }}>{p.sendQuoteError}</div>) : null}
-                  <button onClick={p.sendNext} style={{ padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer" }}>Continue</button>
+                  <button
+                    onClick={p.sendNext}
+                    disabled={p.sendIsCountry && p.sendCatalogLoading}
+                    style={{
+                      padding: "13px",
+                      borderRadius: "14px",
+                      border: "none",
+                      background: "var(--indigo)",
+                      color: "var(--indigo-on)",
+                      fontFamily: "'Space Grotesk',sans-serif",
+                      fontSize: "13.5px",
+                      fontWeight: "700",
+                      cursor: p.sendIsCountry && p.sendCatalogLoading ? "wait" : "pointer",
+                      opacity: p.sendIsCountry && p.sendCatalogLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {p.sendIsCountry && p.sendCatalogLoading ? "Loading…" : "Continue"}
+                  </button>
                 </div>
               </>
             ) : null}

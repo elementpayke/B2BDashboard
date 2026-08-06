@@ -8,7 +8,7 @@ import {
   CORRIDORS, BULK_ROWS, CARDS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
-import { dashboardApi } from "@/lib/services/dashboard";
+import { dashboardApi, liveRateRowsFromSummary } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { TX_FILTERS } from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
@@ -41,7 +41,12 @@ import {
   listSendableStablecoinAccounts,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
-import { offRampProvidersForRail, onRampProvidersForRail, networkIdForProvider } from "@/lib/services/catalog";
+import {
+  offRampProvidersForRail,
+  onRampProvidersForRail,
+  networkIdForProvider,
+  providerNamesFromCatalog,
+} from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
 import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
@@ -196,6 +201,10 @@ export default function DashboardApp(props: Props = {}) {
   // the hardcoded corridor list alone. See lib/services/catalog.ts.
   const sendCatalogQuery = useSendCatalog();
 
+  // Settled once the first catalog fetch finishes (success or error). Until
+  // then, Send provider chips must not fall back to hardcoded rail.options.
+  const sendCatalogSettled = sendCatalogQuery.isFetched;
+
   // When the catalog (or corridor) changes the provider list, clamp the
   // selection so sendProviderIdx never points past the active options.
   useEffect(() => {
@@ -209,16 +218,17 @@ export default function DashboardApp(props: Props = {}) {
       rail.type,
       country.code,
     );
-    const options =
-      catalogProviders && catalogProviders.length > 0
-        ? catalogProviders.map((p) => p.name)
-        : rail.options;
+    const options = providerNamesFromCatalog(
+      catalogProviders,
+      rail.options,
+      sendCatalogSettled,
+    );
     if (!options.length) return;
     setState((s: any) => {
       if (s.sendProviderIdx < options.length) return {};
       return { sendProviderIdx: options.length - 1 };
     });
-  }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
+  }, [sendCatalogQuery.data, sendCatalogSettled, state.sendCountryIdx, state.sendRailIdx, setState]);
 
   useEffect(() => {
     const country = COUNTRIES[state.depositCountryIdx];
@@ -311,6 +321,10 @@ export default function DashboardApp(props: Props = {}) {
   });
 
   const sendNext = async () => {
+    // Country tab step 1: wait for catalog so provider chips / networkId match.
+    if (state.sendStep === 1 && state.sendGroup === "country" && !sendCatalogSettled) {
+      return;
+    }
     // Stablecoin tab step 1 → 2: require a ready USDC account on the chosen
     // network before collecting the recipient (Phase 4).
     if (state.sendStep === 1 && state.sendGroup === "crypto") {
@@ -356,10 +370,14 @@ export default function DashboardApp(props: Props = {}) {
           rail.type,
           country.code,
         );
-        const providerOptions =
-          catalogProviders && catalogProviders.length > 0
-            ? catalogProviders.map((p) => p.name)
-            : rail.options;
+        const providerOptions = providerNamesFromCatalog(
+          catalogProviders,
+          rail.options,
+          sendCatalogSettled,
+        );
+        if (!providerOptions.length) {
+          throw new Error("Providers are still loading. Try again in a moment.");
+        }
         const providerIdx =
           providerOptions.length === 0
             ? 0
@@ -864,23 +882,26 @@ export default function DashboardApp(props: Props = {}) {
     const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
     const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
     // Real catalog providers for this corridor when the aggregator has one
-    // (carries a real networkId — see sendNext); otherwise the existing
-    // hardcoded option list, so an un-onboarded corridor still renders.
+    // (carries a real networkId — see sendNext). While the first catalog
+    // fetch is in flight, show no chips (not hardcoded fallback); after
+    // settle with no match, fall back so un-onboarded corridors still render.
     const sendCatalogProviders = offRampProvidersForRail(
       sendCatalogQuery.data,
       sendCountry.iso,
       sendRail.type,
       sendCountry.code,
     );
-    const sendProviderOptions =
-      sendCatalogProviders && sendCatalogProviders.length > 0
-        ? sendCatalogProviders.map((p) => p.name)
-        : sendRail.options;
+    const sendProviderOptions = providerNamesFromCatalog(
+      sendCatalogProviders,
+      sendRail.options,
+      sendCatalogSettled,
+    );
+    const sendCatalogLoading = !sendCatalogSettled;
     const sendProviderIdx =
       sendProviderOptions.length === 0
         ? 0
         : Math.min(s.sendProviderIdx, sendProviderOptions.length - 1);
-    const sendProvider = sendProviderOptions[sendProviderIdx] || sendProviderOptions[0];
+    const sendProvider = sendProviderOptions[sendProviderIdx] || sendProviderOptions[0] || "";
     const sendProviderChips = sendProviderOptions.map((name, i) => ({
       name,
       select: selectSendProvider(i),
@@ -1059,6 +1080,7 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;
+  const liveRates = liveRateRowsFromSummary(summaryQuery.data?.fx_rates);
   const fmtUsd = (v: string | number | undefined) =>
     v == null ? "—" : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const homeStats = [
@@ -1516,9 +1538,9 @@ export default function DashboardApp(props: Props = {}) {
 
 <div style={{marginTop: "auto", padding: "13px 14px", borderRadius: "16px", background: "var(--ink-panel)", color: "var(--ink-panel-text)", fontFamily: "'DM Mono',monospace", fontSize: "11px"}}>
 <div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'DM Sans',sans-serif", fontWeight: "700", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "8px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
-<div style={{display: "flex", justifyContent: "space-between", padding: "2px 0"}}><span>USD/KES</span><b style={{color: "#fff", fontWeight: "500"}}>131.64</b></div>
-<div style={{display: "flex", justifyContent: "space-between", padding: "2px 0"}}><span>USD/NGN</span><b style={{color: "#fff", fontWeight: "500"}}>1,382.84</b></div>
-<div style={{display: "flex", justifyContent: "space-between", padding: "2px 0"}}><span>USDC/USD</span><b style={{color: "#fff", fontWeight: "500"}}>1.0001</b></div>
+{(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
+<div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "2px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
+))}
 </div>
 
 <div style={{display: "flex", alignItems: "center", gap: "10px", padding: "14px 6px 4px"}}>
@@ -1910,6 +1932,7 @@ Create payment
   sendRailChips={sendRailChips}
   sendProviderHasChoice={sendProviderHasChoice}
   sendProviderChips={sendProviderChips}
+  sendCatalogLoading={sendCatalogLoading}
   sendAssets={sendAssets}
   sendChains={sendChains}
   sendAssetCode={sendAssetCode}
