@@ -515,6 +515,9 @@ export default function DashboardApp(props: Props = {}) {
   const openModalKyb = () => setState({ modal: "kyb" });
   const goVerification = () => setState({ screen: "verification", sidebarOpen: false });
   const guardMoneyModal = (name: string) => () => {
+    // Wait for /auth/me before treating KYB as pending — otherwise approved
+    // businesses get bounced to verification while the profile is still loading.
+    if (meQuery.isLoading || meQuery.isPending) return;
     const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
     if (!isKybApproved(status)) {
       goVerification();
@@ -1042,7 +1045,12 @@ export default function DashboardApp(props: Props = {}) {
         const view = mapDepositAccountToCardView(a);
         return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
       });
-  const kybStatus = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+  // Unknown while /auth/me is in flight — distinct from a real "pending" KYB
+  // status, so we don't flash "Start verification" for already-approved businesses.
+  const kybStatusLoading = (meQuery.isLoading || meQuery.isPending) && !meQuery.data;
+  const kybStatus = kybStatusLoading
+    ? undefined
+    : ((meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending");
   const kybApproved = isKybApproved(kybStatus);
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
@@ -1160,12 +1168,14 @@ export default function DashboardApp(props: Props = {}) {
   // Tier 1 reflects real account/email verification. Tier 2 is the real Mboka
   // KYB wizard (`/api/businesses/{id}/kyb/*`). Tier 3 has no backend yet.
   const emailVerified = !!meQuery.data?.user.email_verified;
-  const tier2Display = kybTierDisplay(kybStatus);
+  const tier2Display = kybStatusLoading
+    ? { label: "Loading…", color: "var(--muted)", soft: "var(--surface2)" }
+    : kybTierDisplay(kybStatus);
   const tier2Approved = kybApproved;
   const tiers = [
         { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: emailVerified ? "Complete" : "Pending", statusColor: emailVerified ? "var(--indigo-text)" : "var(--muted)", statusSoft: emailVerified ? "var(--indigo-tint)" : "var(--surface2)", locked: false },
-        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: canOpenKybWizard(kybStatus), kybActionLabel: kybStatus === "rejected" || kybStatus === "expired" ? "Continue verification" : "Start verification" },
-        { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
+        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: !kybStatusLoading && canOpenKybWizard(kybStatus), kybActionLabel: kybStatus === "rejected" || kybStatus === "expired" ? "Continue verification" : "Start verification" },
+        { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: kybStatusLoading ? "…" : !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
       ];
   // The backend only ever returns the full plaintext key once, in the
   // create/rotate response — list/detail always return it masked. So
@@ -1578,7 +1588,7 @@ Create payment
 ))}
 </div>
 
-{!kybApproved ? (
+{!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
@@ -1626,6 +1636,10 @@ Create payment
   eligibilityErrorMessage={depositEligibilityErrorMessage}
   accountsLoading={depositEligible && depositAccountsQuery.isLoading}
   accountsErrorMessage={depositAccountsErrorMessage}
+  onRetryAccounts={() => {
+    queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
+    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+  }}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}
 />

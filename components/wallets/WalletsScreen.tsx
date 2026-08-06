@@ -35,13 +35,16 @@ export type WalletsScreenProps = {
   eligibilityErrorMessage?: string;
   accountsLoading: boolean;
   accountsErrorMessage?: string;
+  /** Re-fetch eligibility and/or deposit accounts after a failure. */
+  onRetryAccounts?: () => void;
   walletsRecent: any[];
   goTransactions: () => void;
 };
 
 export default function WalletsScreen(p: WalletsScreenProps) {
   const showGate = !p.eligibilityLoading && !p.eligible && !p.eligibilityErrorMessage;
-  const showAccountsRow = !showGate && !p.eligibilityErrorMessage;
+  // Hide the strip on list failures so "0 accounts" + empty cards don't look like success.
+  const showAccountsRow = !showGate && !p.eligibilityErrorMessage && !p.accountsErrorMessage;
 
   return (
     <div data-screen-label="Wallets" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -90,8 +93,28 @@ export default function WalletsScreen(p: WalletsScreenProps) {
       ) : null}
 
       {p.eligibilityErrorMessage || p.accountsErrorMessage ? (
-        <div role="alert" style={{ padding: "12px 14px", borderRadius: "14px", background: "var(--red-tint)", border: "1px solid var(--border)", color: "var(--red)", fontSize: "12.5px", fontWeight: 600 }}>
-          {p.eligibilityErrorMessage || p.accountsErrorMessage}
+        <div role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--red-tint)", border: "1px solid var(--border)", color: "var(--red)", fontSize: "12.5px", fontWeight: 600 }}>
+          <span>{p.eligibilityErrorMessage || p.accountsErrorMessage}</span>
+          {p.onRetryAccounts ? (
+            <button
+              type="button"
+              onClick={p.onRetryAccounts}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "999px",
+                border: "none",
+                background: "var(--red)",
+                color: "#fff",
+                fontFamily: "'Space Grotesk',sans-serif",
+                fontSize: "12px",
+                fontWeight: "700",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Retry
+            </button>
+          ) : null}
         </div>
       ) : null}
 

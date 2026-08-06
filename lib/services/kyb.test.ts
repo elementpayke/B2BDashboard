@@ -48,6 +48,12 @@ describe("kyb status helpers", () => {
     expect(canOpenKybWizard("submitted")).toBe(false);
     expect(canOpenKybWizard("approved")).toBe(false);
   });
+
+  it("does not treat unknown/loading status as pending for the wizard", () => {
+    expect(canOpenKybWizard(undefined)).toBe(false);
+    expect(canOpenKybWizard(null)).toBe(false);
+    expect(isKybApproved(undefined)).toBe(false);
+  });
 });
 
 describe("validateProfileDraft", () => {
