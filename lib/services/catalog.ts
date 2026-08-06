@@ -161,6 +161,25 @@ export function onRampProvidersForRail(
 }
 
 /**
+ * Display names for provider chips: prefer live catalog providers, and only
+ * fall back to the hardcoded corridor list once the catalog query has settled
+ * (success or error). While the first fetch is in flight, return `[]` so the
+ * Send modal does not flash stale hardcoded names (e.g. "M-Pesa (Safaricom)" /
+ * "Airtel Money") before "Mobile Wallet (M-PESA)" arrives.
+ */
+export function providerNamesFromCatalog(
+  catalogProviders: CatalogProvider[] | null | undefined,
+  fallback: string[],
+  catalogSettled: boolean,
+): string[] {
+  if (catalogProviders && catalogProviders.length > 0) {
+    return catalogProviders.map((p) => p.name);
+  }
+  if (!catalogSettled) return [];
+  return fallback;
+}
+
+/**
  * Resolve the aggregator provider id (`networkId` on the order quote's
  * `destination` block) for a provider selected by display name/code.
  * Case-insensitive match on either `name` or `code` since UI copy and
