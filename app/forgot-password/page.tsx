@@ -14,6 +14,17 @@ import {
 } from "@/components/auth/authStyles";
 import { stashResetEmail } from "@/lib/auth/resetHandoff";
 
+function forgotPasswordErrorMessage(err: unknown): string {
+  if (err instanceof ApiRequestError) return err.message;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    return "The request took too long. Please try again.";
+  }
+  if (err instanceof TypeError) {
+    return "Unable to reach the server. Check your connection and try again.";
+  }
+  return "Unable to request a password reset.";
+}
+
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -30,7 +41,7 @@ export default function ForgotPasswordPage() {
       await authApi.forgotPassword(email);
       setSubmitted(true);
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Unable to request a password reset.");
+      setError(forgotPasswordErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -88,11 +99,21 @@ export default function ForgotPasswordPage() {
             onChange={(event) => setEmail(event.target.value)}
             style={authInputStyle}
             placeholder="name@company.com"
+            disabled={submitting}
           />
         </div>
         <button type="submit" style={authButtonStyle} disabled={submitting}>
           {submitting ? "Sending…" : "Send reset code"}
         </button>
+        {submitting ? (
+          <p
+            role="status"
+            aria-live="polite"
+            style={{ margin: 0, fontSize: "12.5px", color: "#8B89A6", textAlign: "center" }}
+          >
+            This can take a few seconds…
+          </p>
+        ) : null}
         <div style={{ fontSize: "12.5px", color: "#4C4A66", textAlign: "center" }}>
           Remember your password? <a href="/login" style={{ color: "#3B2ED3", fontWeight: 700 }}>Sign in</a>
         </div>
