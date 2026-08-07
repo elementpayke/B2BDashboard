@@ -56,7 +56,8 @@ function buildProgressSteps(status?: string): ProgressStep[] {
     return [
       { key: "created", label: "Created", state: "done" },
       { key: "settled", label: "Settled", state: "done" },
-      { key: "refunded", label: "Refunded", state: "current" },
+      // Terminal — not "current" (amber/in-flight)
+      { key: "refunded", label: "Refunded", state: "done" },
     ];
   }
   if (s === "completed") {
@@ -111,23 +112,23 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   const updated = formatTimestamp(txDetail.updated_at);
   const steps = buildProgressSteps(txDetail.status);
   const showUpdated = Boolean(updated && updated !== created);
-  const rows = [
+  const rows: { label: string; value: React.ReactNode; mono?: boolean }[] = [
     { label: "Reference", value: txDetail.ref, mono: true },
     { label: "Rail", value: txDetail.type },
     { label: "Settlement layer", value: "USDC · Base" },
-    txDetail.wallet_address
-      ? {
-          label: "Wallet",
-          value: (
-            <span className="ep-txn-detail__wallet ep-mono" title={txDetail.wallet_address}>
-              {txDetail.wallet_address}
-            </span>
-          ),
-        }
-      : null,
-    created ? { label: "Created", value: created, mono: true } : null,
-    showUpdated ? { label: "Last updated", value: updated, mono: true } : null,
-  ].filter(Boolean) as { label: string; value: React.ReactNode; mono?: boolean }[];
+  ];
+  if (txDetail.wallet_address) {
+    rows.push({
+      label: "Wallet",
+      value: (
+        <span className="ep-txn-detail__wallet ep-mono" title={txDetail.wallet_address}>
+          {txDetail.wallet_address}
+        </span>
+      ),
+    });
+  }
+  if (created) rows.push({ label: "Created", value: created, mono: true });
+  if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
   return (
     <div className="ep-txn-detail">
@@ -174,6 +175,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
           <li
             key={step.key}
             className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
+            aria-current={step.state === "current" ? "step" : undefined}
           >
             {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
             <span className="ep-txn-detail__step-dot" aria-hidden />

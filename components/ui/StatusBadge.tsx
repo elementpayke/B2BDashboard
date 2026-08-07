@@ -19,13 +19,14 @@ export default function StatusBadge({
   return (
     <span
       className={`ep-activity__badge ep-activity__badge--${size}`}
-      aria-label={`Status: ${label}`}
       style={{
         background: soft,
         color,
+        position: "relative",
       }}
     >
       {showDot ? <span className="ep-activity__badge-dot" aria-hidden /> : null}
+      <span className="ep-activity__sr">Status: </span>
       {label}
     </span>
   );
