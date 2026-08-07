@@ -1184,8 +1184,19 @@ export default function DashboardApp(props: Props = {}) {
       if (bucket) bucket.total += Number(t.amount_fiat) || 0;
     }
     const max = Math.max(1, ...days.map((d) => d.total));
-    return days.map((d) => ({ h: Math.round((d.total / max) * 100) }));
+    const hasVolume = days.some((d) => d.total > 0);
+    return days.map((d) => {
+      const date = new Date(d.key + "T12:00:00");
+      const dayLabel = date.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2);
+      return {
+        h: hasVolume ? Math.round((d.total / max) * 100) : 0,
+        dayLabel,
+        amountLabel: d.total > 0 ? fmtUsd(d.total) : "—",
+        title: `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.total > 0 ? fmtUsd(d.total) : "No volume"}`,
+      };
+    });
   })();
+  const reportBarsEmpty = reportBars.every((b) => b.h === 0);
   const coverageChips = CURRENCIES.map(c => ({ flagUrl: flagUrl(c.iso), code: c.code }));
   // Tier 1 reflects real account/email verification. Tier 2 is the real Mboka
   // KYB wizard (`/api/businesses/{id}/kyb/*`). Tier 3 has no backend yet.
@@ -1240,10 +1251,18 @@ export default function DashboardApp(props: Props = {}) {
         canRevealSecret: !!webhookSecret,
         revealSecretLabel: secretRevealed ? "Hide" : "Reveal",
         toggleRevealSecret: webhookSecret ? toggleRevealSecret(k.id) : () => {},
+        copySecret: webhookSecret && secretRevealed ? copyField("whsec:" + k.id, webhookSecret) : () => {},
+        copySecretLabel: s.copiedField === "whsec:" + k.id ? "Copied" : "Copy",
+        canCopySecret: !!(webhookSecret && secretRevealed),
+        isJustMinted: !!(plaintext),
 
         revoke: revokeApiKey(k.id),
       };
     });
+  const apiKeysLoading = apiKeysQuery.isLoading;
+  const apiKeysEmpty = !apiKeysLoading && apiKeys.length === 0;
+  const dismissNewApiKey = () => setState({ newlyCreatedKey: null });
+  const showNewApiKeyBanner = !!justMintedKey;
   const isModalApiKey = s.modal === "apiKey";
   const apiKeyName = s.apiKeyName;
   const apiKeyError = s.apiKeyError;
@@ -1252,6 +1271,7 @@ export default function DashboardApp(props: Props = {}) {
     key: env,
     label: env === "live" ? "Live" : "Sandbox",
     select: setApiKeyEnvironment(env),
+    selected: s.apiKeyEnvironment === env,
     bg: s.apiKeyEnvironment === env ? "var(--ink)" : "var(--surface2)",
     color: s.apiKeyEnvironment === env ? "var(--bg)" : "var(--ink)",
   }));
@@ -1262,7 +1282,15 @@ export default function DashboardApp(props: Props = {}) {
   const inviteOpen = s.inviteOpen;
   const inviteName = s.inviteName;
   const inviteEmail = s.inviteEmail;
-  const inviteRoleChips = ROLES.map(r => ({ key: r.key, label: r.label, desc: r.desc, select: setInviteRole(r.key), bg: s.inviteRole === r.key ? "var(--indigo)" : "var(--surface2)", color: s.inviteRole === r.key ? "var(--indigo-on)" : "var(--ink)" }));
+  const inviteRoleChips = ROLES.map(r => ({
+    key: r.key,
+    label: r.label,
+    desc: r.desc,
+    select: setInviteRole(r.key),
+    selected: s.inviteRole === r.key,
+    bg: s.inviteRole === r.key ? "var(--indigo)" : "var(--surface2)",
+    color: s.inviteRole === r.key ? "var(--indigo-on)" : "var(--ink)",
+  }));
   const inviteCanSubmit = !!(s.inviteName.trim() && s.inviteEmail.trim());
   const inviteCannotSubmit = !(s.inviteName.trim() && s.inviteEmail.trim());
   const teamRows = s.teamMembers.map(m => ({
@@ -1271,6 +1299,7 @@ export default function DashboardApp(props: Props = {}) {
         statusLabel: m.status === "active" ? "Active" : "Invited",
         statusColor: m.status === "active" ? "var(--indigo-text)" : "var(--amber)",
         statusSoft: m.status === "active" ? "var(--indigo-tint)" : "var(--amber-tint)",
+        roleLabel: ROLES.find((r) => r.key === m.role)?.label ?? m.role,
         roleOptions: ROLES,
         setRole: setMemberRole(m.id),
         remove: removeMember(m.id),
@@ -1668,29 +1697,35 @@ Create payment
 </>) : null}
 
 {(isCards) ? (<>
-<div data-screen-label="Cards" style={{display: "flex", flexDirection: "column", gap: "16px"}}>
-<div role="note" style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--amber-tint)", border: "1px solid var(--border)", color: "var(--amber)"}}>
-<span style={{fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: "999px", background: "var(--amber)", color: "#fff"}}>Preview</span>
-<span style={{fontSize: "12.5px", fontWeight: 600, color: "var(--ink)"}}>Card balances and numbers are simulated demo data — not live accounts.</span>
+<div data-screen-label="Cards" className="ep-cards">
+<div className="ep-cards__preview" role="note">
+<span className="ep-cards__preview-badge">Preview</span>
+<span className="ep-cards__preview-text">Card balances and numbers are simulated demo data — not live accounts.</span>
 </div>
-<div style={{display: "flex", justifyContent: "flex-end"}}>
-<button onClick={openNewCard} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New card</button>
+<div className="ep-cards__head">
+<h2 className="ep-cards__title">Virtual cards · {cards.length}</h2>
+<button type="button" onClick={openNewCard} className="ep-cards__cta">+ New card</button>
 </div>
-<div style={{display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "16px"}}>
+<div className="ep-cards__grid">
 {(cards || []).map((c: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", flexDirection: "column", gap: "8px"}}>
-<div onClick={c.openDetail} style={{aspectRatio: "1.586", borderRadius: "22px", position: "relative", overflow: "hidden", padding: "20px", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "space-between", cursor: "pointer", background: (c.bg), filter: (c.filter)}}>
-<div style={{display: "flex", justifyContent: "space-between", position: "relative"}}><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px"}}>{c.label}</b><span style={{fontSize: "9px", fontWeight: "800", letterSpacing: "0.1em", padding: "4px 10px", borderRadius: "999px", background: "rgba(255,255,255,0.2)"}}>{c.statusLabel}</span></div>
-<div style={{position: "relative"}}><span style={{display: "block", fontSize: "9.5px", fontWeight: "700", letterSpacing: "0.08em", textTransform: "uppercase", opacity: "0.6"}}>Available</span><span style={{fontFamily: "'DM Mono',monospace", fontSize: "19px", fontWeight: "500"}}>{c.balance}</span><div style={{fontFamily: "'DM Mono',monospace", fontSize: "14px", letterSpacing: "0.14em", marginTop: "10px"}}>•••• •••• •••• {c.last4}</div></div>
+<div key={__i1} className="ep-cards__item">
+<button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
+<div className="ep-cards__plastic-top">
+<span className="ep-cards__plastic-label">{c.label}</span>
+<span className="ep-cards__plastic-status">{c.statusLabel}</span>
 </div>
-<div style={{display: "flex", gap: "6px"}}>
-<button onClick={c.fund} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Fund</button>
-<button onClick={c.withdraw} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Withdraw</button>
-<button onClick={c.freeze} style={{flex: "1", padding: "10px", minHeight: "44px", borderRadius: "10px", border: "1px solid var(--glass-border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Freeze</button>
+<div className="ep-cards__plastic-body">
+<span className="ep-cards__plastic-eyebrow">Available to spend</span>
+<span className="ep-cards__plastic-balance">{c.balance}</span>
+<span className="ep-cards__plastic-pan">•••• •••• •••• {c.last4}</span>
+</div>
+</button>
+<div className="ep-cards__actions">
+<button type="button" onClick={c.fund} className="ep-cards__action">Fund</button>
+<button type="button" onClick={c.withdraw} className="ep-cards__action">Withdraw</button>
+<button type="button" onClick={c.freeze} className="ep-cards__action">Manage</button>
 </div>
 </div>
-</React.Fragment>
 ))}
 </div>
 
@@ -1730,36 +1765,46 @@ Create payment
 </>) : null}
 
 {(isReports) ? (<>
-<div data-screen-label="Reports" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div className="ep-grid-stats">
+<div data-screen-label="Reports" className="ep-reports">
+<div className="ep-reports__stats">
 {(reportStats || []).map((rs: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "18px", padding: "18px 20px"}}>
-<div style={{fontSize: "11px", fontWeight: "700", color: "var(--muted)"}}>{rs.label}</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "23px", fontWeight: "500", marginTop: "4px", color: (rs.color)}}>{rs.value}</div>
+<div key={__i1} className="ep-reports__stat">
+<div className="ep-reports__stat-label">{rs.label}</div>
+<div className="ep-reports__stat-value" style={{color: rs.color}}>{rs.value}</div>
 </div>
-</React.Fragment>
 ))}
 </div>
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", padding: "20px"}}>
-<h2 style={{margin: "0 0 14px", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Daily volume · last 10 days</h2>
-<div className="ep-chart-bars" role="img" aria-label="Daily volume chart">
+<section className="ep-reports__panel">
+<div className="ep-reports__panel-head">
+<h2 className="ep-reports__panel-title">Daily volume · last 10 days</h2>
+<span className="ep-reports__panel-meta">From loaded activity</span>
+</div>
+{reportBarsEmpty ? (
+<div className="ep-reports__empty" role="status">No volume in the last 10 days yet.</div>
+) : (
+<div className="ep-reports__chart" role="img" aria-label="Daily volume chart for the last 10 days">
 {(reportBars || []).map((b: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{flex: "1", background: "var(--surface3)", borderRadius: "8px 8px 3px 3px", minHeight: "4px", height: "100%", position: "relative"}}>
-<div style={{position: "absolute", bottom: "0", left: "0", right: "0", height: `${(b.h)}%`, background: "var(--indigo)", borderRadius: "8px 8px 3px 3px"}} />
+<div key={__i1} className="ep-reports__bar-col" title={b.title}>
+<div className="ep-reports__bar-track">
+<div className="ep-reports__bar-fill" style={{height: `${Math.max(b.h, b.h > 0 ? 8 : 0)}%`}} />
 </div>
-</React.Fragment>
+<span className="ep-reports__bar-day">{b.dayLabel}</span>
+</div>
 ))}
 </div>
+)}
 </section>
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", padding: "20px"}}>
-<h2 style={{margin: "0 0 14px", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700"}}>Payout coverage</h2>
-<div style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
+<section className="ep-reports__panel">
+<div className="ep-reports__panel-head">
+<h2 className="ep-reports__panel-title">Payout coverage</h2>
+<span className="ep-reports__panel-meta">{coverageChips.length} corridors</span>
+</div>
+<div className="ep-reports__coverage">
 {(coverageChips || []).map((cc: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "12px", background: "var(--surface2)"}}><div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(cc.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} /><span style={{fontSize: "12px", fontWeight: "700"}}>{cc.code}</span></div>
-</React.Fragment>
+<div key={__i1} className="ep-reports__chip">
+<span className="ep-flag" style={{backgroundImage: `url(${cc.flagUrl})`}} aria-hidden />
+<span className="ep-reports__chip-code">{cc.code}</span>
+</div>
 ))}
 </div>
 </section>
@@ -1771,65 +1816,74 @@ Create payment
 </>) : null}
 
 {(isTeam) ? (<>
-<div data-screen-label="Team" style={{display: "flex", flexDirection: "column", gap: "14px", maxWidth: "760px"}}>
-<div role="note" style={{display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "12px 14px", borderRadius: "14px", background: "var(--amber-tint)", border: "1px solid var(--border)", color: "var(--amber)"}}>
-<span style={{fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 10px", borderRadius: "999px", background: "var(--amber)", color: "#fff"}}>Preview</span>
-<span style={{fontSize: "12.5px", fontWeight: 600, color: "var(--ink)"}}>Team members are simulated demo data — invites stay local to this session.</span>
+<div data-screen-label="Team" className="ep-team">
+<div className="ep-team__preview" role="note">
+<span className="ep-team__preview-badge">Preview</span>
+<span className="ep-team__preview-text">Team members are simulated demo data — invites stay local to this session.</span>
 </div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>Members · {teamCount}</h2>
-<button onClick={openInvite} style={{padding: "10px 16px", minHeight: "44px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Invite person</button>
+<div className="ep-team__head">
+<h2 className="ep-team__title">Members · {teamCount}</h2>
+<button type="button" onClick={openInvite} className="ep-team__cta">+ Invite person</button>
 </div>
 
-<section className="ep-panel">
+<section className="ep-panel ep-team__list">
 {(teamRows || []).map((m: any, __i1: number) => (
 <div key={__i1} className="ep-team-row">
-<span style={{width: "38px", height: "38px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: "800", flexShrink: "0"}}>{m.initials}</span>
-<div style={{flex: "1", minWidth: "0"}}>
-<div style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700"}}>{m.name}</div>
-<div style={{fontSize: "11.5px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{m.email}</div>
+<span className="ep-team__avatar" aria-hidden>{m.initials}</span>
+<div className="ep-team__identity">
+<div className="ep-team__name">{m.name}</div>
+<div className="ep-team__email">{m.email}</div>
 </div>
+<div className="ep-team__meta">
 <StatusBadge label={m.statusLabel} color={m.statusColor} soft={m.statusSoft} />
+<span className="ep-team__role-pill">{m.roleLabel}</span>
+</div>
 <div className="ep-team-row__actions">
 <select value={m.role} onChange={m.setRole} aria-label={`Role for ${m.name}`}>
 {(m.roleOptions || []).map((ro: any, __i2: number) => (
 <option key={__i2} value={ro.key}>{ro.label}</option>
 ))}
 </select>
-<button onClick={m.remove} aria-label={`Remove ${m.name}`} style={{flexShrink: "0", background: "none", border: "none", padding: "10px", minWidth: "44px", minHeight: "44px", color: "var(--muted2)", fontSize: "15px", cursor: "pointer", lineHeight: "1"}}>✕</button>
+<button type="button" onClick={m.remove} className="ep-team__remove" aria-label={`Remove ${m.name}`}>✕</button>
 </div>
 </div>
 ))}
 </section>
 
 {(inviteOpen) ? (<>
-<div onClick={closeInvite} style={{position: "fixed", inset: "0", background: "var(--overlay-bg)", backdropFilter: "blur(6px)", zIndex: "60", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px"}}>
-<div onClick={stopClick} style={{background: "var(--modal-bg)", border: "1px solid var(--border)", borderRadius: "22px", padding: "24px", width: "100%", maxWidth: "420px", display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<h3 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "17px", fontWeight: "700"}}>Invite a teammate</h3>
-<button onClick={closeInvite} style={{background: "none", border: "none", color: "var(--muted2)", fontSize: "17px", cursor: "pointer", lineHeight: "1"}}>✕</button>
+<div className="ep-team__invite-overlay" onClick={closeInvite} role="presentation">
+<div className="ep-team__invite" onClick={stopClick} role="dialog" aria-modal="true" aria-labelledby="ep-team-invite-title">
+<div className="ep-team__invite-head">
+<h3 id="ep-team-invite-title" className="ep-team__invite-title">Invite a teammate</h3>
+<button type="button" onClick={closeInvite} className="ep-team__invite-close" aria-label="Close invite">✕</button>
 </div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Full name</span>
-<input value={inviteName} onChange={setInviteName} placeholder="e.g. Amina Bello" style={{width: "100%", marginTop: "6px", padding: "11px 13px", borderRadius: "12px", background: "var(--input-bg)", border: "1.5px solid var(--input-border)", outline: "none", fontSize: "13px", fontWeight: "600", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Email address</span>
-<input value={inviteEmail} onChange={setInviteEmail} placeholder="name@company.com" style={{width: "100%", marginTop: "6px", padding: "11px 13px", borderRadius: "12px", background: "var(--input-bg)", border: "1.5px solid var(--input-border)", outline: "none", fontSize: "13px", fontWeight: "600", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Role</span>
-<div style={{display: "flex", flexDirection: "column", gap: "7px", marginTop: "8px"}}>
-{(inviteRoleChips || []).map((r: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={r.select} style={{textAlign: "left", display: "flex", flexDirection: "column", gap: "2px", padding: "10px 13px", borderRadius: "12px", border: "none", background: (r.bg), color: (r.color), cursor: "pointer"}}>
-<b style={{fontFamily: "'Sora',sans-serif", fontSize: "12.5px"}}>{r.label}</b><span style={{fontSize: "11px", opacity: "0.8"}}>{r.desc}</span>
+<label className="ep-team__field">
+<span className="ep-team__field-label">Full name</span>
+<input value={inviteName} onChange={setInviteName} placeholder="e.g. Amina Bello" className="ep-team__input" autoComplete="name" />
+</label>
+<label className="ep-team__field">
+<span className="ep-team__field-label">Email address</span>
+<input value={inviteEmail} onChange={setInviteEmail} placeholder="name@company.com" className="ep-team__input" type="email" autoComplete="email" />
+</label>
+<div className="ep-team__field">
+<span className="ep-team__field-label">Role</span>
+<div className="ep-team__roles" role="radiogroup" aria-label="Invite role">
+{(inviteRoleChips || []).map((r: any) => (
+<button
+  key={r.key}
+  type="button"
+  role="radio"
+  aria-checked={r.selected}
+  onClick={r.select}
+  className={`ep-team__role${r.selected ? " ep-team__role--selected" : ""}`}
+>
+<span className="ep-team__role-label">{r.label}</span>
+<span className="ep-team__role-desc">{r.desc}</span>
 </button>
-</React.Fragment>
 ))}
 </div>
 </div>
-<button onClick={submitInvite} disabled={inviteCannotSubmit} style={{marginTop: "4px", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Sora',sans-serif", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>Send invite</button>
+<button type="button" onClick={submitInvite} disabled={inviteCannotSubmit} className="ep-team__invite-submit">Send invite</button>
 </div>
 </div>
 </>) : null}
@@ -1837,52 +1891,78 @@ Create payment
 </>) : null}
 
 {(isDeveloper) ? (<>
-<div data-screen-label="Developer" style={{display: "flex", flexDirection: "column", gap: "14px", maxWidth: "720px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<h2 style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", letterSpacing: "0.02em", color: "var(--muted)", textTransform: "uppercase"}}>API keys</h2>
-<button onClick={openCreateApiKeyModal} style={{background: "none", border: "none", padding: "0", color: "var(--indigo-text)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ Create key</button>
-</div>
-{(apiKeys || []).map((k: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<section style={{background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "22px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px"}}>
-<div style={{display: "flex", alignItems: "center", gap: "10px"}}><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px"}}>{k.label}</b><span style={{fontFamily: "'DM Mono',monospace", fontSize: "10.5px", fontWeight: "700", background: (k.modeBg), color: (k.modeColor), padding: "4px 10px", borderRadius: "999px", textTransform: "uppercase", letterSpacing: "0.04em"}}>{k.modeLabel}</span></div>
-<button onClick={k.revoke} style={{background: "none", border: "none", padding: "0", color: "var(--red)", fontSize: "11.5px", fontWeight: "700", cursor: "pointer"}}>Revoke</button>
+<div data-screen-label="Developer" className="ep-developer">
+<div className="ep-developer__head">
+<h2 className="ep-developer__title">API keys</h2>
+<button type="button" onClick={openCreateApiKeyModal} className="ep-developer__cta">+ Create key</button>
 </div>
 
-<div>
-<span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Secret key</span>
+{(showNewApiKeyBanner) ? (
+<div className="ep-developer__banner" role="status">
+<div className="ep-developer__banner-copy">
+<span className="ep-developer__banner-badge">Copy now</span>
+<span className="ep-developer__banner-text">Your new secret key is shown once below. Store it securely — it can’t be recovered later.</span>
+</div>
+<button type="button" onClick={dismissNewApiKey} className="ep-developer__banner-dismiss">Dismiss</button>
+</div>
+) : null}
+
+{(apiKeysLoading) ? (
+<div className="ep-developer__empty" role="status">Loading API keys…</div>
+) : null}
+
+{(apiKeysEmpty) ? (
+<div className="ep-developer__empty">
+<p className="ep-developer__empty-title">No API keys yet</p>
+<p className="ep-developer__empty-text">Create a sandbox key to integrate webhooks and server-side payouts.</p>
+<button type="button" onClick={openCreateApiKeyModal} className="ep-developer__cta">+ Create key</button>
+</div>
+) : null}
+
+{(apiKeys || []).map((k: any) => (
+<section key={k.id} className={`ep-developer__card${k.isJustMinted ? " ep-developer__card--new" : ""}`}>
+<div className="ep-developer__card-head">
+<div className="ep-developer__card-identity">
+<b className="ep-developer__card-name">{k.label}</b>
+<span className={`ep-developer__env${k.modeLabel === "Live" ? " ep-developer__env--live" : ""}`}>{k.modeLabel}</span>
+</div>
+<button type="button" onClick={k.revoke} className="ep-developer__revoke">Revoke</button>
+</div>
+
+<div className="ep-developer__field">
+<span className="ep-developer__field-label">Secret key</span>
 <div className="ep-secret-row">
 <span className="ep-secret-row__value">{k.keyDisplay}</span>
 <div className="ep-secret-row__actions">
-<button onClick={k.toggleReveal} disabled={!k.canRevealKey} title={k.revealTitle} style={{background: "var(--indigo-tint)", color: "var(--indigo-text)", cursor: k.canRevealKey ? "pointer" : "not-allowed", opacity: k.canRevealKey ? 1 : 0.5}}>{k.revealLabel}</button>
-<button onClick={k.copyKey} disabled={!k.canRevealKey} title={k.revealTitle} style={{background: "var(--ink)", color: "var(--bg)", cursor: k.canRevealKey ? "pointer" : "not-allowed", opacity: k.canRevealKey ? 1 : 0.5}}>{k.copyKeyLabel}</button>
+<button type="button" onClick={k.toggleReveal} disabled={!k.canRevealKey} title={k.revealTitle || undefined} className="ep-developer__btn ep-developer__btn--soft" style={{opacity: k.canRevealKey ? 1 : 0.5, cursor: k.canRevealKey ? "pointer" : "not-allowed"}}>{k.revealLabel}</button>
+<button type="button" onClick={k.copyKey} disabled={!k.canRevealKey} title={k.revealTitle || undefined} className="ep-developer__btn ep-developer__btn--solid" style={{opacity: k.canRevealKey ? 1 : 0.5, cursor: k.canRevealKey ? "pointer" : "not-allowed"}}>{k.copyKeyLabel}</button>
 </div>
 </div>
+{!k.canRevealKey ? <span className="ep-developer__hint">Full key available only at creation time.</span> : null}
 </div>
 
-<div>
-<span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Webhook URL</span>
+<div className="ep-developer__field">
+<span className="ep-developer__field-label">Webhook URL</span>
 <div className="ep-secret-row">
 <span className="ep-secret-row__value">{k.webhookUrl}</span>
 <div className="ep-secret-row__actions">
-<button onClick={k.copyWebhook} disabled={!k.canCopyWebhook} style={{background: "var(--ink)", color: "var(--bg)", cursor: k.canCopyWebhook ? "pointer" : "not-allowed", opacity: k.canCopyWebhook ? 1 : 0.5}}>{k.copyWebhookLabel}</button>
+<button type="button" onClick={k.copyWebhook} disabled={!k.canCopyWebhook} className="ep-developer__btn ep-developer__btn--solid" style={{opacity: k.canCopyWebhook ? 1 : 0.5, cursor: k.canCopyWebhook ? "pointer" : "not-allowed"}}>{k.copyWebhookLabel}</button>
 </div>
 </div>
-<span style={{display: "block", marginTop: "6px", fontSize: "11px", color: "var(--muted)"}}>{k.events}</span>
+<span className="ep-developer__hint">{k.events}</span>
 </div>
 
-<div>
-<span style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em"}}>Webhook signing secret</span>
+<div className="ep-developer__field">
+<span className="ep-developer__field-label">Webhook signing secret</span>
 <div className="ep-secret-row">
 <span className="ep-secret-row__value">{k.webhookSecretDisplay}</span>
 <div className="ep-secret-row__actions">
-<button onClick={k.toggleRevealSecret} disabled={!k.canRevealSecret} style={{background: "var(--indigo-tint)", color: "var(--indigo-text)", cursor: k.canRevealSecret ? "pointer" : "not-allowed", opacity: k.canRevealSecret ? 1 : 0.5}}>{k.revealSecretLabel}</button>
+<button type="button" onClick={k.toggleRevealSecret} disabled={!k.canRevealSecret} className="ep-developer__btn ep-developer__btn--soft" style={{opacity: k.canRevealSecret ? 1 : 0.5, cursor: k.canRevealSecret ? "pointer" : "not-allowed"}}>{k.revealSecretLabel}</button>
+<button type="button" onClick={k.copySecret} disabled={!k.canCopySecret} className="ep-developer__btn ep-developer__btn--solid" style={{opacity: k.canCopySecret ? 1 : 0.5, cursor: k.canCopySecret ? "pointer" : "not-allowed"}}>{k.copySecretLabel}</button>
 </div>
 </div>
 </div>
 </section>
-</React.Fragment>
 ))}
 </div>
 </>) : null}
@@ -2131,52 +2211,67 @@ Create payment
 </>) : null}
 
 {(isModalCardDetail) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div style={{aspectRatio: "1.586", maxWidth: "280px", margin: "0 auto", borderRadius: "20px", background: (cardDetail.bg), color: "#fff", padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between"}}>
-<b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px"}}>{cardDetail.label}</b>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "13px", letterSpacing: "0.1em"}}>•••• •••• •••• {cardDetail.last4}</div>
+<div className="ep-cards__modal">
+<div className="ep-cards__modal-plastic" style={{background: cardDetail.bg}}>
+<span className="ep-cards__plastic-label">{cardDetail.label}</span>
+<span className="ep-cards__plastic-pan">•••• •••• •••• {cardDetail.last4}</span>
 </div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px", padding: "9px 0", borderBottom: "1px dashed var(--border)"}}><span style={{color: "var(--muted)"}}>Available to spend</span><b style={{fontFamily: "'DM Mono',monospace"}}>{cardDetail.balance}</b></div>
-<div style={{display: "flex", gap: "8px"}}>
-<button onClick={fundCard} style={{flex: "1", padding: "11px", borderRadius: "12px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Fund card</button>
-<button onClick={withdrawCard} style={{flex: "1", padding: "11px", borderRadius: "12px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Withdraw</button>
+<div className="ep-cards__modal-row">
+<span>Available to spend</span>
+<b className="ep-mono">{cardDetail.balance}</b>
 </div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0"}}><span style={{fontSize: "12.5px", fontWeight: "700"}}>Freeze card</span><button onClick={toggleFreezeCard} style={{width: "44px", height: "24px", borderRadius: "999px", border: "none", background: (cardDetail.freezeTrack), position: "relative", cursor: "pointer"}}><span style={{position: "absolute", top: "3px", left: (cardDetail.freezeKnobLeft), width: "18px", height: "18px", borderRadius: "50%", background: "#fff", transition: "left 0.2s"}} /></button></div>
-<button onClick={terminateCard} style={{padding: "10px", borderRadius: "12px", border: "1.5px solid var(--red-tint)", background: "none", color: "var(--red)", fontSize: "12px", fontWeight: "700", cursor: "pointer"}}>Terminate card</button>
+<div className="ep-cards__modal-actions">
+<button type="button" onClick={fundCard} className="ep-cards__modal-primary">Fund card</button>
+<button type="button" onClick={withdrawCard} className="ep-cards__modal-secondary">Withdraw</button>
+</div>
+<div className="ep-cards__modal-row">
+<span className="ep-cards__freeze-label">Freeze card</span>
+<button type="button" onClick={toggleFreezeCard} className="ep-cards__toggle" style={{background: cardDetail.freezeTrack}} aria-pressed={!!s.cardFrozen} aria-label={s.cardFrozen ? "Unfreeze card" : "Freeze card"}>
+<span className="ep-cards__toggle-knob" style={{left: cardDetail.freezeKnobLeft}} />
+</button>
+</div>
+<button type="button" onClick={terminateCard} className="ep-cards__modal-danger">Terminate card</button>
 </div>
 </>) : null}
 
 {(isModalFundCard) ? (<>
 {(fundCardNotDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={fundAmount} onChange={setFundAmount} placeholder="250.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
-<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontSize: "12px", fontWeight: "600"}}>Funded from your main USDC wallet.</div>
-<button onClick={submitFundCard} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Load funds</button>
+<div className="ep-cards__modal">
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Amount (USD)</span>
+<input value={fundAmount} onChange={setFundAmount} placeholder="250.00" className="ep-cards__input" inputMode="decimal" />
+</label>
+<div className="ep-cards__note">Funded from your main USDC wallet. Demo only — balances won’t change.</div>
+<button type="button" onClick={submitFundCard} className="ep-cards__modal-primary">Load funds</button>
 </div>
 </>) : null}
 {(fundCardDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Card funded</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>${fundAmount} loaded, available immediately.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
+<div className="ep-cards__success">
+<span className="ep-cards__success-icon" aria-hidden>✓</span>
+<span className="ep-cards__success-title">Card funded</span>
+<span className="ep-cards__success-text">${fundAmount} loaded, available immediately.</span>
+<button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
 </div>
 </>) : null}
 </>) : null}
 
 {(isModalNewCard) ? (<>
 {(newCardNotDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Card label</span><input value={newCardLabel} onChange={setNewCardLabel} placeholder="e.g. Marketing Ads" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
-<button onClick={issueCard} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Issue card</button>
+<div className="ep-cards__modal">
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Card label</span>
+<input value={newCardLabel} onChange={setNewCardLabel} placeholder="e.g. Marketing Ads" className="ep-cards__input" />
+</label>
+<div className="ep-cards__note">Issues a virtual USD card for team spend. Preview — not a live card.</div>
+<button type="button" onClick={issueCard} className="ep-cards__modal-primary">Issue card</button>
 </div>
 </>) : null}
 {(newCardDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Card issued</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Ready to use immediately.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
+<div className="ep-cards__success">
+<span className="ep-cards__success-icon" aria-hidden>✓</span>
+<span className="ep-cards__success-title">Card issued</span>
+<span className="ep-cards__success-text">Ready to use immediately.</span>
+<button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
 </div>
 </>) : null}
 </>) : null}
@@ -2222,22 +2317,23 @@ Create payment
 
 {(isModalTier) ? (<>
 {(tierNotDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "10px"}}>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Upload three documents. Review usually takes 1-2 business days.</p>
+<div className="ep-cards__tier">
+<p className="ep-cards__tier-intro">Upload three documents. Review usually takes 1–2 business days.</p>
 {(tierDocs || []).map((d: any, __i2: number) => (
-<React.Fragment key={__i2}>
-<div style={{display: "flex", alignItems: "center", gap: "12px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}><div style={{flex: "1"}}><b style={{fontSize: "13px"}}>{d}</b></div><button onClick={uploadTierDoc} style={{padding: "6px 13px", borderRadius: "999px", border: "none", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>Upload</button></div>
-</React.Fragment>
+<div key={__i2} className="ep-cards__tier-doc">
+<span className="ep-cards__tier-doc-title">{d}</span>
+<button type="button" onClick={uploadTierDoc} className="ep-cards__tier-upload">Upload</button>
+</div>
 ))}
-<button onClick={submitTier} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Submit for review</button>
+<button type="button" onClick={submitTier} className="ep-cards__submit">Submit for review</button>
 </div>
 </>) : null}
 {(tierDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Documents submitted</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Compliance will follow up within 1-2 business days.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
+<div className="ep-cards__success">
+<span className="ep-cards__success-icon" aria-hidden>✓</span>
+<span className="ep-cards__success-title">Documents submitted</span>
+<span className="ep-cards__success-text">Compliance will follow up within 1–2 business days.</span>
+<button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
 </div>
 </>) : null}
 </>) : null}
@@ -2261,23 +2357,35 @@ Create payment
 </>) : null}
 
 {(isModalApiKey) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Key name</span>
-<input value={apiKeyName} onChange={setApiKeyName} placeholder="e.g. Server integration" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} />
-</div>
-<div>
-<span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Environment</span>
-<div style={{display: "flex", gap: "6px", marginTop: "6px"}}>
-{(apiKeyEnvironmentChips || []).map((e: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<button onClick={e.select} style={{padding: "9px 16px", borderRadius: "999px", border: "none", background: (e.bg), color: (e.color), fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>{e.label}</button>
-</React.Fragment>
+<div className="ep-developer__modal">
+<label className="ep-developer__field">
+<span className="ep-developer__field-label">Key name</span>
+<input value={apiKeyName} onChange={setApiKeyName} placeholder="e.g. Server integration" className="ep-developer__input" />
+</label>
+<div className="ep-developer__field">
+<span className="ep-developer__field-label">Environment</span>
+<div className="ep-developer__env-chips" role="radiogroup" aria-label="API key environment">
+{(apiKeyEnvironmentChips || []).map((e: any) => (
+<button
+  key={e.key}
+  type="button"
+  role="radio"
+  aria-checked={e.selected}
+  onClick={e.select}
+  className={`ep-developer__env-chip${e.selected ? " ep-developer__env-chip--selected" : ""}${e.key === "live" ? " ep-developer__env-chip--live" : ""}`}
+>
+{e.label}
+</button>
 ))}
 </div>
+{apiKeyEnvironmentChips.find((e: any) => e.selected)?.key === "live" ? (
+<span className="ep-developer__hint">Live keys can move real money. Prefer sandbox while integrating.</span>
+) : (
+<span className="ep-developer__hint">Sandbox keys are safe for testing — no live funds.</span>
+)}
 </div>
-{apiKeyError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{apiKeyError}</div>) : null}
-<button onClick={submitApiKey} disabled={apiKeyCreating} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: apiKeyCreating ? "wait" : "pointer", opacity: apiKeyCreating ? 0.7 : 1}}>{apiKeyCreating ? "Creating…" : "Create key"}</button>
+{apiKeyError ? (<div className="ep-developer__error">{apiKeyError}</div>) : null}
+<button type="button" onClick={submitApiKey} disabled={apiKeyCreating} className="ep-developer__submit">{apiKeyCreating ? "Creating…" : "Create key"}</button>
 </div>
 </>) : null}
 
