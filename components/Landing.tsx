@@ -103,7 +103,7 @@ export default function Landing() {
                 aria-controls="ep-landing-mobile-menu"
                 aria-label={menuOpen ? "Close menu" : "Open menu"}
               >
-                {menuOpen ? "✕" : "☰"}
+                <span aria-hidden>{menuOpen ? "✕" : "☰"}</span>
               </button>
               <button
                 type="button"
@@ -111,7 +111,7 @@ export default function Landing() {
                 onClick={toggleTheme}
                 aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
               >
-                {themeIcon}
+                <span aria-hidden>{themeIcon}</span>
               </button>
               <button type="button" onClick={goLogin} className="ep-landing-btn ep-landing-btn--ghost ep-hide-mobile">
                 Log in
@@ -171,8 +171,10 @@ export default function Landing() {
               <p className="ep-landing-hero__trust">No credit card required · SOC 2 in progress · 256-bit encryption</p>
             </div>
 
-            <div className="ep-landing-converter" aria-label="Currency conversion preview">
-              <p className="ep-landing-converter__title">See what your money becomes</p>
+            <aside className="ep-landing-converter" aria-labelledby="ep-landing-converter-title">
+              <p id="ep-landing-converter-title" className="ep-landing-converter__title">
+                See what your money becomes
+              </p>
               <p className="ep-landing-converter__sub">Live mid-market rates, updated every 30 seconds.</p>
               <div className="ep-landing-converter__row">
                 <input
@@ -181,13 +183,18 @@ export default function Landing() {
                   inputMode="decimal"
                   aria-label="Amount in USD"
                   className="ep-landing-converter__input"
+                  autoComplete="off"
                 />
                 <span className="ep-landing-converter__ccy" aria-hidden>
                   USD
                 </span>
               </div>
-              <div className="ep-chip-row ep-chip-row--scroll ep-landing-converter__chips" role="group" aria-label="Destination currency">
-                {lcCountryChips.map((lc, i) => (
+              <div
+                className="ep-chip-row ep-chip-row--scroll ep-scroll-hint ep-landing-converter__chips"
+                role="group"
+                aria-label="Destination currency"
+              >
+                {lcCountryChips.map((lc) => (
                   <button
                     key={lc.code}
                     type="button"
@@ -218,7 +225,7 @@ export default function Landing() {
                   <dd>Rate lock 90s</dd>
                 </div>
               </dl>
-            </div>
+            </aside>
           </section>
 
           <section id="coverage" className="ep-landing-coverage" aria-labelledby="ep-landing-coverage-title">
