@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import LoginForm, { LoginFormFallback } from "./LoginForm";
+
+export const metadata: Metadata = {
+  title: "Sign in · ElementPay",
+  description: "Sign in to your ElementPay business dashboard.",
+};
 
 /**
  * Server page owns the Suspense boundary so prerender HTML includes the auth

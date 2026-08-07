@@ -10,19 +10,22 @@ export type KybGateBannerProps = {
 };
 
 export default function KybGateBanner(p: KybGateBannerProps) {
+  const status = p.verificationStatus?.trim();
+
   return (
     <div
-      role="note"
+      role="status"
+      aria-live="polite"
       style={{
         display: "flex",
         alignItems: "center",
-        gap: "10px",
+        gap: "12px",
         flexWrap: "wrap",
-        padding: "12px 14px",
+        padding: "14px 16px",
         borderRadius: "14px",
         background: "var(--amber-tint)",
-        border: "1px solid var(--border)",
-        color: "var(--amber)",
+        border: "1px solid color-mix(in srgb, var(--amber) 28%, var(--border))",
+        minHeight: "52px",
       }}
     >
       <span
@@ -31,33 +34,58 @@ export default function KybGateBanner(p: KybGateBannerProps) {
           fontWeight: 800,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          padding: "4px 10px",
+          padding: "5px 10px",
           borderRadius: "999px",
           background: "var(--amber)",
           color: "#fff",
+          flexShrink: 0,
         }}
       >
         Verification required
       </span>
-      <span style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--ink)", flex: "1", minWidth: "200px" }}>
-        Complete business verification before moving money
-        {p.verificationStatus ? ` — current status: ${p.verificationStatus}.` : "."}
-      </span>
+      <div style={{ flex: "1", minWidth: "200px" }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "var(--ink)",
+            lineHeight: 1.4,
+          }}
+        >
+          Complete business verification before sending or receiving money.
+        </p>
+        {status ? (
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "var(--muted)",
+              lineHeight: 1.4,
+            }}
+          >
+            Current status: {status}
+          </p>
+        ) : null}
+      </div>
       {p.showAction && p.onStartVerification ? (
         <button
           type="button"
           onClick={p.onStartVerification}
           style={{
-            padding: "8px 14px",
-            borderRadius: "999px",
+            padding: "10px 16px",
+            minHeight: "44px",
+            borderRadius: "12px",
             border: "none",
             background: "var(--indigo)",
             color: "var(--indigo-on)",
             fontFamily: "'Space Grotesk',sans-serif",
-            fontSize: "12px",
-            fontWeight: "700",
+            fontSize: "12.5px",
+            fontWeight: 700,
             cursor: "pointer",
             flexShrink: 0,
+            WebkitTapHighlightColor: "transparent",
           }}
         >
           Start verification

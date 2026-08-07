@@ -13,11 +13,11 @@ import {
   authSubtitleStyle,
   authLabelStyle,
   authInputStyle,
-  authInputInvalidStyle,
-  authButtonStyle,
-  authButtonDisabledStyle,
+  authInputErrorStyle,
+  authButtonStateStyle,
   authErrorStyle,
-  authLinkHitStyle,
+  authLinkStyle,
+  authTextButtonStyle,
   authFooterStyle,
   authHintStyle,
   authFieldRowStyle,
@@ -55,7 +55,7 @@ export function LoginFormFallback() {
           <span style={authLabelStyle}>Password</span>
           <div style={{ ...authInputStyle, opacity: 0.55 }} aria-hidden />
         </div>
-        <button type="button" style={{ ...authButtonStyle, ...authButtonDisabledStyle }} disabled>
+        <button type="button" style={authButtonStateStyle(true)} disabled>
           Sign in
         </button>
       </div>
@@ -103,21 +103,11 @@ export default function LoginForm() {
     }
   }
 
-  const inputStyle = error
-    ? { ...authInputStyle, ...authInputInvalidStyle }
-    : authInputStyle;
-  const submitStyle = submitting
-    ? { ...authButtonStyle, ...authButtonDisabledStyle }
-    : authButtonStyle;
+  const inputStyle = error ? authInputErrorStyle : authInputStyle;
 
   return (
     <div style={authPageStyle}>
-      <form
-        style={authCardStyle}
-        onSubmit={onSubmit}
-        noValidate={false}
-        aria-busy={submitting}
-      >
+      <form style={authCardStyle} onSubmit={onSubmit} aria-busy={submitting}>
         <AuthChrome />
 
         {error ? (
@@ -165,7 +155,7 @@ export default function LoginForm() {
             <label htmlFor="login-password" style={{ ...authLabelStyle, margin: 0 }}>
               Password
             </label>
-            <a href="/forgot-password" style={{ ...authLinkHitStyle, minHeight: "auto", padding: "4px 0", fontSize: "12.5px" }}>
+            <a href="/forgot-password" style={{ ...authTextButtonStyle, fontSize: "12.5px" }}>
               Forgot password?
             </a>
           </div>
@@ -188,7 +178,7 @@ export default function LoginForm() {
           />
         </div>
 
-        <button type="submit" style={submitStyle} disabled={submitting}>
+        <button type="submit" style={authButtonStateStyle(submitting)} disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </button>
 
@@ -200,7 +190,7 @@ export default function LoginForm() {
 
         <p style={{ ...authFooterStyle, margin: 0 }}>
           Don&apos;t have an account?{" "}
-          <a href="/signup" style={authLinkHitStyle}>
+          <a href="/signup" style={authLinkStyle}>
             Sign up
           </a>
         </p>

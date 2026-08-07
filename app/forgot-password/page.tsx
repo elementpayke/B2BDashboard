@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
 import {
+  AUTH_INK,
   authPageStyle,
   authCardStyle,
   authBrandRowStyle,
@@ -13,12 +14,12 @@ import {
   authSubtitleStyle,
   authLabelStyle,
   authInputStyle,
-  authInputInvalidStyle,
+  authInputErrorStyle,
   authButtonStyle,
-  authButtonDisabledStyle,
+  authButtonStateStyle,
   authErrorStyle,
   authSuccessStyle,
-  authLinkHitStyle,
+  authLinkStyle,
   authFooterStyle,
   authHintStyle,
   authFieldRowStyle,
@@ -79,7 +80,7 @@ export default function ForgotPasswordPage() {
             <h1 style={authTitleStyle}>Check your inbox</h1>
             <p style={authSubtitleStyle}>
               If an account exists for{" "}
-              <span style={{ color: "#131126", fontWeight: 700 }}>{email.trim() || "this email"}</span>
+              <span style={{ color: AUTH_INK, fontWeight: 700 }}>{email.trim() || "this email"}</span>
               , we&apos;ve sent a password reset code. It may take a minute to arrive.
             </p>
           </header>
@@ -100,7 +101,7 @@ export default function ForgotPasswordPage() {
           </button>
 
           <p style={{ ...authFooterStyle, margin: 0 }}>
-            <a href="/login" style={authLinkHitStyle}>
+            <a href="/login" style={authLinkStyle}>
               Back to sign in
             </a>
           </p>
@@ -109,12 +110,7 @@ export default function ForgotPasswordPage() {
     );
   }
 
-  const inputStyle = error
-    ? { ...authInputStyle, ...authInputInvalidStyle }
-    : authInputStyle;
-  const submitStyle = submitting
-    ? { ...authButtonStyle, ...authButtonDisabledStyle }
-    : authButtonStyle;
+  const inputStyle = error ? authInputErrorStyle : authInputStyle;
 
   return (
     <div style={authPageStyle}>
@@ -159,7 +155,7 @@ export default function ForgotPasswordPage() {
           />
         </div>
 
-        <button type="submit" style={submitStyle} disabled={submitting}>
+        <button type="submit" style={authButtonStateStyle(submitting)} disabled={submitting}>
           {submitting ? "Sending…" : "Send reset code"}
         </button>
 
@@ -173,7 +169,7 @@ export default function ForgotPasswordPage() {
 
         <p style={{ ...authFooterStyle, margin: 0 }}>
           Remember your password?{" "}
-          <a href="/login" style={authLinkHitStyle}>
+          <a href="/login" style={authLinkStyle}>
             Sign in
           </a>
         </p>
