@@ -1518,36 +1518,36 @@ export default function DashboardApp(props: Props = {}) {
 
 <div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
 <aside className="ep-sidebar" aria-label="Main navigation">
-<button onClick={exitApp} style={{display: "flex", alignItems: "center", gap: "10px", padding: "6px 8px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left", minHeight: "44px"}}>
-<span style={{width: "32px", height: "32px", borderRadius: "10px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "14px", fontWeight: "700", flexShrink: "0"}}>E</span>
-<div><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "14.5px", letterSpacing: "-0.01em", color: "var(--ink)"}}>ElementPay</div><div style={{fontSize: "10.5px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
+<button onClick={exitApp} className="ep-sidebar__brand">
+<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
+<div style={{minWidth: 0}}><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
 </button>
 
-<nav style={{display: "flex", flexDirection: "column", gap: "2px", flex: "1"}}>
+<nav className="ep-sidebar__nav">
 {(mainNavItems || []).map((item: any, __i1: number) => (
 <React.Fragment key={__i1}>
 {(item.groupLabel) ? (<>
-<div style={{fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--muted2)", fontWeight: "700", padding: "14px 12px 6px"}}>{item.groupLabel}</div>
+<div className="ep-sidebar__group">{item.groupLabel}</div>
 </>) : null}
-<button onClick={item.select} style={{display: "flex", alignItems: "center", gap: "10px", padding: "12px", minHeight: "44px", borderRadius: "12px", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", textAlign: "left", background: (item.bg), color: (item.color), boxShadow: (item.shadow)}}>
-<span style={{fontSize: "13.5px", fontWeight: (item.weight)}}>{item.label}</span>
+<button onClick={item.select} className="ep-sidebar__nav-btn" style={{background: (item.bg), color: (item.color), boxShadow: (item.shadow)}}>
+<span style={{fontSize: "13px", fontWeight: (item.weight)}}>{item.label}</span>
 </button>
 </React.Fragment>
 ))}
 </nav>
 
-<div style={{marginTop: "auto", padding: "13px 14px", borderRadius: "16px", background: "var(--ink-panel)", color: "var(--ink-panel-text)", fontFamily: "'DM Mono',monospace", fontSize: "11px"}}>
-<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'DM Sans',sans-serif", fontWeight: "700", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "8px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
+<div className="ep-sidebar__rates">
+<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'DM Sans',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
 {(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
-<div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "2px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
+<div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "1px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
 ))}
 </div>
 
-<div style={{display: "flex", alignItems: "center", gap: "10px", padding: "14px 6px 4px"}}>
-<span style={{width: "32px", height: "32px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11.5px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
-<div style={{minWidth: "0"}}><div style={{fontSize: "12px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10.5px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
-<button onClick={toggleTheme} aria-label="Toggle theme" style={{marginLeft: "auto", width: "44px", height: "44px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "14px", flexShrink: "0"}}>{themeIcon}</button>
-<button onClick={logout} title="Log out" aria-label="Log out" style={{width: "44px", height: "44px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>⏻</button>
+<div className="ep-sidebar__profile">
+<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
+<div style={{minWidth: "0", flex: 1}}><div style={{fontSize: "11.5px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
+<button onClick={toggleTheme} aria-label="Toggle theme" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>{themeIcon}</button>
+<button onClick={logout} title="Log out" aria-label="Log out" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "12px", flexShrink: "0"}}>⏻</button>
 </div>
 </aside>
 
@@ -1572,29 +1572,29 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
-{/* 1. Available balance */}
+{/* 1. Total balance */}
 <div className="ep-grid-home-balance">
-<div style={{borderRadius: "24px", padding: isMobile ? "18px 18px" : "22px 26px", color: "var(--indigo-on)", background: "var(--indigo)", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden", boxShadow: "0 22px 48px -20px rgba(59,46,211,0.4)"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", position: "relative"}}>
-<span style={{fontSize: "11px", letterSpacing: "0.14em", textTransform: "uppercase", opacity: "0.75", fontWeight: "700"}}>Available balance</span>
-<div style={{display: "flex", gap: "4px", background: "rgba(255,255,255,0.14)", padding: "3px", borderRadius: "999px"}}>
+<div className="ep-home__balance">
+<div className="ep-home__balance-top">
+<span className="ep-home__balance-label">Total balance</span>
+<div className="ep-home__balance-tabs">
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (
 <React.Fragment key={__i1}>
-<button onClick={bv.select} style={{padding: "8px 12px", minHeight: "36px", borderRadius: "999px", border: "none", background: (bv.bg), color: (bv.color), fontSize: "11px", fontWeight: "700", cursor: "pointer"}}>{bv.label}</button>
+<button onClick={bv.select} className="ep-home__balance-tab" style={{background: (bv.bg), color: (bv.color)}}>{bv.label}</button>
 </React.Fragment>
 ))}
 </div>
 </div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "clamp(26px,3.4vw,36px)", fontWeight: "500", margin: "8px 0 2px", letterSpacing: "-0.02em", position: "relative"}}>{homeTotalBalance}</div>
-<div style={{fontFamily: "'DM Mono',monospace", fontSize: "12px", opacity: "0.7", position: "relative"}}>{balanceViewSub}</div>
+<div className="ep-home__balance-value">{homeTotalBalance}</div>
+<div className="ep-home__balance-sub">{balanceViewSub}</div>
 </div>
 
 {/* Desktop/tablet: full stats column beside balance */}
 <div className="ep-home__stats-desktop">
 {(homeStats || []).map((hs: any, __i1: number) => (
-<div key={__i1} style={{flex: "1", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "16px", padding: "12px 16px", display: "flex", alignItems: "center", gap: "12px"}}>
-<span style={{width: "34px", height: "34px", borderRadius: "50%", background: (hs.iconBg), color: (hs.iconColor), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", flexShrink: "0"}}>{hs.icon}</span>
-<div><div style={{fontSize: "10.5px", fontWeight: "700", color: "var(--muted)"}}>{hs.label}</div><div style={{fontFamily: "'DM Mono',monospace", fontSize: "17px", fontWeight: "500"}}>{hs.value}</div></div>
+<div key={__i1} className="ep-home__stat">
+<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
+<div><div className="ep-home__stat-label">{hs.label}</div><div className="ep-home__stat-value">{hs.value}</div></div>
 </div>
 ))}
 </div>
@@ -1614,25 +1614,27 @@ Create payment
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
-{/* 2. Create payment / quick actions */}
+{/* 2. Quick actions */}
 <div className="ep-grid-quick">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
-<button key={__i1} onClick={qa.open} className={__i1 === 0 ? undefined : "ep-quick-secondary"} style={{textAlign: "left", border: "1px solid var(--border)", background: "var(--panel)", borderRadius: "20px", padding: "16px", display: __i1 === 0 ? "flex" : undefined, flexDirection: "column", gap: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", position: "relative", minHeight: "44px", gridColumn: isMobile && __i1 === 0 ? "1 / -1" : undefined}}>
-<span style={{width: "40px", height: "40px", borderRadius: "13px", background: (qa.iconBg), color: (qa.iconColor), display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px"}}>{qa.icon}</span>
-<div><b style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14px", fontWeight: "700", color: "var(--ink)", display: "block"}}>{qa.label === "Send" ? "Create payment" : qa.label}</b><span style={{fontSize: "11.5px", color: "var(--muted)", lineHeight: "1.5"}}>{qa.desc}</span></div>
+<button key={__i1} onClick={qa.open} className={`ep-home__quick${__i1 === 0 ? "" : " ep-quick-secondary"}`} style={{gridColumn: isMobile && __i1 === 0 ? "1 / -1" : undefined}}>
+<span className="ep-home__quick-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}}>{qa.icon}</span>
+<div><b className="ep-home__quick-title">{qa.label}</b><span className="ep-home__quick-desc">{qa.desc}</span></div>
 </button>
 ))}
 </div>
 
-<div className="ep-hide-mobile" style={{display: "flex", gap: "8px", flexWrap: "wrap"}}>
+{(homeCurrencyChips?.length) ? (
+<div className="ep-home__chips" aria-label="Currency balances">
 {(homeCurrencyChips || []).map((hc: any, __i1: number) => (
-<div key={__i1} style={{display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: "999px", background: "var(--surface2)", border: "1px solid var(--glass-border)"}}>
+<div key={__i1} className="ep-home__chip">
 <span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
 <span style={{fontSize: "12px", fontWeight: "700"}}>{hc.code}</span>
 <span style={{fontFamily: "'DM Mono',monospace", fontSize: "11.5px", color: "var(--muted)"}}>{hc.balance}</span>
 </div>
 ))}
 </div>
+) : null}
 
 {/* 4. Recent activity */}
 <ActivityList title="Recent activity" items={homeRecent} onViewAll={goTransactions} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
