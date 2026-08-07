@@ -17,6 +17,7 @@ import {
   readResetHandoff,
   takeQueryResetParams,
 } from "@/lib/auth/resetHandoff";
+import { passwordsMatch, validatePassword } from "@/lib/auth/passwordPolicy";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -48,12 +49,14 @@ function ResetPasswordForm() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < 12) {
-      setError("Password must be at least 12 characters.");
+    const policyError = validatePassword(password);
+    if (policyError) {
+      setError(policyError);
       return;
     }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    const matchError = passwordsMatch(password, confirmPassword);
+    if (matchError) {
+      setError(matchError);
       return;
     }
 

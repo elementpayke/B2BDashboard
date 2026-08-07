@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
 import {
+  passwordRequirements,
+  passwordsMatch,
+  validatePassword,
+} from "@/lib/auth/passwordPolicy";
+import {
   authPageStyle,
   authCardStyle,
   authLabelStyle,
@@ -18,16 +23,27 @@ export default function SignupPage() {
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const requirements = passwordRequirements(password);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 12) {
-      setError("Password must be at least 12 characters.");
+
+    const policyError = validatePassword(password);
+    if (policyError) {
+      setError(policyError);
       return;
     }
+    const matchError = passwordsMatch(password, confirmPassword);
+    if (matchError) {
+      setError(matchError);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await authApi.signup(businessName, email, password);
@@ -49,10 +65,12 @@ export default function SignupPage() {
         {error ? <div style={authErrorStyle}>{error}</div> : null}
 
         <div>
-          <span style={authLabelStyle}>Business name</span>
+          <label htmlFor="business-name" style={authLabelStyle}>Business name</label>
           <input
+            id="business-name"
             required
             minLength={2}
+            autoComplete="organization"
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             style={authInputStyle}
@@ -60,10 +78,12 @@ export default function SignupPage() {
           />
         </div>
         <div>
-          <span style={authLabelStyle}>Work email</span>
+          <label htmlFor="email" style={authLabelStyle}>Work email</label>
           <input
+            id="email"
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={authInputStyle}
@@ -71,15 +91,58 @@ export default function SignupPage() {
           />
         </div>
         <div>
-          <span style={authLabelStyle}>Password</span>
+          <label htmlFor="password" style={authLabelStyle}>Password</label>
           <input
+            id="password"
             type="password"
             required
             minLength={12}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={authInputStyle}
-            placeholder="At least 12 characters"
+            placeholder="Create a strong password"
+          />
+          <ul
+            style={{
+              listStyle: "none",
+              margin: "8px 0 0",
+              padding: 0,
+              display: "grid",
+              gap: "4px",
+            }}
+            aria-live="polite"
+          >
+            {requirements.map((req) => (
+              <li
+                key={req.id}
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: req.met ? "#1B7A3D" : "#8B89A6",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span aria-hidden="true">{req.met ? "✓" : "○"}</span>
+                {req.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <label htmlFor="confirm-password" style={authLabelStyle}>Confirm password</label>
+          <input
+            id="confirm-password"
+            type="password"
+            required
+            minLength={12}
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            style={authInputStyle}
+            placeholder="Re-enter your password"
           />
         </div>
         <button type="submit" style={authButtonStyle} disabled={submitting}>
