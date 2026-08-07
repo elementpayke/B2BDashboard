@@ -1911,8 +1911,8 @@ Create payment
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px"}}>
-<h3 id="ep-modal-title" style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px", fontWeight: "700"}}>{modalTitle}</h3>
+<div className="ep-modal__header">
+<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
 </div>
 
