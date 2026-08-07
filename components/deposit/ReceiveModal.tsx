@@ -18,68 +18,157 @@ export type ReceiveModalProps = {
 };
 
 export default function ReceiveModal(p: ReceiveModalProps) {
+  const hasAddress = Boolean(p.receiveAddress && p.receiveAddress !== "—");
+  const hasFiatLines = (p.receiveAcctLines || []).length > 0;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <p style={{ margin: "0", fontSize: "12.5px", color: "var(--muted)" }}>Share these coordinates with whoever is paying you — no action needed on your end until funds land.</p>
-      <div style={{ display: "flex", gap: "6px" }}>
-        {(p.receiveGroups || []).map((rg: any, __i1: number) => (
-          <React.Fragment key={__i1}>
-            <button onClick={rg.select} style={{ padding: "9px 14px", borderRadius: "999px", border: "none", background: rg.bg, color: rg.color, fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}>{rg.label}</button>
-          </React.Fragment>
+    <div className="ep-money-flow">
+      <p className="ep-money-lede">
+        Share these coordinates with whoever is paying you — no action needed on your end until
+        funds land.
+      </p>
+
+      <div className="ep-chip-row" role="group" aria-label="Receive method">
+        {(p.receiveGroups || []).map((rg: any, i: number) => (
+          <button
+            key={i}
+            type="button"
+            onClick={rg.select}
+            className="ep-money-choice"
+            style={{ background: rg.bg, color: rg.color }}
+          >
+            {rg.label}
+          </button>
         ))}
       </div>
 
       {p.receiveIsFiat ? (
         <>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {(p.receiveAcctChips || []).map((c: any, __i1: number) => (
-              <React.Fragment key={__i1}>
-                <button onClick={c.select} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px 7px 7px", borderRadius: "999px", border: `1.5px solid ${c.border}`, background: c.bg, color: "var(--ink)", cursor: "pointer" }}><div style={{ width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${c.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0" }} /><span style={{ fontSize: "12px", fontWeight: "700" }}>{c.code}</span></button>
-              </React.Fragment>
-            ))}
+          <div className="ep-money-field">
+            <span className="ep-money-label" id="receive-country-label">
+              Account country
+            </span>
+            <div className="ep-chip-row" role="group" aria-labelledby="receive-country-label">
+              {(p.receiveAcctChips || []).map((c: any, i: number) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={c.select}
+                  className="ep-money-choice ep-money-choice--flag ep-money-choice--outlined"
+                  style={{
+                    borderColor: c.border,
+                    background: c.bg,
+                    color: "var(--ink)",
+                  }}
+                >
+                  <span
+                    className="ep-flag"
+                    style={{ backgroundImage: `url(${c.flagUrl})` }}
+                    aria-hidden
+                  />
+                  <span>{c.code}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          <p style={{ margin: "0", fontSize: "11.5px", color: "var(--muted2)" }}>{p.receiveAcctRail}</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", borderRadius: "14px", background: "var(--surface2)" }}>
-            {(p.receiveAcctLines || []).map((ln: any, __i1: number) => (
-              <React.Fragment key={__i1}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px" }}>
-                  <span style={{ color: "var(--muted)", whiteSpace: "nowrap", flexShrink: "0", width: "120px" }}>{ln.k}</span>
-                  <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: "600", flex: "1", wordBreak: "break-all" }}>{ln.v}</span>
-                  <button onClick={ln.copy} style={{ flexShrink: "0", padding: "5px 10px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "10.5px", fontWeight: "700", cursor: "pointer" }}>{(ln.copied) ? (<>Copied</>) : (<>Copy</>)}</button>
+
+          {p.receiveAcctRail ? <p className="ep-money-hint">{p.receiveAcctRail}</p> : null}
+
+          {hasFiatLines ? (
+            <div className="ep-money-acct" role="group" aria-label="Receive account details">
+              {(p.receiveAcctLines || []).map((ln: any, i: number) => (
+                <div key={i} className="ep-money-acct__row">
+                  <span className="ep-money-acct__key">{ln.k}</span>
+                  <span className="ep-money-acct__val">{ln.v}</span>
+                  <button
+                    type="button"
+                    className="ep-money-copy"
+                    onClick={ln.copy}
+                    aria-label={`Copy ${ln.k}`}
+                  >
+                    {ln.copied ? "Copied" : "Copy"}
+                  </button>
                 </div>
-              </React.Fragment>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="ep-money-empty" role="status">
+              No local receive account for this selection yet.
+            </div>
+          )}
         </>
       ) : null}
 
       {p.receiveIsCrypto ? (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>Asset</span>
-              <div style={{ display: "flex", gap: "4px", background: "var(--surface2)", padding: "3px", borderRadius: "10px" }}>
-                {(p.receiveAssets || []).map((as: any, __i1: number) => (
-                  <React.Fragment key={__i1}>
-                    <button onClick={as.select} style={{ padding: "5px 10px", borderRadius: "8px", border: "none", background: as.bg, color: as.color, fontSize: "11.5px", fontWeight: "700", cursor: "pointer" }}>{as.label}</button>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {(p.receiveNetworks || []).map((net: any, __i1: number) => (
-                <React.Fragment key={__i1}>
-                  <button onClick={net.select} style={{ padding: "8px 12px", borderRadius: "12px", border: `1.5px solid ${net.border}`, background: net.bg, color: net.color, fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}>{net.label}</button>
-                </React.Fragment>
+        <div className="ep-money-section ep-money-section--tight">
+          <div className="ep-money-row-between">
+            <span className="ep-money-label" id="receive-asset-label">
+              Asset
+            </span>
+            <div className="ep-money-segment" role="group" aria-labelledby="receive-asset-label">
+              {(p.receiveAssets || []).map((as: any, i: number) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={as.select}
+                  className="ep-money-segment__btn"
+                  style={{ background: as.bg, color: as.color }}
+                >
+                  {as.label}
+                </button>
               ))}
             </div>
-            <div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--amber-tint)", color: "var(--amber)", fontSize: "12px", fontWeight: "600", lineHeight: "1.5" }}>Only accept {p.receiveAssetCode} on {p.receiveNetworkLabel} — funds sent on other networks cannot be recovered.</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 10px 10px 16px", borderRadius: "14px", background: "var(--surface2)", border: "1.5px solid var(--glass-border)" }}>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "14.5px", fontWeight: "600", letterSpacing: "0.02em", wordBreak: "break-all", lineHeight: "1.5" }}>{p.receiveAddress}</span>
-              <button onClick={p.copyReceiveAddress} style={{ flexShrink: "0", display: "flex", alignItems: "center", gap: "6px", padding: "9px 14px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--bg)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}><span style={{ fontSize: "14px" }}>⧉</span>{(p.receiveAddressCopied) ? (<>Copied</>) : (<>Copy</>)}</button>
+          </div>
+
+          <div className="ep-money-field">
+            <span className="ep-money-label" id="receive-network-label">
+              Network
+            </span>
+            <div className="ep-chip-row" role="group" aria-labelledby="receive-network-label">
+              {(p.receiveNetworks || []).map((net: any, i: number) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={net.select}
+                  className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                  style={{
+                    borderColor: net.border,
+                    background: net.bg,
+                    color: net.color,
+                  }}
+                >
+                  {net.label}
+                </button>
+              ))}
             </div>
           </div>
-        </>
+
+          <div className="ep-money-alert ep-money-alert--warn" role="note">
+            Only accept {p.receiveAssetCode} on {p.receiveNetworkLabel} — funds sent on other
+            networks cannot be recovered.
+          </div>
+
+          {hasAddress ? (
+            <div className="ep-money-address">
+              <span className="ep-money-address__value" id="receive-address-value">
+                {p.receiveAddress}
+              </span>
+              <button
+                type="button"
+                className="ep-money-copy"
+                onClick={p.copyReceiveAddress}
+                aria-describedby="receive-address-value"
+              >
+                <span aria-hidden>⧉</span>
+                {p.receiveAddressCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          ) : (
+            <div className="ep-money-empty" role="status">
+              Receive address unavailable. Connect a treasury wallet or try again later.
+            </div>
+          )}
+        </div>
       ) : null}
     </div>
   );
