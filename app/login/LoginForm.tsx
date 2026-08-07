@@ -1,16 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
 import {
   authPageStyle,
   authCardStyle,
+  authBrandRowStyle,
+  authBrandMarkStyle,
+  authTitleStyle,
+  authSubtitleStyle,
   authLabelStyle,
   authInputStyle,
+  authInputInvalidStyle,
   authButtonStyle,
+  authButtonDisabledStyle,
   authErrorStyle,
+  authLinkHitStyle,
+  authFooterStyle,
+  authHintStyle,
+  authFieldRowStyle,
 } from "@/components/auth/authStyles";
 
 /** Only same-origin relative paths; blocks open redirects via `//…` or absolute URLs. */
@@ -21,20 +31,31 @@ function safeNextPath(raw: string | null): string {
   return raw;
 }
 
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiRequestError) return err.message;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    return "The request took too long. Please try again.";
+  }
+  if (err instanceof TypeError) {
+    return "Unable to reach the server. Check your connection and try again.";
+  }
+  return "Unable to sign in. Check your email and password, then try again.";
+}
+
 export function LoginFormFallback() {
   return (
     <div style={authPageStyle}>
-      <div style={authCardStyle}>
+      <div style={authCardStyle} aria-busy="true" aria-label="Loading sign in">
         <AuthChrome />
-        <div>
-          <span style={authLabelStyle}>Email</span>
+        <div style={authFieldRowStyle}>
+          <span style={authLabelStyle}>Work email</span>
           <div style={{ ...authInputStyle, opacity: 0.55 }} aria-hidden />
         </div>
-        <div>
+        <div style={authFieldRowStyle}>
           <span style={authLabelStyle}>Password</span>
           <div style={{ ...authInputStyle, opacity: 0.55 }} aria-hidden />
         </div>
-        <button type="button" style={{ ...authButtonStyle, opacity: 0.7 }} disabled>
+        <button type="button" style={{ ...authButtonStyle, ...authButtonDisabledStyle }} disabled>
           Sign in
         </button>
       </div>
@@ -44,46 +65,23 @@ export function LoginFormFallback() {
 
 function AuthChrome() {
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          fontFamily: "'Space Grotesk',sans-serif",
-          fontWeight: 700,
-          fontSize: "16px",
-          marginBottom: "6px",
-        }}
-      >
-        <span
-          style={{
-            width: "32px",
-            height: "32px",
-            borderRadius: "10px",
-            background: "#3B2ED3",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "'DM Mono',monospace",
-            fontSize: "14px",
-          }}
-        >
+    <header>
+      <div style={authBrandRowStyle}>
+        <span style={authBrandMarkStyle} aria-hidden>
           E
         </span>
         ElementPay
       </div>
-      <h1 style={{ margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: "20px", fontWeight: 800 }}>
-        Sign in to your business
-      </h1>
-    </div>
+      <h1 style={authTitleStyle}>Sign in to your business</h1>
+      <p style={authSubtitleStyle}>Access your ElementPay dashboard with your work email.</p>
+    </header>
   );
 }
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const errorId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -99,50 +97,113 @@ export default function LoginForm() {
       router.push(next);
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Unable to sign in.");
+      setError(loginErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
+  const inputStyle = error
+    ? { ...authInputStyle, ...authInputInvalidStyle }
+    : authInputStyle;
+  const submitStyle = submitting
+    ? { ...authButtonStyle, ...authButtonDisabledStyle }
+    : authButtonStyle;
+
   return (
     <div style={authPageStyle}>
-      <form style={authCardStyle} onSubmit={onSubmit}>
+      <form
+        style={authCardStyle}
+        onSubmit={onSubmit}
+        noValidate={false}
+        aria-busy={submitting}
+      >
         <AuthChrome />
 
-        {error ? <div style={authErrorStyle}>{error}</div> : null}
+        {error ? (
+          <div id={errorId} role="alert" style={authErrorStyle}>
+            {error}
+          </div>
+        ) : null}
 
-        <div>
-          <span style={authLabelStyle}>Email</span>
+        <div style={authFieldRowStyle}>
+          <label htmlFor="login-email" style={authLabelStyle}>
+            Work email
+          </label>
           <input
+            id="login-email"
+            name="email"
             type="email"
             required
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="none"
+            spellCheck={false}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={authInputStyle}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError(null);
+            }}
+            style={inputStyle}
             placeholder="name@company.com"
+            disabled={submitting}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
-        <div>
-          <span style={authLabelStyle}>Password</span>
+
+        <div style={authFieldRowStyle}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
+            <label htmlFor="login-password" style={{ ...authLabelStyle, margin: 0 }}>
+              Password
+            </label>
+            <a href="/forgot-password" style={{ ...authLinkHitStyle, minHeight: "auto", padding: "4px 0", fontSize: "12.5px" }}>
+              Forgot password?
+            </a>
+          </div>
           <input
+            id="login-password"
+            name="password"
             type="password"
             required
+            autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={authInputStyle}
-            placeholder="••••••••••••"
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+            style={inputStyle}
+            placeholder="Enter your password"
+            disabled={submitting}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
-        <div style={{ fontSize: "12.5px", textAlign: "right", marginTop: "-8px" }}>
-          <a href="/forgot-password" style={{ color: "#3B2ED3", fontWeight: 700 }}>Forgot password?</a>
-        </div>
-        <button type="submit" style={authButtonStyle} disabled={submitting}>
+
+        <button type="submit" style={submitStyle} disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </button>
-        <div style={{ fontSize: "12.5px", color: "#4C4A66", textAlign: "center" }}>
-          Don&apos;t have an account? <a href="/signup" style={{ color: "#3B2ED3", fontWeight: 700 }}>Sign up</a>
-        </div>
+
+        {submitting ? (
+          <p role="status" aria-live="polite" style={authHintStyle}>
+            Verifying your credentials…
+          </p>
+        ) : null}
+
+        <p style={{ ...authFooterStyle, margin: 0 }}>
+          Don&apos;t have an account?{" "}
+          <a href="/signup" style={authLinkHitStyle}>
+            Sign up
+          </a>
+        </p>
       </form>
     </div>
   );
