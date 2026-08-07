@@ -61,11 +61,7 @@ export default function TransactionsScreen({
               onClick={tf.select}
               className={`ep-txn-filter${active ? " ep-txn-filter--active" : ""}`}
               aria-pressed={active}
-              style={
-                active
-                  ? undefined
-                  : { background: tf.bg, color: tf.color }
-              }
+              style={{ background: tf.bg, color: tf.color }}
             >
               {tf.label}
             </button>

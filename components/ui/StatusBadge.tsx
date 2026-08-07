@@ -16,18 +16,17 @@ export default function StatusBadge({
   showDot = true,
   size = "sm",
 }: Props) {
-  const sizeClass = size === "md" ? " ep-activity-status--md" : "";
   return (
     <span
-      className={`ep-activity-status${sizeClass}`}
+      className={`ep-activity__badge ep-activity__badge--${size}`}
       aria-label={`Status: ${label}`}
       style={{
         background: soft,
         color,
       }}
     >
-      {showDot ? <span className="ep-activity-status__dot" aria-hidden /> : null}
-      <span className="ep-activity-status__label">{label}</span>
+      {showDot ? <span className="ep-activity__badge-dot" aria-hidden /> : null}
+      {label}
     </span>
   );
 }

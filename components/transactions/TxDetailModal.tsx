@@ -10,7 +10,7 @@ export type TxDetailModalProps = {
   liveStatus?: { label: string; isFetching: boolean } | null;
 };
 
-type StepState = "done" | "current" | "upcoming" | "error";
+type StepState = "done" | "current" | "upcoming" | "failed";
 
 type ProgressStep = {
   key: string;
@@ -36,20 +36,20 @@ function buildProgressSteps(status?: string): ProgressStep[] {
     return [
       { key: "created", label: "Created", state: "done" },
       { key: "processing", label: "Processing", state: "done" },
-      { key: "failed", label: "Failed", state: "error" },
+      { key: "failed", label: "Failed", state: "failed" },
     ];
   }
   if (s === "canceled") {
     return [
       { key: "created", label: "Created", state: "done" },
-      { key: "canceled", label: "Canceled", state: "error" },
+      { key: "canceled", label: "Canceled", state: "failed" },
     ];
   }
   if (s === "frozen") {
     return [
       { key: "created", label: "Created", state: "done" },
       { key: "processing", label: "Processing", state: "done" },
-      { key: "frozen", label: "Frozen", state: "error" },
+      { key: "frozen", label: "Frozen", state: "failed" },
     ];
   }
   if (s === "refunded") {
@@ -78,22 +78,21 @@ function DetailRow({
   label,
   value,
   mono = false,
-  wrap = false,
+  last = false,
+  children,
 }: {
   label: string;
-  value: React.ReactNode;
+  value?: React.ReactNode;
   mono?: boolean;
-  wrap?: boolean;
+  last?: boolean;
+  children?: React.ReactNode;
 }) {
-  if (value == null || value === "") return null;
+  const content = children ?? value;
+  if (content == null || content === "") return null;
   return (
-    <div className="ep-txn-detail__row">
+    <div className={`ep-txn-detail__row${last ? " ep-txn-detail__row--last" : ""}`}>
       <span className="ep-txn-detail__label">{label}</span>
-      <span
-        className={`ep-txn-detail__value${mono ? " ep-mono" : ""}${wrap ? " ep-txn-detail__value--wrap" : ""}`}
-      >
-        {value}
-      </span>
+      <span className={`ep-txn-detail__value${mono ? " ep-mono" : ""}`}>{content}</span>
     </div>
   );
 }
@@ -101,11 +100,9 @@ function DetailRow({
 export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDetailModalProps) {
   if (!txDetail) {
     return isLoading ? (
-      <div className="ep-txn-detail ep-txn-detail--loading" role="status" aria-live="polite">
-        <div className="ep-txn-detail__skeleton ep-txn-detail__skeleton--amount" />
-        <div className="ep-txn-detail__skeleton ep-txn-detail__skeleton--line" />
-        <div className="ep-txn-detail__skeleton ep-txn-detail__skeleton--pill" />
-        <span className="ep-txn-detail__loading-label">Loading transaction…</span>
+      <div className="ep-txn-detail__loading" role="status" aria-live="polite">
+        <span className="ep-txn-detail__spinner" aria-hidden />
+        Loading transaction…
       </div>
     ) : null;
   }
@@ -113,7 +110,24 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   const created = formatTimestamp(txDetail.created_at);
   const updated = formatTimestamp(txDetail.updated_at);
   const steps = buildProgressSteps(txDetail.status);
-  const showUpdated = updated && updated !== created;
+  const showUpdated = Boolean(updated && updated !== created);
+  const rows = [
+    { label: "Reference", value: txDetail.ref, mono: true },
+    { label: "Rail", value: txDetail.type },
+    { label: "Settlement layer", value: "USDC · Base" },
+    txDetail.wallet_address
+      ? {
+          label: "Wallet",
+          value: (
+            <span className="ep-txn-detail__wallet ep-mono" title={txDetail.wallet_address}>
+              {txDetail.wallet_address}
+            </span>
+          ),
+        }
+      : null,
+    created ? { label: "Created", value: created, mono: true } : null,
+    showUpdated ? { label: "Last updated", value: updated, mono: true } : null,
+  ].filter(Boolean) as { label: string; value: React.ReactNode; mono?: boolean }[];
 
   return (
     <div className="ep-txn-detail">
@@ -155,21 +169,22 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         </div>
       ) : null}
 
-      <ol className="ep-txn-detail__timeline" aria-label="Status progression">
-        {steps.map((step) => (
+      <ol className="ep-txn-detail__progress" aria-label="Status progression">
+        {steps.map((step, index) => (
           <li
             key={step.key}
             className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
           >
-            <span className="ep-txn-detail__step-marker" aria-hidden />
+            {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
+            <span className="ep-txn-detail__step-dot" aria-hidden />
             <span className="ep-txn-detail__step-label">
               {step.label}
-              <span className="ep-txn-detail__step-sr">
+              <span className="ep-txn-detail__sr">
                 {step.state === "done"
                   ? " — complete"
                   : step.state === "current"
                     ? " — current"
-                    : step.state === "error"
+                    : step.state === "failed"
                       ? " — issue"
                       : " — upcoming"}
               </span>
@@ -179,14 +194,16 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       </ol>
 
       <div className="ep-txn-detail__rows">
-        <DetailRow label="Reference" value={txDetail.ref} mono wrap />
-        <DetailRow label="Rail" value={txDetail.type} />
-        <DetailRow label="Settlement layer" value="USDC · Base" />
-        {txDetail.wallet_address ? (
-          <DetailRow label="Wallet" value={txDetail.wallet_address} mono wrap />
-        ) : null}
-        <DetailRow label="Created" value={created} mono />
-        {showUpdated ? <DetailRow label="Last updated" value={updated} mono /> : null}
+        {rows.map((row, i) => (
+          <DetailRow
+            key={row.label}
+            label={row.label}
+            mono={row.mono}
+            last={i === rows.length - 1}
+          >
+            {row.value}
+          </DetailRow>
+        ))}
       </div>
     </div>
   );

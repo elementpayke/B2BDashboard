@@ -29,7 +29,7 @@ export default function InvoiceList({
   return (
     <section className="ep-panel ep-activity ep-invoice" aria-label={title}>
       {items.length === 0 ? (
-        <div className="ep-activity__empty ep-invoice__empty">{emptyLabel}</div>
+        <div className="ep-activity__empty">{emptyLabel}</div>
       ) : (
         <>
           <div className="ep-activity__table-head ep-invoice-head" aria-hidden>
@@ -43,7 +43,7 @@ export default function InvoiceList({
               <li key={inv.id}>
                 <button
                   type="button"
-                  className="ep-activity__row ep-invoice-row-btn"
+                  className="ep-activity__row"
                   onClick={inv.onOpen}
                   disabled={!inv.onOpen}
                   aria-label={`Invoice ${inv.id}, ${inv.client}, ${inv.amount}, ${inv.statusLabel}`}
