@@ -6,6 +6,7 @@ import {
   buildProfilePayload,
   buildShareholderPayload,
   buildUploadFormData,
+  formatKybServiceError,
   kybApi,
   profileDraftFromSummary,
   validateAddressUboStep,
@@ -70,7 +71,20 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business]);
 
   const patchDraft = useCallback((patch: Partial<KybWizardProfileDraft>) => {
-    setDraft((prev) => ({ ...prev, ...patch }));
+    setDraft((prev) => {
+      const next = { ...prev, ...patch };
+      // Keep address + UBO tax country aligned when the business country changes
+      // and those fields still match the previous business country (or are empty).
+      if (patch.country && patch.country !== prev.country) {
+        if (!prev.addressCountry || prev.addressCountry === prev.country) {
+          next.addressCountry = patch.country;
+        }
+        next.associates = next.associates.map((a) =>
+          !a.country || a.country === prev.country ? { ...a, country: patch.country! } : a,
+        );
+      }
+      return next;
+    });
   }, []);
 
   const patchAssociate = useCallback((index: number, patch: Partial<KybWizardProfileDraft["associates"][0]>) => {
@@ -105,7 +119,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return true;
     } catch (err) {
       setBusy(false);
-      setError(err instanceof ApiRequestError || err instanceof Error ? err.message : "Couldn't save profile.");
+      setError(formatKybServiceError(err));
       return false;
     }
   }, [draft, opts.businessId]);
@@ -117,8 +131,20 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     try {
       let reqs = requirements;
       if (!reqs) {
-        const initiated = await kybApi.initiate(opts.businessId);
-        reqs = initiated.document_requirements;
+        try {
+          const initiated = await kybApi.initiate(opts.businessId);
+          reqs = initiated.document_requirements ?? null;
+        } catch (initiateErr) {
+          // Aggregator/sandbox can 502 on enroll while profile is already saved.
+          // Fall back to the requirements endpoint so the user can continue.
+          try {
+            reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
+          } catch {
+            setBusy(false);
+            setError(formatKybServiceError(initiateErr));
+            return false;
+          }
+        }
         if (!reqs) {
           reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
         }
@@ -155,7 +181,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return true;
     } catch (err) {
       setBusy(false);
-      setError(err instanceof ApiRequestError || err instanceof Error ? err.message : "Couldn't load document requirements.");
+      setError(formatKybServiceError(err));
       return false;
     }
   }, [draft.associates, draft.country, opts.businessId, requirements]);
