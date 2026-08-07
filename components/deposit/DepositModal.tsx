@@ -76,13 +76,23 @@ function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string 
 
 export default function DepositModal(p: DepositModalProps) {
   const [addressCopied, setAddressCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const hasAddress = Boolean(p.depositAddress && p.depositAddress !== "—");
 
-  const copyDepositAddress = () => {
-    if (!hasAddress || !navigator.clipboard) return;
-    navigator.clipboard.writeText(p.depositAddress).catch(() => {});
-    setAddressCopied(true);
-    window.setTimeout(() => setAddressCopied(false), 1800);
+  const copyDepositAddress = async () => {
+    if (!hasAddress) return;
+    setCopyError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(p.depositAddress);
+      setAddressCopied(true);
+      window.setTimeout(() => setAddressCopied(false), 1800);
+    } catch {
+      setAddressCopied(false);
+      setCopyError("Couldn't copy. Select the address and copy it manually.");
+    }
   };
 
   return (
@@ -347,18 +357,31 @@ export default function DepositModal(p: DepositModalProps) {
               </div>
 
               {hasAddress ? (
-                <div className="ep-money-copy-row">
-                  <span className="ep-money-copy-row__value" id="deposit-address-value">
-                    {p.depositAddress}
-                  </span>
-                  <button
-                    type="button"
-                    className="ep-money-copy-btn"
-                    onClick={copyDepositAddress}
-                    aria-describedby="deposit-address-value"
-                  >
-                    {addressCopied ? "Copied" : "Copy"}
-                  </button>
+                <div className="ep-money-stack ep-money-stack--tight">
+                  <div className="ep-money-copy-row">
+                    <span className="ep-money-copy-row__value" id="deposit-address-value">
+                      {p.depositAddress}
+                    </span>
+                    <button
+                      type="button"
+                      className="ep-money-copy-btn"
+                      onClick={copyDepositAddress}
+                      aria-describedby="deposit-address-value"
+                      aria-label={addressCopied ? "Address copied" : "Copy deposit address"}
+                    >
+                      {addressCopied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  {copyError ? (
+                    <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                      {copyError}
+                    </div>
+                  ) : null}
+                  {addressCopied ? (
+                    <span className="ep-money-hint" role="status" aria-live="polite">
+                      Address copied to clipboard.
+                    </span>
+                  ) : null}
                 </div>
               ) : (
                 <div className="ep-money-empty" role="status">

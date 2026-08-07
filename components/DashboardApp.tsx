@@ -685,7 +685,16 @@ export default function DashboardApp(props: Props = {}) {
   const selectReceiveAcct = (i) => () => setState({ receiveAcctIdx: i, copiedKey: "" });
   const setReceiveAsset = (k) => () => setState({ receiveAsset: k, copiedKey: "" });
   const setReceiveNetwork = (k) => () => setState({ receiveNetwork: k, copiedKey: "" });
-  const copyReceiveField = (key, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedKey: key }); };
+  const copyReceiveField = (key, val) => async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(val);
+      setState({ copiedKey: key });
+    } catch {
+      // Don't show "Copied" when the write failed (permission / insecure context).
+      setState({ copiedKey: "" });
+    }
+  };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
   const simulateBulkUpload = () => setState({ bulkLoaded: true });
