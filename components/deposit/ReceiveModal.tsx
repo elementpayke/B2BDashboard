@@ -23,18 +23,18 @@ export default function ReceiveModal(p: ReceiveModalProps) {
 
   return (
     <div className="ep-money-flow">
-      <p className="ep-money-lede">
+      <p className="ep-money-hint">
         Share these coordinates with whoever is paying you — no action needed on your end until
         funds land.
       </p>
 
-      <div className="ep-chip-row" role="group" aria-label="Receive method">
+      <div className="ep-money-tabs" role="group" aria-label="Receive method">
         {(p.receiveGroups || []).map((rg: any, i: number) => (
           <button
             key={i}
             type="button"
             onClick={rg.select}
-            className="ep-money-choice"
+            className="ep-money-tab"
             style={{ background: rg.bg, color: rg.color }}
           >
             {rg.label}
@@ -48,41 +48,46 @@ export default function ReceiveModal(p: ReceiveModalProps) {
             <span className="ep-money-label" id="receive-country-label">
               Account country
             </span>
-            <div className="ep-chip-row" role="group" aria-labelledby="receive-country-label">
+            <div
+              className="ep-money-tabs ep-money-tabs--wrap"
+              role="group"
+              aria-labelledby="receive-country-label"
+            >
               {(p.receiveAcctChips || []).map((c: any, i: number) => (
                 <button
                   key={i}
                   type="button"
                   onClick={c.select}
-                  className="ep-money-choice ep-money-choice--flag ep-money-choice--outlined"
+                  className="ep-money-chip"
                   style={{
                     borderColor: c.border,
                     background: c.bg,
-                    color: "var(--ink)",
                   }}
                 >
                   <span
-                    className="ep-flag"
+                    className="ep-money-flag"
                     style={{ backgroundImage: `url(${c.flagUrl})` }}
                     aria-hidden
                   />
-                  <span>{c.code}</span>
+                  <span className="ep-money-chip__code">{c.code}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {p.receiveAcctRail ? <p className="ep-money-hint">{p.receiveAcctRail}</p> : null}
+          {p.receiveAcctRail ? (
+            <p className="ep-money-step-meta">{p.receiveAcctRail}</p>
+          ) : null}
 
           {hasFiatLines ? (
-            <div className="ep-money-acct" role="group" aria-label="Receive account details">
+            <div className="ep-money-kv" role="group" aria-label="Receive account details">
               {(p.receiveAcctLines || []).map((ln: any, i: number) => (
-                <div key={i} className="ep-money-acct__row">
-                  <span className="ep-money-acct__key">{ln.k}</span>
-                  <span className="ep-money-acct__val">{ln.v}</span>
+                <div key={i} className="ep-money-kv__row">
+                  <span className="ep-money-kv__k">{ln.k}</span>
+                  <span className="ep-money-kv__v">{ln.v}</span>
                   <button
                     type="button"
-                    className="ep-money-copy"
+                    className="ep-money-copy-btn"
                     onClick={ln.copy}
                     aria-label={`Copy ${ln.k}`}
                   >
@@ -100,18 +105,18 @@ export default function ReceiveModal(p: ReceiveModalProps) {
       ) : null}
 
       {p.receiveIsCrypto ? (
-        <div className="ep-money-section ep-money-section--tight">
-          <div className="ep-money-row-between">
+        <div className="ep-money-stack ep-money-stack--tight">
+          <div className="ep-money-asset-row">
             <span className="ep-money-label" id="receive-asset-label">
               Asset
             </span>
-            <div className="ep-money-segment" role="group" aria-labelledby="receive-asset-label">
+            <div className="ep-money-seg" role="group" aria-labelledby="receive-asset-label">
               {(p.receiveAssets || []).map((as: any, i: number) => (
                 <button
                   key={i}
                   type="button"
                   onClick={as.select}
-                  className="ep-money-segment__btn"
+                  className="ep-money-seg__btn"
                   style={{ background: as.bg, color: as.color }}
                 >
                   {as.label}
@@ -124,13 +129,17 @@ export default function ReceiveModal(p: ReceiveModalProps) {
             <span className="ep-money-label" id="receive-network-label">
               Network
             </span>
-            <div className="ep-chip-row" role="group" aria-labelledby="receive-network-label">
+            <div
+              className="ep-money-tabs ep-money-tabs--wrap"
+              role="group"
+              aria-labelledby="receive-network-label"
+            >
               {(p.receiveNetworks || []).map((net: any, i: number) => (
                 <button
                   key={i}
                   type="button"
                   onClick={net.select}
-                  className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                  className="ep-money-network"
                   style={{
                     borderColor: net.border,
                     background: net.bg,
@@ -143,19 +152,19 @@ export default function ReceiveModal(p: ReceiveModalProps) {
             </div>
           </div>
 
-          <div className="ep-money-alert ep-money-alert--warn" role="note">
+          <div className="ep-money-banner ep-money-banner--warn" role="note">
             Only accept {p.receiveAssetCode} on {p.receiveNetworkLabel} — funds sent on other
             networks cannot be recovered.
           </div>
 
           {hasAddress ? (
-            <div className="ep-money-address">
-              <span className="ep-money-address__value" id="receive-address-value">
+            <div className="ep-money-copy-row">
+              <span className="ep-money-copy-row__value" id="receive-address-value">
                 {p.receiveAddress}
               </span>
               <button
                 type="button"
-                className="ep-money-copy"
+                className="ep-money-copy-btn"
                 onClick={p.copyReceiveAddress}
                 aria-describedby="receive-address-value"
               >

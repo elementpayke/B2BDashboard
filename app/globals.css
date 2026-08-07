@@ -1718,3 +1718,29 @@ body {
     width: 100%;
   }
 }
+
+.ep-money-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ep-money-stack--tight {
+  gap: 10px;
+}
+
+.ep-money-empty {
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.ep-money-tabs--wrap {
+  flex-wrap: wrap;
+}

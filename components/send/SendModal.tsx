@@ -49,8 +49,8 @@ export type SendModalProps = {
 };
 
 function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
-  const current = Math.max(1, dots.findIndex((d) => !d.on));
-  const step = dots.every((d) => d.on) ? dots.length : current;
+  const firstOff = dots.findIndex((d) => !d.on);
+  const step = dots.every((d) => d.on) ? dots.length : Math.max(1, firstOff);
   return (
     <div
       className="ep-money-steps"
@@ -80,15 +80,15 @@ export default function SendModal(p: SendModalProps) {
           <StepProgress dots={p.sendStepDots || []} label="Send payment progress" />
 
           {p.sendStepIs1 ? (
-            <div className="ep-money-section">
+            <div className="ep-money-stack">
               <span className="ep-money-step-label">Step 1 · Where is this going?</span>
-              <div className="ep-chip-row" role="group" aria-label="Destination type">
+              <div className="ep-money-tabs" role="group" aria-label="Destination type">
                 {(p.sendGroups || []).map((g: any, i: number) => (
                   <button
                     key={i}
                     type="button"
                     onClick={g.select}
-                    className="ep-money-choice"
+                    className="ep-money-tab"
                     style={{ background: g.bg, color: g.color }}
                   >
                     {g.label}
@@ -103,7 +103,7 @@ export default function SendModal(p: SendModalProps) {
                       Recipient&apos;s country
                     </span>
                     <div
-                      className="ep-chip-row ep-chip-row--scroll"
+                      className="ep-money-scroll"
                       role="group"
                       aria-labelledby="send-country-label"
                     >
@@ -112,19 +112,18 @@ export default function SendModal(p: SendModalProps) {
                           key={i}
                           type="button"
                           onClick={c.selectSend}
-                          className="ep-money-choice ep-money-choice--flag ep-money-choice--outlined"
+                          className="ep-money-chip"
                           style={{
                             borderColor: c.sendBorder,
                             background: c.sendBg,
-                            color: "var(--ink)",
                           }}
                         >
                           <span
-                            className="ep-flag"
+                            className="ep-money-flag"
                             style={{ backgroundImage: `url(${c.flagUrl})` }}
                             aria-hidden
                           />
-                          <span>{c.code}</span>
+                          <span className="ep-money-chip__code">{c.code}</span>
                         </button>
                       ))}
                     </div>
@@ -135,13 +134,13 @@ export default function SendModal(p: SendModalProps) {
                       <span className="ep-money-label" id="send-rail-label">
                         Payout rail
                       </span>
-                      <div className="ep-chip-row" role="group" aria-labelledby="send-rail-label">
+                      <div className="ep-money-tabs" role="group" aria-labelledby="send-rail-label">
                         {(p.sendRailChips || []).map((r: any, i: number) => (
                           <button
                             key={i}
                             type="button"
                             onClick={r.select}
-                            className="ep-money-choice ep-money-choice--rail"
+                            className="ep-money-rail"
                             style={{ background: r.bg, color: r.color }}
                           >
                             {r.label}
@@ -152,7 +151,7 @@ export default function SendModal(p: SendModalProps) {
                   ) : null}
 
                   {p.sendCatalogLoading ? (
-                    <div className="ep-money-alert ep-money-alert--info" role="status">
+                    <div className="ep-money-banner ep-money-banner--muted" role="status">
                       Loading providers…
                     </div>
                   ) : null}
@@ -163,7 +162,7 @@ export default function SendModal(p: SendModalProps) {
                         Choose provider
                       </span>
                       <div
-                        className="ep-chip-row ep-chip-row--scroll"
+                        className="ep-money-scroll"
                         role="group"
                         aria-labelledby="send-provider-label"
                       >
@@ -172,7 +171,7 @@ export default function SendModal(p: SendModalProps) {
                             key={i}
                             type="button"
                             onClick={pr.select}
-                            className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                            className="ep-money-provider"
                             style={{
                               borderColor: pr.border,
                               background: pr.bg,
@@ -190,24 +189,20 @@ export default function SendModal(p: SendModalProps) {
 
               {p.sendIsCrypto ? (
                 <>
-                  <p className="ep-money-lede">
+                  <p className="ep-money-hint">
                     Sends stablecoin directly on-chain — no bank or mobile money involved.
                   </p>
                   <div className="ep-money-field">
                     <span className="ep-money-label" id="send-asset-label">
                       Asset
                     </span>
-                    <div
-                      className="ep-money-segment"
-                      role="group"
-                      aria-labelledby="send-asset-label"
-                    >
+                    <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label">
                       {(p.sendAssets || []).map((as: any, i: number) => (
                         <button
                           key={i}
                           type="button"
                           onClick={as.select}
-                          className="ep-money-segment__btn"
+                          className="ep-money-seg__btn"
                           style={{ background: as.bg, color: as.color }}
                         >
                           {as.label}
@@ -219,13 +214,17 @@ export default function SendModal(p: SendModalProps) {
                     <span className="ep-money-label" id="send-chain-label">
                       Confirm the chain you&apos;re sending to
                     </span>
-                    <div className="ep-chip-row" role="group" aria-labelledby="send-chain-label">
+                    <div
+                      className="ep-money-tabs ep-money-tabs--wrap"
+                      role="group"
+                      aria-labelledby="send-chain-label"
+                    >
                       {(p.sendChains || []).map((ch: any, i: number) => (
                         <button
                           key={i}
                           type="button"
                           onClick={ch.select}
-                          className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                          className="ep-money-network"
                           style={{
                             borderColor: ch.border,
                             background: ch.bg,
@@ -236,7 +235,7 @@ export default function SendModal(p: SendModalProps) {
                         </button>
                       ))}
                     </div>
-                    <div className="ep-money-alert ep-money-alert--warn" role="note">
+                    <div className="ep-money-banner ep-money-banner--warn" role="note">
                       Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
                       sending to the wrong network can lose funds.
                     </div>
@@ -245,7 +244,7 @@ export default function SendModal(p: SendModalProps) {
               ) : null}
 
               {p.sendQuoteError && p.sendIsCrypto ? (
-                <div className="ep-money-alert ep-money-alert--error" role="alert">
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
                   {p.sendQuoteError}
                 </div>
               ) : null}
@@ -263,9 +262,9 @@ export default function SendModal(p: SendModalProps) {
           ) : null}
 
           {p.sendStepIs2 ? (
-            <div className="ep-money-section">
+            <div className="ep-money-stack">
               <span className="ep-money-step-label">Step 2 · Recipient & amount</span>
-              <div className="ep-money-summary">{p.sendDestinationSummary}</div>
+              <div className="ep-money-banner ep-money-banner--info">{p.sendDestinationSummary}</div>
 
               {p.sendIsCountry ? (
                 <div className="ep-money-field">
@@ -315,7 +314,11 @@ export default function SendModal(p: SendModalProps) {
               </div>
 
               {p.sendQuoteError ? (
-                <div id="send-quote-error" className="ep-money-alert ep-money-alert--error" role="alert">
+                <div
+                  id="send-quote-error"
+                  className="ep-money-banner ep-money-banner--danger"
+                  role="alert"
+                >
                   {p.sendQuoteError}
                 </div>
               ) : null}
@@ -338,49 +341,49 @@ export default function SendModal(p: SendModalProps) {
           ) : null}
 
           {p.sendStepIs3 ? (
-            <div className="ep-money-section ep-money-section--tight">
+            <div className="ep-money-stack ep-money-stack--tight">
               <span className="ep-money-step-label">Step 3 · Review & confirm</span>
               <div className="ep-money-review" role="group" aria-label="Payment summary">
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">To</span>
-                  <span className="ep-money-review__val">{p.sendRecipient}</span>
+                  <span className="ep-money-review__k">To</span>
+                  <span className="ep-money-review__v">{p.sendRecipient}</span>
                 </div>
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Via</span>
-                  <span className="ep-money-review__val">{p.sendDestinationSummary}</span>
+                  <span className="ep-money-review__k">Via</span>
+                  <span className="ep-money-review__v">{p.sendDestinationSummary}</span>
                 </div>
                 {p.sendIsCrypto ? (
                   <div className="ep-money-review__row">
-                    <span className="ep-money-review__key">Network</span>
-                    <span className="ep-money-review__val">{p.sendChainLabel}</span>
+                    <span className="ep-money-review__k">Network</span>
+                    <span className="ep-money-review__v">{p.sendChainLabel}</span>
                   </div>
                 ) : null}
-                <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">You send</span>
-                  <span className="ep-money-review__val ep-money-review__val--mono">
+                <div className="ep-money-review__row ep-money-review__row--emphasis">
+                  <span className="ep-money-review__k">You send</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">
                     ${p.sendAmount} USD
                   </span>
                 </div>
                 {p.sendQuoteRateText ? (
                   <div className="ep-money-review__row">
-                    <span className="ep-money-review__key">Recipient gets</span>
-                    <span className="ep-money-review__val ep-money-review__val--mono">
+                    <span className="ep-money-review__k">Recipient gets</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
                       {p.sendQuoteRateText}
                     </span>
                   </div>
                 ) : null}
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Fee</span>
-                  <span className="ep-money-review__val ep-money-review__val--mono">{p.sendFeeText}</span>
+                  <span className="ep-money-review__k">Fee</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">{p.sendFeeText}</span>
                 </div>
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Arrival</span>
-                  <span className="ep-money-review__val">{p.sendArrivalText}</span>
+                  <span className="ep-money-review__k">Arrival</span>
+                  <span className="ep-money-review__v">{p.sendArrivalText}</span>
                 </div>
               </div>
 
               {p.sendAcceptError ? (
-                <div className="ep-money-alert ep-money-alert--error" role="alert">
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
                   {p.sendAcceptError}
                 </div>
               ) : null}
@@ -430,7 +433,12 @@ export default function SendModal(p: SendModalProps) {
               {p.sendLiveStatus.label}
             </span>
           ) : null}
-          <button type="button" className="ep-btn-secondary" onClick={p.closeModal} style={{ width: "auto", minWidth: 120 }}>
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={p.closeModal}
+            style={{ width: "auto", minWidth: 120 }}
+          >
             Done
           </button>
         </div>

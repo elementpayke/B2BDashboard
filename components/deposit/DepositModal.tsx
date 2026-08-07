@@ -53,8 +53,8 @@ export type DepositModalProps = {
 };
 
 function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
-  const current = Math.max(1, dots.findIndex((d) => !d.on));
-  const step = dots.every((d) => d.on) ? dots.length : current;
+  const firstOff = dots.findIndex((d) => !d.on);
+  const step = dots.every((d) => d.on) ? dots.length : Math.max(1, firstOff);
   return (
     <div
       className="ep-money-steps"
@@ -92,15 +92,15 @@ export default function DepositModal(p: DepositModalProps) {
           <StepProgress dots={p.depositStepDots || []} label="Deposit progress" />
 
           {p.depositStepIs1 ? (
-            <div className="ep-money-section">
+            <div className="ep-money-stack">
               <span className="ep-money-step-label">Step 1 · How are you topping up?</span>
-              <div className="ep-chip-row" role="group" aria-label="Deposit method">
+              <div className="ep-money-tabs" role="group" aria-label="Deposit method">
                 {(p.depositMethods || []).map((dm: any, i: number) => (
                   <button
                     key={i}
                     type="button"
                     onClick={dm.select}
-                    className="ep-money-choice"
+                    className="ep-money-tab"
                     style={{ background: dm.bg, color: dm.color }}
                   >
                     {dm.label}
@@ -115,7 +115,7 @@ export default function DepositModal(p: DepositModalProps) {
                       Source country
                     </span>
                     <div
-                      className="ep-chip-row"
+                      className="ep-money-tabs ep-money-tabs--wrap"
                       role="group"
                       aria-labelledby="deposit-country-label"
                     >
@@ -124,19 +124,18 @@ export default function DepositModal(p: DepositModalProps) {
                           key={i}
                           type="button"
                           onClick={c.selectDeposit}
-                          className="ep-money-choice ep-money-choice--flag ep-money-choice--outlined"
+                          className="ep-money-chip"
                           style={{
                             borderColor: c.depositBorder,
                             background: c.depositBg,
-                            color: "var(--ink)",
                           }}
                         >
                           <span
-                            className="ep-flag"
+                            className="ep-money-flag"
                             style={{ backgroundImage: `url(${c.flagUrl})` }}
                             aria-hidden
                           />
-                          <span>{c.name}</span>
+                          <span className="ep-money-chip__code">{c.name}</span>
                         </button>
                       ))}
                     </div>
@@ -148,7 +147,7 @@ export default function DepositModal(p: DepositModalProps) {
                         Funding rail
                       </span>
                       <div
-                        className="ep-chip-row"
+                        className="ep-money-tabs"
                         role="group"
                         aria-labelledby="deposit-rail-label"
                       >
@@ -157,7 +156,7 @@ export default function DepositModal(p: DepositModalProps) {
                             key={i}
                             type="button"
                             onClick={r.select}
-                            className="ep-money-choice ep-money-choice--rail"
+                            className="ep-money-rail"
                             style={{ background: r.bg, color: r.color }}
                           >
                             {r.label}
@@ -173,7 +172,7 @@ export default function DepositModal(p: DepositModalProps) {
                         Choose provider
                       </span>
                       <div
-                        className="ep-chip-row ep-chip-row--scroll"
+                        className="ep-money-scroll"
                         role="group"
                         aria-labelledby="deposit-provider-label"
                       >
@@ -182,7 +181,7 @@ export default function DepositModal(p: DepositModalProps) {
                             key={i}
                             type="button"
                             onClick={pr.select}
-                            className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                            className="ep-money-provider"
                             style={{
                               borderColor: pr.border,
                               background: pr.bg,
@@ -200,12 +199,12 @@ export default function DepositModal(p: DepositModalProps) {
 
               {p.depositIsCrypto ? (
                 <>
-                  <div className="ep-money-row-between">
+                  <div className="ep-money-asset-row">
                     <span className="ep-money-label" id="deposit-asset-label">
                       Asset
                     </span>
                     <div
-                      className="ep-money-segment"
+                      className="ep-money-seg"
                       role="group"
                       aria-labelledby="deposit-asset-label"
                     >
@@ -214,7 +213,7 @@ export default function DepositModal(p: DepositModalProps) {
                           key={i}
                           type="button"
                           onClick={as.select}
-                          className="ep-money-segment__btn"
+                          className="ep-money-seg__btn"
                           style={{ background: as.bg, color: as.color }}
                         >
                           {as.label}
@@ -227,7 +226,7 @@ export default function DepositModal(p: DepositModalProps) {
                       Network
                     </span>
                     <div
-                      className="ep-chip-row"
+                      className="ep-money-tabs ep-money-tabs--wrap"
                       role="group"
                       aria-labelledby="deposit-network-label"
                     >
@@ -236,7 +235,7 @@ export default function DepositModal(p: DepositModalProps) {
                           key={i}
                           type="button"
                           onClick={net.select}
-                          className="ep-money-choice ep-money-choice--rail ep-money-choice--outlined"
+                          className="ep-money-network"
                           style={{
                             borderColor: net.border,
                             background: net.bg,
@@ -258,9 +257,11 @@ export default function DepositModal(p: DepositModalProps) {
           ) : null}
 
           {p.depositStepIs2 && p.depositIsCountry ? (
-            <div className="ep-money-section">
+            <div className="ep-money-stack">
               <span className="ep-money-step-label">Step 2 · Amount & source account</span>
-              <div className="ep-money-summary">{p.depositDestinationSummary}</div>
+              <div className="ep-money-banner ep-money-banner--info">
+                {p.depositDestinationSummary}
+              </div>
 
               <div className="ep-money-field">
                 <label className="ep-money-label" htmlFor="deposit-amount">
@@ -313,7 +314,7 @@ export default function DepositModal(p: DepositModalProps) {
               {p.depositQuoteError ? (
                 <div
                   id="deposit-quote-error"
-                  className="ep-money-alert ep-money-alert--error"
+                  className="ep-money-banner ep-money-banner--danger"
                   role="alert"
                 >
                   {p.depositQuoteError}
@@ -338,21 +339,21 @@ export default function DepositModal(p: DepositModalProps) {
           ) : null}
 
           {p.depositStepIs2 && p.depositIsCrypto ? (
-            <div className="ep-money-section">
+            <div className="ep-money-stack">
               <span className="ep-money-step-label">Step 2 · {p.depositDestinationSummary}</span>
-              <div className="ep-money-alert ep-money-alert--error" role="note">
+              <div className="ep-money-banner ep-money-banner--danger" role="note">
                 Only send {p.depositAssetCode} on {p.depositNetworkLabel} — other networks cannot be
                 recovered.
               </div>
 
               {hasAddress ? (
-                <div className="ep-money-address">
-                  <span className="ep-money-address__value" id="deposit-address-value">
+                <div className="ep-money-copy-row">
+                  <span className="ep-money-copy-row__value" id="deposit-address-value">
                     {p.depositAddress}
                   </span>
                   <button
                     type="button"
-                    className="ep-money-copy"
+                    className="ep-money-copy-btn"
                     onClick={copyDepositAddress}
                     aria-describedby="deposit-address-value"
                   >
@@ -372,49 +373,49 @@ export default function DepositModal(p: DepositModalProps) {
           ) : null}
 
           {p.depositStepIs3 ? (
-            <div className="ep-money-section ep-money-section--tight">
+            <div className="ep-money-stack ep-money-stack--tight">
               <span className="ep-money-step-label">Step 3 · Review & confirm</span>
               <div className="ep-money-review" role="group" aria-label="Deposit summary">
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">From</span>
-                  <span className="ep-money-review__val">
+                  <span className="ep-money-review__k">From</span>
+                  <span className="ep-money-review__v">
                     {p.depositIsMobileRail
                       ? `${p.depositMobileCode} ${p.depositPhone}`.trim()
                       : p.depositPhone}
                   </span>
                 </div>
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Via</span>
-                  <span className="ep-money-review__val">{p.depositDestinationSummary}</span>
+                  <span className="ep-money-review__k">Via</span>
+                  <span className="ep-money-review__v">{p.depositDestinationSummary}</span>
                 </div>
-                <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">You pay</span>
-                  <span className="ep-money-review__val ep-money-review__val--mono">
+                <div className="ep-money-review__row ep-money-review__row--emphasis">
+                  <span className="ep-money-review__k">You pay</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">
                     {p.depositAmount}
                   </span>
                 </div>
                 {p.depositQuoteRateText ? (
                   <div className="ep-money-review__row">
-                    <span className="ep-money-review__key">You receive</span>
-                    <span className="ep-money-review__val ep-money-review__val--mono">
+                    <span className="ep-money-review__k">You receive</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
                       {p.depositQuoteRateText}
                     </span>
                   </div>
                 ) : null}
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Fee</span>
-                  <span className="ep-money-review__val ep-money-review__val--mono">
+                  <span className="ep-money-review__k">Fee</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">
                     {p.depositFeeText}
                   </span>
                 </div>
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__key">Valid until</span>
-                  <span className="ep-money-review__val">{p.depositArrivalText}</span>
+                  <span className="ep-money-review__k">Valid until</span>
+                  <span className="ep-money-review__v">{p.depositArrivalText}</span>
                 </div>
               </div>
 
               {p.depositAcceptError ? (
-                <div className="ep-money-alert ep-money-alert--error" role="alert">
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
                   {p.depositAcceptError}
                 </div>
               ) : null}
@@ -465,12 +466,12 @@ export default function DepositModal(p: DepositModalProps) {
           ) : null}
 
           {p.depositIsMobileRail && p.depositPromptSent ? (
-            <div className="ep-money-followup">
-              <div className="ep-money-followup__title">
-                <span className="ep-money-followup__pulse" aria-hidden />
+            <div className="ep-money-done-panel">
+              <div className="ep-money-done-panel__title">
+                <span className="ep-money-done-panel__dot" aria-hidden />
                 <span>Check your phone</span>
               </div>
-              <p className="ep-money-lede">
+              <p className="ep-money-hint">
                 Enter your PIN to approve the {p.depositOperator} prompt sent to{" "}
                 {p.depositMobileCode} {p.depositPhone}.
               </p>
@@ -478,15 +479,15 @@ export default function DepositModal(p: DepositModalProps) {
           ) : null}
 
           {p.depositIsBankRail && p.depositBankLines.length > 0 ? (
-            <div className="ep-money-followup">
-              <p className="ep-money-lede">
+            <div className="ep-money-done-panel">
+              <p className="ep-money-hint">
                 {p.depositBankLabel} via {p.depositOperator} · {p.depositBankArrival}
               </p>
-              <div className="ep-money-acct" role="group" aria-label="Bank transfer details">
+              <div className="ep-money-kv" role="group" aria-label="Bank transfer details">
                 {(p.depositBankLines || []).map((ln: any, i: number) => (
-                  <div key={i} className="ep-money-acct__row">
-                    <span className="ep-money-acct__key">{ln.k}</span>
-                    <span className="ep-money-acct__val">{ln.v}</span>
+                  <div key={i} className="ep-money-kv__row">
+                    <span className="ep-money-kv__k">{ln.k}</span>
+                    <span className="ep-money-kv__v">{ln.v}</span>
                   </div>
                 ))}
               </div>
