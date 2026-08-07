@@ -114,7 +114,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       <div className="ep-wallets__section-head">
         <h2 className="ep-wallets__section-title">
-          Currency accounts{" "}
+          Fiat currency accounts{" "}
           <span className="ep-wallets__section-count">· {p.accountsCount}</span>
         </h2>
         {p.eligible ? (
@@ -232,9 +232,9 @@ export default function WalletsScreen(p: WalletsScreenProps) {
             <>
               {showEmpty ? (
                 <div className="ep-wallets__empty">
-                  <div className="ep-wallets__empty-title">No currency accounts yet</div>
+                  <div className="ep-wallets__empty-title">No fiat accounts yet</div>
                   <div className="ep-wallets__empty-body">
-                    Issue a bank or stablecoin account to receive deposits. Coordinates appear here once provisioned.
+                    Issue a bank account to receive local deposits that settle to your stablecoin wallet. Coordinates appear here once provisioned.
                   </div>
                 </div>
               ) : null}
@@ -260,7 +260,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                       </span>
                       <div style={{ minWidth: 0 }}>
                         <div className="ep-wallets__card-name">{acc.name}</div>
-                        <div className="ep-wallets__card-code">{acc.currency}</div>
+                        <div className="ep-wallets__card-code">{acc.currency} · Fiat</div>
                       </div>
                     </div>
                     <StatusBadge

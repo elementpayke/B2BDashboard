@@ -58,7 +58,7 @@ export default function AccountDetailModal({
           </span>
         )}
         <div className="ep-wallets-detail__name">{acctDetail.name}</div>
-        <div className="ep-wallets-detail__code">{acctDetail.currency}</div>
+        <div className="ep-wallets-detail__code">{acctDetail.currency} · Fiat</div>
         <StatusBadge
           label={acctDetail.statusLabel}
           color={acctDetail.statusColor}
@@ -106,7 +106,7 @@ export default function AccountDetailModal({
           <div className="ep-wallets-detail__pending-title">Coordinates pending</div>
           <div className="ep-wallets-detail__pending-body">
             {acctDetail.instructions ||
-              "Deposit coordinates are being provisioned for this account. You’ll be able to copy IBAN and bank details here once they’re ready."}
+              "Deposit coordinates are being provisioned for this account. You will be able to copy IBAN and bank details here once they are ready."}
           </div>
         </div>
       )}

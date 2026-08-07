@@ -1222,6 +1222,7 @@ body {
 
 .ep-wallets__asset-btn {
   min-height: 44px;
+  min-width: 72px;
   padding: 8px 16px;
   border-radius: 999px;
   border: none;
