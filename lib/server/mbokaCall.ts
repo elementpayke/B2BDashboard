@@ -5,7 +5,7 @@ import { getMbokaApiBase } from "./env";
 export const MBOKA_FETCH_TIMEOUT_MS = 15_000;
 
 /** Direct, unauthenticated call to the backend — for public endpoints only
- * (signup, verify-email, forgot/reset password). Never attaches cookies. */
+ * (signup, verify-email, resend-verification, forgot/reset password). Never attaches cookies. */
 export async function callMboka(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${getMbokaApiBase()}${path}`, {
     ...init,

@@ -9,6 +9,7 @@ import {
   type KybWizardProfileDraft,
 } from "@/lib/services/kyb";
 import type { DocumentUploadState, KybWizardStep } from "@/lib/hooks/useKybWizard";
+import CountrySelect from "@/components/ui/CountrySelect";
 
 const fieldLabel: React.CSSProperties = {
   fontSize: "11px",
@@ -76,6 +77,12 @@ function TextField(p: {
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  autoComplete?: string;
+  min?: string | number;
+  max?: string | number;
+  step?: string | number;
+  hint?: string;
 }) {
   return (
     <div>
@@ -85,10 +92,24 @@ function TextField(p: {
         value={p.value}
         onChange={(e) => p.onChange(e.target.value)}
         placeholder={p.placeholder}
+        inputMode={p.inputMode}
+        autoComplete={p.autoComplete}
+        min={p.min}
+        max={p.max}
+        step={p.step}
         style={fieldInput}
       />
+      {p.hint ? (
+        <div style={{ marginTop: "4px", fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>{p.hint}</div>
+      ) : null}
     </div>
   );
+}
+
+function maxAdultDob(): string {
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - 18);
+  return d.toISOString().slice(0, 10);
 }
 
 export default function KybWizardModal(p: KybWizardModalProps) {
@@ -119,12 +140,17 @@ export default function KybWizardModal(p: KybWizardModalProps) {
       {p.step === 1 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 1 · Business details</span>
-          <TextField label="Legal name" value={p.draft.legalName} onChange={(v) => p.patchDraft({ legalName: v })} placeholder="ElementPay Ltd" />
+          <TextField label="Legal name" value={p.draft.legalName} onChange={(v) => p.patchDraft({ legalName: v })} placeholder="ElementPay Ltd" autoComplete="organization" />
           <TextField label="Registration number" value={p.draft.registrationNumber} onChange={(v) => p.patchDraft({ registrationNumber: v })} placeholder="BN123456" />
-          <TextField label="Country (ISO)" value={p.draft.country} onChange={(v) => p.patchDraft({ country: v.toUpperCase() })} placeholder="KE" />
+          <CountrySelect
+            label="Country of incorporation"
+            value={p.draft.country}
+            onChange={(code) => p.patchDraft({ country: code })}
+            required
+          />
           <SelectField label="Business type" value={p.draft.businessType} onChange={(v) => p.patchDraft({ businessType: v as KybWizardProfileDraft["businessType"] })} options={BUSINESS_TYPE_OPTIONS} />
           <TextField label="Industry" value={p.draft.industry} onChange={(v) => p.patchDraft({ industry: v })} placeholder="Fintech" />
-          <TextField label="Website" value={p.draft.website} onChange={(v) => p.patchDraft({ website: v })} placeholder="https://example.com" />
+          <TextField label="Website" value={p.draft.website} onChange={(v) => p.patchDraft({ website: v })} placeholder="https://example.com" type="url" hint="Optional — must start with https://" />
           <SelectField label="Employees" value={p.draft.estimatedEmployees} onChange={(v) => p.patchDraft({ estimatedEmployees: v as KybWizardProfileDraft["estimatedEmployees"] })} options={EMPLOYEE_RANGE_OPTIONS} />
           <SelectField label="Annual revenue" value={p.draft.annualRevenueRange} onChange={(v) => p.patchDraft({ annualRevenueRange: v as KybWizardProfileDraft["annualRevenueRange"] })} options={REVENUE_RANGE_OPTIONS} />
           <SelectField label="Source of funds" value={p.draft.sourceOfFunds} onChange={(v) => p.patchDraft({ sourceOfFunds: v as KybWizardProfileDraft["sourceOfFunds"] })} options={SOURCE_OF_FUNDS_OPTIONS} />
@@ -134,20 +160,56 @@ export default function KybWizardModal(p: KybWizardModalProps) {
       {p.step === 2 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 2 · Registered address & beneficial owner</span>
-          <TextField label="Street" value={p.draft.street} onChange={(v) => p.patchDraft({ street: v })} />
+          <TextField label="Street" value={p.draft.street} onChange={(v) => p.patchDraft({ street: v })} autoComplete="street-address" />
           <TextField label="Street line 2" value={p.draft.street2} onChange={(v) => p.patchDraft({ street2: v })} />
-          <TextField label="City" value={p.draft.city} onChange={(v) => p.patchDraft({ city: v })} />
-          <TextField label="Post code" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} />
-          <TextField label="State / county" value={p.draft.state} onChange={(v) => p.patchDraft({ state: v })} />
-          <TextField label="Address country (ISO)" value={p.draft.addressCountry} onChange={(v) => p.patchDraft({ addressCountry: v.toUpperCase() })} />
+          <TextField label="City" value={p.draft.city} onChange={(v) => p.patchDraft({ city: v })} placeholder="Nairobi" autoComplete="address-level2" />
+          <TextField label="Post code" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} autoComplete="postal-code" />
+          <TextField label="State / county" value={p.draft.state} onChange={(v) => p.patchDraft({ state: v })} placeholder="Nairobi County" autoComplete="address-level1" />
+          <CountrySelect
+            label="Address country"
+            value={p.draft.addressCountry}
+            onChange={(code) => p.patchDraft({ addressCountry: code })}
+            required
+          />
           {associate ? (
             <>
-              <TextField label="UBO first name" value={associate.firstName} onChange={(v) => p.patchAssociate(0, { firstName: v })} />
-              <TextField label="UBO last name" value={associate.lastName} onChange={(v) => p.patchAssociate(0, { lastName: v })} />
-              <TextField label="Date of birth" value={associate.dateOfBirth} onChange={(v) => p.patchAssociate(0, { dateOfBirth: v })} placeholder="YYYY-MM-DD" />
-              <TextField label="Email" value={associate.email} onChange={(v) => p.patchAssociate(0, { email: v })} />
-              <TextField label="Phone (E.164)" value={associate.phoneNumber} onChange={(v) => p.patchAssociate(0, { phoneNumber: v })} placeholder="+254700000000" />
-              <TextField label="Ownership %" value={associate.ownershipPercentage} onChange={(v) => p.patchAssociate(0, { ownershipPercentage: v })} type="number" />
+              <TextField label="UBO first name" value={associate.firstName} onChange={(v) => p.patchAssociate(0, { firstName: v })} autoComplete="given-name" />
+              <TextField label="UBO last name" value={associate.lastName} onChange={(v) => p.patchAssociate(0, { lastName: v })} autoComplete="family-name" />
+              <TextField
+                label="Date of birth"
+                value={associate.dateOfBirth}
+                onChange={(v) => p.patchAssociate(0, { dateOfBirth: v })}
+                type="date"
+                max={maxAdultDob()}
+                min="1900-01-01"
+                hint="Must be 18+"
+              />
+              <TextField label="Email" value={associate.email} onChange={(v) => p.patchAssociate(0, { email: v })} type="email" autoComplete="email" />
+              <TextField
+                label="Phone"
+                value={associate.phoneNumber}
+                onChange={(v) => p.patchAssociate(0, { phoneNumber: v.replace(/[^\d+]/g, "") })}
+                placeholder="+254700000000"
+                inputMode="tel"
+                autoComplete="tel"
+                hint="International format with country code"
+              />
+              <TextField
+                label="Ownership %"
+                value={associate.ownershipPercentage}
+                onChange={(v) => p.patchAssociate(0, { ownershipPercentage: v })}
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                inputMode="numeric"
+              />
+              <CountrySelect
+                label="Tax residence country"
+                value={associate.country}
+                onChange={(code) => p.patchAssociate(0, { country: code })}
+                required
+              />
             </>
           ) : null}
         </div>

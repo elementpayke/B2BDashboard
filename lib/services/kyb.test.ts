@@ -6,24 +6,35 @@ import {
   canOpenKybWizard,
   describeKybStatus,
   emptyKybWizardDraft,
+  formatKybServiceError,
   isKybApproved,
   kybTierDisplay,
+  normalizeDateOfBirth,
   profileDraftFromSummary,
+  validateAddressUboStep,
+  validateBusinessStep,
   validateProfileDraft,
   type KybWizardProfileDraft,
 } from "./kyb";
+import { ApiRequestError } from "@/lib/apiClient";
 
 function validDraft(): KybWizardProfileDraft {
   const draft = emptyKybWizardDraft("KE");
   draft.legalName = "ElementPay Ltd";
   draft.registrationNumber = "BN123456";
   draft.businessType = "LimitedCompany";
+  draft.industry = "Fintech";
+  draft.estimatedEmployees = "1-10";
+  draft.annualRevenueRange = "100kTo1M";
+  draft.sourceOfFunds = "Revenue";
   draft.street = "1 Finance Street";
   draft.city = "Nairobi";
   draft.postCode = "00100";
   draft.associates[0].firstName = "Jane";
   draft.associates[0].lastName = "Doe";
   draft.associates[0].dateOfBirth = "1985-03-15";
+  draft.associates[0].email = "jane@example.com";
+  draft.associates[0].phoneNumber = "+254700000000";
   draft.associates[0].ownershipPercentage = "60";
   return draft;
 }
@@ -66,6 +77,42 @@ describe("validateProfileDraft", () => {
     draft.legalName = "";
     expect(validateProfileDraft(draft)).toMatch(/legal business name/i);
   });
+
+  it("rejects unknown country codes", () => {
+    const draft = validDraft();
+    draft.country = "XX";
+    expect(validateBusinessStep(draft)).toMatch(/valid business country/i);
+  });
+
+  it("rejects city values that are country names", () => {
+    const draft = validDraft();
+    draft.city = "Kenya";
+    expect(validateAddressUboStep(draft)).toMatch(/city looks like a country/i);
+  });
+
+  it("requires E.164 phone and adult DOB", () => {
+    const draft = validDraft();
+    draft.associates[0].phoneNumber = "0700000000";
+    expect(validateAddressUboStep(draft)).toMatch(/E\.164/i);
+    draft.associates[0].phoneNumber = "+254700000000";
+    draft.associates[0].dateOfBirth = "2015-01-01";
+    expect(validateAddressUboStep(draft)).toMatch(/18/);
+  });
+});
+
+describe("normalizeDateOfBirth", () => {
+  it("accepts ISO and DD/MM/YYYY", () => {
+    expect(normalizeDateOfBirth("2002-02-01")).toBe("2002-02-01");
+    expect(normalizeDateOfBirth("01/02/2002")).toBe("2002-02-01");
+  });
+});
+
+describe("formatKybServiceError", () => {
+  it("maps aggregator 502 to a user-friendly message", () => {
+    expect(formatKybServiceError(new ApiRequestError("Aggregator returned 502 for /internal/partner/enrollments/kyb", 502))).toMatch(
+      /temporarily unavailable/i,
+    );
+  });
 });
 
 describe("buildProfilePayload", () => {
@@ -86,8 +133,8 @@ describe("buildShareholderPayload", () => {
       firstName: "Jane",
       lastName: "Doe",
       birthDate: "1985-03-15",
-      email: undefined,
-      phoneNumber: undefined,
+      email: "jane@example.com",
+      phoneNumber: "+254700000000",
       ownershipPercentage: 60,
     });
   });

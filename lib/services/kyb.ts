@@ -1,4 +1,67 @@
-import { apiEnvelope, apiUpload } from "@/lib/apiClient";
+import { ApiRequestError, apiEnvelope, apiUpload } from "@/lib/apiClient";
+import { isValidIsoCountryCode } from "@/lib/data/isoCountries";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** E.164: + then 7–15 digits, first digit non-zero. */
+const E164_RE = /^\+[1-9]\d{6,14}$/;
+const NAME_RE = /^[\p{L}][\p{L}\s'.-]{0,78}$/u;
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Normalize common DOB inputs to YYYY-MM-DD, or null if unparseable. */
+export function normalizeDateOfBirth(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  let y: number, m: number, d: number;
+  const iso = value.match(ISO_DATE_RE);
+  if (iso) {
+    y = Number(iso[1]);
+    m = Number(iso[2]);
+    d = Number(iso[3]);
+  } else {
+    const slash = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (!slash) return null;
+    // Prefer DD/MM/YYYY (common outside US); calendar check rejects impossible dates.
+    d = Number(slash[1]);
+    m = Number(slash[2]);
+    y = Number(slash[3]);
+  }
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function ageYearsUtc(isoDate: string, now = new Date()): number {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  let age = now.getUTCFullYear() - y;
+  const month = now.getUTCMonth() + 1;
+  const day = now.getUTCDate();
+  if (month < m || (month === m && day < d)) age -= 1;
+  return age;
+}
+
+function isValidHttpUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function formatKybServiceError(err: unknown): string {
+  if (err instanceof ApiRequestError) {
+    if (err.status === 502 || /aggregator returned 502/i.test(err.message)) {
+      return "Verification service is temporarily unavailable. Your details were saved — please try again in a few minutes.";
+    }
+    if (err.status >= 500) {
+      return "Verification service error. Your details were saved — please try again shortly.";
+    }
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return "Something went wrong. Please try again.";
+}
 
 export type KybStatus = "pending" | "submitted" | "approved" | "rejected" | "expired";
 
@@ -294,28 +357,63 @@ export function profileDraftFromSummary(
 }
 
 export function validateBusinessStep(draft: KybWizardProfileDraft): string | null {
-  if (!draft.legalName.trim()) return "Legal business name is required.";
+  if (!draft.legalName.trim() || draft.legalName.trim().length < 2) {
+    return "Legal business name is required.";
+  }
   if (!draft.registrationNumber.trim()) return "Registration number is required.";
-  if (!draft.country.trim() || draft.country.trim().length !== 2) return "Country must be a 2-letter ISO code.";
+  if (!isValidIsoCountryCode(draft.country)) {
+    return "Select a valid business country from the list.";
+  }
   if (!draft.businessType) return "Choose a business type.";
+  if (!draft.industry.trim()) return "Industry is required.";
+  if (draft.website.trim() && !isValidHttpUrl(draft.website)) {
+    return "Website must be a valid URL starting with https://";
+  }
+  if (!draft.estimatedEmployees) return "Select estimated employees.";
+  if (!draft.annualRevenueRange) return "Select annual revenue range.";
+  if (!draft.sourceOfFunds) return "Select source of funds.";
   return null;
 }
 
 export function validateAddressUboStep(draft: KybWizardProfileDraft): string | null {
-  if (!draft.street.trim() || !draft.city.trim() || !draft.postCode.trim()) {
-    return "Registered address (street, city, post code) is required.";
+  if (!draft.street.trim() || draft.street.trim().length < 3) {
+    return "Street address is required.";
   }
-  if (!draft.addressCountry.trim() || draft.addressCountry.trim().length !== 2) {
-    return "Address country must be a 2-letter ISO code.";
+  if (!draft.city.trim()) return "City is required.";
+  if (/^(kenya|nigeria|uganda|ghana|tanzania|south africa)$/i.test(draft.city.trim())) {
+    return "City looks like a country name — enter the city (e.g. Nairobi), not the country.";
+  }
+  if (!draft.postCode.trim()) return "Post code is required.";
+  if (!isValidIsoCountryCode(draft.addressCountry)) {
+    return "Select a valid address country from the list.";
   }
   const associate = draft.associates[0];
-  if (!associate?.firstName.trim() || !associate.lastName.trim()) {
-    return "At least one beneficial owner name is required.";
+  if (!associate) return "At least one beneficial owner is required.";
+  if (!NAME_RE.test(associate.firstName.trim())) {
+    return "Enter a valid UBO first name (letters only).";
   }
-  if (!associate.dateOfBirth.trim()) return "Beneficial owner date of birth is required.";
+  if (!NAME_RE.test(associate.lastName.trim())) {
+    return "Enter a valid UBO last name (letters only).";
+  }
+  const dob = normalizeDateOfBirth(associate.dateOfBirth);
+  if (!dob) {
+    return "Date of birth must be a valid calendar date (use the date picker).";
+  }
+  const age = ageYearsUtc(dob);
+  if (age < 18) return "Beneficial owner must be at least 18 years old.";
+  if (age > 120) return "Check the beneficial owner date of birth.";
+  if (!associate.email.trim() || !EMAIL_RE.test(associate.email.trim())) {
+    return "A valid beneficial owner email is required.";
+  }
+  if (!associate.phoneNumber.trim() || !E164_RE.test(associate.phoneNumber.trim())) {
+    return "Phone must be E.164 format, e.g. +254700000000.";
+  }
   const ownership = Number(associate.ownershipPercentage);
-  if (!Number.isFinite(ownership) || ownership <= 0 || ownership > 100) {
-    return "Beneficial owner ownership must be between 1 and 100.";
+  if (!Number.isInteger(ownership) || ownership < 1 || ownership > 100) {
+    return "Ownership must be a whole number between 1 and 100.";
+  }
+  if (!isValidIsoCountryCode(associate.country || draft.addressCountry)) {
+    return "Select a valid tax residence country for the beneficial owner.";
   }
   return null;
 }
@@ -326,6 +424,8 @@ export function validateProfileDraft(draft: KybWizardProfileDraft): string | nul
 
 export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInput {
   const associate = draft.associates[0];
+  const dob = normalizeDateOfBirth(associate.dateOfBirth) || associate.dateOfBirth.trim();
+  const taxCountry = (associate.country || draft.addressCountry).trim().toUpperCase();
   const registered_address: BusinessAddress = {
     street: draft.street.trim(),
     street2: draft.street2.trim() || undefined,
@@ -342,10 +442,10 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
         first_name: associate.firstName.trim(),
         last_name: associate.lastName.trim(),
       },
-      date_of_birth: associate.dateOfBirth.trim(),
+      date_of_birth: dob,
       email: associate.email.trim() || undefined,
       phone_number: associate.phoneNumber.trim() || undefined,
-      tax_residence_country: associate.country.trim().toUpperCase(),
+      tax_residence_country: taxCountry,
       ubo: { ownership_percentage: Number(associate.ownershipPercentage) },
     },
   ];
@@ -369,7 +469,7 @@ export function buildShareholderPayload(associate: KybWizardAssociateDraft): Rec
   return {
     firstName: associate.firstName.trim(),
     lastName: associate.lastName.trim(),
-    birthDate: associate.dateOfBirth.trim(),
+    birthDate: normalizeDateOfBirth(associate.dateOfBirth) || associate.dateOfBirth.trim(),
     email: associate.email.trim() || undefined,
     phoneNumber: associate.phoneNumber.trim() || undefined,
     ownershipPercentage: Number(associate.ownershipPercentage),
