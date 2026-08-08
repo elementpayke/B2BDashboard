@@ -216,12 +216,3 @@ export const authHintStyle: CSSProperties = {
   textAlign: "center",
   lineHeight: 1.45,
 };
-
-export const authSuccessStyle: CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: "12px",
-  background: "#E8F7EE",
-  color: "#1B7A3D",
-  fontSize: "13px",
-  fontWeight: 600,
-};
