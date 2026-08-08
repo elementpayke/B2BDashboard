@@ -93,9 +93,9 @@ export const INVOICES = [
   {id:"INV-0233",client:"Kigali Roasters",amount:"USD 980.00",status:"overdue"},
 ];
 export const CARDS = [
-  {label:"Marketing Ads",last4:"4471",balance:"$1,240.00",bg:"#131126",status:"active"},
-  {label:"Ops Spend",last4:"9982",balance:"$620.50",bg:"#3B2ED3",status:"active"},
-  {label:"Contractor Pay",last4:"1120",balance:"$0.00",bg:"#131126",status:"frozen"},
+  {label:"Marketing Ads",last4:"4471",balance:"$1,240.00",bg:"#0a0a0a",status:"active"},
+  {label:"Ops Spend",last4:"9982",balance:"$620.50",bg:"#4f2ce0",status:"active"},
+  {label:"Contractor Pay",last4:"1120",balance:"$0.00",bg:"#0a0a0a",status:"frozen"},
 ];
 export const STATUS_MAP = {
   done:["Settled","var(--indigo-text)","var(--indigo-tint)"],
@@ -105,8 +105,80 @@ export const STATUS_MAP = {
   overdue:["Overdue","var(--red)","var(--red-tint)"],
 };
 
-export const LIGHT = {"--bg":"#F6F4EF","--surface":"rgba(255,255,255,0.55)","--surface2":"rgba(19,17,38,0.045)","--surface3":"rgba(19,17,38,0.09)","--border":"rgba(19,17,38,0.08)","--glass-border":"rgba(19,17,38,0.08)","--sheen":"rgba(255,255,255,0.5)","--ink":"#131126","--muted":"#4C4A66","--muted2":"#8B89A6","--muted3":"#8B89A6","--indigo":"#3B2ED3","--indigo-bright":"#3B2ED3","--indigo-on":"#fff","--indigo-text":"#3B2ED3","--indigo-tint":"#EEEDFB","--red":"#E5484D","--red-tint":"#FCEBEC","--amber":"#B47700","--amber-tint":"#FBF2DE","--ink-panel":"#131126","--ink-panel-text":"#8B89A6","--input-bg":"#FFFFFF","--input-border":"rgba(19,17,38,0.11)","--modal-bg":"#FBFAF7","--overlay-bg":"rgba(19,17,38,0.62)","--panel":"#FFFFFF"};
-export const DARK = {"--bg":"#000000","--surface":"rgba(255,255,255,0.045)","--surface2":"rgba(255,255,255,0.055)","--surface3":"rgba(255,255,255,0.11)","--border":"rgba(255,255,255,0.1)","--glass-border":"rgba(255,255,255,0.1)","--sheen":"rgba(255,255,255,0.16)","--ink":"#F2F0FA","--muted":"#B4B1D0","--muted2":"#807D9E","--muted3":"#807D9E","--indigo":"#7C6FFF","--indigo-bright":"#7C6FFF","--indigo-on":"#0E0D1C","--indigo-text":"#A79EFF","--indigo-tint":"#221E4A","--red":"#FF6B70","--red-tint":"#3A1B22","--amber":"#F5B84B","--amber-tint":"#332A14","--ink-panel":"#0B0A14","--ink-panel-text":"#8B89A6","--input-bg":"#16151F","--input-border":"rgba(255,255,255,0.14)","--modal-bg":"#0E0D16","--overlay-bg":"rgba(0,0,0,0.78)","--panel":"#121116"};
-export const DARK_HC_OVERRIDES = {"--surface2":"rgba(255,255,255,0.09)","--surface3":"rgba(255,255,255,0.16)","--border":"rgba(255,255,255,0.18)","--glass-border":"rgba(255,255,255,0.18)","--muted2":"#9E9BC0","--input-bg":"#1A1924","--input-border":"rgba(255,255,255,0.28)","--modal-bg":"#0A0911","--panel":"#17161d"};
+export const LIGHT = {
+  "--bg": "#f4f5f9",
+  "--surface": "rgba(255,255,255,0.92)",
+  "--surface2": "rgba(10,10,10,0.045)",
+  "--surface3": "rgba(10,10,10,0.09)",
+  "--border": "rgba(10,10,10,0.08)",
+  "--glass-border": "rgba(10,10,10,0.08)",
+  "--sheen": "rgba(255,255,255,0.5)",
+  "--ink": "#0a0a0a",
+  "--muted": "#525252",
+  "--muted2": "#737373",
+  "--muted3": "#a3a3a3",
+  "--indigo": "#4f2ce0",
+  "--indigo-bright": "#6c4bf2",
+  "--indigo-on": "#ffffff",
+  "--indigo-text": "#4f2ce0",
+  "--indigo-tint": "rgba(79,44,224,0.10)",
+  "--brand-magenta": "#83007c",
+  "--brand-deep": "#3d24b3",
+  "--hero-gradient": "linear-gradient(135deg, #3d24b3 0%, #6c4bf2 50%, #83007c 100%)",
+  "--red": "#dc2626",
+  "--red-tint": "#fef2f2",
+  "--amber": "#d97706",
+  "--amber-tint": "#fffbeb",
+  "--ink-panel": "#0a0a0a",
+  "--ink-panel-text": "#a3a3a3",
+  "--input-bg": "#ffffff",
+  "--input-border": "rgba(10,10,10,0.11)",
+  "--modal-bg": "#ffffff",
+  "--overlay-bg": "rgba(10,10,10,0.55)",
+  "--panel": "#ffffff",
+};
+export const DARK = {
+  "--bg": "#0a0a0a",
+  "--surface": "rgba(255,255,255,0.045)",
+  "--surface2": "rgba(255,255,255,0.055)",
+  "--surface3": "rgba(255,255,255,0.11)",
+  "--border": "rgba(255,255,255,0.10)",
+  "--glass-border": "rgba(255,255,255,0.10)",
+  "--sheen": "rgba(255,255,255,0.16)",
+  "--ink": "#fafafa",
+  "--muted": "#a1a1a1",
+  "--muted2": "#737373",
+  "--muted3": "#4a4a4a",
+  "--indigo": "#6c4bf2",
+  "--indigo-bright": "#6c4bf2",
+  "--indigo-on": "#ffffff",
+  "--indigo-text": "#a79eff",
+  "--indigo-tint": "rgba(108,75,242,0.18)",
+  "--brand-magenta": "#83007c",
+  "--brand-deep": "#3d24b3",
+  "--hero-gradient": "linear-gradient(135deg, #3d24b3 0%, #6c4bf2 50%, #83007c 100%)",
+  "--red": "#ff6568",
+  "--red-tint": "#3a1b22",
+  "--amber": "#fbbf24",
+  "--amber-tint": "#332a14",
+  "--ink-panel": "#141414",
+  "--ink-panel-text": "#a1a1a1",
+  "--input-bg": "#141414",
+  "--input-border": "rgba(255,255,255,0.14)",
+  "--modal-bg": "#141414",
+  "--overlay-bg": "rgba(0,0,0,0.78)",
+  "--panel": "#1c1b29",
+};
+export const DARK_HC_OVERRIDES = {
+  "--surface2": "rgba(255,255,255,0.09)",
+  "--surface3": "rgba(255,255,255,0.16)",
+  "--border": "rgba(255,255,255,0.18)",
+  "--glass-border": "rgba(255,255,255,0.18)",
+  "--muted2": "#a1a1a1",
+  "--input-bg": "#1c1b29",
+  "--input-border": "rgba(255,255,255,0.28)",
+  "--modal-bg": "#0a0a0a",
+  "--panel": "#252336",
+};
 
 export function qp(k){ try { return new URLSearchParams(window.location.search).get(k) || ""; } catch(e){ return ""; } }

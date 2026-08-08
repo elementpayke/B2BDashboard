@@ -1089,7 +1089,7 @@ export default function DashboardApp(props: Props = {}) {
           })()
       : null;
     const cardSel = CARDS[s.selectedCardIdx];
-  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
+  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
         const active = s.screen === n.key;
@@ -1105,17 +1105,17 @@ export default function DashboardApp(props: Props = {}) {
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
   const bottomNavItems = [
-        { key: "home", label: "Home", icon: "⌂" },
-        { key: "wallets", label: "Accounts", icon: "▦" },
-        { key: "__send", label: "Send", icon: "↗" },
-        { key: "transactions", label: "Activity", icon: "≣" },
-        { key: "__more", label: "More", icon: "⋯" },
+        { key: "home", label: "Home", icon: "⌂", elevated: false },
+        { key: "wallets", label: "Wallets", icon: "▦", elevated: false },
+        { key: "__pay", label: "Pay", icon: "⇄", elevated: true },
+        { key: "transactions", label: "Activity", icon: "≣", elevated: false },
+        { key: "__more", label: "More", icon: "⋯", elevated: false },
       ].map(n => {
-        const active = s.screen === n.key;
-        const select = n.key === "__send" ? openModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
-        return { label: n.label, icon: n.icon, select, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
+        const active = n.key === "__pay" ? s.modal === "send" : s.screen === n.key;
+        const select = n.key === "__pay" ? guardMoneyModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
+        return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
-  const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "var(--indigo-on)" }));
+  const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
   // No real total-balance source exists yet: it is a currency-accounts
   // aggregate (IBAN/Wallets scope, deferred), and the only backend field in
   // this neighborhood — `totals.user_balance` — is an untyped Privy
@@ -1161,6 +1161,16 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
+  const heroActions = [
+    { label: "Send", icon: "↗", open: guardMoneyModal("send") },
+    { label: "Top up", icon: "＋", open: guardMoneyModal("deposit") },
+    { label: "Receive", icon: "↙", open: openModal("receive") },
+    { label: "Accounts", icon: "▦", open: setScreen("wallets") },
+  ];
+  const heroPills = [
+    { label: "Money in · 30d", value: homeStats[0]?.value ?? "—" },
+    { label: "Awaiting", value: homeStats[2]?.value ?? "—" },
+  ];
   const homeRecent = decoratedAll.slice(0, 4);
   // No real stablecoin settlement-wallet balance source exists yet — same
   // reasoning as `homeTotalBalance` above. Previously hardcoded to
@@ -1645,8 +1655,8 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
 <aside className="ep-sidebar" aria-label="Main navigation">
 <button onClick={exitApp} className="ep-sidebar__brand">
-<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
-<div style={{minWidth: 0}}><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
+<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
+<div style={{minWidth: 0}}><div style={{fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
 </button>
 
 <nav className="ep-sidebar__nav">
@@ -1713,6 +1723,22 @@ Create payment
 </div>
 <div className="ep-home__balance-value">{homeTotalBalance}</div>
 <div className="ep-home__balance-sub">{balanceViewSub}</div>
+<div className="ep-home__hero-pills" aria-label="Key metrics">
+{(heroPills || []).map((pill: any, __i1: number) => (
+<div key={__i1} className="ep-home__hero-pill">
+<span className="label">{pill.label}</span>
+<span className="value">{pill.value}</span>
+</div>
+))}
+</div>
+<div className="ep-home__hero-actions" aria-label="Quick money actions">
+{(heroActions || []).map((ha: any, __i1: number) => (
+<button key={__i1} type="button" onClick={ha.open} className="ep-home__hero-action">
+<span className="ep-home__hero-action-icon" aria-hidden>{ha.icon}</span>
+<span className="ep-home__hero-action-label">{ha.label}</span>
+</button>
+))}
+</div>
 </div>
 
 {/* Desktop/tablet: full stats column beside balance */}
@@ -2075,17 +2101,19 @@ Create payment
 {(isCompact) ? (<>
 <nav className="ep-bottom-nav" aria-label="Primary mobile">
 {(bottomNavItems || []).map((bn: any, __i1: number) => (
-<button key={__i1} type="button" onClick={bn.select} style={{color: bn.color}}>
+bn.elevated ? (
+<button key={bn.key || __i1} type="button" className="ep-bottom-nav__pay" data-active={bn.active ? "true" : "false"} onClick={bn.select} aria-label={bn.label}>
+<span className="ep-bottom-nav__pay-orb" aria-hidden>{bn.icon}</span>
+<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
+</button>
+) : (
+<button key={bn.key || __i1} type="button" data-active={bn.active ? "true" : "false"} onClick={bn.select} style={{color: bn.color}}>
 <span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
 <span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
 </button>
+)
 ))}
 </nav>
-{!modalOpen ? (
-<button type="button" className="ep-fab" onClick={guardMoneyModal("send")} aria-label="Create payment">
-<span aria-hidden>↗</span> Create payment
-</button>
-) : null}
 </>) : null}
 </main>
 </div>
