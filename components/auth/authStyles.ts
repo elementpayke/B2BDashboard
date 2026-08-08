@@ -68,3 +68,12 @@ export const authErrorStyle: CSSProperties = {
   fontSize: "13px",
   fontWeight: 600,
 };
+
+export const authSuccessStyle: CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: "12px",
+  background: "#E8F7EE",
+  color: "#1B7A3D",
+  fontSize: "13px",
+  fontWeight: 600,
+};

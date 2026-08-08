@@ -55,6 +55,9 @@ export const authApi = {
   verifyEmail: (email: string, verification_code: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/verify-email", { email, verification_code }),
 
+  resendVerification: (email: string) =>
+    authEnvelope<{ ok: boolean }>("POST", "/api/auth/resend-verification", { email }),
+
   forgotPassword: (email: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/forgot-password", { email }),
 
