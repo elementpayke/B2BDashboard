@@ -3701,3 +3701,1088 @@ select.ep-wallets-create__control {
 .ep-money-tabs--wrap {
   flex-wrap: wrap;
 }
+
+/* ── Cards (secondary screen) ─────────────────────────────────── */
+
+.ep-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ep-cards__preview,
+.ep-team__preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--amber-tint);
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--border));
+}
+
+.ep-cards__preview-badge,
+.ep-team__preview-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.ep-cards__preview-text,
+.ep-team__preview-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.ep-cards__head,
+.ep-team__head,
+.ep-developer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ep-cards__title,
+.ep-team__title,
+.ep-developer__title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.ep-cards__cta,
+.ep-team__cta,
+.ep-developer__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--indigo);
+  color: var(--indigo-on);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-cards__cta:hover,
+.ep-team__cta:hover,
+.ep-developer__cta:hover {
+  filter: brightness(1.04);
+}
+
+.ep-cards__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .ep-cards__grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+.ep-cards__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-cards__plastic {
+  aspect-ratio: 1.586;
+  width: 100%;
+  border: none;
+  border-radius: 22px;
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 14px 34px -18px rgba(19, 17, 38, 0.45);
+}
+
+.ep-cards__plastic::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.08), transparent 40%);
+  pointer-events: none;
+}
+
+.ep-cards__plastic-top,
+.ep-cards__plastic-body {
+  position: relative;
+  z-index: 1;
+}
+
+.ep-cards__plastic-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ep-cards__plastic-label {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.ep-cards__plastic-status {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.ep-cards__plastic-eyebrow {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.ep-cards__plastic-balance {
+  display: block;
+  font-family: "DM Mono", monospace;
+  font-size: clamp(18px, 4.5vw, 22px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+}
+
+.ep-cards__plastic-pan {
+  display: block;
+  font-family: "DM Mono", monospace;
+  font-size: 13.5px;
+  letter-spacing: 0.14em;
+  margin-top: 10px;
+  opacity: 0.92;
+}
+
+.ep-cards__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ep-cards__action {
+  flex: 1;
+  min-height: 44px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-cards__action:hover {
+  background: var(--surface3);
+}
+
+.ep-cards__modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ep-cards__modal-plastic {
+  aspect-ratio: 1.586;
+  max-width: 280px;
+  width: 100%;
+  margin: 0 auto;
+  border-radius: 20px;
+  color: #fff;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.ep-cards__modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+  color: var(--muted);
+}
+
+.ep-cards__modal-row b {
+  color: var(--ink);
+}
+
+.ep-cards__modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ep-cards__modal-primary,
+.ep-cards__modal-secondary,
+.ep-cards__modal-danger,
+.ep-developer__submit,
+.ep-team__invite-submit {
+  min-height: 44px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-cards__modal-primary,
+.ep-developer__submit,
+.ep-team__invite-submit {
+  border: none;
+  background: var(--indigo);
+  color: var(--indigo-on);
+}
+
+.ep-cards__modal-primary {
+  flex: 1;
+}
+
+.ep-cards__modal-secondary {
+  flex: 1;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+}
+
+.ep-cards__modal-danger {
+  width: 100%;
+  border: 1.5px solid var(--red-tint);
+  background: none;
+  color: var(--red);
+  font-size: 12.5px;
+}
+
+.ep-cards__freeze-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-cards__toggle {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  min-width: 48px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ep-cards__toggle-knob {
+  position: absolute;
+  top: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.ep-cards__field,
+.ep-team__field,
+.ep-developer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-cards__field-label,
+.ep-team__field-label,
+.ep-developer__field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ep-cards__input,
+.ep-team__input,
+.ep-developer__input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  outline: none;
+  font-family: "DM Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.ep-cards__note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ep-cards__success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
+  text-align: center;
+}
+
+.ep-cards__success-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.ep-cards__success-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-cards__success-text {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.ep-cards__success .ep-cards__modal-secondary {
+  flex: none;
+  min-width: 120px;
+  margin-top: 4px;
+}
+
+/* ── Reports (secondary screen) ───────────────────────────────── */
+
+.ep-reports {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ep-reports__stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .ep-reports__stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.ep-reports__stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px 20px;
+}
+
+.ep-reports__stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.ep-reports__stat-value {
+  font-family: "DM Mono", monospace;
+  font-size: clamp(20px, 4vw, 24px);
+  font-weight: 500;
+  margin-top: 6px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ep-reports__panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 18px 16px;
+}
+
+@media (min-width: 640px) {
+  .ep-reports__panel {
+    padding: 20px;
+  }
+}
+
+.ep-reports__panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.ep-reports__panel-title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-reports__panel-meta {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted2);
+}
+
+.ep-reports__empty {
+  min-height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 20px;
+}
+
+.ep-reports__chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 140px;
+}
+
+@media (min-width: 640px) {
+  .ep-reports__chart {
+    gap: 8px;
+    min-height: 160px;
+  }
+}
+
+.ep-reports__bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.ep-reports__bar-track {
+  width: 100%;
+  height: 110px;
+  background: var(--surface3);
+  border-radius: 8px 8px 3px 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .ep-reports__bar-track {
+    height: 130px;
+  }
+}
+
+.ep-reports__bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--indigo);
+  border-radius: 8px 8px 3px 3px;
+  min-height: 0;
+  transition: height 180ms ease;
+}
+
+.ep-reports__bar-day {
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted2);
+  letter-spacing: 0.02em;
+}
+
+.ep-reports__coverage {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-reports__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid transparent;
+}
+
+.ep-reports__chip-code {
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ── Team (secondary screen) ──────────────────────────────────── */
+
+.ep-team {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.ep-team__list .ep-team-row:last-child {
+  border-bottom: none;
+}
+
+.ep-team .ep-team-row select {
+  min-height: 44px;
+}
+
+.ep-team__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.ep-team__identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-team__name {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-team__email {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ep-team__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-team__role-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface2);
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.ep-team__remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 10px;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--muted2);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 10px;
+}
+
+.ep-team__remove:hover {
+  color: var(--red);
+  background: var(--red-tint);
+}
+
+.ep-team__invite-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ep-team__invite {
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 22px 20px;
+  width: 100%;
+  max-width: 420px;
+  max-height: min(90vh, 90dvh);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 28px 70px -24px rgba(19, 17, 38, 0.45);
+}
+
+.ep-team__invite-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-team__invite-title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-team__invite-close {
+  background: none;
+  border: none;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--muted2);
+  font-size: 17px;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 12px;
+}
+
+.ep-team__invite-close:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+
+.ep-team__roles {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.ep-team__role {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ep-team__role--selected {
+  background: var(--indigo);
+  color: var(--indigo-on);
+  border-color: var(--indigo);
+}
+
+.ep-team__role-label {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.ep-team__role-desc {
+  font-size: 11px;
+  opacity: 0.82;
+  line-height: 1.35;
+}
+
+.ep-team__invite-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Developer (secondary screen) ─────────────────────────────── */
+
+.ep-developer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+
+.ep-developer__banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--indigo-tint);
+  border: 1px solid color-mix(in srgb, var(--indigo) 22%, var(--border));
+}
+
+.ep-developer__banner-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-developer__banner-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--indigo);
+  color: var(--indigo-on);
+  flex-shrink: 0;
+}
+
+.ep-developer__banner-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.ep-developer__banner-dismiss {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--indigo-text);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-developer__banner-dismiss:hover {
+  background: color-mix(in srgb, var(--indigo) 10%, transparent);
+}
+
+.ep-developer__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 28px 22px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+}
+
+.ep-developer__empty-title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-developer__empty-text {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-developer__card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (min-width: 640px) {
+  .ep-developer__card {
+    padding: 20px;
+  }
+}
+
+.ep-developer__card--new {
+  border-color: color-mix(in srgb, var(--indigo) 40%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent);
+}
+
+.ep-developer__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ep-developer__card-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ep-developer__card-name {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-developer__env {
+  font-family: "DM Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--surface2);
+  color: var(--muted);
+  padding: 5px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ep-developer__env--live {
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+}
+
+.ep-developer__revoke {
+  background: none;
+  border: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  color: var(--red);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-developer__revoke:hover {
+  background: var(--red-tint);
+}
+
+.ep-developer__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.ep-developer .ep-secret-row__actions button,
+.ep-developer__btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-developer__btn--soft {
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+}
+
+.ep-developer__btn--solid {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.ep-developer__btn:disabled {
+  cursor: not-allowed;
+}
+
+.ep-developer__modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ep-developer__env-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-developer__env-chip {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-developer__env-chip--selected {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+.ep-developer__env-chip--live.ep-developer__env-chip--selected {
+  background: var(--indigo);
+  color: var(--indigo-on);
+  border-color: var(--indigo);
+}
+
+.ep-developer__error {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--red-tint);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ep-developer__submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Tier upgrade modal (tied to verification, surfaced from secondary flows) */
+.ep-cards__submit {
+  min-height: 48px;
+  padding: 13px;
+  border-radius: 14px;
+  border: none;
+  background: var(--indigo);
+  color: var(--indigo-on);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+
+.ep-cards__submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-cards__tier {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-cards__tier-intro {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.ep-cards__tier-doc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+}
+
+.ep-cards__tier-doc-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ep-cards__tier-upload {
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
