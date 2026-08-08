@@ -48,200 +48,400 @@ export type SendModalProps = {
   closeModal: () => void;
 };
 
+function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
+  const firstOff = dots.findIndex((d) => !d.on);
+  const step = dots.every((d) => d.on) ? dots.length : Math.max(1, firstOff);
+  return (
+    <div
+      className="ep-money-steps"
+      role="progressbar"
+      aria-valuemin={1}
+      aria-valuemax={dots.length || 3}
+      aria-valuenow={step}
+      aria-label={label}
+    >
+      {(dots || []).map((d, i) => (
+        <span
+          key={i}
+          className={`ep-money-steps__dot${d.on ? " ep-money-steps__dot--on" : ""}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function SendModal(p: SendModalProps) {
+  const catalogBusy = p.sendIsCountry && p.sendCatalogLoading;
+
   return (
     <>
       {p.sendNotDone ? (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div style={{ display: "flex", gap: "6px" }}>
-              {(p.sendStepDots || []).map((d: any, __i1: number) => (
-                <React.Fragment key={__i1}>
-                  <span style={{ height: "4px", flex: "1", borderRadius: "999px", background: d.on ? "var(--indigo)" : "var(--surface3)" }} />
-                </React.Fragment>
-              ))}
-            </div>
+        <div className="ep-money-flow">
+          <StepProgress dots={p.sendStepDots || []} label="Send payment progress" />
 
-            {p.sendStepIs1 ? (
-              <>
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 1 · Where is this going?</span>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    {(p.sendGroups || []).map((g: any, __i1: number) => (
-                      <React.Fragment key={__i1}>
-                        <button onClick={g.select} style={{ padding: "9px 13px", borderRadius: "999px", border: "none", background: g.bg, color: g.color, fontSize: "11.5px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}>{g.label}</button>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                  {p.sendIsCountry ? (
-                    <>
-                      <div>
-                        <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Recipient&apos;s country</span>
-                        <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "8px 0 2px" }}>
-                          {(p.sendCountryChips || []).map((c: any, __i1: number) => (
-                            <React.Fragment key={__i1}>
-                              <button onClick={c.selectSend} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "7px 11px", borderRadius: "999px", border: `1.5px solid ${c.sendBorder}`, background: c.sendBg, color: "var(--ink)", cursor: "pointer", flexShrink: "0" }}><div style={{ width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${c.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0" }} /><span style={{ fontSize: "11.5px", fontWeight: "700" }}>{c.code}</span></button>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      </div>
-                      {p.sendRailHasChoice ? (
-                        <>
-                          <div>
-                            <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Payout rail</span>
-                            <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                              {(p.sendRailChips || []).map((r: any, __i1: number) => (
-                                <React.Fragment key={__i1}>
-                                  <button onClick={r.select} style={{ padding: "8px 13px", borderRadius: "12px", border: "none", background: r.bg, color: r.color, fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>{r.label}</button>
-                                </React.Fragment>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      ) : null}
-                      {p.sendCatalogLoading ? (
-                        <div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--surface2)", color: "var(--muted)", fontSize: "12px", fontWeight: 600 }}>Loading providers…</div>
-                      ) : null}
-                      {!p.sendCatalogLoading && p.sendProviderHasChoice ? (
-                        <>
-                          <div>
-                            <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Choose provider</span>
-                            <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "6px 0 2px" }}>
-                              {(p.sendProviderChips || []).map((pr: any, __i1: number) => (
-                                <React.Fragment key={__i1}>
-                                  <button onClick={pr.select} style={{ padding: "8px 13px", borderRadius: "12px", border: `1.5px solid ${pr.border}`, background: pr.bg, color: "var(--ink)", fontSize: "12px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}>{pr.name}</button>
-                                </React.Fragment>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {p.sendIsCrypto ? (
-                    <>
-                      <p style={{ margin: "0", fontSize: "12.5px", color: "var(--muted)" }}>Sends stablecoin directly on-chain — no bank or mobile money involved.</p>
-                      <div>
-                        <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Asset</span>
-                        <div style={{ display: "flex", gap: "4px", background: "var(--surface2)", padding: "3px", borderRadius: "10px", marginTop: "6px", width: "fit-content" }}>
-                          {(p.sendAssets || []).map((as: any, __i1: number) => (
-                            <React.Fragment key={__i1}>
-                              <button onClick={as.select} style={{ padding: "6px 12px", borderRadius: "8px", border: "none", background: as.bg, color: as.color, fontSize: "11.5px", fontWeight: "700", cursor: "pointer" }}>{as.label}</button>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Confirm the chain you&apos;re sending to</span>
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px" }}>
-                          {(p.sendChains || []).map((ch: any, __i1: number) => (
-                            <React.Fragment key={__i1}>
-                              <button onClick={ch.select} style={{ padding: "9px 14px", borderRadius: "12px", border: `1.5px solid ${ch.border}`, background: ch.bg, color: ch.color, fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}>{ch.label}</button>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                        <div style={{ marginTop: "8px", padding: "10px 12px", borderRadius: "12px", background: "var(--amber-tint)", color: "var(--amber)", fontSize: "11.5px", fontWeight: "600", lineHeight: "1.5" }}>Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} — sending to the wrong network can lose funds.</div>
-                      </div>
-                    </>
-                  ) : null}
-                  {p.sendQuoteError && p.sendIsCrypto ? (<div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600 }}>{p.sendQuoteError}</div>) : null}
+          {p.sendStepIs1 ? (
+            <div className="ep-money-stack">
+              <span className="ep-money-step-label">Step 1 · Where is this going?</span>
+              <div className="ep-money-tabs" role="group" aria-label="Destination type">
+                {(p.sendGroups || []).map((g: any, i: number) => (
                   <button
-                    onClick={p.sendNext}
-                    disabled={p.sendIsCountry && p.sendCatalogLoading}
-                    style={{
-                      padding: "13px",
-                      borderRadius: "14px",
-                      border: "none",
-                      background: "var(--indigo)",
-                      color: "var(--indigo-on)",
-                      fontFamily: "'Space Grotesk',sans-serif",
-                      fontSize: "13.5px",
-                      fontWeight: "700",
-                      cursor: p.sendIsCountry && p.sendCatalogLoading ? "wait" : "pointer",
-                      opacity: p.sendIsCountry && p.sendCatalogLoading ? 0.7 : 1,
-                    }}
+                    key={i}
+                    type="button"
+                    onClick={g.select}
+                    className="ep-money-tab"
+                    style={{ background: g.bg, color: g.color }}
                   >
-                    {p.sendIsCountry && p.sendCatalogLoading ? "Loading…" : "Continue"}
+                    {g.label}
                   </button>
-                </div>
-              </>
-            ) : null}
+                ))}
+              </div>
 
-            {p.sendStepIs2 ? (
-              <>
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 2 · Recipient & amount</span>
-                  <div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--indigo-tint)", color: "var(--indigo-text)", fontSize: "12px", fontWeight: "600" }}>{p.sendDestinationSummary}</div>
-                  {p.sendIsCountry ? (
-                    <>
-                      <div>
-                        <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Recipient&apos;s name</span>
-                        <input value={p.sendRecipientName} onChange={p.setSendRecipientName} placeholder="e.g. Jane Mukami" style={{ width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box" }} />
+              {p.sendIsCountry ? (
+                <>
+                  <div className="ep-money-field">
+                    <span className="ep-money-label" id="send-country-label">
+                      Recipient&apos;s country
+                    </span>
+                    <div
+                      className="ep-money-scroll"
+                      role="group"
+                      aria-labelledby="send-country-label"
+                    >
+                      {(p.sendCountryChips || []).map((c: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={c.selectSend}
+                          className="ep-money-chip"
+                          style={{
+                            borderColor: c.sendBorder,
+                            background: c.sendBg,
+                          }}
+                        >
+                          <span
+                            className="ep-money-flag"
+                            style={{ backgroundImage: `url(${c.flagUrl})` }}
+                            aria-hidden
+                          />
+                          <span className="ep-money-chip__code">{c.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {p.sendRailHasChoice ? (
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-rail-label">
+                        Payout rail
+                      </span>
+                      <div className="ep-money-tabs" role="group" aria-labelledby="send-rail-label">
+                        {(p.sendRailChips || []).map((r: any, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={r.select}
+                            className="ep-money-rail"
+                            style={{ background: r.bg, color: r.color }}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
                       </div>
-                    </>
+                    </div>
                   ) : null}
-                  <div>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{p.sendRecipientLabel}</span>
-                    <input value={p.sendRecipient} onChange={p.setSendRecipient} placeholder={p.sendRecipientPlaceholder} style={{ width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box" }} />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Amount (USD)</span>
-                    <input value={p.sendAmount} onChange={p.setSendAmount} placeholder="0.00" style={{ width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box" }} />
-                  </div>
-                  {p.sendQuoteError ? (<div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600 }}>{p.sendQuoteError}</div>) : null}
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={p.sendBack} style={{ flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Back</button>
-                    <button onClick={p.sendNext} disabled={p.sendQuoteLoading} style={{ flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: p.sendQuoteLoading ? "wait" : "pointer", opacity: p.sendQuoteLoading ? 0.7 : 1 }}>{p.sendQuoteLoading ? "Getting quote…" : "Review"}</button>
-                  </div>
-                </div>
-              </>
-            ) : null}
 
-            {p.sendStepIs3 ? (
-              <>
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 3 · Review & confirm</span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>To</span><b>{p.sendRecipient}</b></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Via</span><b>{p.sendDestinationSummary}</b></div>
-                    {p.sendIsCrypto ? (
-                      <>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Network</span><b>{p.sendChainLabel}</b></div>
-                      </>
-                    ) : null}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Amount</span><b style={{ fontFamily: "'DM Mono',monospace" }}>${p.sendAmount}</b></div>
-                    {p.sendQuoteRateText ? (<div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Recipient gets</span><b style={{ fontFamily: "'DM Mono',monospace" }}>{p.sendQuoteRateText}</b></div>) : null}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Fee</span><b>{p.sendFeeText}</b></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12.5px" }}><span style={{ color: "var(--muted)" }}>Arrival</span><b>{p.sendArrivalText}</b></div>
+                  {p.sendCatalogLoading ? (
+                    <div className="ep-money-banner ep-money-banner--muted" role="status">
+                      Loading providers…
+                    </div>
+                  ) : null}
+
+                  {!p.sendCatalogLoading && p.sendProviderHasChoice ? (
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-provider-label">
+                        Choose provider
+                      </span>
+                      <div
+                        className="ep-money-scroll"
+                        role="group"
+                        aria-labelledby="send-provider-label"
+                      >
+                        {(p.sendProviderChips || []).map((pr: any, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={pr.select}
+                            className="ep-money-provider"
+                            style={{
+                              borderColor: pr.border,
+                              background: pr.bg,
+                              color: "var(--ink)",
+                            }}
+                          >
+                            {pr.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {p.sendIsCrypto ? (
+                <>
+                  <p className="ep-money-hint">
+                    Sends stablecoin directly on-chain — no bank or mobile money involved.
+                  </p>
+                  <div className="ep-money-field">
+                    <span className="ep-money-label" id="send-asset-label">
+                      Asset
+                    </span>
+                    <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label">
+                      {(p.sendAssets || []).map((as: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={as.select}
+                          className="ep-money-seg__btn"
+                          style={{ background: as.bg, color: as.color }}
+                        >
+                          {as.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  {p.sendAcceptError ? (<div style={{ padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600 }}>{p.sendAcceptError}</div>) : null}
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={p.sendBack} style={{ flex: "1", padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Back</button>
-                    <button onClick={p.submitSend} disabled={p.sendAccepting} style={{ flex: "2", padding: "12px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: p.sendAccepting ? "wait" : "pointer", opacity: p.sendAccepting ? 0.7 : 1 }}>{p.sendAccepting ? "Sending…" : "Confirm & send ↗"}</button>
+                  <div className="ep-money-field">
+                    <span className="ep-money-label" id="send-chain-label">
+                      Confirm the chain you&apos;re sending to
+                    </span>
+                    <div
+                      className="ep-money-tabs ep-money-tabs--wrap"
+                      role="group"
+                      aria-labelledby="send-chain-label"
+                    >
+                      {(p.sendChains || []).map((ch: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={ch.select}
+                          className="ep-money-network"
+                          style={{
+                            borderColor: ch.border,
+                            background: ch.bg,
+                            color: ch.color,
+                          }}
+                        >
+                          {ch.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ep-money-banner ep-money-banner--warn" role="note">
+                      Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
+                      sending to the wrong network can lose funds.
+                    </div>
                   </div>
+                </>
+              ) : null}
+
+              {p.sendQuoteError && p.sendIsCrypto ? (
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                  {p.sendQuoteError}
                 </div>
-              </>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-      {p.sendDone ? (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center" }}>
-            <span style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px" }}>✓</span>
-            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>Payment on its way</span>
-            <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>{p.sendResultText || `$${p.sendAmount} to ${p.sendRecipient} · ${p.sendArrivalText}`}</span>
-            {p.sendLiveStatus ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", marginTop: "2px", fontSize: "11px", fontWeight: "700", padding: "4px 11px", borderRadius: "999px", background: p.sendLiveStatus.soft, color: p.sendLiveStatus.color }}>
-                {p.sendLiveStatus.isSettling ? (
-                  <span aria-hidden style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor" }} />
+              ) : null}
+
+              <button
+                type="button"
+                className="ep-btn-primary"
+                onClick={p.sendNext}
+                disabled={catalogBusy}
+                aria-busy={catalogBusy || undefined}
+              >
+                {catalogBusy ? "Loading…" : "Continue"}
+              </button>
+            </div>
+          ) : null}
+
+          {p.sendStepIs2 ? (
+            <div className="ep-money-stack">
+              <span className="ep-money-step-label">Step 2 · Recipient & amount</span>
+              <div className="ep-money-banner ep-money-banner--info">{p.sendDestinationSummary}</div>
+
+              {p.sendIsCountry ? (
+                <div className="ep-money-field">
+                  <label className="ep-money-label" htmlFor="send-recipient-name">
+                    Recipient&apos;s name
+                  </label>
+                  <input
+                    id="send-recipient-name"
+                    className="ep-money-input"
+                    value={p.sendRecipientName}
+                    onChange={p.setSendRecipientName}
+                    placeholder="e.g. Jane Mukami"
+                    autoComplete="name"
+                  />
+                </div>
+              ) : null}
+
+              <div className="ep-money-field">
+                <label className="ep-money-label" htmlFor="send-recipient">
+                  {p.sendRecipientLabel}
+                </label>
+                <input
+                  id="send-recipient"
+                  className="ep-money-input"
+                  value={p.sendRecipient}
+                  onChange={p.setSendRecipient}
+                  placeholder={p.sendRecipientPlaceholder}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className="ep-money-field">
+                <label className="ep-money-label" htmlFor="send-amount">
+                  Amount (USD)
+                </label>
+                <input
+                  id="send-amount"
+                  className="ep-money-input ep-money-input--amount"
+                  value={p.sendAmount}
+                  onChange={p.setSendAmount}
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  aria-describedby={p.sendQuoteError ? "send-quote-error" : undefined}
+                />
+              </div>
+
+              {p.sendQuoteError ? (
+                <div
+                  id="send-quote-error"
+                  className="ep-money-banner ep-money-banner--danger"
+                  role="alert"
+                >
+                  {p.sendQuoteError}
+                </div>
+              ) : null}
+
+              <div className="ep-money-actions">
+                <button type="button" className="ep-btn-secondary" onClick={p.sendBack}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="ep-btn-primary"
+                  onClick={p.sendNext}
+                  disabled={p.sendQuoteLoading}
+                  aria-busy={p.sendQuoteLoading || undefined}
+                >
+                  {p.sendQuoteLoading ? "Getting quote…" : "Review"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {p.sendStepIs3 ? (
+            <div className="ep-money-stack ep-money-stack--tight">
+              <span className="ep-money-step-label">Step 3 · Review & confirm</span>
+              <div className="ep-money-review" role="group" aria-label="Payment summary">
+                <div className="ep-money-review__row">
+                  <span className="ep-money-review__k">To</span>
+                  <span className="ep-money-review__v">{p.sendRecipient}</span>
+                </div>
+                <div className="ep-money-review__row">
+                  <span className="ep-money-review__k">Via</span>
+                  <span className="ep-money-review__v">{p.sendDestinationSummary}</span>
+                </div>
+                {p.sendIsCrypto ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Network</span>
+                    <span className="ep-money-review__v">{p.sendChainLabel}</span>
+                  </div>
                 ) : null}
-                {p.sendLiveStatus.label}
-              </span>
-            ) : null}
-            <button onClick={p.closeModal} style={{ marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}>Done</button>
-          </div>
-        </>
+                <div className="ep-money-review__row ep-money-review__row--emphasis">
+                  <span className="ep-money-review__k">You send</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">
+                    ${p.sendAmount} USD
+                  </span>
+                </div>
+                {p.sendQuoteRateText ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Recipient gets</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
+                      {p.sendQuoteRateText}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="ep-money-review__row">
+                  <span className="ep-money-review__k">Fee</span>
+                  <span className="ep-money-review__v ep-money-review__v--mono">{p.sendFeeText}</span>
+                </div>
+                <div className="ep-money-review__row">
+                  <span className="ep-money-review__k">Arrival</span>
+                  <span className="ep-money-review__v">{p.sendArrivalText}</span>
+                </div>
+              </div>
+
+              {p.sendAcceptError ? (
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                  {p.sendAcceptError}
+                </div>
+              ) : null}
+
+              <div className="ep-money-actions">
+                <button
+                  type="button"
+                  className="ep-btn-secondary"
+                  onClick={p.sendBack}
+                  disabled={p.sendAccepting}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="ep-btn-primary"
+                  onClick={p.submitSend}
+                  disabled={p.sendAccepting}
+                  aria-busy={p.sendAccepting || undefined}
+                >
+                  {p.sendAccepting ? "Sending…" : "Confirm & send ↗"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {p.sendDone ? (
+        <div className="ep-money-success">
+          <span className="ep-money-success__icon" aria-hidden>
+            ✓
+          </span>
+          <span className="ep-money-success__title">Payment on its way</span>
+          <span className="ep-money-success__body">
+            {p.sendResultText || `$${p.sendAmount} USD to ${p.sendRecipient} · ${p.sendArrivalText}`}
+          </span>
+          {p.sendLiveStatus ? (
+            <span
+              className="ep-money-status"
+              style={{ background: p.sendLiveStatus.soft, color: p.sendLiveStatus.color }}
+              role="status"
+            >
+              {p.sendLiveStatus.isSettling ? (
+                <span className="ep-money-status__dot" aria-hidden />
+              ) : null}
+              {p.sendLiveStatus.label}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={p.closeModal}
+            style={{ width: "auto", minWidth: 120 }}
+          >
+            Done
+          </button>
+        </div>
       ) : null}
     </>
   );

@@ -1216,6 +1216,24 @@ body {
   }
 }
 
+
+.ep-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-modal__title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+  min-width: 0;
+}
+
 .ep-modal__close {
   width: 44px;
   height: 44px;
@@ -1230,6 +1248,11 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+.ep-modal__close:hover {
+  color: var(--ink);
+}
+
 
 .ep-modal input,
 .ep-modal select,
@@ -3094,4 +3117,587 @@ select.ep-wallets-create__control {
 .ep-wallets-create__btn--primary:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+/* ── Money flow modals (Send / Deposit / Receive) ─────────────── */
+
+.ep-money-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ep-money-steps {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ep-money-steps__dot {
+  height: 4px;
+  flex: 1;
+  border-radius: 999px;
+  background: var(--surface3);
+  transition: background 0.15s ease;
+}
+
+.ep-money-steps__dot--on {
+  background: var(--indigo);
+}
+
+.ep-money-step-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.ep-money-step-meta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ep-money-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ep-money-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ep-money-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-money-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--input-border);
+  background: var(--input-bg);
+  outline: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: "DM Sans", sans-serif;
+  box-sizing: border-box;
+}
+
+.ep-money-input:focus-visible {
+  border-color: var(--indigo);
+}
+
+.ep-money-input--amount {
+  font-family: "DM Mono", monospace;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-money-input--bare {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  outline: none;
+  font-family: "DM Sans", sans-serif;
+}
+
+.ep-money-phone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+}
+
+.ep-money-phone__code {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  font-family: "DM Mono", monospace;
+  flex-shrink: 0;
+}
+
+.ep-money-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ep-money-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: "DM Sans", sans-serif;
+  flex-shrink: 0;
+}
+
+.ep-money-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-money-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: "DM Sans", sans-serif;
+}
+
+.ep-money-chip__code {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ep-money-flag {
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}
+
+.ep-money-rail,
+.ep-money-provider,
+.ep-money-network {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ep-money-rail {
+  border: none;
+}
+
+.ep-money-provider,
+.ep-money-network {
+  border: 1.5px solid transparent;
+}
+
+.ep-money-network {
+  font-size: 12.5px;
+}
+
+.ep-money-seg {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--surface2);
+  padding: 3px;
+  border-radius: 10px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.ep-money-seg__btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  white-space: nowrap;
+}
+
+.ep-money-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 0 2px;
+  min-width: 0;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+.ep-money-banner {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.ep-money-banner--info {
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+}
+
+.ep-money-banner--warn {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+
+.ep-money-banner--danger {
+  background: var(--red-tint);
+  color: var(--red);
+}
+
+.ep-money-banner--muted {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.ep-money-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+  min-width: 0;
+}
+
+.ep-money-review__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-money-review__row:last-child {
+  border-bottom: none;
+}
+
+.ep-money-review__row--emphasis {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.ep-money-review__k {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.ep-money-review__v {
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.ep-money-review__v--mono {
+  font-family: "DM Mono", monospace;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-money-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin-top: 2px;
+}
+
+.ep-money-actions > .ep-btn-secondary {
+  flex: 1;
+  width: auto;
+  min-height: 48px;
+}
+
+.ep-money-actions > .ep-btn-primary {
+  flex: 2;
+  width: auto;
+  min-height: 48px;
+}
+
+.ep-money-flow .ep-btn-primary:disabled,
+.ep-money-flow .ep-btn-primary[aria-busy="true"] {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.ep-money-flow .ep-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ep-money-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
+  text-align: center;
+}
+
+.ep-money-success__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ep-money-success__title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-money-success__body {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 32ch;
+}
+
+.ep-money-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  min-height: 28px;
+}
+
+.ep-money-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+.ep-money-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+  border: 1.5px solid var(--glass-border);
+  min-width: 0;
+}
+
+.ep-money-copy-row__value {
+  font-family: "DM Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+  line-height: 1.45;
+  min-width: 0;
+  flex: 1;
+}
+
+.ep-money-copy-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: "DM Sans", sans-serif;
+}
+
+.ep-money-copy-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-money-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+  min-width: 0;
+}
+
+.ep-money-kv__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.ep-money-kv__row:last-child {
+  border-bottom: none;
+}
+
+.ep-money-kv__k {
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 88px;
+  max-width: 40%;
+}
+
+.ep-money-kv__v {
+  font-family: "DM Mono", monospace;
+  font-weight: 600;
+  flex: 1;
+  word-break: break-all;
+  min-width: 0;
+  text-align: right;
+}
+
+.ep-money-kv__row .ep-money-copy-btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+}
+
+.ep-money-asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ep-money-done-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.ep-money-done-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ep-money-done-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--indigo);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.ep-modal .ep-money-flow .ep-btn-primary,
+.ep-modal .ep-money-flow .ep-btn-secondary {
+  font-size: 13.5px;
+}
+
+@media (max-width: 639px) {
+  .ep-money-kv__k {
+    min-width: 72px;
+  }
+
+  .ep-money-copy-row {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .ep-money-copy-row .ep-money-copy-btn {
+    width: 100%;
+  }
+}
+
+.ep-money-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ep-money-stack--tight {
+  gap: 10px;
+}
+
+.ep-money-empty {
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.ep-money-tabs--wrap {
+  flex-wrap: wrap;
 }

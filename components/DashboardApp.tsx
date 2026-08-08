@@ -685,7 +685,16 @@ export default function DashboardApp(props: Props = {}) {
   const selectReceiveAcct = (i) => () => setState({ receiveAcctIdx: i, copiedKey: "" });
   const setReceiveAsset = (k) => () => setState({ receiveAsset: k, copiedKey: "" });
   const setReceiveNetwork = (k) => () => setState({ receiveNetwork: k, copiedKey: "" });
-  const copyReceiveField = (key, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedKey: key }); };
+  const copyReceiveField = (key, val) => async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(val);
+      setState({ copiedKey: key });
+    } catch {
+      // Don't show "Copied" when the write failed (permission / insecure context).
+      setState({ copiedKey: "" });
+    }
+  };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
   const simulateBulkUpload = () => setState({ bulkLoaded: true });
@@ -1911,8 +1920,8 @@ Create payment
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px"}}>
-<h3 id="ep-modal-title" style={{margin: "0", fontFamily: "'Space Grotesk',sans-serif", fontSize: "16px", fontWeight: "700"}}>{modalTitle}</h3>
+<div className="ep-modal__header">
+<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
 </div>
 
