@@ -41,7 +41,8 @@ export type WalletsScreenProps = {
   goTransactions: () => void;
 };
 
-function detailLabel(primaryDetail: string): string {
+function detailLabel(primaryDetail: string, secondaryDetail?: string): string {
+  if (secondaryDetail?.toLowerCase().includes("stablecoin")) return "Network";
   if (!primaryDetail || primaryDetail === "Coordinates pending") return "Deposit details";
   if (primaryDetail.includes("··") || /^[A-Z]{2}\d/.test(primaryDetail.replace(/\s/g, ""))) {
     return "Account number";
@@ -272,7 +273,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                   </div>
                   <div>
                     <div className="ep-wallets__card-detail-label">
-                      {detailLabel(acc.primaryDetail)}
+                      {detailLabel(acc.primaryDetail, acc.secondaryDetail)}
                     </div>
                     <div className="ep-wallets__card-detail">{acc.primaryDetail}</div>
                     {acc.secondaryDetail ? (

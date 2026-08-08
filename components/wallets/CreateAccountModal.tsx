@@ -5,6 +5,8 @@ import {
   STABLECOIN_OPTIONS,
   NETWORK_OPTIONS,
   isCurrencySupported,
+  isStablecoinSupported,
+  isStablecoinNetworkSupported,
 } from "@/lib/services/depositAccounts";
 
 export type CreateAccountModalProps = {
@@ -71,8 +73,13 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             >
               <option value="">Select stablecoin</option>
               {STABLECOIN_OPTIONS.map((o: any) => (
-                <option key={o.code} value={o.code}>
+                <option
+                  key={o.code}
+                  value={o.code}
+                  disabled={!isStablecoinSupported(o.code)}
+                >
                   {o.label}
+                  {isStablecoinSupported(o.code) ? "" : " — not available yet"}
                 </option>
               ))}
             </select>
@@ -93,12 +100,18 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             >
               <option value="">Select network</option>
               {NETWORK_OPTIONS.map((o: any) => (
-                <option key={o.code} value={o.code}>
+                <option
+                  key={o.code}
+                  value={o.code}
+                  disabled={!isStablecoinNetworkSupported(o.code)}
+                >
                   {o.label}
+                  {isStablecoinNetworkSupported(o.code) ? "" : " — not available yet"}
                 </option>
               ))}
             </select>
             <div className="ep-wallets-create__hint">
+              Stablecoin accounts are issued in USDC on Base and Polygon only.
               Network and asset must match the payer’s rail exactly.
             </div>
           </div>

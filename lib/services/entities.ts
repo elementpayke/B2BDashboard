@@ -25,11 +25,64 @@ export type FinancialAccount = {
 const READY = new Set(["active", "ready", "open", "opened"]);
 const SEND_NETWORKS = new Set(["base", "polygon"]);
 
+/** Body for `POST /v1/entities/{id}/accounts` (`AccountOpenIn`). */
+export type AccountOpenPayload = {
+  asset_type: "fiat" | "stablecoin";
+  currency: string;
+  network?: string | null;
+  display_name?: string | null;
+};
+
 export const entitiesApi = {
   list: () => apiEnvelope<ProviderEntity[]>("GET", "/v1/entities"),
   listAccounts: (entityId: string) =>
     apiEnvelope<unknown>("GET", `/v1/entities/${encodeURIComponent(entityId)}/accounts`),
+  openAccount: (entityId: string, payload: AccountOpenPayload) =>
+    apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts`,
+      payload,
+    ),
 };
+
+/** First linked partner entity, or a clear error when KYB/entity onboarding is incomplete. */
+export async function resolvePrimaryEntityId(): Promise<string> {
+  const entities = await entitiesApi.list();
+  const id = Array.isArray(entities)
+    ? entities.map((e) => e?.id?.trim()).find((value): value is string => Boolean(value))
+    : undefined;
+  if (!id) {
+    throw new Error(
+      "No partner entity linked — complete business verification before opening stablecoin accounts.",
+    );
+  }
+  return id;
+}
+
+/**
+ * Build a Phase 4–compatible open-account body from Create Account UI values.
+ * UI network codes are `BASE` / `POLYGON`; partner expects `Base` / `Polygon`.
+ */
+export function buildStablecoinOpenPayload(input: {
+  currency: string;
+  network: string;
+  displayName: string;
+}): AccountOpenPayload {
+  const currency = input.currency.trim().toUpperCase();
+  if (currency !== "USDC") {
+    throw new Error("Only USDC stablecoin accounts can be opened.");
+  }
+  const network = toPartnerNetwork(input.network);
+  if (!network) {
+    throw new Error("Choose Base or Polygon — other networks aren't supported yet.");
+  }
+  return {
+    asset_type: "stablecoin",
+    currency,
+    network,
+    display_name: input.displayName.trim() || null,
+  };
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -91,19 +144,21 @@ export function normalizeFinancialAccount(
   return { id, entityId, assetType, currency, network, status };
 }
 
-/** Accounts that Phase 4 can send from (ready USDC on Base/Polygon). */
-export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
+/** USDC on Base/Polygon — creatable / listable on the Accounts screen. */
+export function isListedStablecoinAccount(account: FinancialAccount): boolean {
   if (account.assetType.toLowerCase() !== "stablecoin") return false;
   if (account.currency !== "USDC") return false;
-  if (!isReadyStatus(account.status)) return false;
   return SEND_NETWORKS.has(normalizeNetworkKey(account.network));
 }
 
-/**
- * Resolve every sendable USDC account for the authenticated principal by
- * walking `GET /v1/entities` → `GET /v1/entities/{id}/accounts`.
- */
-export async function listSendableStablecoinAccounts(): Promise<FinancialAccount[]> {
+/** Accounts that Phase 4 can send from (ready USDC on Base/Polygon). */
+export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
+  return isListedStablecoinAccount(account) && isReadyStatus(account.status);
+}
+
+async function collectStablecoinAccounts(
+  predicate: (account: FinancialAccount) => boolean,
+): Promise<FinancialAccount[]> {
   const entities = await entitiesApi.list();
   if (!Array.isArray(entities) || entities.length === 0) return [];
 
@@ -114,13 +169,59 @@ export async function listSendableStablecoinAccounts(): Promise<FinancialAccount
     const raw = await entitiesApi.listAccounts(entity.id);
     for (const row of extractAccountRows(raw)) {
       const account = normalizeFinancialAccount(row, entity.id);
-      if (!account || !isSendableStablecoinAccount(account)) continue;
+      if (!account || !predicate(account)) continue;
       if (seen.has(account.id)) continue;
       seen.add(account.id);
       found.push(account);
     }
   }
   return found;
+}
+
+/**
+ * Resolve every sendable USDC account for the authenticated principal by
+ * walking `GET /v1/entities` → `GET /v1/entities/{id}/accounts`.
+ */
+export async function listSendableStablecoinAccounts(): Promise<FinancialAccount[]> {
+  return collectStablecoinAccounts(isSendableStablecoinAccount);
+}
+
+/**
+ * All USDC Base/Polygon partner accounts for the Accounts screen
+ * (includes pending — not only send-ready).
+ */
+export async function listStablecoinAccounts(): Promise<FinancialAccount[]> {
+  return collectStablecoinAccounts(isListedStablecoinAccount);
+}
+
+export function describeStablecoinAccountStatus(status: string | null | undefined): string {
+  if (!status) return "Unknown";
+  const key = status.trim().toLowerCase();
+  if (READY.has(key)) return "Active";
+  if (key === "pending" || key === "processing" || key === "opening") return "Pending";
+  if (key === "failed" || key === "closed" || key === "unavailable") return "Unavailable";
+  return status;
+}
+
+/** Card/detail rows for a partner stablecoin account (no invented balance). */
+export function buildStablecoinAccountDetailRows(
+  account: FinancialAccount,
+): { label: string; value: string; copyValue?: string }[] {
+  const rows: { label: string; value: string; copyValue?: string }[] = [
+    { label: "Asset", value: account.currency },
+    {
+      label: "Network",
+      value: toPartnerNetwork(account.network) ?? (account.network || "—"),
+    },
+    {
+      label: "Status",
+      value: describeStablecoinAccountStatus(account.status),
+    },
+  ];
+  if (account.id) {
+    rows.push({ label: "Account ID", value: account.id, copyValue: account.id });
+  }
+  return rows;
 }
 
 /** Pick the account matching the UI chain key (`base` / `polygon`). */
