@@ -24,41 +24,100 @@ export type AccountDetailModalProps = {
   openModalSwapFromAcct: () => void;
 };
 
-export default function AccountDetailModal({ acctDetail, copiedField, copyField, openModalSwapFromAcct }: AccountDetailModalProps) {
+/** Display-only IBAN grouping — copy still uses the raw `copyValue`. */
+function formatSensitiveValue(label: string, value: string): string {
+  const clean = value.replace(/\s+/g, "");
+  const isIban = /iban/i.test(label) || /^[A-Z]{2}\d{2}/i.test(clean);
+  if (isIban && clean.length > 8) {
+    return clean.replace(/(.{4})/g, "$1 ").trim().toUpperCase();
+  }
+  return value;
+}
+
+export default function AccountDetailModal({
+  acctDetail,
+  copiedField,
+  copyField,
+  openModalSwapFromAcct,
+}: AccountDetailModalProps) {
   if (!acctDetail) return null;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      <div style={{ textAlign: "center", padding: "2px 0 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+    <div className="ep-wallets-detail">
+      <div className="ep-wallets-detail__head">
         {acctDetail.flagUrl ? (
-          <div style={{ width: "36px", height: "27px", borderRadius: "4px", backgroundImage: `url(${acctDetail.flagUrl})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+          <div
+            className="ep-wallets-detail__flag"
+            style={{ backgroundImage: `url(${acctDetail.flagUrl})` }}
+            role="img"
+            aria-label={`${acctDetail.currency} flag`}
+          />
         ) : (
-          <span style={{ width: "36px", height: "36px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "800", fontSize: "16px" }}>{acctDetail.currency.slice(0, 1)}</span>
+          <span className="ep-wallets-detail__flag-fallback" aria-hidden>
+            {acctDetail.currency.slice(0, 1)}
+          </span>
         )}
-        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "17px", fontWeight: "700" }}>{acctDetail.name}</div>
-        <StatusBadge label={acctDetail.statusLabel} color={acctDetail.statusColor} soft={acctDetail.statusSoft} size="md" />
+        <div className="ep-wallets-detail__name">{acctDetail.name}</div>
+        <div className="ep-wallets-detail__code">{acctDetail.currency} · Fiat</div>
+        <StatusBadge
+          label={acctDetail.statusLabel}
+          color={acctDetail.statusColor}
+          soft={acctDetail.statusSoft}
+          size="md"
+        />
       </div>
 
       {acctDetail.rows.length ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px 14px", borderRadius: "12px", background: "var(--surface2)" }}>
-          {acctDetail.rows.map((row) => (
-            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px" }}>
-              <span style={{ color: "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, width: "120px" }}>{row.label}</span>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: "600", flex: "1", wordBreak: "break-all" }}>{row.value}</span>
-              {row.copyValue ? (
-                <button type="button" onClick={copyField(row.label, row.copyValue)} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: "999px", border: "none", background: "var(--ink)", color: "var(--surface)", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>
-                  {copiedField === row.label ? "Copied" : "Copy"}
-                </button>
-              ) : null}
-            </div>
-          ))}
+        <div className="ep-wallets-detail__rows" aria-label="Account coordinates">
+          {acctDetail.rows.map((row) => {
+            const copied = copiedField === row.label;
+            const display = formatSensitiveValue(row.label, row.value);
+            const isIban = /iban/i.test(row.label);
+            return (
+              <div key={row.label} className="ep-wallets-detail__row">
+                <span className="ep-wallets-detail__label">{row.label}</span>
+                <span
+                  className={
+                    isIban
+                      ? "ep-wallets-detail__value ep-wallets-detail__value--iban"
+                      : "ep-wallets-detail__value"
+                  }
+                >
+                  {display}
+                </span>
+                {row.copyValue ? (
+                  <button
+                    type="button"
+                    onClick={copyField(row.label, row.copyValue)}
+                    className="ep-wallets-detail__copy"
+                    data-copied={copied ? "true" : "false"}
+                    aria-label={copied ? `${row.label} copied` : `Copy ${row.label}`}
+                  >
+                    <span aria-hidden>⧉</span>
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : (
-        <div style={{ padding: "12px 14px", borderRadius: "12px", background: "var(--surface2)", fontSize: "12.5px", color: "var(--muted)" }}>
-          {acctDetail.instructions || "Deposit coordinates are being provisioned for this account."}
+        <div className="ep-wallets-detail__pending" role="status">
+          <div className="ep-wallets-detail__pending-title">Coordinates pending</div>
+          <div className="ep-wallets-detail__pending-body">
+            {acctDetail.instructions ||
+              "Deposit coordinates are being provisioned for this account. You will be able to copy IBAN and bank details here once they are ready."}
+          </div>
         </div>
       )}
 
-      <button type="button" onClick={openModalSwapFromAcct} style={{ padding: "12px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Convert</button>
+      <button
+        type="button"
+        onClick={openModalSwapFromAcct}
+        className="ep-wallets-detail__convert"
+      >
+        Convert balance
+      </button>
     </div>
   );
 }
