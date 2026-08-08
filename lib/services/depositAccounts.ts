@@ -60,11 +60,29 @@ export const STABLECOIN_OPTIONS: StablecoinOption[] = [
   { code: "USDT", label: "Tether (USDT)" },
 ];
 
+/** Phase 4 create/send only support USDC today. */
+export const SUPPORTED_STABLECOINS = ["USDC"] as const;
+
+export function isStablecoinSupported(code: string): boolean {
+  return (SUPPORTED_STABLECOINS as readonly string[]).includes(
+    code.trim().toUpperCase(),
+  );
+}
+
 export const NETWORK_OPTIONS: NetworkOption[] = [
   { code: "POLYGON", label: "Polygon" },
   { code: "BASE", label: "Base" },
   { code: "ETHEREUM", label: "Ethereum" },
 ];
+
+/** Phase 4 create/send only support Base + Polygon. */
+export const SUPPORTED_STABLECOIN_NETWORKS = ["BASE", "POLYGON"] as const;
+
+export function isStablecoinNetworkSupported(code: string): boolean {
+  return (SUPPORTED_STABLECOIN_NETWORKS as readonly string[]).includes(
+    code.trim().toUpperCase(),
+  );
+}
 
 /**
  * Mirrors the backend's `DepositAccountOut` (`app/schema/deposit_accounts.py`).

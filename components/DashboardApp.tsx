@@ -39,6 +39,14 @@ import {
 import {
   accountForNetwork,
   listSendableStablecoinAccounts,
+  listStablecoinAccounts,
+  resolvePrimaryEntityId,
+  buildStablecoinOpenPayload,
+  entitiesApi,
+  describeStablecoinAccountStatus,
+  buildStablecoinAccountDetailRows,
+  toPartnerNetwork,
+  isReadyStatus,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import {
@@ -103,7 +111,7 @@ export default function DashboardApp(props: Props = {}) {
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
     stableSel: "USDC", txFilter: "all",
-    selectedTxId: null as number | null, selectedAcctIdx: 0, selectedCardIdx: 0,
+    selectedTxId: null as number | null, selectedAcctIdx: 0, selectedAcctKind: "fiat" as "fiat" | "stablecoin", selectedCardIdx: 0,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
     apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyCreating: false, apiKeyError: "", newlyCreatedKey: null as any,
     addAccountMenu: false, createAccountKind: "bank", createAccountName: "",
@@ -265,6 +273,11 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: depositAccountsApi.list,
     retry: false,
     enabled: depositEligibilityQuery.data?.eligible === true,
+  });
+  const stablecoinAccountsQuery = useQuery({
+    queryKey: ["stablecoin-accounts"],
+    queryFn: listStablecoinAccounts,
+    retry: false,
   });
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
@@ -525,7 +538,8 @@ export default function DashboardApp(props: Props = {}) {
   const closeModal = () => setState({ modal: null });
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
-  const openAcctDetail = (i) => () => setState({ modal: "acctDetail", selectedAcctIdx: i });
+  const openAcctDetail = (kind: "fiat" | "stablecoin", i: number) => () =>
+    setState({ modal: "acctDetail", selectedAcctKind: kind, selectedAcctIdx: i });
   const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
   const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
@@ -786,13 +800,29 @@ export default function DashboardApp(props: Props = {}) {
     if (!state.createAccountName.trim()) {
       return setState({ createAccountError: "Give the account a name." });
     }
-    // Stablecoin accounts have no backend concept yet — there is no endpoint
-    // that issues one, so this branch stays local rather than pretending.
     if (state.createAccountKind === "stablecoin") {
       if (!state.createAccountStablecoin || !state.createAccountNetwork) {
         return setState({ createAccountError: "Choose a stablecoin and a network." });
       }
-      return setState({ createAccountError: "Stablecoin accounts aren't available yet — the API doesn't issue them." });
+      setState({ createAccountSaving: true, createAccountError: "" });
+      try {
+        const payload = buildStablecoinOpenPayload({
+          currency: state.createAccountStablecoin,
+          network: state.createAccountNetwork,
+          displayName: state.createAccountName.trim(),
+        });
+        const entityId = await resolvePrimaryEntityId();
+        await entitiesApi.openAccount(entityId, payload);
+        queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        setState({ createAccountSaving: false, modal: null });
+      } catch (err) {
+        setState({
+          createAccountSaving: false,
+          createAccountError: err instanceof Error ? err.message : "Couldn't create the account.",
+        });
+      }
+      return;
     }
     if (!state.createAccountCurrency) {
       return setState({ createAccountError: "Choose a currency." });
@@ -860,7 +890,7 @@ export default function DashboardApp(props: Props = {}) {
 
     const navMap = [
       { key: "home", label: "Home", group: "Overview" },
-      { key: "wallets", label: "Wallets", group: null },
+      { key: "wallets", label: "Accounts", group: null },
       { key: "cards", label: "Cards", group: null },
       { key: "transactions", label: "Transactions", group: "Money" },
       { key: "invoices", label: "Invoices", group: null },
@@ -871,7 +901,7 @@ export default function DashboardApp(props: Props = {}) {
     ];
     const titles = {
       home: ["Home", "Your balances, actions, and activity at a glance"],
-      wallets: ["Wallets", "One main stablecoin wallet, currency accounts around it"],
+      wallets: ["Accounts", "One main stablecoin wallet, currency accounts around it"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
       invoices: ["Invoices", "Request and track incoming payments"],
@@ -1009,7 +1039,13 @@ export default function DashboardApp(props: Props = {}) {
     const depositStatusColors = (status: string): [string, string] =>
       depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
     const depositAccountsList = depositAccountsQuery.data?.accounts ?? [];
-    const selectedDepositAccount = depositAccountsList[s.selectedAcctIdx] ?? null;
+    const stablecoinAccountsList = stablecoinAccountsQuery.data ?? [];
+    const selectedDepositAccount =
+      s.selectedAcctKind === "fiat" ? depositAccountsList[s.selectedAcctIdx] ?? null : null;
+    const selectedStablecoinAccount =
+      s.selectedAcctKind === "stablecoin"
+        ? stablecoinAccountsList[s.selectedAcctIdx] ?? null
+        : null;
     const acctDetail = selectedDepositAccount
       ? (() => {
           const view = mapDepositAccountToCardView(selectedDepositAccount);
@@ -1023,8 +1059,34 @@ export default function DashboardApp(props: Props = {}) {
             statusSoft,
             rows: buildDepositAccountDetailRows(selectedDepositAccount),
             instructions: selectedDepositAccount.instructions,
+            railLabel: `${view.currency} · Fiat`,
+            showConvert: true,
           };
         })()
+      : selectedStablecoinAccount
+        ? (() => {
+            const networkLabel =
+              toPartnerNetwork(selectedStablecoinAccount.network) ??
+              (selectedStablecoinAccount.network || "—");
+            const statusKey = isReadyStatus(selectedStablecoinAccount.status)
+              ? "active"
+              : selectedStablecoinAccount.status?.toLowerCase().includes("fail")
+                ? "unavailable"
+                : "pending";
+            const [statusColor, statusSoft] = depositStatusColors(statusKey);
+            return {
+              currency: selectedStablecoinAccount.currency,
+              name: `${selectedStablecoinAccount.currency} · ${networkLabel}`,
+              flagUrl: null as string | null,
+              statusLabel: describeStablecoinAccountStatus(selectedStablecoinAccount.status),
+              statusColor,
+              statusSoft,
+              rows: buildStablecoinAccountDetailRows(selectedStablecoinAccount),
+              instructions: null as string | null,
+              railLabel: `Stablecoin · ${networkLabel}`,
+              showConvert: false,
+            };
+          })()
       : null;
     const cardSel = CARDS[s.selectedCardIdx];
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
@@ -1066,12 +1128,14 @@ export default function DashboardApp(props: Props = {}) {
   // real source. See docs/api-contract.md.
   const homeTotalBalance = "—";
   const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
-  // Real currency accounts only — no stablecoin account has a real backend
-  // source (see docs/api-contract.md), so the "Stablecoin" balance-view tab
-  // shows no chips rather than the old mock USDC/USDT entries.
+  // Fiat IBAN chips + partner USDC Base/Polygon chips. No invented balances.
   const homeCurrencyChips = s.balanceView === "stablecoin"
-    ? []
-    : (depositAccountsQuery.data?.accounts ?? []).map((a) => {
+    ? stablecoinAccountsList.map((a) => ({
+        flagUrl: null as string | null,
+        code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
+        balance: "—",
+      }))
+    : depositAccountsList.map((a) => {
         const view = mapDepositAccountToCardView(a);
         return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
       });
@@ -1105,7 +1169,7 @@ export default function DashboardApp(props: Props = {}) {
   const mainWalletBalance = "—";
   const mainWalletSub = "Stablecoin balance not yet available";
   const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
-  const accounts = depositAccountsList.map((a, i) => {
+  const fiatAccountCards = depositAccountsList.map((a, i) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
     return {
@@ -1117,21 +1181,45 @@ export default function DashboardApp(props: Props = {}) {
       statusSoft,
       primaryDetail: view.primaryDetail,
       secondaryDetail: view.secondaryDetail,
-      openDetail: openAcctDetail(i),
+      openDetail: openAcctDetail("fiat", i),
     };
   });
-  const accountsCount = depositAccountsList.length;
+  const stablecoinAccountCards = stablecoinAccountsList.map((a, i) => {
+    const networkLabel = toPartnerNetwork(a.network) ?? (a.network || "—");
+    const statusKey = isReadyStatus(a.status)
+      ? "active"
+      : a.status?.toLowerCase().includes("fail")
+        ? "unavailable"
+        : "pending";
+    const [statusColor, statusSoft] = depositStatusColors(statusKey);
+    return {
+      currency: a.currency,
+      name: `${a.currency} · ${networkLabel}`,
+      flagUrl: null as string | null,
+      statusLabel: describeStablecoinAccountStatus(a.status),
+      statusColor,
+      statusSoft,
+      primaryDetail: networkLabel,
+      secondaryDetail: "Stablecoin · on-chain",
+      openDetail: openAcctDetail("stablecoin", i),
+    };
+  });
+  const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
+  const accountsCount = accounts.length;
   const depositEligible = depositEligibilityQuery.data?.eligible === true;
   const depositEligibilityErrorMessage = depositEligibilityQuery.isError
     ? (depositEligibilityQuery.error instanceof Error
         ? depositEligibilityQuery.error.message
         : "Couldn't check account eligibility. Try again.")
     : undefined;
-  const depositAccountsErrorMessage = depositAccountsQuery.isError
-    ? (depositAccountsQuery.error instanceof Error
-        ? depositAccountsQuery.error.message
-        : "Couldn't load currency accounts. Try again.")
-    : undefined;
+  const depositAccountsErrorMessage =
+    depositAccountsQuery.isError || stablecoinAccountsQuery.isError
+      ? (depositAccountsQuery.error instanceof Error
+          ? depositAccountsQuery.error.message
+          : stablecoinAccountsQuery.error instanceof Error
+            ? stablecoinAccountsQuery.error.message
+            : "Couldn't load currency accounts. Try again.")
+      : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
   const cardsRecent = decoratedAll.slice(0, 5);
   const corridors = CORRIDORS.map(c => ({
@@ -1696,11 +1784,15 @@ Create payment
   eligibilityLoading={depositEligibilityQuery.isLoading}
   verificationStatus={depositEligibilityQuery.data?.verification_status}
   eligibilityErrorMessage={depositEligibilityErrorMessage}
-  accountsLoading={depositEligible && depositAccountsQuery.isLoading}
+  accountsLoading={
+    (depositEligible && depositAccountsQuery.isLoading) ||
+    stablecoinAccountsQuery.isLoading
+  }
   accountsErrorMessage={depositAccountsErrorMessage}
   onRetryAccounts={() => {
     queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
     queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
   }}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}

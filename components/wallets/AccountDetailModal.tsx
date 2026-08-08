@@ -18,6 +18,9 @@ export type AccountDetailModalProps = {
     statusSoft: string;
     rows: AccountDetailRow[];
     instructions?: string | null;
+    /** e.g. "Fiat" or "Stablecoin · Base" */
+    railLabel?: string;
+    showConvert?: boolean;
   } | null;
   copiedField: string;
   copyField: (fieldKey: string, value: string) => () => void;
@@ -58,7 +61,9 @@ export default function AccountDetailModal({
           </span>
         )}
         <div className="ep-wallets-detail__name">{acctDetail.name}</div>
-        <div className="ep-wallets-detail__code">{acctDetail.currency} · Fiat</div>
+        <div className="ep-wallets-detail__code">
+          {acctDetail.railLabel ?? `${acctDetail.currency} · Fiat`}
+        </div>
         <StatusBadge
           label={acctDetail.statusLabel}
           color={acctDetail.statusColor}
@@ -111,6 +116,7 @@ export default function AccountDetailModal({
         </div>
       )}
 
+      {acctDetail.showConvert !== false ? (
       <button
         type="button"
         onClick={openModalSwapFromAcct}
@@ -118,6 +124,7 @@ export default function AccountDetailModal({
       >
         Convert balance
       </button>
+      ) : null}
     </div>
   );
 }
