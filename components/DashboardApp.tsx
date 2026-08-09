@@ -2434,6 +2434,10 @@ bn.elevated ? (
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
+<div className="ep-modal__grabber" aria-hidden="true">
+<span className="ep-modal__grabber-bar" />
+</div>
+
 <div className="ep-modal__header">
 <h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
