@@ -2011,6 +2011,19 @@ Create payment
 </div>
 </div>
 
+{/* Same three money stats, stacked below the hero on phones. The desktop
+    copy above sits beside the hero inside the balance grid, so the two
+    containers differ in position, not content — only one is ever rendered
+    (the other is display:none, which also drops it from the a11y tree). */}
+<div className="ep-home__stats-mobile">
+{(homeStats || []).map((hs: any, __i1: number) => (
+<div key={__i1} className="ep-home__stat">
+<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
+<div><div className="ep-home__stat-label">{hs.label}</div><div className="ep-home__stat-value">{hs.value}</div></div>
+</div>
+))}
+</div>
+
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
@@ -2020,7 +2033,10 @@ Create payment
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
 <button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
 <span className="ep-home__qa-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}} aria-hidden>{qa.icon}</span>
+<span className="ep-home__qa-text">
 <span className="ep-home__qa-label">{qa.label}</span>
+<span className="ep-home__qa-desc">{qa.desc}</span>
+</span>
 </button>
 ))}
 </div>
