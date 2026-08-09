@@ -887,6 +887,14 @@ body {
   flex-shrink: 0;
 }
 
+.ep-sidebar__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .ep-sidebar__nav {
   display: flex;
   flex-direction: column;
@@ -3321,9 +3329,7 @@ body {
   align-items: center;
   border-radius: 24px;
   padding: 20px 18px;
-  background:
-    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--indigo) 12%, transparent), transparent 55%),
-    var(--panel);
+  background: var(--panel);
   border: 1px solid var(--border);
 }
 
@@ -3366,8 +3372,8 @@ body {
 }
 
 .ep-wallets__balance-sub {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 12.5px;
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
   font-weight: 500;
   color: var(--muted);
   margin-top: 2px;
@@ -3435,28 +3441,29 @@ body {
     gap: 10px;
   }
 
-  .ep-wallets__add-wrap {
+  .ep-wallets__section-actions {
     width: 100%;
+    justify-content: space-between;
   }
 
-  .ep-wallets__add-btn {
-    width: 100%;
+  .ep-wallets__add-wrap {
+    width: auto;
   }
 
   .ep-wallets__menu {
-    left: 0;
+    left: auto;
     right: 0;
-    min-width: 0;
-    width: 100%;
+    min-width: 232px;
+    width: min(280px, 92vw);
   }
 }
 
 .ep-wallets__section-title {
   margin: 0;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -3466,29 +3473,43 @@ body {
   font-weight: 600;
 }
 
-.ep-wallets__add-wrap {
-  position: relative;
+.ep-wallets__section-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
-.ep-wallets__add-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: 999px;
+.ep-wallets__text-btn {
+  background: none;
   border: none;
-  background: var(--ink-panel);
-  color: #fff;
-  font-family: 'Space Grotesk', sans-serif;
+  padding: 0;
+  min-height: 44px;
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.ep-wallets__add-btn:hover {
-  filter: brightness(1.05);
+.ep-wallets__text-btn--accent {
+  color: var(--indigo-text);
+}
+
+.ep-wallets__text-btn:hover {
+  color: var(--ink);
+}
+
+.ep-wallets__text-btn--accent:hover {
+  color: var(--indigo);
+}
+
+.ep-wallets__add-wrap {
+  position: relative;
+}
+
+.ep-wallets__add-btn {
+  display: none;
 }
 
 .ep-wallets__menu-backdrop {
@@ -3676,21 +3697,21 @@ body {
 }
 
 .ep-wallets__card {
-  flex: 0 0 min(248px, 82vw);
+  flex: 0 0 230px;
   scroll-snap-align: start;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 20px;
-  padding: 16px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
-  min-height: 148px;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  min-height: 0;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .ep-wallets__card:hover {
@@ -3704,10 +3725,7 @@ body {
 }
 
 .ep-wallets__card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  display: none;
 }
 
 .ep-wallets__card-identity {
@@ -3718,15 +3736,15 @@ body {
 }
 
 .ep-wallets__flag {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
   background: var(--indigo-tint);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
   color: var(--indigo-text);
   overflow: hidden;
   flex-shrink: 0;
@@ -3739,6 +3757,10 @@ body {
   background-position: center;
 }
 
+.ep-wallets__flag-glyph {
+  line-height: 1;
+}
+
 .ep-wallets__card-name {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
@@ -3746,53 +3768,41 @@ body {
   line-height: 1.2;
 }
 
+.ep-wallets__card-rail,
 .ep-wallets__card-code {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted2);
   font-weight: 600;
-  letter-spacing: 0.04em;
   margin-top: 2px;
 }
 
+.ep-wallets__card-balance {
+  font-family: "DM Mono", monospace;
+  font-size: 21px;
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
 .ep-wallets__card-detail-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted2);
+  display: none;
 }
 
 .ep-wallets__card-detail {
   font-family: "DM Mono", monospace;
-  font-size: 14.5px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  word-break: break-word;
-  line-height: 1.35;
-  color: var(--ink);
-}
-
-.ep-wallets__card-secondary {
   font-size: 11.5px;
+  font-weight: 500;
   color: var(--muted);
-  font-family: "DM Mono", monospace;
-  line-height: 1.35;
   word-break: break-word;
+  line-height: 1.35;
 }
 
-.ep-wallets__card-footer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 4px;
-}
-
+.ep-wallets__card-secondary,
+.ep-wallets__card-footer,
 .ep-wallets__card-cta {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--indigo-text);
+  display: none;
 }
 
 .ep-wallets__skeleton {
@@ -4711,9 +4721,9 @@ body {
 }
 
 .ep-wallets-detail__value--iban {
-  font-family: "DM Mono", monospace;
-  letter-spacing: 0.06em;
-  font-size: 13.5px;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: 0.01em;
+  font-size: 14px;
 }
 
 .ep-wallets-detail__copy {
@@ -4987,6 +4997,358 @@ select.ep-wallets-create__control {
 
 .ep-money-steps__dot--on {
   background: var(--indigo);
+}
+
+.ep-money-change-method {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.ep-money-change-method:hover {
+  color: var(--ink);
+}
+
+.ep-send-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-send-methods__intro {
+  margin: 0 0 2px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ep-send-methods__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  color: inherit;
+  width: 100%;
+}
+
+.ep-send-methods__row:hover {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
+}
+
+.ep-send-methods__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.ep-send-methods__copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ep-send-methods__title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-send-methods__desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.ep-send-methods__chev {
+  color: var(--muted2);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.ep-send-internal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-send-internal__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: var(--surface2);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.ep-send-internal__row[data-selected="true"] {
+  background: var(--indigo-tint);
+  border-color: var(--indigo);
+}
+
+.ep-send-internal__glyph {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.ep-send-internal__label {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ep-send-internal__code {
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ep-btn-primary--ink {
+  background: var(--ink) !important;
+  color: var(--bg) !important;
+}
+
+.ep-convert {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ep-convert__tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.ep-convert__tab {
+  flex: 1;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.ep-convert__tab[data-active="true"] {
+  border-color: var(--indigo);
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+}
+
+.ep-convert__quote {
+  background: var(--surface2);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-convert__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ep-convert__amount {
+  font-family: "DM Mono", monospace;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.ep-convert__amount--out {
+  color: var(--indigo-text);
+}
+
+.ep-convert__ccy {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 5px 10px;
+  background: var(--surface3);
+  border-radius: 8px;
+}
+
+.ep-convert__arrow {
+  text-align: center;
+  color: var(--muted2);
+  font-size: 13px;
+}
+
+.ep-convert__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.ep-convert__meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-convert__meta-k {
+  color: var(--muted);
+}
+
+.ep-convert__meta-v {
+  font-weight: 600;
+}
+
+.ep-convert__meta-v--mono {
+  font-family: "DM Mono", monospace;
+}
+
+.ep-convert__timer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-convert__timer-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-family: "DM Mono", monospace;
+}
+
+.ep-convert__timer-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface3);
+  overflow: hidden;
+}
+
+.ep-convert__timer-fill {
+  height: 100%;
+  background: var(--indigo);
+  transition: width 1s linear;
+}
+
+.ep-convert__expired {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--red-tint);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ep-convert__expired-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.ep-convert__expired-body {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ep-convert__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ep-convert__btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.ep-convert__btn--ghost {
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+}
+
+.ep-convert__btn--primary {
+  border: none;
+  background: var(--indigo);
+  color: var(--indigo-on);
+}
+
+.ep-convert__btn--primary:disabled {
+  background: var(--surface3);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.ep-convert__success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
+  text-align: center;
+}
+
+.ep-convert__success-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.ep-convert__success-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.ep-convert__success-body {
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
 .ep-money-step-label {

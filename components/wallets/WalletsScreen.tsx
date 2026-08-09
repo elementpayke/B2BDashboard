@@ -1,17 +1,20 @@
 "use client";
 import React from "react";
 import ActivityList from "@/components/ui/ActivityList";
-import StatusBadge from "@/components/ui/StatusBadge";
 
 export type WalletsAccountCard = {
   currency: string;
   name: string;
   flagUrl: string | null;
+  /** Rail chip under the name, e.g. "IBAN · SWIFT" or "Stablecoin · Base". */
+  rail: string;
+  /** Balance display — "—" until a real source exists. */
+  balance: string;
+  /** Truncated coordinate / network detail under the balance. */
+  detail: string;
   statusLabel: string;
   statusColor: string;
   statusSoft: string;
-  primaryDetail: string;
-  secondaryDetail: string;
   openDetail: () => void;
 };
 
@@ -43,25 +46,18 @@ export type WalletsScreenProps = {
   onRetryAccounts?: () => void;
   walletsRecent: any[];
   goTransactions: () => void;
+  /** Opens the Convert (quote → accept) flow from Accounts. */
+  onConvert?: () => void;
 };
-
-function detailLabel(primaryDetail: string, secondaryDetail?: string): string {
-  if (secondaryDetail?.toLowerCase().includes("stablecoin")) return "Network";
-  if (!primaryDetail || primaryDetail === "Coordinates pending") return "Deposit details";
-  if (primaryDetail.includes("··") || /^[A-Z]{2}\d/.test(primaryDetail.replace(/\s/g, ""))) {
-    return "Account number";
-  }
-  return "Bank";
-}
 
 function AccountCardSkeleton() {
   return (
     <div className="ep-wallets__skeleton" aria-hidden>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <div className="ep-wallets__skel-line" style={{ width: 40, height: 40, borderRadius: 12 }} />
+        <div className="ep-wallets__skel-line" style={{ width: 38, height: 38, borderRadius: 12 }} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
           <div className="ep-wallets__skel-line ep-wallets__skel-line--title" />
-          <div className="ep-wallets__skel-line" style={{ width: "28%" }} />
+          <div className="ep-wallets__skel-line" style={{ width: "40%" }} />
         </div>
       </div>
       <div className="ep-wallets__skel-line ep-wallets__skel-line--body" />
@@ -90,7 +86,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
     >
       <section className="ep-wallets__hero" aria-label="Settlement wallet">
         <div className="ep-wallets__hero-main">
-          <span className="ep-wallets__eyebrow">Settlement wallet · stablecoin</span>
+          <span className="ep-wallets__eyebrow">Main wallet · settlement layer</span>
           <div className="ep-wallets__balance" aria-live="polite">
             {p.mainWalletBalance}
           </div>
@@ -119,87 +115,91 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       <div className="ep-wallets__section-head">
         <h2 className="ep-wallets__section-title">
-          Fiat currency accounts{" "}
+          Currency accounts{" "}
           <span className="ep-wallets__section-count">· {p.accountsCount}</span>
         </h2>
-        {p.eligible ? (
-          <div className="ep-wallets__add-wrap">
-            <button
-              type="button"
-              onClick={p.toggleAddAccountMenu}
-              className="ep-wallets__add-btn"
-              aria-expanded={p.addAccountMenu}
-              aria-haspopup="menu"
-            >
-              <span aria-hidden style={{ fontSize: "15px", lineHeight: 1 }}>
-                +
-              </span>
-              New account
+        <div className="ep-wallets__section-actions">
+          {p.onConvert ? (
+            <button type="button" onClick={p.onConvert} className="ep-wallets__text-btn">
+              Convert
             </button>
-            {p.addAccountMenu ? (
-              <>
-                <div
-                  className="ep-wallets__menu-backdrop"
-                  onClick={p.closeAddAccountMenu}
-                  aria-hidden
-                />
-                <div className="ep-wallets__menu" role="menu" aria-label="Account type">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={p.openCreateAccount("bank")}
-                    disabled={p.canCreateBank === false}
-                    title={
-                      p.canCreateBank === false
-                        ? "USD and EUR accounts are already open"
-                        : undefined
-                    }
-                    className="ep-wallets__menu-item"
-                  >
-                    <span className="ep-wallets__menu-icon" aria-hidden>
-                      FX
-                    </span>
-                    <span className="ep-wallets__menu-copy">
-                      <span className="ep-wallets__menu-label">Bank account</span>
-                      <span className="ep-wallets__menu-hint">
-                        {p.canCreateBank === false
-                          ? "USD and EUR already open"
-                          : "Fiat rails · IBAN / local deposit"}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={p.openCreateAccount("stablecoin")}
-                    disabled={p.canCreateStablecoin === false}
-                    title={
-                      p.canCreateStablecoin === false
-                        ? "USDC accounts already open on Base and Polygon"
-                        : undefined
-                    }
-                    className="ep-wallets__menu-item"
-                  >
-                    <span
-                      className="ep-wallets__menu-icon ep-wallets__menu-icon--stable"
-                      aria-hidden
+          ) : null}
+          {p.eligible ? (
+            <div className="ep-wallets__add-wrap">
+              <button
+                type="button"
+                onClick={p.toggleAddAccountMenu}
+                className="ep-wallets__text-btn ep-wallets__text-btn--accent"
+                aria-expanded={p.addAccountMenu}
+                aria-haspopup="menu"
+              >
+                + New account
+              </button>
+              {p.addAccountMenu ? (
+                <>
+                  <div
+                    className="ep-wallets__menu-backdrop"
+                    onClick={p.closeAddAccountMenu}
+                    aria-hidden
+                  />
+                  <div className="ep-wallets__menu" role="menu" aria-label="Account type">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={p.openCreateAccount("bank")}
+                      disabled={p.canCreateBank === false}
+                      title={
+                        p.canCreateBank === false
+                          ? "USD and EUR accounts are already open"
+                          : undefined
+                      }
+                      className="ep-wallets__menu-item"
                     >
-                      SC
-                    </span>
-                    <span className="ep-wallets__menu-copy">
-                      <span className="ep-wallets__menu-label">Stablecoin account</span>
-                      <span className="ep-wallets__menu-hint">
-                        {p.canCreateStablecoin === false
-                          ? "Base and Polygon already open"
-                          : "On-chain deposit · network specific"}
+                      <span className="ep-wallets__menu-icon" aria-hidden>
+                        FX
                       </span>
-                    </span>
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
+                      <span className="ep-wallets__menu-copy">
+                        <span className="ep-wallets__menu-label">Bank account</span>
+                        <span className="ep-wallets__menu-hint">
+                          {p.canCreateBank === false
+                            ? "USD and EUR already open"
+                            : "Fiat rails · IBAN / local deposit"}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={p.openCreateAccount("stablecoin")}
+                      disabled={p.canCreateStablecoin === false}
+                      title={
+                        p.canCreateStablecoin === false
+                          ? "USDC accounts already open on Base and Polygon"
+                          : undefined
+                      }
+                      className="ep-wallets__menu-item"
+                    >
+                      <span
+                        className="ep-wallets__menu-icon ep-wallets__menu-icon--stable"
+                        aria-hidden
+                      >
+                        SC
+                      </span>
+                      <span className="ep-wallets__menu-copy">
+                        <span className="ep-wallets__menu-label">Stablecoin account</span>
+                        <span className="ep-wallets__menu-hint">
+                          {p.canCreateStablecoin === false
+                            ? "Base and Polygon already open"
+                            : "On-chain deposit · network specific"}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {p.eligibilityLoading ? (
@@ -253,9 +253,9 @@ export default function WalletsScreen(p: WalletsScreenProps) {
             <>
               {showEmpty ? (
                 <div className="ep-wallets__empty">
-                  <div className="ep-wallets__empty-title">No fiat accounts yet</div>
+                  <div className="ep-wallets__empty-title">No currency accounts yet</div>
                   <div className="ep-wallets__empty-body">
-                    Issue a bank account to receive local deposits that settle to your stablecoin wallet. Coordinates appear here once provisioned.
+                    Issue a bank or stablecoin account to receive deposits. Coordinates appear here once provisioned.
                   </div>
                 </div>
               ) : null}
@@ -265,47 +265,26 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                   type="button"
                   onClick={acc.openDetail}
                   className="ep-wallets__card"
-                  aria-label={`${acc.name} account, ${acc.statusLabel}. View details`}
+                  aria-label={`${acc.name} account, ${acc.rail}, balance ${acc.balance}. View details`}
                 >
-                  <div className="ep-wallets__card-top">
-                    <div className="ep-wallets__card-identity">
-                      <span className="ep-wallets__flag" aria-hidden>
-                        {acc.flagUrl ? (
-                          <div
-                            className="ep-wallets__flag-img"
-                            style={{ backgroundImage: `url(${acc.flagUrl})` }}
-                          />
-                        ) : (
-                          acc.currency.slice(0, 1)
-                        )}
-                      </span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="ep-wallets__card-name">{acc.name}</div>
-                        <div className="ep-wallets__card-code">{acc.currency} · Fiat</div>
-                      </div>
-                    </div>
-                    <StatusBadge
-                      label={acc.statusLabel}
-                      color={acc.statusColor}
-                      soft={acc.statusSoft}
-                      size="sm"
-                    />
-                  </div>
-                  <div>
-                    <div className="ep-wallets__card-detail-label">
-                      {detailLabel(acc.primaryDetail, acc.secondaryDetail)}
-                    </div>
-                    <div className="ep-wallets__card-detail">{acc.primaryDetail}</div>
-                    {acc.secondaryDetail ? (
-                      <div className="ep-wallets__card-secondary">{acc.secondaryDetail}</div>
-                    ) : null}
-                  </div>
-                  <div className="ep-wallets__card-footer">
-                    <span className="ep-wallets__card-cta">View details</span>
-                    <span aria-hidden style={{ color: "var(--muted2)", fontWeight: 700 }}>
-                      →
+                  <div className="ep-wallets__card-identity">
+                    <span className="ep-wallets__flag" aria-hidden>
+                      {acc.flagUrl ? (
+                        <div
+                          className="ep-wallets__flag-img"
+                          style={{ backgroundImage: `url(${acc.flagUrl})` }}
+                        />
+                      ) : (
+                        <span className="ep-wallets__flag-glyph">◈</span>
+                      )}
                     </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="ep-wallets__card-name">{acc.name}</div>
+                      <div className="ep-wallets__card-rail">{acc.rail}</div>
+                    </div>
                   </div>
+                  <div className="ep-wallets__card-balance">{acc.balance}</div>
+                  <div className="ep-wallets__card-detail">{acc.detail}</div>
                 </button>
               ))}
             </>
@@ -325,7 +304,12 @@ export default function WalletsScreen(p: WalletsScreenProps) {
         </div>
       ) : null}
 
-      <ActivityList title="Recent activity" items={p.walletsRecent} onViewAll={p.goTransactions} />
+      <ActivityList
+        title="Recent activity"
+        items={p.walletsRecent}
+        onViewAll={p.goTransactions}
+        viewAllLabel="View all →"
+      />
     </div>
   );
 }
