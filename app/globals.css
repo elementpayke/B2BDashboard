@@ -3328,6 +3328,49 @@ body {
   flex-wrap: wrap;
 }
 
+/* Phones: stack title + action so "+ New account" never clips off-screen */
+@media (max-width: 639px) {
+  .ep-wallets__hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .ep-wallets__hero-main {
+    min-width: 0;
+  }
+
+  .ep-wallets__asset-switch {
+    width: 100%;
+  }
+
+  .ep-wallets__asset-btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ep-wallets__section-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .ep-wallets__add-wrap {
+    width: 100%;
+  }
+
+  .ep-wallets__add-btn {
+    width: 100%;
+  }
+
+  .ep-wallets__menu {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 .ep-wallets__section-title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
