@@ -62,7 +62,12 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
-import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
+import {
+  buildSendDestinationSummary,
+  buildSendStepDots,
+  railIndexForMethod,
+  sendRailHasChoice as railHasChoice,
+} from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 
@@ -147,7 +152,7 @@ export default function DashboardApp(props: Props = {}) {
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     fundAmount: "250.00", fundCardDone: false,
-    balanceView: "all", sendGroup: "country",
+    balanceView: "all", sendGroup: "country", sendMethod: null,
   }));
   const setState = useCallback((update: any) => {
     setStateRaw((prev: any) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
@@ -373,7 +378,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => setState({ screen: "transactions" });
 
   const openModal = (name) => () => setState({
-    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
+    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
@@ -681,7 +686,16 @@ export default function DashboardApp(props: Props = {}) {
     openModal(name)();
   };
 
-  const selectSendCountry = (i) => () => setState({ sendCountryIdx: i, sendRailIdx: 0, sendProviderIdx: 0 });
+  /** Changing country keeps the rail the chosen method implies, so a "Mobile
+   *  money" send does not silently become a bank transfer when the user picks
+   *  a different country. Falls back to the first rail where the country has
+   *  no rail of that type. */
+  const selectSendCountry = (i) => () =>
+    setState((prev: any) => ({
+      sendCountryIdx: i,
+      sendRailIdx: railIndexForMethod(COUNTRIES[i].rails, prev.sendMethod),
+      sendProviderIdx: 0,
+    }));
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
@@ -1047,17 +1061,34 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
-  const setSendGroup = (g) => () =>
-    setState({
-      sendGroup: g,
+  /** Send opens on a method chooser, as in the design. Picking bank or
+   *  mobile money resolves to the country flow with that rail already
+   *  selected, so the user never re-answers the question inside step 1. */
+  const chooseSendMethod = (m) => () => {
+    const common = {
+      sendMethod: m,
+      sendStep: 1,
       sendCountryIdx: 0,
+      sendProviderIdx: 0,
       sendQuoteError: "",
       sendAcceptError: "",
       sendPreview: null,
       sendConfirm: null,
       sendAccountId: "",
       sendAsset: "usdc",
+    };
+    if (m === "crypto") {
+      setState({ ...common, sendGroup: "crypto" });
+      return;
+    }
+    setState({
+      ...common,
+      sendGroup: "country",
+      sendRailIdx: railIndexForMethod(COUNTRIES[0].rails, m),
     });
+  };
+  const resetSendMethod = () =>
+    setState({ sendMethod: null, sendStep: 1, sendQuoteError: "", sendAcceptError: "" });
 
 
     const s = state;
@@ -1672,10 +1703,42 @@ export default function DashboardApp(props: Props = {}) {
   const fundAmount = s.fundAmount;
   const fundCardNotDone = !s.fundCardDone;
   const fundCardDone = s.fundCardDone;
-  const sendGroups = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setSendGroup(g), bg: s.sendGroup === g ? "var(--ink)" : "var(--surface2)", color: s.sendGroup === g ? "var(--bg)" : "var(--muted)" }));
   const sendIsCountry = s.sendGroup === "country";
   const sendIsCrypto = s.sendGroup === "crypto";
-  const sendRailHasChoice = sendCountry.rails.length > 1;
+  const sendRailHasChoice = railHasChoice(sendCountry.rails, s.sendMethod);
+  const sendMethodChosen = !!s.sendMethod;
+  const sendMethodOptions = [
+    {
+      key: "bank",
+      label: "Bank transfer",
+      desc: "Send to a bank account, locally or internationally",
+      select: chooseSendMethod("bank"),
+    },
+    {
+      key: "mobile",
+      label: "Mobile money",
+      desc: "Send to a mobile money wallet across Africa",
+      select: chooseSendMethod("mobile"),
+    },
+    {
+      key: "crypto",
+      label: "Stablecoin",
+      desc: "Send USDC to a wallet address",
+      select: chooseSendMethod("crypto"),
+    },
+    {
+      // No account-to-account transfer endpoint exists yet — the backend has
+      // OffRamp orders and account-native sends only (docs/api-contract.md).
+      // Shown but disabled rather than hidden, so the option set still reads
+      // like the design and the reason is stated instead of guessed at.
+      key: "internal",
+      label: "Internal transfer",
+      desc: "Move funds between your own accounts",
+      disabled: true,
+      disabledReason: "Not available yet",
+      select: () => {},
+    },
+  ];
   const sendRecipient = s.sendRecipient;
   const sendRecipientName = s.sendRecipientName;
   const sendAmount = s.sendAmount;
@@ -2423,11 +2486,13 @@ bn.elevated ? (
 <SendModal
   sendNotDone={sendNotDone}
   sendDone={sendDone}
+  sendMethodChosen={sendMethodChosen}
+  sendMethodOptions={sendMethodOptions}
+  resetSendMethod={resetSendMethod}
   sendStepDots={sendStepDots}
   sendStepIs1={sendStepIs1}
   sendStepIs2={sendStepIs2}
   sendStepIs3={sendStepIs3}
-  sendGroups={sendGroups}
   sendIsCountry={sendIsCountry}
   sendIsCrypto={sendIsCrypto}
   sendCountryChips={sendCountryChips}
