@@ -171,6 +171,20 @@ export function isReadyStatus(status: string | null | undefined): boolean {
   return READY.has((status || "").trim().toLowerCase());
 }
 
+/** Accept only http(s) checkout links — reject javascript:/data:/etc. */
+export function toHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeFinancialAccount(
   row: Record<string, unknown>,
   entityId: string,
@@ -188,9 +202,7 @@ export function normalizeFinancialAccount(
   const disclaimerRaw = account.chain_disclaimer ?? account.chainDisclaimer;
   const chainDisclaimer =
     typeof disclaimerRaw === "string" && disclaimerRaw.trim() ? disclaimerRaw.trim() : null;
-  const checkoutRaw = account.checkout_url ?? account.checkoutUrl;
-  const checkoutUrl =
-    typeof checkoutRaw === "string" && checkoutRaw.trim() ? checkoutRaw.trim() : null;
+  const checkoutUrl = toHttpUrl(account.checkout_url ?? account.checkoutUrl);
   return {
     id,
     entityId,

@@ -105,7 +105,7 @@ export default function FundStablecoinModal({
           </label>
           <div className="ep-fund-sc__amount-input-wrap">
             <span className="ep-fund-sc__amount-prefix" aria-hidden>
-              $
+              {selected?.currency ?? "—"}
             </span>
             <input
               id="fund-sc-amount"
@@ -166,7 +166,7 @@ export default function FundStablecoinModal({
       <p className="ep-fund-sc__body">
         {hasCheckout
           ? "Complete funding with the checkout link below, or send on-chain to the deposit address when shown."
-          : `Send ${selected.currency}${amount ? ` (about $${amount})` : ""} on `}
+          : `Send ${selected.currency}${amount ? ` (about ${amount} ${selected.currency})` : ""} on `}
         {!hasCheckout ? (
           <>
             <strong>{selected.networkLabel}</strong> to the address below.

@@ -70,6 +70,20 @@ describe("planAfricanFundOrchestration", () => {
     expect(plan.canRunAfricanOnRamp).toBe(false);
     expect(africanFundDisabledReason(plan)).toMatch(/wallet/i);
   });
+
+  it("rejects non EUR/USD/GBP deposit targets", () => {
+    const plan = planAfricanFundOrchestration({
+      fiatCurrency: "KES",
+      fiatAccountId: "42",
+      entityId: "3",
+      usdcAccountId: "55",
+      usdcWalletAddress: "0xusdc",
+      treasuryWalletAddress: null,
+      convertNetworkId: "rail-uuid",
+    });
+    expect(plan.canRunAfricanOnRamp).toBe(false);
+    expect(plan.blockers.some((b) => /KES/.test(b))).toBe(true);
+  });
 });
 
 describe("buildLedgerConvertQuotePayload", () => {

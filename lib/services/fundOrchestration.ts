@@ -7,6 +7,9 @@
  * as expected until ledger FX rails are confirmed for the entity.
  */
 
+/** Fiat deposit currencies the African auto-fund path may target. */
+export const AFRICAN_FUND_FIAT_CURRENCIES = ["EUR", "USD", "GBP"] as const;
+
 export type LedgerConvertQuoteIn = {
   order_type: "OffRamp";
   currency: string;
@@ -30,7 +33,6 @@ export type FundOrchestrationInputs = {
   treasuryWalletAddress: string | null | undefined;
   /** Ledger FX rail from catalog discovery; required for auto-convert. */
   convertNetworkId: string | null | undefined;
-  cryptoAmount?: string | number | null;
 };
 
 export type FundOrchestrationPlan = {
@@ -53,13 +55,19 @@ export function resolveOnRampWalletAddress(input: {
   return { address: null, source: null };
 }
 
+function isAfricanFundFiat(fiat: string): boolean {
+  return (AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(fiat);
+}
+
 export function planAfricanFundOrchestration(
   input: FundOrchestrationInputs,
 ): FundOrchestrationPlan {
   const blockers: string[] = [];
   const fiat = input.fiatCurrency.trim().toUpperCase();
-  if (!["EUR", "USD", "GBP"].includes(fiat)) {
-    blockers.push(`Auto-fund only targets EUR / USD / GBP deposit accounts (got ${fiat || "—"}).`);
+  if (!isAfricanFundFiat(fiat)) {
+    blockers.push(
+      `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts (got ${fiat || "—"}).`,
+    );
   }
 
   const wallet = resolveOnRampWalletAddress({
@@ -74,7 +82,7 @@ export function planAfricanFundOrchestration(
     );
   }
 
-  const canRunAfricanOnRamp = Boolean(wallet.address) && ["EUR", "USD", "GBP"].includes(fiat);
+  const canRunAfricanOnRamp = Boolean(wallet.address) && isAfricanFundFiat(fiat);
 
   const missingConvert: string[] = [];
   if (!input.entityId) missingConvert.push("entity");

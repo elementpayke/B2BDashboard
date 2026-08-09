@@ -126,7 +126,11 @@ export default function DashboardApp(props: Props = {}) {
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
     stableSel: "USDC", txFilter: "all",
-    selectedTxId: null as number | null, selectedAcctIdx: 0, selectedAcctKind: "fiat" as "fiat" | "stablecoin", selectedCardIdx: 0,
+    selectedTxId: null as number | null,
+    /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
+    selectedAcctKey: "" as string,
+    selectedAcctKind: "fiat" as "fiat" | "stablecoin",
+    selectedCardIdx: 0,
     /** "details" | "fund" — same coords modal, fund reframes copy for bank transfer. */
     acctDetailIntent: "details" as "details" | "fund",
     /** When set, Deposit OnRamp is funding this fiat account (African auto path). */
@@ -377,6 +381,7 @@ export default function DashboardApp(props: Props = {}) {
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
     newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
+    fundAfricanTargetCurrency: null, fundConvertStatus: "", fundConvertError: "",
   });
 
   // Ready USDC Base/Polygon FinancialAccounts for the Stablecoin send tab
@@ -600,15 +605,21 @@ export default function DashboardApp(props: Props = {}) {
       depositQuoteError: "",
       depositAcceptError: "",
     }));
-  const closeModal = () => setState({ modal: null });
+  const closeModal = () =>
+    setState({
+      modal: null,
+      fundAfricanTargetCurrency: null,
+      fundConvertStatus: "",
+      fundConvertError: "",
+    });
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
-  const openAcctDetail = (kind: "fiat" | "stablecoin", i: number) => () =>
+  const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
     setState({
       screen: "accountDetail",
       selectedAcctKind: kind,
-      selectedAcctIdx: i,
+      selectedAcctKey: key,
       modal: null,
       sidebarOpen: false,
     });
@@ -626,9 +637,15 @@ export default function DashboardApp(props: Props = {}) {
     });
   const openAfricanFundOnRamp = () => {
     const fiatList = depositAccountsQuery.data?.accounts ?? [];
+    const currencyKey =
+      state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
+        ? state.selectedAcctKey.slice("fiat:".length)
+        : "";
     const currency =
       state.selectedAcctKind === "fiat"
-        ? fiatList[state.selectedAcctIdx]?.currency || "EUR"
+        ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey)?.currency ||
+          currencyKey ||
+          "EUR"
         : "EUR";
     setState({
       modal: "deposit",
@@ -1201,10 +1218,16 @@ export default function DashboardApp(props: Props = {}) {
     const depositAccountsList = depositAccountsQuery.data?.accounts ?? [];
     const stablecoinAccountsList = stablecoinAccountsQuery.data ?? [];
     const selectedDepositAccount =
-      s.selectedAcctKind === "fiat" ? depositAccountsList[s.selectedAcctIdx] ?? null : null;
+      s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
+        ? depositAccountsList.find(
+            (a) => a.currency.toUpperCase() === s.selectedAcctKey.slice("fiat:".length),
+          ) ?? null
+        : null;
     const selectedStablecoinAccount =
-      s.selectedAcctKind === "stablecoin"
-        ? stablecoinAccountsList[s.selectedAcctIdx] ?? null
+      s.selectedAcctKind === "stablecoin" && s.selectedAcctKey.startsWith("stablecoin:")
+        ? stablecoinAccountsList.find(
+            (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
+          ) ?? null
         : null;
     const acctDetail = selectedDepositAccount
       ? (() => {
@@ -1387,7 +1410,7 @@ export default function DashboardApp(props: Props = {}) {
   const mainWalletBalance = "—";
   const mainWalletSub = "Stablecoin balance not yet available";
   const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
-  const fiatAccountCards = depositAccountsList.map((a, i) => {
+  const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
     return {
@@ -1399,10 +1422,10 @@ export default function DashboardApp(props: Props = {}) {
       statusSoft,
       primaryDetail: view.primaryDetail,
       secondaryDetail: view.secondaryDetail,
-      openDetail: openAcctDetail("fiat", i),
+      openDetail: openAcctDetail("fiat", `fiat:${view.currency.toUpperCase()}`),
     };
   });
-  const stablecoinAccountCards = stablecoinAccountsList.map((a, i) => {
+  const stablecoinAccountCards = stablecoinAccountsList.map((a) => {
     const networkLabel = formatNetworkLabel(a.network);
     const statusKey = isReadyStatus(a.status)
       ? "active"
@@ -1419,7 +1442,7 @@ export default function DashboardApp(props: Props = {}) {
       statusSoft,
       primaryDetail: networkLabel,
       secondaryDetail: "Stablecoin · on-chain",
-      openDetail: openAcctDetail("stablecoin", i),
+      openDetail: openAcctDetail("stablecoin", `stablecoin:${a.id}`),
     };
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];

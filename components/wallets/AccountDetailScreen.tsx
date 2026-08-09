@@ -29,8 +29,6 @@ export type AccountDetailScreenProps = {
   onViewAllTx: () => void;
 };
 
-const RANGE_TABS = ["7D", "30D", "90D"] as const;
-
 export default function AccountDetailScreen({
   name,
   currency,
@@ -50,8 +48,6 @@ export default function AccountDetailScreen({
   onSend,
   onViewAllTx,
 }: AccountDetailScreenProps) {
-  const [range, setRange] = React.useState<(typeof RANGE_TABS)[number]>("30D");
-
   return (
     <div data-screen-label="Account detail" className="ep-acct-detail">
       <button type="button" onClick={onBack} className="ep-acct-detail__back">
@@ -121,22 +117,6 @@ export default function AccountDetailScreen({
               Send
             </button>
           </div>
-        </div>
-
-        <div className="ep-acct-detail__ranges" role="tablist" aria-label="Balance range">
-          {RANGE_TABS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="tab"
-              aria-selected={range === r}
-              onClick={() => setRange(r)}
-              className="ep-acct-detail__range"
-              data-active={range === r ? "true" : "false"}
-            >
-              {r}
-            </button>
-          ))}
         </div>
 
         {/* Visual shell only — no invented chart series until a real balance source exists. */}

@@ -73,6 +73,22 @@ describe("normalizeFinancialAccount", () => {
       checkoutUrl: "https://checkout.example/pay",
     });
   });
+
+  it("drops non-http(s) checkout URLs", () => {
+    const normalized = normalizeFinancialAccount(
+      {
+        id: "9",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Base",
+        status: "active",
+        wallet_address: "0xabc",
+        checkout_url: "javascript:alert(1)",
+      },
+      "ent-1",
+    );
+    expect(normalized?.checkoutUrl).toBeNull();
+  });
 });
 
 describe("buildFundStablecoinRails", () => {
@@ -90,5 +106,17 @@ describe("buildFundStablecoinRails", () => {
     });
     expect(rails[1].currency).toBe("USDT");
     expect(rails[1].chainDisclaimer).toMatch(/USDT/);
+  });
+
+  it("preserves partner chain disclaimer and https checkout", () => {
+    const rails = buildFundStablecoinRails([
+      acct({
+        id: "1",
+        chainDisclaimer: "Send only USDC on Base.",
+        checkoutUrl: "https://pay.example/x",
+      }),
+    ]);
+    expect(rails[0].chainDisclaimer).toBe("Send only USDC on Base.");
+    expect(rails[0].checkoutUrl).toBe("https://pay.example/x");
   });
 });

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 export type FundChooserOption = "bank" | "stablecoin" | "african";
 
@@ -13,6 +13,12 @@ export type FundChooserModalProps = {
   stablecoinDisabled?: boolean;
   stablecoinDisabledReason?: string;
 };
+
+function firstEnabledOption(stablecoinDisabled: boolean): FundChooserOption {
+  if (!stablecoinDisabled) return "stablecoin";
+  // Bank transfer is always available for fiat deposit accounts.
+  return "bank";
+}
 
 /**
  * Fund path picker for fiat deposit accounts.
@@ -29,7 +35,18 @@ export default function FundChooserModal({
   stablecoinDisabled = false,
   stablecoinDisabledReason,
 }: FundChooserModalProps) {
-  const [selected, setSelected] = useState<FundChooserOption>("stablecoin");
+  const [selected, setSelected] = useState<FundChooserOption>(() =>
+    firstEnabledOption(stablecoinDisabled),
+  );
+
+  useEffect(() => {
+    const disabled =
+      (selected === "stablecoin" && stablecoinDisabled) ||
+      (selected === "african" && africanDisabled);
+    if (disabled) {
+      setSelected(firstEnabledOption(stablecoinDisabled));
+    }
+  }, [selected, stablecoinDisabled, africanDisabled]);
 
   const canContinue =
     (selected === "bank") ||
