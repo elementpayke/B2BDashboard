@@ -1,13 +1,11 @@
 /**
  * Saved recipients (beneficiaries) — dashboard-owned address book.
  *
- * Client helpers + shared types/validation for the Send money
- * "select from saved details" flow. Persistence lives in
- * `lib/server/savedRecipientsStore.ts`; HTTP surface under
- * `app/api/saved-recipients/`. See `docs/saved-recipients.md`.
+ * Shared types + validation for the Send money "select from saved details"
+ * flow. Persistence: `lib/server/savedRecipientsStore.ts`. HTTP:
+ * `app/api/saved-recipients/`. Client: `lib/clients/savedRecipientsApi.ts`.
+ * See `docs/saved-recipients.md`.
  */
-
-import { authEnvelope } from "@/lib/apiClient";
 
 export type RailType = "bank" | "mobile" | "crypto";
 
@@ -147,27 +145,33 @@ export function parseCreateSavedRecipientInput(
     };
   }
 
-  const countryCode = trimToNull(raw.countryCode, SAVED_RECIPIENT_LIMITS.optionalMax);
-  if (countryCode && typeof countryCode === "object" && "error" in countryCode) {
-    return { ok: false, message: `countryCode ${countryCode.error}`, field: "countryCode" };
+  const countryCodeRaw = trimToNull(raw.countryCode, SAVED_RECIPIENT_LIMITS.optionalMax);
+  if (typeof countryCodeRaw === "object" && countryCodeRaw !== null) {
+    return { ok: false, message: `countryCode ${countryCodeRaw.error}`, field: "countryCode" };
   }
 
-  const currency = trimToNull(raw.currency, SAVED_RECIPIENT_LIMITS.optionalMax);
-  if (currency && typeof currency === "object" && "error" in currency) {
-    return { ok: false, message: `currency ${currency.error}`, field: "currency" };
+  const currencyRaw = trimToNull(raw.currency, SAVED_RECIPIENT_LIMITS.optionalMax);
+  if (typeof currencyRaw === "object" && currencyRaw !== null) {
+    return { ok: false, message: `currency ${currencyRaw.error}`, field: "currency" };
   }
 
-  const provider = trimToNull(raw.provider, SAVED_RECIPIENT_LIMITS.optionalMax);
-  if (provider && typeof provider === "object" && "error" in provider) {
-    return { ok: false, message: `provider ${provider.error}`, field: "provider" };
+  const providerRaw = trimToNull(raw.provider, SAVED_RECIPIENT_LIMITS.optionalMax);
+  if (typeof providerRaw === "object" && providerRaw !== null) {
+    return { ok: false, message: `provider ${providerRaw.error}`, field: "provider" };
   }
 
-  const network = trimToNull(raw.network, SAVED_RECIPIENT_LIMITS.optionalMax);
-  if (network && typeof network === "object" && "error" in network) {
-    return { ok: false, message: `network ${network.error}`, field: "network" };
+  const networkRaw = trimToNull(raw.network, SAVED_RECIPIENT_LIMITS.optionalMax);
+  if (typeof networkRaw === "object" && networkRaw !== null) {
+    return { ok: false, message: `network ${networkRaw.error}`, field: "network" };
   }
 
-  if (railRaw === "crypto" && !network) {
+  const countryCode = countryCodeRaw as string | null;
+  const currency = currencyRaw as string | null;
+  const provider = providerRaw as string | null;
+  const network = networkRaw as string | null;
+  const railType: RailType = railRaw;
+
+  if (railType === "crypto" && !network) {
     return {
       ok: false,
       message: "network is required when railType is crypto",
@@ -180,9 +184,9 @@ export function parseCreateSavedRecipientInput(
     value: {
       label,
       accountNumber,
-      railType: railRaw,
-      countryCode: typeof countryCode === "string" ? countryCode.toUpperCase() : countryCode,
-      currency: typeof currency === "string" ? currency.toUpperCase() : currency,
+      railType,
+      countryCode: countryCode ? countryCode.toUpperCase() : null,
+      currency: currency ? currency.toUpperCase() : null,
       provider,
       network,
     },
@@ -213,13 +217,3 @@ export function formatSavedRecipientSummary(recipient: SavedRecipient): string {
     acct.length <= 4 ? acct : `•••${acct.slice(-4)}`;
   return `${recipient.label} · ${via} · ${masked}`;
 }
-
-export const savedRecipientsApi = {
-  list: () => authEnvelope<SavedRecipientList>("GET", "/api/saved-recipients"),
-
-  create: (body: SavedRecipientCreate) =>
-    authEnvelope<SavedRecipient>("POST", "/api/saved-recipients", body),
-
-  remove: (id: string) =>
-    authEnvelope<null>("DELETE", `/api/saved-recipients/${encodeURIComponent(id)}`),
-};

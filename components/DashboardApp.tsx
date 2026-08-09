@@ -30,6 +30,7 @@ import {
   buildDepositQuotePayload,
   buildPaymentInstructionRows,
   formatQuoteFees,
+  formatSendQuoteError,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
   newIdempotencyKey,
@@ -38,6 +39,12 @@ import {
   accountSendsApi,
   buildSendPreviewPayload,
 } from "@/lib/services/accountSends";
+import {
+  createSavedRecipient,
+  listSavedRecipients,
+  type SavedRecipient,
+  type SavedRecipientRail,
+} from "@/lib/clients/savedRecipientsApi";
 import {
   accountForNetwork,
   listSendableStablecoinAccounts,
@@ -131,6 +138,8 @@ export default function DashboardApp(props: Props = {}) {
     theme: props.startTheme || "light", screen: props.startScreen || "home",
     sidebarOpen: false,
     modal: null as string | null,
+    /** Where Back from a money flow should return (home / accountDetail / …). */
+    moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
     sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
@@ -197,6 +206,8 @@ export default function DashboardApp(props: Props = {}) {
   // registered once here rather than per-call, matching the mobile client's
   // single global session-lost handler.
   const queryClient = useQueryClient();
+  const [saveRecipientBusy, setSaveRecipientBusy] = useState(false);
+  const [saveRecipientMessage, setSaveRecipientMessage] = useState("");
   useEffect(() => {
     setSessionLostHandler(() => {
       queryClient.clear();
@@ -243,11 +254,11 @@ export default function DashboardApp(props: Props = {}) {
     enabled: state.modal === "txDetail" && state.selectedTxId != null,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
-    enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
+    enabled: state.screen === "send" && state.sendDone && !!state.sendAccept,
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
     enabled:
-      (state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
+      (state.screen === "deposit" || !!state.fundAfricanTargetCurrency) &&
       state.depositDone &&
       !!state.depositAccept,
   });
@@ -401,8 +412,9 @@ export default function DashboardApp(props: Props = {}) {
   const setScreen = (s) => () => setState({ screen: s, sidebarOpen: false });
   const goTransactions = () => setState({ screen: "transactions" });
 
-  const openModal = (name) => () => setState({
-    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+  const moneyFlowReset = {
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -410,14 +422,50 @@ export default function DashboardApp(props: Props = {}) {
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
     newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     fundAfricanTargetCurrency: null, fundConvertStatus: "", fundConvertError: "",
+  };
+  /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
+  const openModal = (name) => () => setState({
+    modal: name,
+    ...moneyFlowReset,
   });
+  const isMoneyFlowScreen = (screen: string) =>
+    screen === "send" || screen === "deposit" || screen === "receive" || screen === "convert";
+  /** In-shell money UX: Send / Top up / Receive / Convert as full pages. */
+  const openMoneyFlow = (name: "send" | "deposit" | "receive" | "convert") => () =>
+    setState((prev: any) => ({
+      screen: name,
+      modal: null,
+      sidebarOpen: false,
+      moneyFlowReturn: isMoneyFlowScreen(prev.screen)
+        ? (prev.moneyFlowReturn || "home")
+        : prev.screen || "home",
+      ...moneyFlowReset,
+      ...(name === "convert"
+        ? { swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 }
+        : {}),
+    }));
+  const exitMoneyFlow = () =>
+    setState((prev: any) => ({
+      screen: prev.moneyFlowReturn || "home",
+      moneyFlowReturn: null,
+      fundAfricanTargetCurrency: null,
+      fundConvertStatus: "",
+      fundConvertError: "",
+    }));
 
   // Ready USDC Base/Polygon FinancialAccounts for the Stablecoin send tab
-  // (Phase 4 `/v1/accounts/{id}/sends`). Fetched when the Send modal opens.
+  // (Phase 4 `/v1/accounts/{id}/sends`). Fetched when the Send screen opens.
   const sendableAccountsQuery = useQuery({
     queryKey: ["sendable-stablecoin-accounts"],
     queryFn: listSendableStablecoinAccounts,
-    enabled: state.modal === "send",
+    enabled: state.screen === "send",
+    retry: false,
+    staleTime: 30_000,
+  });
+  const savedRecipientsQuery = useQuery({
+    queryKey: ["saved-recipients"],
+    queryFn: listSavedRecipients,
+    enabled: state.screen === "send",
     retry: false,
     staleTime: 30_000,
   });
@@ -503,7 +551,7 @@ export default function DashboardApp(props: Props = {}) {
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError: err instanceof ApiRequestError || err instanceof Error ? err.message : "Couldn't get a quote. Try again.",
+          sendQuoteError: formatSendQuoteError(err),
         });
       }
       return;
@@ -545,12 +593,30 @@ export default function DashboardApp(props: Props = {}) {
     setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
   };
   const sendBack = () =>
-    setState((s: any) => ({
-      sendStep: Math.max(1, s.sendStep - 1),
-      sendQuoteError: "",
-      sendAcceptError: "",
-      ...(s.sendStep === 3 ? { sendPreview: null, sendQuote: null } : {}),
-    }));
+    setState((s: any) => {
+      // Recipient form is the first step after the method chooser — Back
+      // returns to the chooser instead of the old country-chip step.
+      if (s.sendStep <= 2) {
+        return {
+          sendMethod: null,
+          sendStep: 1,
+          sendQuoteError: "",
+          sendAcceptError: "",
+          sendPreview: null,
+          sendQuote: null,
+          sendRecipient: "",
+          sendRecipientName: "",
+          sendAmount: "",
+        };
+      }
+      return {
+        sendStep: s.sendStep - 1,
+        sendQuoteError: "",
+        sendAcceptError: "",
+        sendPreview: null,
+        sendQuote: null,
+      };
+    });
   const depositNext = async () => {
     if (state.depositGroup === "crypto") {
       setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1) }));
@@ -633,13 +699,18 @@ export default function DashboardApp(props: Props = {}) {
       depositQuoteError: "",
       depositAcceptError: "",
     }));
-  const closeModal = () =>
+  const closeModal = () => {
+    if (isMoneyFlowScreen(state.screen)) {
+      exitMoneyFlow();
+      return;
+    }
     setState({
       modal: null,
       fundAfricanTargetCurrency: null,
       fundConvertStatus: "",
       fundConvertError: "",
     });
+  };
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
@@ -675,8 +746,13 @@ export default function DashboardApp(props: Props = {}) {
           currencyKey ||
           "EUR"
         : "EUR";
-    setState({
-      modal: "deposit",
+    setState((prev: any) => ({
+      screen: "deposit",
+      modal: null,
+      sidebarOpen: false,
+      moneyFlowReturn: isMoneyFlowScreen(prev.screen)
+        ? (prev.moneyFlowReturn || "accountDetail")
+        : prev.screen || "accountDetail",
       depositStep: 1,
       depositGroup: "country",
       depositDone: false,
@@ -687,7 +763,7 @@ export default function DashboardApp(props: Props = {}) {
       fundAfricanTargetCurrency: String(currency).toUpperCase(),
       fundConvertStatus: "",
       fundConvertError: "",
-    });
+    }));
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
   const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
@@ -706,6 +782,10 @@ export default function DashboardApp(props: Props = {}) {
       if (canOpenKybWizard(status)) openModalKyb();
       return;
     }
+    if (name === "send" || name === "deposit" || name === "receive" || name === "convert") {
+      openMoneyFlow(name)();
+      return;
+    }
     openModal(name)();
   };
 
@@ -721,7 +801,8 @@ export default function DashboardApp(props: Props = {}) {
     }));
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
-  const resetSendMethod = () =>
+  const resetSendMethod = () => {
+    setSaveRecipientMessage("");
     setState({
       sendMethod: null,
       sendStep: 1,
@@ -736,12 +817,109 @@ export default function DashboardApp(props: Props = {}) {
       sendConfirm: null,
       sendAccountId: "",
     });
-  const openConvert = () =>
-    setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
+  };
+  const openConvert = openMoneyFlow("convert");
   const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
+  const pickSendProvider = (index: number) => setState({ sendProviderIdx: index });
+  const applySavedRecipient = (r: SavedRecipient) => {
+    setSaveRecipientMessage("");
+    const patch: Record<string, unknown> = {
+      sendRecipientName: r.label,
+      sendRecipient: r.accountNumber,
+    };
+    let countryIdx = state.sendCountryIdx;
+    if (state.sendGroup === "country" && (r.countryCode || r.currency)) {
+      const match = COUNTRIES.findIndex((c) => {
+        if (r.countryCode && c.iso.toUpperCase() === String(r.countryCode).toUpperCase()) return true;
+        if (r.currency && c.code.toUpperCase() === String(r.currency).toUpperCase()) return true;
+        return false;
+      });
+      if (match >= 0) {
+        countryIdx = match;
+        patch.sendCountryIdx = match;
+        patch.sendRailIdx = railIndexForMethod(COUNTRIES[match].rails, state.sendMethod);
+        patch.sendProviderIdx = 0;
+      }
+    }
+    if (r.provider && state.sendGroup === "country") {
+      const country = COUNTRIES[countryIdx] || COUNTRIES[0];
+      const railIdx =
+        typeof patch.sendRailIdx === "number"
+          ? patch.sendRailIdx
+          : state.sendRailIdx;
+      const rail = country.rails[railIdx as number] || country.rails[0];
+      const catalogProviders = offRampProvidersForRail(
+        sendCatalogQuery.data,
+        country.iso,
+        rail.type,
+        country.code,
+      );
+      const options = providerNamesFromCatalog(
+        catalogProviders,
+        rail.options,
+        sendCatalogSettled,
+      );
+      const idx = options.findIndex(
+        (name) => name.toLowerCase() === String(r.provider).toLowerCase(),
+      );
+      if (idx >= 0) patch.sendProviderIdx = idx;
+    }
+    setState(patch);
+  };
+  const saveCurrentRecipientDetails = async () => {
+    const name = state.sendRecipientName.trim();
+    const account = state.sendRecipient.trim();
+    if (!account || (state.sendGroup === "country" && !name)) return;
+    const rail: SavedRecipientRail =
+      state.sendGroup === "crypto"
+        ? "crypto"
+        : state.sendMethod === "mobile"
+          ? "mobile"
+          : "bank";
+    const country = COUNTRIES[state.sendCountryIdx] || COUNTRIES[0];
+    const countryRail = country.rails[state.sendRailIdx] || country.rails[0];
+    const catalogProviders = offRampProvidersForRail(
+      sendCatalogQuery.data,
+      country.iso,
+      countryRail.type,
+      country.code,
+    );
+    const providerOptions = providerNamesFromCatalog(
+      catalogProviders,
+      countryRail.options,
+      sendCatalogSettled,
+    );
+    const provider =
+      state.sendGroup === "country"
+        ? providerOptions[Math.min(state.sendProviderIdx, Math.max(0, providerOptions.length - 1))] ||
+          undefined
+        : undefined;
+    setSaveRecipientBusy(true);
+    setSaveRecipientMessage("");
+    try {
+      await createSavedRecipient({
+        name: name || account,
+        account,
+        rail,
+        countryCode: state.sendGroup === "country" ? country.code : undefined,
+        countryName: state.sendGroup === "country" ? country.name : undefined,
+        currency: state.sendGroup === "country" ? country.code : state.sendAsset.toUpperCase(),
+        provider,
+        network: state.sendGroup === "crypto" ? state.sendChain : undefined,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["saved-recipients"] });
+      setSaveRecipientMessage("Recipient saved. You can pick them next time from saved details.");
+    } catch (err) {
+      setSaveRecipientMessage(
+        err instanceof Error ? err.message : "Couldn't save recipient details. Try again.",
+      );
+    } finally {
+      setSaveRecipientBusy(false);
+    }
+  };
   const submitSend = async () => {
     if (state.sendGroup === "crypto") {
       if (!state.sendPreview?.preview_token || !state.sendAccountId) return;
@@ -1102,15 +1280,13 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
-  /** Send opens on a method chooser, as in the design. Picking bank or
-   *  mobile money resolves to the country flow with that rail already
-   *  selected, so the user never re-answers the question inside step 1. */
-  /** Send opens on a method chooser. Bank/mobile preselect that rail; fields clear on change. */
+  /** Send opens on a method chooser. Bank/mobile preselect that rail; jump
+   *  straight into recipient details (country/currency/account on one form). */
   const chooseSendMethod = (m) => () => {
     if (m === "internal") return;
     const common = {
       sendMethod: m,
-      sendStep: 1,
+      sendStep: 2,
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
@@ -1164,10 +1340,22 @@ export default function DashboardApp(props: Props = {}) {
       verification: ["Verification", "Higher tiers unlock higher limits"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
+      send: ["Send money", "Pick a method, recipient, and amount"],
+      deposit: [
+        s.fundAfricanTargetCurrency
+          ? `Fund ${s.fundAfricanTargetCurrency}`
+          : "Top up balance",
+        s.fundAfricanTargetCurrency
+          ? "Fund via African rails"
+          : "Add funds from any supported rail",
+      ],
+      receive: ["Receive globally", "Share IBAN, Paybill, or wallet details"],
+      convert: ["Convert", "Swap fiat and stablecoin at a locked quote"],
     };
     const [currentTitle, currentSubtitle] = titles[s.screen] || titles.wallets;
 
     const sendCountryChips = COUNTRIES.map((c, i) => ({
+      idx: i,
       flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectSendCountry(i),
       bg: i === s.sendCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendCountryIdx ? "var(--indigo)" : "transparent",
       selectSend: selectSendCountry(i), sendBg: i === s.sendCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", sendBorder: i === s.sendCountryIdx ? "var(--indigo)" : "transparent",
@@ -1419,7 +1607,7 @@ export default function DashboardApp(props: Props = {}) {
       ].map(n => {
         const active =
           n.key === "__pay"
-            ? s.modal === "send"
+            ? s.screen === "send"
             : n.key === "__more"
               ? s.sidebarOpen
               : n.key === "wallets"
@@ -1467,7 +1655,7 @@ export default function DashboardApp(props: Props = {}) {
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: openModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: openMoneyFlow("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;
@@ -1749,11 +1937,12 @@ export default function DashboardApp(props: Props = {}) {
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency} via African rails` : "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
-  const isModalSend = s.modal === "send";
-  const isModalDeposit = s.modal === "deposit";
-  const isModalReceive = s.modal === "receive";
+  const isSendFlow = s.screen === "send";
+  const isDepositFlow = s.screen === "deposit";
+  const isReceiveFlow = s.screen === "receive";
+  const isConvertFlow = s.screen === "convert";
+  const isMoneyFlow = isSendFlow || isDepositFlow || isReceiveFlow || isConvertFlow;
   const isModalBulk = s.modal === "bulk";
-  const isModalSwap = s.modal === "swap";
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -1865,7 +2054,7 @@ export default function DashboardApp(props: Props = {}) {
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
   const depositAssetCode = s.depositAsset.toUpperCase();
   const sendStep = s.sendStep;
-  const sendStepDots = buildSendStepDots(s.sendStep);
+  const sendStepDots = buildSendStepDots(s.sendStep >= 3 ? 2 : 1, 2);
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
@@ -2057,18 +2246,42 @@ export default function DashboardApp(props: Props = {}) {
 
 <main className="ep-main">
 <header className="ep-header">
-<div style={{display: "flex", alignItems: "center", gap: "12px", minWidth: "0"}}>
+<div className="ep-header__lead">
+{isMoneyFlow ? (
+<button type="button" className="ep-header__back" onClick={exitMoneyFlow} aria-label="Back">←</button>
+) : (
 <button type="button" className="ep-header__menu" onClick={toggleSidebar} aria-label="Open navigation">☰</button>
-<div style={{minWidth: "0"}}>
+)}
+<div className="ep-header__titles">
 <h1>{currentTitle}</h1>
 <p>{currentSubtitle}</p>
 </div>
 </div>
+<div className="ep-header__actions">
+<button
+  type="button"
+  className="ep-header__icon-btn"
+  onClick={toggleTheme}
+  aria-label="Toggle theme"
+  title="Toggle theme"
+>
+  {themeIcon}
+</button>
+<button
+  type="button"
+  className="ep-header__signout"
+  onClick={logout}
+  aria-label="Sign out"
+  title="Sign out"
+>
+  Sign out
+</button>
 {!isCompact ? (
-<button type="button" onClick={guardMoneyModal("send")} className="ep-btn-primary" style={{width: "auto", padding: "10px 18px", minHeight: "44px", flexShrink: 0}}>
+<button type="button" onClick={guardMoneyModal("send")} className="ep-btn-primary ep-header__cta">
 Create payment
 </button>
 ) : null}
+</div>
 </header>
 
 <div className="ep-content ep-content-cap">
@@ -2513,42 +2726,8 @@ Create payment
 </div>
 </>) : null}
 
-</div>
 
-{(isCompact) ? (<>
-<nav className="ep-bottom-nav" aria-label="Primary mobile">
-{(bottomNavItems || []).map((bn: any, __i1: number) => (
-bn.elevated ? (
-<button key={bn.key || __i1} type="button" className="ep-bottom-nav__pay" data-active={bn.active ? "true" : "false"} onClick={bn.select} aria-label={bn.label}>
-<span className="ep-bottom-nav__pay-orb" aria-hidden>{bn.icon}</span>
-<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
-</button>
-) : (
-<button key={bn.key || __i1} type="button" data-active={bn.active ? "true" : "false"} onClick={bn.select} style={{color: bn.color}}>
-<span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
-<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
-</button>
-)
-))}
-</nav>
-</>) : null}
-</main>
-</div>
-
-{modalOpen ? (<>
-<div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
-
-<div className="ep-modal__grabber" aria-hidden="true">
-<span className="ep-modal__grabber-bar" />
-</div>
-
-<div className="ep-modal__header">
-<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
-<button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
-</div>
-
-{(isModalSend) ? (<>
+{(isSendFlow) ? (<section className="ep-flow" data-screen-label="Send">
 <SendModal
   sendNotDone={sendNotDone}
   sendDone={sendDone}
@@ -2574,6 +2753,27 @@ bn.elevated ? (
   sendNext={sendNext}
   sendBack={sendBack}
   sendDestinationSummary={sendDestinationSummary}
+  sendCountryName={sendCountry.name}
+  sendCountryFlagUrl={flagUrl(sendCountry.iso)}
+  sendCurrencyCode={sendCountry.code}
+  sendCurrencyName={currencyLabel(sendCountry.code)}
+  sendCountryIdx={s.sendCountryIdx}
+  selectSendCountry={(i) => selectSendCountry(i)()}
+  sendProviderLabel={sendProvider}
+  sendProviderOptions={sendProviderOptions}
+  selectSendProvider={pickSendProvider}
+  sendProviderIdx={sendProviderIdx}
+  savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
+    if (sendIsCrypto) return r.railType === "crypto";
+    if (s.sendMethod === "mobile") return r.railType === "mobile";
+    if (s.sendMethod === "bank") return r.railType === "bank";
+    return r.railType !== "crypto";
+  })}
+  savedRecipientsLoading={savedRecipientsQuery.isLoading}
+  onSelectSavedRecipient={applySavedRecipient}
+  onSaveRecipientDetails={saveCurrentRecipientDetails}
+  saveRecipientBusy={saveRecipientBusy}
+  saveRecipientMessage={saveRecipientMessage}
   sendRecipientName={sendRecipientName}
   setSendRecipientName={setSendRecipientName}
   sendRecipientLabel={sendRecipientLabel}
@@ -2594,10 +2794,9 @@ bn.elevated ? (
   sendLiveStatus={sendLiveStatus}
   closeModal={closeModal}
 />
-</>) : null}
+</section>) : null}
 
-
-{(isModalDeposit) ? (<>
+{(isDepositFlow) ? (<section className="ep-flow" data-screen-label="Top up">
 <DepositModal
   depositNotDone={depositNotDone}
   depositDone={depositDone}
@@ -2651,10 +2850,9 @@ bn.elevated ? (
   fundConvertStatus={s.fundConvertStatus}
   fundConvertError={s.fundConvertError}
 />
-</>) : null}
+</section>) : null}
 
-
-{(isModalReceive) ? (<>
+{(isReceiveFlow) ? (<section className="ep-flow" data-screen-label="Receive">
 <ReceiveModal
   receiveGroups={receiveGroups}
   receiveIsFiat={receiveIsFiat}
@@ -2670,52 +2868,9 @@ bn.elevated ? (
   copyReceiveAddress={copyReceiveAddress}
   receiveAddressCopied={receiveAddressCopied}
 />
-</>) : null}
+</section>) : null}
 
-{(isModalBulk) ? (<>
-{(bulkNotDone) ? (<>
-{(bulkNotLoaded) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 1 · Upload recipients</span>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Upload a CSV with recipient name, country, phone/account and amount. We detect the country and rail per row automatically.</p>
-<button onClick={simulateBulkUpload} style={{padding: "14px 20px", borderRadius: "14px", border: "1.5px dashed var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>⬆ Simulate CSV upload</button>
-</div>
-</>) : null}
-{(bulkLoaded) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · Review & confirm</span>
-<div style={{display: "flex", flexDirection: "column", gap: "6px"}}>
-{(bulkRows || []).map((row: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "10px", padding: "9px 12px", borderRadius: "12px", background: "var(--surface2)", fontSize: "12px"}}>
-<div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
-<span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
-<span style={{color: "var(--muted)"}}>{row.rail}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
-</div>
-</React.Fragment>
-))}
-</div>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
-</div>
-<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
-</div>
-</>) : null}
-</>) : null}
-{(bulkDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
-</div>
-</>) : null}
-</>) : null}
-
-{(isModalSwap) ? (<>
+{(isConvertFlow) ? (<section className="ep-flow" data-screen-label="Convert">
 {(swapNotAccepted) ? (<>
 <div className="ep-convert">
 <div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
@@ -2758,6 +2913,85 @@ bn.elevated ? (
 <span className="ep-convert__success-title">Swap complete</span>
 <span className="ep-convert__success-body">Settled via {swapSettle}.</span>
 <button type="button" className="ep-convert__btn ep-convert__btn--ghost" style={{width: "auto", minWidth: 120, marginTop: 6}} onClick={closeModal}>Done</button>
+</div>
+</>) : null}
+</section>) : null}
+
+
+</div>
+
+{(isCompact) ? (<>
+<nav className="ep-bottom-nav" aria-label="Primary mobile">
+{(bottomNavItems || []).map((bn: any, __i1: number) => (
+bn.elevated ? (
+<button key={bn.key || __i1} type="button" className="ep-bottom-nav__pay" data-active={bn.active ? "true" : "false"} onClick={bn.select} aria-label={bn.label}>
+<span className="ep-bottom-nav__pay-orb" aria-hidden>{bn.icon}</span>
+<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
+</button>
+) : (
+<button key={bn.key || __i1} type="button" data-active={bn.active ? "true" : "false"} onClick={bn.select} style={{color: bn.color}}>
+<span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
+<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
+</button>
+)
+))}
+</nav>
+</>) : null}
+</main>
+</div>
+
+{modalOpen ? (<>
+<div onClick={closeModal} className="ep-modal-overlay" role="presentation">
+<div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+
+<div className="ep-modal__grabber" aria-hidden="true">
+<span className="ep-modal__grabber-bar" />
+</div>
+
+<div className="ep-modal__header">
+<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
+<button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
+</div>
+
+{(isModalBulk) ? (<>
+{(bulkNotDone) ? (<>
+{(bulkNotLoaded) ? (<>
+<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 1 · Upload recipients</span>
+<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Upload a CSV with recipient name, country, phone/account and amount. We detect the country and rail per row automatically.</p>
+<button onClick={simulateBulkUpload} style={{padding: "14px 20px", borderRadius: "14px", border: "1.5px dashed var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>⬆ Simulate CSV upload</button>
+</div>
+</>) : null}
+{(bulkLoaded) ? (<>
+<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · Review & confirm</span>
+<div style={{display: "flex", flexDirection: "column", gap: "6px"}}>
+{(bulkRows || []).map((row: any, __i1: number) => (
+<React.Fragment key={__i1}>
+<div style={{display: "flex", alignItems: "center", gap: "10px", padding: "9px 12px", borderRadius: "12px", background: "var(--surface2)", fontSize: "12px"}}>
+<div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
+<span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
+<span style={{color: "var(--muted)"}}>{row.rail}</span>
+<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
+</div>
+</React.Fragment>
+))}
+</div>
+<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
+</div>
+<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
+</div>
+</>) : null}
+</>) : null}
+{(bulkDone) ? (<>
+<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
+<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
+<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
+<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
+<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
 </>) : null}
 </>) : null}

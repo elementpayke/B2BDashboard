@@ -51,8 +51,9 @@ describe("parseCreateSavedRecipientInput", () => {
       railType: "crypto",
     });
     expect(missing.ok).toBe(false);
-    if (missing.ok) return;
-    expect(missing.field).toBe("network");
+    if (missing.ok === false) {
+      expect(missing.field).toBe("network");
+    }
 
     const ok = parseCreateSavedRecipientInput({
       label: "Treasury",

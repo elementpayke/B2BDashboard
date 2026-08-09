@@ -227,6 +227,54 @@ export function formatQuoteFees(fees: Record<string, unknown> | null): string {
   return total > 0 ? `$${total.toFixed(2)}` : "Included in the rate";
 }
 
+type CorridorPhoneErrorData = {
+  field?: unknown;
+  expected_dial_code?: unknown;
+  example?: unknown;
+  country?: unknown;
+};
+
+/**
+ * Turn a raw OffRamp quote rejection into copy users can act on.
+ *
+ * Live KE bank payouts return "Invalid phone number for this corridor" with
+ * `data.field: "customer.phone_number"` even when the destination is a bank
+ * account — Yellow Card validates the *business KYC phone* against the
+ * destination corridor dial code. Surfacing the account number as "invalid
+ * phone" is wrong for bank rails; this remaps that case.
+ */
+export function formatSendQuoteError(err: unknown): string {
+  const fallback =
+    err instanceof ApiRequestError || err instanceof Error
+      ? err.message
+      : "Couldn't get a quote. Try again.";
+  const data =
+    err instanceof ApiRequestError && err.data && typeof err.data === "object"
+      ? (err.data as CorridorPhoneErrorData)
+      : null;
+  if (!data) return fallback;
+
+  const field = typeof data.field === "string" ? data.field : "";
+  const dial =
+    typeof data.expected_dial_code === "string" || typeof data.expected_dial_code === "number"
+      ? String(data.expected_dial_code)
+      : "";
+  const example = typeof data.example === "string" ? data.example : "";
+  const country = typeof data.country === "string" ? data.country.toUpperCase() : "";
+
+  if (/customer\.phone_number/i.test(field) || /invalid phone number for this corridor/i.test(fallback)) {
+    const where = country ? ` for ${country}` : "";
+    const need = dial
+      ? ` This corridor expects a business phone with dial code +${dial}${example ? ` (e.g. ${example})` : ""}.`
+      : example
+        ? ` Example format: ${example}.`
+        : "";
+    return `This payout${where} was rejected because the business profile phone isn't valid for the corridor.${need} It isn't about the recipient account number — update the business phone on the verification profile, or use a corridor that matches that phone.`;
+  }
+
+  return fallback;
+}
+
 /**
  * Convert a locally-formatted mobile number to E.164.
  *

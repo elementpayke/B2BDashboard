@@ -5,6 +5,7 @@ import {
   buildDepositQuotePayload,
   buildPaymentInstructionRows,
   formatQuoteFees,
+  formatSendQuoteError,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
   newIdempotencyKey,
@@ -191,6 +192,28 @@ describe("formatQuoteFees", () => {
 
   it("ignores non-numeric values", () => {
     expect(formatQuoteFees({ service_fee_usd: "n/a" })).toBe("Included in the rate");
+  });
+});
+
+describe("formatSendQuoteError", () => {
+  it("remaps customer.phone_number corridor errors away from the recipient account", () => {
+    const err = new ApiRequestError("Invalid phone number for this corridor", 422, {
+      field: "customer.phone_number",
+      country: "KE",
+      expected_dial_code: "254",
+      example: "+254712345678",
+    });
+    const msg = formatSendQuoteError(err);
+    expect(msg).toMatch(/business profile phone/i);
+    expect(msg).toMatch(/\+254/);
+    expect(msg).toMatch(/recipient account number/i);
+    expect(msg).not.toBe("Invalid phone number for this corridor");
+  });
+
+  it("passes through unrelated quote errors", () => {
+    expect(formatSendQuoteError(new ApiRequestError("No treasury wallet", 400))).toBe(
+      "No treasury wallet",
+    );
   });
 });
 

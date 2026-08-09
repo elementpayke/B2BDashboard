@@ -1,5 +1,9 @@
 "use client";
-import React from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import {
+  formatSavedRecipientSubtitle,
+  type SavedRecipient,
+} from "@/lib/clients/savedRecipientsApi";
 
 /** Presentational Send modal body — props-driven; state lives in DashboardApp. */
 export type SendMethodOption = {
@@ -38,6 +42,24 @@ export type SendModalProps = {
   sendNext: () => void;
   sendBack: () => void;
   sendDestinationSummary: string;
+  /** Destination summary for the recipient-details layout */
+  sendCountryName: string;
+  sendCountryFlagUrl: string | null;
+  sendCurrencyCode: string;
+  sendCurrencyName: string;
+  /** Country index into COUNTRIES — for destination select on recipient step. */
+  sendCountryIdx: number;
+  selectSendCountry: (index: number) => void;
+  sendProviderLabel: string;
+  sendProviderOptions: string[];
+  selectSendProvider: (index: number) => void;
+  sendProviderIdx: number;
+  savedRecipients: SavedRecipient[];
+  savedRecipientsLoading?: boolean;
+  onSelectSavedRecipient: (recipient: SavedRecipient) => void;
+  onSaveRecipientDetails: () => void;
+  saveRecipientBusy?: boolean;
+  saveRecipientMessage?: string;
   sendRecipientName: string;
   setSendRecipientName: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendRecipientLabel: string;
@@ -101,8 +123,88 @@ const METHOD_ICONS: Record<string, React.ReactNode> = {
   internal: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
 };
 
+function SavedRecipientPicker({
+  recipients,
+  loading,
+  onSelect,
+}: {
+  recipients: SavedRecipient[];
+  loading?: boolean;
+  onSelect: (r: SavedRecipient) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="ep-send-saved" ref={rootRef}>
+      <button
+        type="button"
+        className="ep-send-saved__trigger"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="ep-send-saved__trigger-label">
+          {loading ? "Loading saved details…" : "Select from saved details"}
+        </span>
+        <span className="ep-send-saved__chev" aria-hidden>
+          {open ? "▴" : "▾"}
+        </span>
+      </button>
+      {open ? (
+        <div
+          id={listId}
+          className="ep-send-saved__menu"
+          role="listbox"
+          aria-label="Saved recipients"
+        >
+          {(recipients || []).length === 0 ? (
+            <p className="ep-send-saved__empty">No saved recipients yet. Fill the form and tap Save details.</p>
+          ) : (
+            recipients.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                role="option"
+                className="ep-send-saved__option"
+                onClick={() => {
+                  onSelect(r);
+                  setOpen(false);
+                }}
+              >
+                <span className="ep-send-saved__option-name">{r.label}</span>
+                <span className="ep-send-saved__option-meta">{formatSavedRecipientSubtitle(r)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SendModal(p: SendModalProps) {
   const catalogBusy = p.sendIsCountry && p.sendCatalogLoading;
+  const canSaveDetails =
+    Boolean(p.sendRecipient.trim()) &&
+    (p.sendIsCrypto || Boolean(p.sendRecipientName.trim()));
 
   return (
     <>
@@ -155,225 +257,202 @@ export default function SendModal(p: SendModalProps) {
           </button>
           <StepProgress dots={p.sendStepDots || []} label="Send payment progress" />
 
-          {p.sendStepIs1 ? (
-            <div className="ep-money-stack">
-              <span className="ep-money-step-label">Step 1 · Where is this going?</span>
-
-              {p.sendIsCountry ? (
-                <>
-                  <div className="ep-money-field">
-                    <span className="ep-money-label" id="send-country-label">
-                      Recipient&apos;s country
-                    </span>
-                    <div
-                      className="ep-money-scroll"
-                      role="group"
-                      aria-labelledby="send-country-label"
-                    >
-                      {(p.sendCountryChips || []).map((c: any, i: number) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={c.selectSend}
-                          className="ep-money-chip"
-                          style={{
-                            borderColor: c.sendBorder,
-                            background: c.sendBg,
-                          }}
-                        >
-                          <span
-                            className="ep-money-flag"
-                            style={{ backgroundImage: `url(${c.flagUrl})` }}
-                            aria-hidden
-                          />
-                          <span className="ep-money-chip__code">{c.code}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {p.sendRailHasChoice ? (
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-rail-label">
-                        Payout rail
-                      </span>
-                      <div className="ep-money-tabs" role="group" aria-labelledby="send-rail-label">
-                        {(p.sendRailChips || []).map((r: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={r.select}
-                            className="ep-money-rail"
-                            style={{ background: r.bg, color: r.color }}
-                          >
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {p.sendCatalogLoading ? (
-                    <div className="ep-money-banner ep-money-banner--muted" role="status">
-                      Loading providers…
-                    </div>
-                  ) : null}
-
-                  {!p.sendCatalogLoading && p.sendProviderHasChoice ? (
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-provider-label">
-                        Choose provider
-                      </span>
-                      <div
-                        className="ep-money-scroll"
-                        role="group"
-                        aria-labelledby="send-provider-label"
-                      >
-                        {(p.sendProviderChips || []).map((pr: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={pr.select}
-                            className="ep-money-provider"
-                            style={{
-                              borderColor: pr.border,
-                              background: pr.bg,
-                              color: "var(--ink)",
-                            }}
-                          >
-                            {pr.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-
-              {p.sendIsCrypto ? (
-                <>
-                  <p className="ep-money-hint">
-                    Sends stablecoin directly on-chain — no bank or mobile money involved.
-                  </p>
-                  <div className="ep-money-field">
-                    <span className="ep-money-label" id="send-asset-label">
-                      Asset
-                    </span>
-                    <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label">
-                      {(p.sendAssets || []).map((as: any, i: number) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={as.select}
-                          className="ep-money-seg__btn"
-                          style={{ background: as.bg, color: as.color }}
-                        >
-                          {as.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="ep-money-field">
-                    <span className="ep-money-label" id="send-chain-label">
-                      Confirm the chain you&apos;re sending to
-                    </span>
-                    <div
-                      className="ep-money-tabs ep-money-tabs--wrap"
-                      role="group"
-                      aria-labelledby="send-chain-label"
-                    >
-                      {(p.sendChains || []).map((ch: any, i: number) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={ch.select}
-                          className="ep-money-network"
-                          style={{
-                            borderColor: ch.border,
-                            background: ch.bg,
-                            color: ch.color,
-                          }}
-                        >
-                          {ch.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="ep-money-banner ep-money-banner--warn" role="note">
-                      Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
-                      sending to the wrong network can lose funds.
-                    </div>
-                  </div>
-                </>
-              ) : null}
-
-              {p.sendQuoteError && p.sendIsCrypto ? (
-                <div className="ep-money-banner ep-money-banner--danger" role="alert">
-                  {p.sendQuoteError}
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                className="ep-btn-primary"
-                onClick={p.sendNext}
-                disabled={catalogBusy}
-                aria-busy={catalogBusy || undefined}
-              >
-                {catalogBusy ? "Loading…" : "Continue"}
-              </button>
-            </div>
-          ) : null}
+          {/* Destination (country/provider) lives on recipient details — no separate chip step. */}
 
           {p.sendStepIs2 ? (
-            <div className="ep-money-stack">
-              <span className="ep-money-step-label">Step 2 · Recipient & amount</span>
-              <div className="ep-money-banner ep-money-banner--info">{p.sendDestinationSummary}</div>
-
-              {p.sendIsCountry ? (
-                <div className="ep-money-field">
-                  <label className="ep-money-label" htmlFor="send-recipient-name">
-                    Recipient&apos;s name
-                  </label>
-                  <input
-                    id="send-recipient-name"
-                    className="ep-money-input"
-                    value={p.sendRecipientName}
-                    onChange={p.setSendRecipientName}
-                    placeholder="e.g. Jane Mukami"
-                    autoComplete="name"
-                  />
-                </div>
-              ) : null}
-
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="send-recipient">
-                  {p.sendRecipientLabel}
-                </label>
-                <input
-                  id="send-recipient"
-                  className="ep-money-input"
-                  value={p.sendRecipient}
-                  onChange={p.setSendRecipient}
-                  placeholder={p.sendRecipientPlaceholder}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+            <div className="ep-money-stack ep-send-recipient">
+              <div className="ep-send-recipient__hero">
+                <h4 className="ep-send-recipient__title">Recipient details</h4>
+                <p className="ep-send-recipient__subtitle">{p.sendDestinationSummary}</p>
               </div>
 
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="send-amount">
-                  Amount (USD)
-                </label>
-                <input
-                  id="send-amount"
-                  className="ep-money-input ep-money-input--amount"
-                  value={p.sendAmount}
-                  onChange={p.setSendAmount}
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  aria-describedby={p.sendQuoteError ? "send-quote-error" : undefined}
-                />
+              <SavedRecipientPicker
+                recipients={p.savedRecipients || []}
+                loading={p.savedRecipientsLoading}
+                onSelect={p.onSelectSavedRecipient}
+              />
+
+              <div className="ep-send-recipient__card" role="group" aria-label="Destination">
+                {p.sendIsCountry ? (
+                  <>
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="send-dest-country">
+                        Destination country
+                      </label>
+                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
+                        {p.sendCountryFlagUrl ? (
+                          <span
+                            className="ep-money-flag ep-send-recipient__select-flag"
+                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <select
+                          id="send-dest-country"
+                          className="ep-money-input ep-send-recipient__select"
+                          value={String(p.sendCountryIdx)}
+                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
+                        >
+                          {(p.sendCountryChips || []).map((c: any) => (
+                            <option key={c.idx} value={c.idx}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="send-dest-currency">
+                        Currency
+                      </label>
+                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
+                        {p.sendCountryFlagUrl ? (
+                          <span
+                            className="ep-money-flag ep-send-recipient__select-flag"
+                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <select
+                          id="send-dest-currency"
+                          className="ep-money-input ep-send-recipient__select"
+                          value={String(p.sendCountryIdx)}
+                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
+                          aria-label="Currency"
+                        >
+                          {(p.sendCountryChips || []).map((c: any) => (
+                            <option key={`ccy-${c.idx}`} value={c.idx}>
+                              {c.code} · {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-asset-label-r">
+                        Asset
+                      </span>
+                      <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label-r">
+                        {(p.sendAssets || []).map((as: any, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={as.select}
+                            className="ep-money-seg__btn"
+                            style={{ background: as.bg, color: as.color }}
+                          >
+                            {as.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-chain-label-r">
+                        Network
+                      </span>
+                      <div
+                        className="ep-money-tabs ep-money-tabs--wrap"
+                        role="group"
+                        aria-labelledby="send-chain-label-r"
+                      >
+                        {(p.sendChains || []).map((ch: any, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={ch.select}
+                            className="ep-money-network"
+                            style={{
+                              borderColor: ch.border,
+                              background: ch.bg,
+                              color: ch.color,
+                            }}
+                          >
+                            {ch.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="ep-send-recipient__card" role="group" aria-label="Recipient">
+                {p.sendIsCountry ? (
+                  <div className="ep-money-field">
+                    <label className="ep-money-label" htmlFor="send-recipient-name">
+                      Account holder name
+                    </label>
+                    <input
+                      id="send-recipient-name"
+                      className="ep-money-input"
+                      value={p.sendRecipientName}
+                      onChange={p.setSendRecipientName}
+                      placeholder="e.g. Jane Mukami"
+                      autoComplete="name"
+                    />
+                  </div>
+                ) : null}
+
+                {p.sendIsCountry && (p.sendProviderOptions || []).length > 0 ? (
+                  <div className="ep-money-field">
+                    <label className="ep-money-label" htmlFor="send-provider">
+                      {p.sendRecipientLabel?.toLowerCase().includes("phone") ||
+                      p.sendRecipientLabel?.toLowerCase().includes("mobile")
+                        ? "Provider"
+                        : "Bank"}
+                    </label>
+                    <div className="ep-send-recipient__select-wrap">
+                      <select
+                        id="send-provider"
+                        className="ep-money-input ep-send-recipient__select"
+                        value={String(p.sendProviderIdx)}
+                        onChange={(e) => p.selectSendProvider(Number(e.target.value))}
+                      >
+                        {(p.sendProviderOptions || []).map((name, i) => (
+                          <option key={`${name}-${i}`} value={i}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="ep-money-field">
+                  <label className="ep-money-label" htmlFor="send-recipient">
+                    {p.sendIsCrypto
+                      ? "Recipient wallet address"
+                      : p.sendRecipientLabel || "Recipient account number"}
+                  </label>
+                  <input
+                    id="send-recipient"
+                    className="ep-money-input"
+                    value={p.sendRecipient}
+                    onChange={p.setSendRecipient}
+                    placeholder={p.sendRecipientPlaceholder}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div className="ep-money-field">
+                  <label className="ep-money-label" htmlFor="send-amount">
+                    Amount (USD)
+                  </label>
+                  <input
+                    id="send-amount"
+                    className="ep-money-input ep-money-input--amount"
+                    value={p.sendAmount}
+                    onChange={p.setSendAmount}
+                    placeholder="0.00"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    aria-describedby={p.sendQuoteError ? "send-quote-error" : undefined}
+                  />
+                </div>
               </div>
 
               {p.sendQuoteError ? (
@@ -386,9 +465,24 @@ export default function SendModal(p: SendModalProps) {
                 </div>
               ) : null}
 
-              <div className="ep-money-actions">
+              {p.saveRecipientMessage ? (
+                <div className="ep-money-banner ep-money-banner--info" role="status">
+                  {p.saveRecipientMessage}
+                </div>
+              ) : null}
+
+              <div className="ep-money-actions ep-send-recipient__actions">
                 <button type="button" className="ep-btn-secondary" onClick={p.sendBack}>
-                  Back
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  className="ep-btn-secondary"
+                  onClick={p.onSaveRecipientDetails}
+                  disabled={!canSaveDetails || p.saveRecipientBusy}
+                  aria-busy={p.saveRecipientBusy || undefined}
+                >
+                  {p.saveRecipientBusy ? "Saving…" : "Save details"}
                 </button>
                 <button
                   type="button"
@@ -405,7 +499,7 @@ export default function SendModal(p: SendModalProps) {
 
           {p.sendStepIs3 ? (
             <div className="ep-money-stack ep-money-stack--tight">
-              <span className="ep-money-step-label">Step 3 · Review & confirm</span>
+              <span className="ep-money-step-label">Step 2 · Review & confirm</span>
               <div className="ep-money-review" role="group" aria-label="Payment summary">
                 <div className="ep-money-review__row">
                   <span className="ep-money-review__k">To</span>

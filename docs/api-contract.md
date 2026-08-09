@@ -112,6 +112,11 @@ the exact failure mode). See
   mobile-money payout failed. Bank account numbers are passed through
   untouched: they can legitimately start with `0`, and rewriting one would
   send money to a different account.
+- **Sender KYC phone vs corridor:** Yellow Card may still reject OffRamp quotes
+  with `data.field: "customer.phone_number"` when the *business* KYC phone's
+  dial code does not match the destination corridor (e.g. Spanish `+34…`
+  business quoting a KE bank payout). The UI remaps that via
+  `formatSendQuoteError` so bank flows do not look like a bad account number.
 - `destination.networkId` (aggregator provider id) is now resolved from
   `GET /v1/supported/catalog` (`lib/services/catalog.ts`,
   `offRampProvidersForRail`/`networkIdForProvider`), for the country + rail

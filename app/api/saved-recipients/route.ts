@@ -33,12 +33,12 @@ export async function POST(request: NextRequest) {
   }
 
   const parsed = parseCreateSavedRecipientInput(body);
-  if (!parsed.ok) {
+  if (parsed.ok === false) {
     return jsonError(400, parsed.message, session);
   }
 
   const created = await createSavedRecipient(session.businessId, parsed.value);
-  if (!created.ok) {
+  if (created.ok === false) {
     return jsonError(created.status, created.message, session);
   }
 
