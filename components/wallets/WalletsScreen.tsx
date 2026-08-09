@@ -134,7 +134,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
               <span aria-hidden style={{ fontSize: "15px", lineHeight: 1 }}>
                 +
               </span>
-              Add Account
+              New account
             </button>
             {p.addAccountMenu ? (
               <>
