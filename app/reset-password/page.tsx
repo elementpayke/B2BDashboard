@@ -80,7 +80,7 @@ function ResetPasswordForm() {
     return (
       <div style={authPageStyle}>
         <div style={authCardStyle}>
-          <h1 style={{ margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: "20px", fontWeight: 800 }}>
+          <h1 style={{ margin: 0, fontFamily: "'Geist',sans-serif", fontSize: "20px", fontWeight: 800 }}>
             Password reset
           </h1>
           <p style={{ margin: 0, fontSize: "13px", color: "#4C4A66" }}>
@@ -98,7 +98,7 @@ function ResetPasswordForm() {
     <div style={authPageStyle}>
       <form style={authCardStyle} onSubmit={onSubmit}>
         <div>
-          <h1 style={{ margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: "20px", fontWeight: 800 }}>
+          <h1 style={{ margin: 0, fontFamily: "'Geist',sans-serif", fontSize: "20px", fontWeight: 800 }}>
             Choose a new password
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#4C4A66" }}>
