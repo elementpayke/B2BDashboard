@@ -1424,6 +1424,16 @@ body {
   }
 }
 
+/* Both of these exist for compact chrome only. From 1024 the sidebar is
+   pinned and already shows the business identity, the KYB standing and a
+   live-rates panel — rendering them again on Home was straight duplication. */
+@media (min-width: 1024px) {
+  .ep-home-identity,
+  .ep-rates-marquee {
+    display: none;
+  }
+}
+
 /* T5 — section headers */
 .ep-section-header {
   display: flex;
@@ -1466,13 +1476,14 @@ body {
 
 .ep-home__qa {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   text-align: left;
   border: 1px solid var(--border);
   background: var(--panel);
-  border-radius: 18px;
-  padding: 14px 16px;
+  border-radius: 20px;
+  padding: 18px;
   cursor: pointer;
   font-family: inherit;
   color: inherit;
@@ -1490,13 +1501,13 @@ body {
 }
 
 .ep-home__qa-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 17px;
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1527,21 +1538,6 @@ body {
   .ep-home__qa-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-  }
-
-  .ep-home__qa {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 18px;
-    border-radius: 20px;
-  }
-
-  .ep-home__qa-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 13px;
-    font-size: 17px;
   }
 }
 
@@ -1687,114 +1683,6 @@ body {
   position: relative;
 }
 
-.ep-home__hero-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  position: relative;
-}
-
-.ep-home__hero-pill {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.14);
-  min-width: 0;
-}
-
-.ep-home__hero-pill .label {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.75;
-}
-
-.ep-home__hero-pill .value {
-  font-family: "DM Mono", monospace;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.ep-home__hero-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  position: relative;
-  margin-top: 4px;
-}
-
-.ep-home__hero-action {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 4px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  cursor: pointer;
-  font-family: 'Space Grotesk', sans-serif;
-  min-height: 64px;
-}
-
-.ep-home__hero-action:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.ep-home__hero-action-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.18);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.ep-home__hero-action-label {
-  font-size: 11px;
-  font-weight: 600;
-}
-
-/* Desktop: horizontal CTA pills that fill the hero, not tiny mobile tiles */
-@media (min-width: 1024px) {
-  .ep-home__hero-pills {
-    display: none;
-  }
-
-  .ep-home__hero-actions {
-    gap: 12px;
-    margin-top: 10px;
-  }
-
-  .ep-home__hero-action {
-    flex-direction: row;
-    justify-content: center;
-    gap: 10px;
-    padding: 12px 14px;
-    min-height: 48px;
-    border-radius: 14px;
-  }
-
-  .ep-home__hero-action-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    font-size: 15px;
-  }
-
-  .ep-home__hero-action-label {
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-}
 
 .ep-home__stats-desktop {
   display: none;
@@ -5911,6 +5799,101 @@ select.ep-wallets-create__control {
 
 .ep-money-stack--tight {
   gap: 10px;
+}
+
+/* ── Send · method chooser ────────────────────────────────────── */
+
+.ep-send-method {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 56px;
+}
+
+.ep-send-method:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--indigo) 45%, var(--border));
+}
+
+.ep-send-method:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+.ep-send-method:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-send-method__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.ep-send-method__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-send-method__label {
+  font-family: Geist, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-send-method__desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-send-method__chevron {
+  color: var(--muted2);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.ep-money-back-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 32px;
+}
+
+.ep-money-back-link:hover {
+  color: var(--ink);
+}
+
+.ep-money-back-link:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .ep-money-empty {

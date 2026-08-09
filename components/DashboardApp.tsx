@@ -62,7 +62,12 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import { useViewport } from "@/lib/responsive";
-import { buildSendDestinationSummary, buildSendStepDots } from "@/lib/hooks/sendFlowHelpers";
+import {
+  buildSendDestinationSummary,
+  buildSendStepDots,
+  railIndexForMethod,
+  sendRailHasChoice as railHasChoice,
+} from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 
@@ -397,8 +402,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => setState({ screen: "transactions" });
 
   const openModal = (name) => () => setState({
-    modal: name, sendStep: 1, sendMethod: null, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country",
-    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -705,62 +709,18 @@ export default function DashboardApp(props: Props = {}) {
     openModal(name)();
   };
 
-  const selectSendCountry = (i) => () => {
-    const country = COUNTRIES[i];
-    const prefer =
-      state.sendMethod === "mobile"
-        ? "mobile"
-        : state.sendMethod === "bank"
-          ? "bank"
-          : null;
-    let railIdx = 0;
-    if (prefer && country) {
-      const found = country.rails.findIndex((r) => r.type === prefer);
-      railIdx = found >= 0 ? found : 0;
-    }
-    setState({ sendCountryIdx: i, sendRailIdx: railIdx, sendProviderIdx: 0 });
-  };
+  /** Changing country keeps the rail the chosen method implies, so a "Mobile
+   *  money" send does not silently become a bank transfer when the user picks
+   *  a different country. Falls back to the first rail where the country has
+   *  no rail of that type. */
+  const selectSendCountry = (i) => () =>
+    setState((prev: any) => ({
+      sendCountryIdx: i,
+      sendRailIdx: railIndexForMethod(COUNTRIES[i].rails, prev.sendMethod),
+      sendProviderIdx: 0,
+    }));
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
-  /** Method chooser (presentation) — maps onto existing country/crypto send groups. */
-  const selectSendMethod = (method: "bank" | "mobile" | "crypto" | "internal") => () => {
-    // Internal transfers have no API yet — keep the chooser row visible but inert.
-    if (method === "internal") return;
-    const clearedInputs = { sendRecipient: "", sendRecipientName: "", sendAmount: "" };
-    if (method === "crypto") {
-      setState({
-        sendMethod: method,
-        sendGroup: "crypto",
-        sendStep: 1,
-        ...clearedInputs,
-        sendQuoteError: "",
-        sendAcceptError: "",
-        sendPreview: null,
-        sendConfirm: null,
-        sendAccountId: "",
-        sendAsset: "usdc",
-      });
-      return;
-    }
-    const prefer = method === "mobile" ? "mobile" : "bank";
-    const countryIdx = COUNTRIES.findIndex((c) => c.rails.some((r) => r.type === prefer));
-    const idx = countryIdx >= 0 ? countryIdx : 0;
-    const country = COUNTRIES[idx];
-    const railIdx = Math.max(0, country.rails.findIndex((r) => r.type === prefer));
-    setState({
-      sendMethod: method,
-      sendGroup: "country",
-      sendCountryIdx: idx,
-      sendRailIdx: railIdx,
-      sendProviderIdx: 0,
-      sendStep: 1,
-      ...clearedInputs,
-      sendQuoteError: "",
-      sendAcceptError: "",
-      sendPreview: null,
-      sendConfirm: null,
-    });
-  };
   const resetSendMethod = () =>
     setState({
       sendMethod: null,
@@ -1142,18 +1102,41 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
-  const setSendGroup = (g) => () =>
-    setState({
-      sendGroup: g,
+  /** Send opens on a method chooser, as in the design. Picking bank or
+   *  mobile money resolves to the country flow with that rail already
+   *  selected, so the user never re-answers the question inside step 1. */
+  /** Send opens on a method chooser. Bank/mobile preselect that rail; fields clear on change. */
+  const chooseSendMethod = (m) => () => {
+    if (m === "internal") return;
+    const common = {
+      sendMethod: m,
+      sendStep: 1,
       sendCountryIdx: 0,
+      sendProviderIdx: 0,
+      sendRecipient: "",
+      sendRecipientName: "",
+      sendAmount: "",
       sendQuoteError: "",
       sendAcceptError: "",
       sendPreview: null,
       sendConfirm: null,
       sendAccountId: "",
       sendAsset: "usdc",
+    };
+    if (m === "crypto") {
+      setState({ ...common, sendGroup: "crypto" });
+      return;
+    }
+    const prefer = m === "mobile" ? "mobile" : "bank";
+    const countryIdx = COUNTRIES.findIndex((c) => c.rails.some((r) => r.type === prefer));
+    const idx = countryIdx >= 0 ? countryIdx : 0;
+    setState({
+      ...common,
+      sendGroup: "country",
+      sendCountryIdx: idx,
+      sendRailIdx: railIndexForMethod(COUNTRIES[idx].rails, m),
     });
-
+  };
 
     const s = state;
     const boostDark = props.boostDarkContrast ?? true;
@@ -1496,16 +1479,6 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
-  const heroActions = [
-    { label: "Send", icon: "↗", open: guardMoneyModal("send") },
-    { label: "Top up", icon: "＋", open: guardMoneyModal("deposit") },
-    { label: "Receive", icon: "↙", open: openModal("receive") },
-    { label: "Accounts", icon: "▦", open: setScreen("wallets") },
-  ];
-  const heroPills = [
-    { label: "Money in · 30d", value: homeStats[0]?.value ?? "—" },
-    { label: "Awaiting", value: homeStats[2]?.value ?? "—" },
-  ];
   const homeRecent = decoratedAll.slice(0, 4);
   // No real stablecoin settlement-wallet balance source exists yet — same
   // reasoning as `homeTotalBalance` above. Previously hardcoded to
@@ -1794,30 +1767,47 @@ export default function DashboardApp(props: Props = {}) {
   const fundAmount = s.fundAmount;
   const fundCardNotDone = !s.fundCardDone;
   const fundCardDone = s.fundCardDone;
-  const sendIsCountry = s.sendGroup === "country" && s.sendMethod !== "internal";
+  const sendIsCountry = s.sendGroup === "country";
   const sendIsCrypto = s.sendGroup === "crypto";
-  const sendIsInternal = s.sendMethod === "internal";
-  const sendRailHasChoice =
-    sendIsCountry && sendCountry.rails.length > 1 && s.sendMethod !== "bank" && s.sendMethod !== "mobile";
+  const sendRailHasChoice = railHasChoice(sendCountry.rails, s.sendMethod);
+  const sendMethodChosen = !!s.sendMethod;
+  const sendMethodOptions = [
+    {
+      key: "bank",
+      label: "Bank transfer",
+      desc: "Send to a bank account, locally or internationally",
+      select: chooseSendMethod("bank"),
+    },
+    {
+      key: "mobile",
+      label: "Mobile money",
+      desc: "Send to a mobile money wallet across Africa",
+      select: chooseSendMethod("mobile"),
+    },
+    {
+      key: "crypto",
+      label: "Stablecoin",
+      desc: "Send USDC to a wallet address",
+      select: chooseSendMethod("crypto"),
+    },
+    {
+      // No account-to-account transfer endpoint exists yet — the backend has
+      // OffRamp orders and account-native sends only (docs/api-contract.md).
+      // Shown but disabled rather than hidden, so the option set still reads
+      // like the design and the reason is stated instead of guessed at.
+      key: "internal",
+      label: "Internal transfer",
+      desc: "Move funds between your own accounts",
+      disabled: true,
+      disabledReason: "Not available yet",
+      select: () => {},
+    },
+  ];
   const sendRecipient = s.sendRecipient;
   const sendRecipientName = s.sendRecipientName;
   const sendAmount = s.sendAmount;
   const sendDone = s.sendDone;
   const sendNotDone = !s.sendDone;
-  const sendMethod = s.sendMethod as "bank" | "mobile" | "crypto" | "internal" | null;
-  const internalAccounts = accounts.map((a) => ({
-    key: a.key,
-    label: a.label ?? a.name,
-    code: a.currency,
-    flagUrl: a.flagUrl,
-    selected: s.sendAccountId === a.key,
-    select: () =>
-      setState({
-        sendAccountId: a.key,
-        sendRecipient: a.key,
-        sendRecipientName: a.label ?? a.name,
-      }),
-  }));
   const sendQuoteLoading = s.sendQuoteLoading;
   const sendQuoteError = s.sendQuoteError;
   const sendAccepting = s.sendAccepting;
@@ -2086,16 +2076,9 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
-<HomeIdentity
-  businessName={meQuery.data?.business?.name || "Loading…"}
-  role={meQuery.data?.role}
-  kybApproved={kybApproved}
-  kybLabel={describeKybStatus(kybStatus)}
-  kybLoading={kybStatusLoading}
-/>
-<RatesMarquee rates={liveRates} />
-
-{/* Hero balance */}
+{/* Hero balance — leads the screen, per the design's Home. The identity
+    strip and rates marquee sit below the quick actions; on desktop they
+    are suppressed entirely, where the sidebar already carries both. */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
@@ -2110,22 +2093,6 @@ Create payment
 </div>
 <div className="ep-home__balance-value">{homeTotalBalance}</div>
 <div className="ep-home__balance-sub">{balanceViewSub}</div>
-<div className="ep-home__hero-pills" aria-label="Key metrics">
-{(heroPills || []).map((pill: any, __i1: number) => (
-<div key={__i1} className="ep-home__hero-pill">
-<span className="label">{pill.label}</span>
-<span className="value">{pill.value}</span>
-</div>
-))}
-</div>
-<div className="ep-home__hero-actions" aria-label="Quick money actions">
-{(heroActions || []).map((ha: any, __i1: number) => (
-<button key={__i1} type="button" onClick={ha.open} className="ep-home__hero-action">
-<span className="ep-home__hero-action-icon" aria-hidden>{ha.icon}</span>
-<span className="ep-home__hero-action-label">{ha.label}</span>
-</button>
-))}
-</div>
 </div>
 
 <div className="ep-home__stats-desktop">
@@ -2167,6 +2134,15 @@ Create payment
 </button>
 ))}
 </div>
+
+<HomeIdentity
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  kybApproved={kybApproved}
+  kybLabel={describeKybStatus(kybStatus)}
+  kybLoading={kybStatusLoading}
+/>
+<RatesMarquee rates={liveRates} />
 
 {(homeCurrencyChips?.length) ? (
 <>
@@ -2576,8 +2552,8 @@ bn.elevated ? (
 <SendModal
   sendNotDone={sendNotDone}
   sendDone={sendDone}
-  sendMethod={sendMethod}
-  selectSendMethod={selectSendMethod}
+  sendMethodChosen={sendMethodChosen}
+  sendMethodOptions={sendMethodOptions}
   resetSendMethod={resetSendMethod}
   sendStepDots={sendStepDots}
   sendStepIs1={sendStepIs1}
@@ -2585,7 +2561,6 @@ bn.elevated ? (
   sendStepIs3={sendStepIs3}
   sendIsCountry={sendIsCountry}
   sendIsCrypto={sendIsCrypto}
-  sendIsInternal={sendIsInternal}
   sendCountryChips={sendCountryChips}
   sendRailHasChoice={sendRailHasChoice}
   sendRailChips={sendRailChips}
@@ -2596,7 +2571,6 @@ bn.elevated ? (
   sendChains={sendChains}
   sendAssetCode={sendAssetCode}
   sendChainLabel={sendChainLabel}
-  internalAccounts={internalAccounts}
   sendNext={sendNext}
   sendBack={sendBack}
   sendDestinationSummary={sendDestinationSummary}
