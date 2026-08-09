@@ -30,7 +30,6 @@ import {
   buildDepositQuotePayload,
   buildPaymentInstructionRows,
   formatQuoteFees,
-  describeSendQuoteError,
   toE164,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
@@ -143,7 +142,7 @@ export default function DashboardApp(props: Props = {}) {
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
     sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
-    sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendQuoteErrorTitle: "", sendQuoteErrorAction: null as null | "verification", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
+    sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -415,7 +414,7 @@ export default function DashboardApp(props: Props = {}) {
 
   const moneyFlowReset = {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
-    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendQuoteErrorTitle: "", sendQuoteErrorAction: null, sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -501,7 +500,7 @@ export default function DashboardApp(props: Props = {}) {
     // Step 2 -> 3: OffRamp quote (by country) or account-send preview (stablecoin).
     if (state.sendStep === 2 && state.sendGroup === "country") {
       if (!state.sendRecipient.trim() || !state.sendRecipientName.trim() || !state.sendAmount.trim()) return;
-      setState({ sendQuoteLoading: true, sendQuoteError: "", sendQuoteErrorTitle: "", sendQuoteErrorAction: null });
+      setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
         const refundAddress = summaryQuery.data?.totals.wallet_address;
         if (!refundAddress) {
@@ -560,12 +559,12 @@ export default function DashboardApp(props: Props = {}) {
         const quote = await ordersApi.quote(payload);
         setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
       } catch (err) {
-        const info = describeSendQuoteError(err);
         setState({
           sendQuoteLoading: false,
-          sendQuoteError: info.message,
-          sendQuoteErrorTitle: info.title || "",
-          sendQuoteErrorAction: info.action,
+          sendQuoteError:
+            err instanceof ApiRequestError || err instanceof Error
+              ? err.message
+              : "Couldn't get a quote. Try again.",
         });
       }
       return;
@@ -600,8 +599,6 @@ export default function DashboardApp(props: Props = {}) {
             err instanceof ApiRequestError || err instanceof Error
               ? err.message
               : "Couldn't preview this send. Try again.",
-          sendQuoteErrorTitle: "",
-          sendQuoteErrorAction: null,
         });
       }
       return;
@@ -2827,14 +2824,6 @@ Create payment
   sendAmount={sendAmount}
   setSendAmount={setSendAmount}
   sendQuoteError={sendQuoteError}
-  sendQuoteErrorTitle={s.sendQuoteErrorTitle || undefined}
-  onFixSendQuoteError={
-    s.sendQuoteErrorAction === "verification"
-      ? () => {
-          goVerification();
-        }
-      : undefined
-  }
   sendQuoteLoading={sendQuoteLoading}
   sendQuoteRateText={sendQuoteRateText}
   sendFeeText={sendFeeText}

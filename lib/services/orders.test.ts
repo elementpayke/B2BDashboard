@@ -5,8 +5,6 @@ import {
   buildDepositQuotePayload,
   buildPaymentInstructionRows,
   formatQuoteFees,
-  describeSendQuoteError,
-  formatSendQuoteError,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
   newIdempotencyKey,
@@ -196,30 +194,6 @@ describe("formatQuoteFees", () => {
   });
 });
 
-describe("formatSendQuoteError", () => {
-  it("remaps customer.phone_number corridor errors away from the recipient account", () => {
-    const err = new ApiRequestError("Invalid phone number for this corridor", 422, {
-      field: "customer.phone_number",
-      country: "KE",
-      expected_dial_code: "254",
-      example: "+254712345678",
-    });
-    const info = describeSendQuoteError(err);
-    expect(info.title).toMatch(/not a field on this form/i);
-    expect(info.action).toBe("verification");
-    expect(info.message).toMatch(/verification profile/i);
-    expect(info.message).toMatch(/\+254/);
-    expect(info.message).toMatch(/not the recipient/i);
-    expect(formatSendQuoteError(err)).toBe(info.message);
-  });
-
-  it("passes through unrelated quote errors", () => {
-    const info = describeSendQuoteError(new ApiRequestError("No treasury wallet", 400));
-    expect(info.title).toBeNull();
-    expect(info.action).toBeNull();
-    expect(info.message).toBe("No treasury wallet");
-  });
-});
 
 const depositParams = {
   currency: "kes",
