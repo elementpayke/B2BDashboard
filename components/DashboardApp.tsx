@@ -1092,7 +1092,7 @@ export default function DashboardApp(props: Props = {}) {
           })()
       : null;
     const cardSel = CARDS[s.selectedCardIdx];
-  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','DM Sans',sans-serif", ...vars };
+  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','Geist',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
         const active = s.screen === n.key;
@@ -1114,7 +1114,12 @@ export default function DashboardApp(props: Props = {}) {
         { key: "transactions", label: "Activity", icon: "≣", elevated: false },
         { key: "__more", label: "More", icon: "⋯", elevated: false },
       ].map(n => {
-        const active = n.key === "__pay" ? s.modal === "send" : s.screen === n.key;
+        const active =
+          n.key === "__pay"
+            ? s.modal === "send"
+            : n.key === "__more"
+              ? s.sidebarOpen
+              : s.screen === n.key;
         const select = n.key === "__pay" ? guardMoneyModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
         return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
@@ -1132,16 +1137,21 @@ export default function DashboardApp(props: Props = {}) {
   const homeTotalBalance = "—";
   const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
   // Fiat IBAN chips + partner USDC Base/Polygon chips. No invented balances.
-  const homeCurrencyChips = s.balanceView === "stablecoin"
-    ? stablecoinAccountsList.map((a) => ({
-        flagUrl: null as string | null,
-        code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
-        balance: "—",
-      }))
-    : depositAccountsList.map((a) => {
-        const view = mapDepositAccountToCardView(a);
-        return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
-      });
+  const fiatBalanceRows = depositAccountsList.map((a) => {
+    const view = mapDepositAccountToCardView(a);
+    return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
+  });
+  const stableBalanceRows = stablecoinAccountsList.map((a) => ({
+    flagUrl: null as string | null,
+    code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
+    balance: "—",
+  }));
+  const homeCurrencyChips =
+    s.balanceView === "stablecoin"
+      ? stableBalanceRows
+      : s.balanceView === "fiat"
+        ? fiatBalanceRows
+        : [...fiatBalanceRows, ...stableBalanceRows];
   // Unknown while /auth/me is in flight — distinct from a real "pending" KYB
   // status, so we don't flash "Start verification" for already-approved businesses.
   const kybStatusLoading = (meQuery.isLoading || meQuery.isPending) && !meQuery.data;
@@ -1676,14 +1686,14 @@ export default function DashboardApp(props: Props = {}) {
 </nav>
 
 <div className="ep-sidebar__rates">
-<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'DM Sans',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
+<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
 {(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
 <div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "1px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
 ))}
 </div>
 
 <div className="ep-sidebar__profile">
-<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
+<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
 <div style={{minWidth: "0", flex: 1}}><div style={{fontSize: "11.5px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
 <button onClick={toggleTheme} aria-label="Toggle theme" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>{themeIcon}</button>
 <button onClick={logout} title="Log out" aria-label="Log out" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "12px", flexShrink: "0"}}>⏻</button>
@@ -1897,7 +1907,7 @@ Create payment
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
 <div style={{display: "flex", justifyContent: "flex-end"}}>
-<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
+<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
 </div>
 <InvoiceList items={invoices} emptyLabel={invoicesQuery.isLoading ? "Loading…" : "No invoices yet"} />
 </div>
@@ -2275,7 +2285,7 @@ bn.elevated ? (
 <div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
 <span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
 <span style={{color: "var(--muted)"}}>{row.rail}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
 </div>
 </React.Fragment>
 ))}
@@ -2283,16 +2293,16 @@ bn.elevated ? (
 <div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
 </div>
-<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
+<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
 </div>
 </>) : null}
 </>) : null}
 {(bulkDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
@@ -2308,17 +2318,17 @@ bn.elevated ? (
 </div>
 <div style={{background: "var(--surface2)", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px"}}>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "24px", fontWeight: "500"}}>{swapAmountFrom}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500"}}>{swapAmountFrom}</span>
 <span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapFromCcy}</span>
 </div>
 <div style={{textAlign: "center", color: "var(--muted2)", fontSize: "13px"}}>↓</div>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "24px", fontWeight: "500", color: "var(--indigo-text)"}}>{swapAmountTo}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500", color: "var(--indigo-text)"}}>{swapAmountTo}</span>
 <span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapToCcy}</span>
 </div>
 </div>
 <div style={{display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px"}}>
-<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Rate</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600"}}>{swapRate}</span></div>
+<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Rate</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "600"}}>{swapRate}</span></div>
 <div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Settles via</span><span style={{fontWeight: "600"}}>{swapSettle}</span></div>
 </div>
 {(quoteExpired) ? (<>
@@ -2336,7 +2346,7 @@ bn.elevated ? (
 {(swapAccepted) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Swap complete</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Swap complete</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>Settled via {swapSettle}.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
@@ -2423,13 +2433,13 @@ bn.elevated ? (
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Client name</span><input value={invClient} onChange={setInvClient} placeholder="e.g. Acme GmbH" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={invAmount} onChange={setInvAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 {invoiceError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{invoiceError}</div>) : null}
-<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
+<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
 </div>
 </>) : null}
 {(invoiceDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>{invClient} will get a payment link by email.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>

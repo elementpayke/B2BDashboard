@@ -16,7 +16,7 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
-  font-family: "Geist", "DM Sans", system-ui, sans-serif;
+  font-family: Geist, "DM Sans", system-ui, sans-serif;
 }
 
 :focus-visible {
@@ -255,7 +255,7 @@ body {
 
 .ep-activity__title {
   margin: 0;
-  font-family: "Geist", "DM Sans", sans-serif;
+  font-family: Geist, "DM Sans", sans-serif;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -1177,7 +1177,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   color: var(--muted2);
 }
 
@@ -1207,7 +1207,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   color: var(--muted2);
 }
 
@@ -1290,7 +1290,7 @@ body {
 }
 
 .ep-home-identity__name {
-  font-family: "Geist", "DM Sans", sans-serif;
+  font-family: Geist, "DM Sans", sans-serif;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1333,7 +1333,7 @@ body {
   display: none;
   align-items: center;
   gap: 6px;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   font-size: 12px;
   font-weight: 700;
   color: var(--muted2);
@@ -1417,7 +1417,7 @@ body {
 
 .ep-section-header__title {
   margin: 0;
-  font-family: "Geist", "DM Sans", sans-serif;
+  font-family: Geist, "DM Sans", sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1429,7 +1429,7 @@ body {
   background: none;
   padding: 4px 0;
   cursor: pointer;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--indigo-text);
@@ -1474,7 +1474,7 @@ body {
 }
 
 .ep-home__qa-label {
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   font-size: 11px;
   font-weight: 600;
   color: var(--ink);
@@ -1536,7 +1536,7 @@ body {
 }
 
 .ep-home__balance-row-code {
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -1579,7 +1579,7 @@ body {
   text-transform: uppercase;
   opacity: 0.8;
   font-weight: 700;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
 }
 
 .ep-home__balance-tabs {
@@ -1666,7 +1666,7 @@ body {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   cursor: pointer;
-  font-family: "Geist", sans-serif;
+  font-family: Geist, sans-serif;
   min-height: 64px;
 }
 

@@ -1,6 +1,6 @@
 # B2B Dashboard ↔ Mobile UX parity plan
 
-Design source: `/home/joe/kazi/company/ELEMENTPAY/mobile-app` (Expo neobank).  
+Design source: sibling `mobile-app` (Expo neobank design DNA).  
 Target: this B2B dashboard.
 
 Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
