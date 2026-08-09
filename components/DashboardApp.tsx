@@ -1325,8 +1325,8 @@ export default function DashboardApp(props: Props = {}) {
   const isDeveloper = s.screen === "developer";
   const bottomNavItems = [
         { key: "home", label: "Home", icon: "⌂", elevated: false },
-        { key: "wallets", label: "Wallets", icon: "▦", elevated: false },
-        { key: "__pay", label: "Pay", icon: "⇄", elevated: true },
+        { key: "wallets", label: "Accounts", icon: "▦", elevated: false },
+        { key: "__pay", label: "Send", icon: "⇄", elevated: true },
         { key: "transactions", label: "Activity", icon: "≣", elevated: false },
         { key: "__more", label: "More", icon: "⋯", elevated: false },
       ].map(n => {
@@ -1848,7 +1848,7 @@ export default function DashboardApp(props: Props = {}) {
   const receiveAcctRail = selectedReceiveAccount
     ? `${currencyLabel(selectedReceiveAccount.currency)} bank deposit`
     : receiveAccountsList.length === 0
-      ? "Issue a currency account from Wallets to receive bank transfers."
+      ? "Issue a currency account from Accounts to receive bank transfers."
       : "—";
   const receiveAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setReceiveAsset(k), bg: s.receiveAsset === k ? "var(--ink)" : "var(--surface2)", color: s.receiveAsset === k ? "var(--bg)" : "var(--ink)" }));
   const receiveNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
@@ -2011,6 +2011,19 @@ Create payment
 </div>
 </div>
 
+{/* Same three money stats, stacked below the hero on phones. The desktop
+    copy above sits beside the hero inside the balance grid, so the two
+    containers differ in position, not content — only one is ever rendered
+    (the other is display:none, which also drops it from the a11y tree). */}
+<div className="ep-home__stats-mobile">
+{(homeStats || []).map((hs: any, __i1: number) => (
+<div key={__i1} className="ep-home__stat">
+<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
+<div><div className="ep-home__stat-label">{hs.label}</div><div className="ep-home__stat-value">{hs.value}</div></div>
+</div>
+))}
+</div>
+
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
@@ -2020,7 +2033,10 @@ Create payment
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
 <button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
 <span className="ep-home__qa-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}} aria-hidden>{qa.icon}</span>
+<span className="ep-home__qa-text">
 <span className="ep-home__qa-label">{qa.label}</span>
+<span className="ep-home__qa-desc">{qa.desc}</span>
+</span>
 </button>
 ))}
 </div>

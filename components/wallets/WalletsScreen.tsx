@@ -84,7 +84,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
   return (
     <div
-      data-screen-label="Wallets"
+      data-screen-label="Accounts"
       data-compact={p.isMobile ? "true" : "false"}
       className="ep-wallets"
     >
