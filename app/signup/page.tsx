@@ -58,7 +58,7 @@ export default function SignupPage() {
   return (
     <div style={authPageStyle}>
       <form style={authCardStyle} onSubmit={onSubmit}>
-        <h1 style={{ margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: "20px", fontWeight: 800 }}>
+        <h1 style={{ margin: 0, fontFamily: "Geist,'Space Grotesk',sans-serif", fontSize: "20px", fontWeight: 800 }}>
           Create your business account
         </h1>
 

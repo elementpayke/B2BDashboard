@@ -31,7 +31,7 @@ const ctaStyle: React.CSSProperties = {
   border: "none",
   background: "var(--indigo)",
   color: "var(--indigo-on)",
-  fontFamily: "'Space Grotesk',sans-serif",
+  fontFamily: "Geist,'Space Grotesk',sans-serif",
   fontSize: "13px",
   fontWeight: 700,
   cursor: "pointer",
@@ -108,7 +108,7 @@ export default function VerificationScreen(p: VerificationScreenProps) {
 
               <div
                 style={{
-                  fontFamily: "'DM Mono',monospace",
+                  fontFamily: "'Geist Mono','DM Mono',monospace",
                   fontSize: "11px",
                   color: "var(--indigo-text)",
                   letterSpacing: "0.1em",
@@ -121,7 +121,7 @@ export default function VerificationScreen(p: VerificationScreenProps) {
                 id={`tier-title-${t.num}`}
                 style={{
                   margin: "6px 0 0",
-                  fontFamily: "'Space Grotesk',sans-serif",
+                  fontFamily: "Geist,'Space Grotesk',sans-serif",
                   fontSize: "17px",
                   fontWeight: 700,
                   color: "var(--ink)",
@@ -159,7 +159,7 @@ export default function VerificationScreen(p: VerificationScreenProps) {
 
               <div
                 style={{
-                  fontFamily: "'DM Mono',monospace",
+                  fontFamily: "'Geist Mono','DM Mono',monospace",
                   fontSize: "12px",
                   color: "var(--muted)",
                   padding: "10px 13px",

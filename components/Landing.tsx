@@ -22,7 +22,7 @@ export default function Landing() {
     position: "relative",
     background: "var(--bg)",
     color: "var(--ink)",
-    fontFamily: "'DM Sans',sans-serif",
+    fontFamily: "Geist,'DM Sans',sans-serif",
     ...vars,
   };
   const themeIcon = theme === "dark" ? "\u2600" : "\u263E";
