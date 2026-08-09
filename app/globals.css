@@ -4405,6 +4405,7 @@ body {
 .ep-acct-detail__action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 9px 16px;
   min-height: 40px;
@@ -4437,10 +4438,20 @@ body {
   display: flex;
   gap: 4px;
   margin-top: 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.ep-acct-detail__ranges::-webkit-scrollbar {
+  display: none;
 }
 
 .ep-acct-detail__range {
+  flex: 0 0 auto;
   padding: 6px 14px;
+  min-height: 32px;
   border-radius: 999px;
   border: none;
   background: var(--surface2);
@@ -4516,8 +4527,28 @@ body {
     padding: 18px 16px;
   }
 
+  .ep-acct-detail__hero-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ep-acct-detail__actions {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .ep-acct-detail__action {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 10px;
+  }
+
   .ep-acct-detail__balance {
     font-size: 28px;
+  }
+
+  .ep-acct-detail__ranges {
+    margin-top: 16px;
   }
 
   .ep-acct-detail__chart {
