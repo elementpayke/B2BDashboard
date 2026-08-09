@@ -1392,16 +1392,6 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
-  const heroActions = [
-    { label: "Send", icon: "↗", open: guardMoneyModal("send") },
-    { label: "Top up", icon: "＋", open: guardMoneyModal("deposit") },
-    { label: "Receive", icon: "↙", open: openModal("receive") },
-    { label: "Accounts", icon: "▦", open: setScreen("wallets") },
-  ];
-  const heroPills = [
-    { label: "Money in · 30d", value: homeStats[0]?.value ?? "—" },
-    { label: "Awaiting", value: homeStats[2]?.value ?? "—" },
-  ];
   const homeRecent = decoratedAll.slice(0, 4);
   // No real stablecoin settlement-wallet balance source exists yet — same
   // reasoning as `homeTotalBalance` above. Previously hardcoded to
@@ -1959,16 +1949,9 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
-<HomeIdentity
-  businessName={meQuery.data?.business?.name || "Loading…"}
-  role={meQuery.data?.role}
-  kybApproved={kybApproved}
-  kybLabel={describeKybStatus(kybStatus)}
-  kybLoading={kybStatusLoading}
-/>
-<RatesMarquee rates={liveRates} />
-
-{/* Hero balance */}
+{/* Hero balance — leads the screen, per the design's Home. The identity
+    strip and rates marquee sit below the quick actions; on desktop they
+    are suppressed entirely, where the sidebar already carries both. */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
@@ -1983,22 +1966,6 @@ Create payment
 </div>
 <div className="ep-home__balance-value">{homeTotalBalance}</div>
 <div className="ep-home__balance-sub">{balanceViewSub}</div>
-<div className="ep-home__hero-pills" aria-label="Key metrics">
-{(heroPills || []).map((pill: any, __i1: number) => (
-<div key={__i1} className="ep-home__hero-pill">
-<span className="label">{pill.label}</span>
-<span className="value">{pill.value}</span>
-</div>
-))}
-</div>
-<div className="ep-home__hero-actions" aria-label="Quick money actions">
-{(heroActions || []).map((ha: any, __i1: number) => (
-<button key={__i1} type="button" onClick={ha.open} className="ep-home__hero-action">
-<span className="ep-home__hero-action-icon" aria-hidden>{ha.icon}</span>
-<span className="ep-home__hero-action-label">{ha.label}</span>
-</button>
-))}
-</div>
 </div>
 
 <div className="ep-home__stats-desktop">
@@ -2040,6 +2007,15 @@ Create payment
 </button>
 ))}
 </div>
+
+<HomeIdentity
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  kybApproved={kybApproved}
+  kybLabel={describeKybStatus(kybStatus)}
+  kybLoading={kybStatusLoading}
+/>
+<RatesMarquee rates={liveRates} />
 
 {(homeCurrencyChips?.length) ? (
 <>
