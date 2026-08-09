@@ -38,6 +38,30 @@ export function isCurrencySupported(code: string): boolean {
   );
 }
 
+/**
+ * ISO currencies that already have a listed fiat deposit account.
+ * Create is create-or-refresh upstream — UI should not look like a second issue.
+ */
+export function occupiedFiatCurrencyCodes(
+  accounts: Array<{ currency?: string | null }>,
+): Set<string> {
+  const occupied = new Set<string>();
+  for (const account of accounts) {
+    const code = (account.currency || "").trim().toUpperCase();
+    if (code) occupied.add(code);
+  }
+  return occupied;
+}
+
+export function isFiatCurrencyOccupied(
+  accounts: Array<{ currency?: string | null }>,
+  currencyCode: string,
+): boolean {
+  const code = currencyCode.trim().toUpperCase();
+  if (!code) return false;
+  return occupiedFiatCurrencyCodes(accounts).has(code);
+}
+
 /** Flag-image ISO for a currency code, for the same chip/card UI used elsewhere. */
 export function currencyIso(code: string | null | undefined): string | null {
   if (!code) return null;

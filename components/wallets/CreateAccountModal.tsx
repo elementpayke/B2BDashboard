@@ -4,6 +4,8 @@ import {
   CURRENCY_OPTIONS,
   STABLECOIN_OPTIONS,
   NETWORK_OPTIONS,
+  SUPPORTED_STABLECOIN_NETWORKS,
+  SUPPORTED_IBAN_CURRENCIES,
   isCurrencySupported,
   isStablecoinSupported,
   isStablecoinNetworkSupported,
@@ -21,12 +23,41 @@ export type CreateAccountModalProps = {
   setCreateAccountNetwork: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   createAccountError: string;
   createAccountSaving: boolean;
+  /** UI network codes already held (e.g. BASE, POLYGON). */
+  occupiedNetworks?: readonly string[];
+  /** ISO currencies already held (e.g. USD, EUR). */
+  occupiedCurrencies?: readonly string[];
   closeModal: () => void;
   submitCreateAccount: () => void;
 };
 
 export default function CreateAccountModal(p: CreateAccountModalProps) {
   const isStablecoin = p.createAccountKind === "stablecoin";
+  const occupiedNetworks = new Set(
+    (p.occupiedNetworks ?? []).map((n) => n.trim().toUpperCase()),
+  );
+  const occupiedCurrencies = new Set(
+    (p.occupiedCurrencies ?? []).map((c) => c.trim().toUpperCase()),
+  );
+
+  const availableNetworks = SUPPORTED_STABLECOIN_NETWORKS.filter(
+    (code) => !occupiedNetworks.has(code),
+  );
+  const availableCurrencies = SUPPORTED_IBAN_CURRENCIES.filter(
+    (code) => !occupiedCurrencies.has(code),
+  );
+
+  const slotsFull = isStablecoin
+    ? availableNetworks.length === 0
+    : availableCurrencies.length === 0;
+
+  const selectedSlotTaken = isStablecoin
+    ? Boolean(p.createAccountNetwork) &&
+      occupiedNetworks.has(p.createAccountNetwork.trim().toUpperCase())
+    : Boolean(p.createAccountCurrency) &&
+      occupiedCurrencies.has(p.createAccountCurrency.trim().toUpperCase());
+
+  const canSubmit = !p.createAccountSaving && !slotsFull && !selectedSlotTaken;
 
   return (
     <div className="ep-wallets-create">
@@ -41,6 +72,14 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
         </p>
       </div>
 
+      {slotsFull ? (
+        <div className="ep-wallets-create__error" role="status">
+          {isStablecoin
+            ? "You already have USDC accounts on Base and Polygon — those are the only networks available right now."
+            : "You already have fiat accounts for every supported currency (USD and EUR)."}
+        </div>
+      ) : null}
+
       <div className="ep-wallets-create__field">
         <label htmlFor="create-account-name" className="ep-wallets-create__label">
           Account name <span className="ep-wallets-create__req">*</span>
@@ -52,6 +91,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
           placeholder="e.g. Payroll, Operations"
           autoComplete="off"
           className="ep-wallets-create__control"
+          disabled={slotsFull || p.createAccountSaving}
         />
       </div>
 
@@ -65,6 +105,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               id="create-account-stablecoin"
               value={p.createAccountStablecoin}
               onChange={p.setCreateAccountStablecoin}
+              disabled={slotsFull || p.createAccountSaving}
               className={
                 p.createAccountStablecoin
                   ? "ep-wallets-create__control"
@@ -72,7 +113,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               }
             >
               <option value="">Select stablecoin</option>
-              {STABLECOIN_OPTIONS.map((o: any) => (
+              {STABLECOIN_OPTIONS.map((o) => (
                 <option
                   key={o.code}
                   value={o.code}
@@ -92,6 +133,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               id="create-account-network"
               value={p.createAccountNetwork}
               onChange={p.setCreateAccountNetwork}
+              disabled={slotsFull || p.createAccountSaving}
               className={
                 p.createAccountNetwork
                   ? "ep-wallets-create__control"
@@ -99,20 +141,28 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               }
             >
               <option value="">Select network</option>
-              {NETWORK_OPTIONS.map((o: any) => (
-                <option
-                  key={o.code}
-                  value={o.code}
-                  disabled={!isStablecoinNetworkSupported(o.code)}
-                >
-                  {o.label}
-                  {isStablecoinNetworkSupported(o.code) ? "" : " — not available yet"}
-                </option>
-              ))}
+              {NETWORK_OPTIONS.map((o) => {
+                const supported = isStablecoinNetworkSupported(o.code);
+                const taken = occupiedNetworks.has(o.code.trim().toUpperCase());
+                return (
+                  <option
+                    key={o.code}
+                    value={o.code}
+                    disabled={!supported || taken}
+                  >
+                    {o.label}
+                    {!supported
+                      ? " — not available yet"
+                      : taken
+                        ? " — already open"
+                        : ""}
+                  </option>
+                );
+              })}
             </select>
             <div className="ep-wallets-create__hint">
-              Stablecoin accounts are issued in USDC on Base and Polygon only.
-              Network and asset must match the payer’s rail exactly.
+              One USDC account per network (Base and Polygon). Re-opening an existing
+              slot refreshes it instead of creating another.
             </div>
           </div>
         </>
@@ -125,6 +175,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             id="create-account-currency"
             value={p.createAccountCurrency}
             onChange={p.setCreateAccountCurrency}
+            disabled={slotsFull || p.createAccountSaving}
             className={
               p.createAccountCurrency
                 ? "ep-wallets-create__control"
@@ -132,15 +183,27 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             }
           >
             <option value="">Select currency</option>
-            {CURRENCY_OPTIONS.map((c: any) => (
-              <option key={c.code} value={c.code} disabled={!isCurrencySupported(c.code)}>
-                {c.label} ({c.code})
-                {isCurrencySupported(c.code) ? "" : " — not available yet"}
-              </option>
-            ))}
+            {CURRENCY_OPTIONS.map((c) => {
+              const supported = isCurrencySupported(c.code);
+              const taken = occupiedCurrencies.has(c.code.trim().toUpperCase());
+              return (
+                <option
+                  key={c.code}
+                  value={c.code}
+                  disabled={!supported || taken}
+                >
+                  {c.label} ({c.code})
+                  {!supported
+                    ? " — not available yet"
+                    : taken
+                      ? " — already open"
+                      : ""}
+                </option>
+              );
+            })}
           </select>
           <div className="ep-wallets-create__hint">
-            Bank accounts are currently issued in USD and EUR only.
+            Bank accounts are issued one per currency (USD and EUR only).
           </div>
         </div>
       )}
@@ -158,12 +221,12 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
           className="ep-wallets-create__btn ep-wallets-create__btn--ghost"
           disabled={p.createAccountSaving}
         >
-          Cancel
+          {slotsFull ? "Close" : "Cancel"}
         </button>
         <button
           type="button"
           onClick={p.submitCreateAccount}
-          disabled={p.createAccountSaving}
+          disabled={!canSubmit}
           className="ep-wallets-create__btn ep-wallets-create__btn--primary"
         >
           {p.createAccountSaving ? "Creating…" : "Create account"}

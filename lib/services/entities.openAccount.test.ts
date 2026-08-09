@@ -61,6 +61,26 @@ describe("listed vs sendable stablecoin accounts", () => {
   });
 });
 
+describe("occupiedStablecoinNetworkCodes", () => {
+  it("marks Base/Polygon once when a USDC account exists there", async () => {
+    const { occupiedStablecoinNetworkCodes, isStablecoinNetworkOccupied } =
+      await import("./entities");
+    const base = normalizeFinancialAccount(
+      {
+        id: "a1",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Base",
+        status: "active",
+      },
+      "ent_1",
+    )!;
+    expect([...occupiedStablecoinNetworkCodes([base])]).toEqual(["BASE"]);
+    expect(isStablecoinNetworkOccupied([base], "BASE")).toBe(true);
+    expect(isStablecoinNetworkOccupied([base], "POLYGON")).toBe(false);
+  });
+});
+
 describe("resolvePrimaryEntityId", () => {
   beforeEach(() => {
     vi.restoreAllMocks();

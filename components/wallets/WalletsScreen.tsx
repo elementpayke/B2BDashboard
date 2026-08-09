@@ -25,6 +25,10 @@ export type WalletsScreenProps = {
   toggleAddAccountMenu: () => void;
   closeAddAccountMenu: () => void;
   openCreateAccount: (kind: string) => () => void;
+  /** When false, Stablecoin Account menu item is disabled (all slots open). */
+  canCreateStablecoin?: boolean;
+  /** When false, Bank account menu item is disabled (USD+EUR already open). */
+  canCreateBank?: boolean;
   accounts: WalletsAccountCard[];
   /** True once verification has confirmed this principal can hold currency accounts. */
   eligible: boolean;
@@ -144,6 +148,12 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                     type="button"
                     role="menuitem"
                     onClick={p.openCreateAccount("bank")}
+                    disabled={p.canCreateBank === false}
+                    title={
+                      p.canCreateBank === false
+                        ? "USD and EUR accounts are already open"
+                        : undefined
+                    }
                     className="ep-wallets__menu-item"
                   >
                     <span className="ep-wallets__menu-icon" aria-hidden>
@@ -152,7 +162,9 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                     <span className="ep-wallets__menu-copy">
                       <span className="ep-wallets__menu-label">Bank account</span>
                       <span className="ep-wallets__menu-hint">
-                        Fiat rails · IBAN / local deposit
+                        {p.canCreateBank === false
+                          ? "USD and EUR already open"
+                          : "Fiat rails · IBAN / local deposit"}
                       </span>
                     </span>
                   </button>
@@ -160,6 +172,12 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                     type="button"
                     role="menuitem"
                     onClick={p.openCreateAccount("stablecoin")}
+                    disabled={p.canCreateStablecoin === false}
+                    title={
+                      p.canCreateStablecoin === false
+                        ? "USDC accounts already open on Base and Polygon"
+                        : undefined
+                    }
                     className="ep-wallets__menu-item"
                   >
                     <span
@@ -171,7 +189,9 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                     <span className="ep-wallets__menu-copy">
                       <span className="ep-wallets__menu-label">Stablecoin account</span>
                       <span className="ep-wallets__menu-hint">
-                        On-chain deposit · network specific
+                        {p.canCreateStablecoin === false
+                          ? "Base and Polygon already open"
+                          : "On-chain deposit · network specific"}
                       </span>
                     </span>
                   </button>
@@ -290,7 +310,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
               ))}
             </>
           )}
-          {p.eligible && !p.accountsLoading ? (
+          {p.eligible && !p.accountsLoading && p.canCreateBank !== false ? (
             <button
               type="button"
               onClick={p.openCreateAccount("bank")}

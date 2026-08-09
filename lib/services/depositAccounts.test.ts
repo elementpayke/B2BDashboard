@@ -20,6 +20,22 @@ describe("isCurrencySupported", () => {
   });
 });
 
+describe("occupiedFiatCurrencyCodes", () => {
+  it("collects ISO codes already listed", async () => {
+    const { occupiedFiatCurrencyCodes, isFiatCurrencyOccupied } = await import(
+      "./depositAccounts"
+    );
+    const occupied = occupiedFiatCurrencyCodes([
+      { currency: "usd" },
+      { currency: "EUR" },
+    ]);
+    expect(occupied.has("USD")).toBe(true);
+    expect(occupied.has("EUR")).toBe(true);
+    expect(isFiatCurrencyOccupied([{ currency: "USD" }], "usd")).toBe(true);
+    expect(isFiatCurrencyOccupied([{ currency: "USD" }], "EUR")).toBe(false);
+  });
+});
+
 describe("currencyIso / currencyLabel", () => {
   it("looks up the flag ISO and display label for a known currency", () => {
     expect(currencyIso("USD")).toBe("us");
