@@ -5,6 +5,7 @@ import {
   buildDepositQuotePayload,
   buildPaymentInstructionRows,
   formatQuoteFees,
+  describeSendQuoteError,
   formatSendQuoteError,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
@@ -203,17 +204,20 @@ describe("formatSendQuoteError", () => {
       expected_dial_code: "254",
       example: "+254712345678",
     });
-    const msg = formatSendQuoteError(err);
-    expect(msg).toMatch(/business profile phone/i);
-    expect(msg).toMatch(/\+254/);
-    expect(msg).toMatch(/recipient account number/i);
-    expect(msg).not.toBe("Invalid phone number for this corridor");
+    const info = describeSendQuoteError(err);
+    expect(info.title).toMatch(/not a field on this form/i);
+    expect(info.action).toBe("verification");
+    expect(info.message).toMatch(/verification profile/i);
+    expect(info.message).toMatch(/\+254/);
+    expect(info.message).toMatch(/not the recipient/i);
+    expect(formatSendQuoteError(err)).toBe(info.message);
   });
 
   it("passes through unrelated quote errors", () => {
-    expect(formatSendQuoteError(new ApiRequestError("No treasury wallet", 400))).toBe(
-      "No treasury wallet",
-    );
+    const info = describeSendQuoteError(new ApiRequestError("No treasury wallet", 400));
+    expect(info.title).toBeNull();
+    expect(info.action).toBeNull();
+    expect(info.message).toBe("No treasury wallet");
   });
 });
 

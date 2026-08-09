@@ -71,6 +71,8 @@ export type SendModalProps = {
   sendAmount: string;
   setSendAmount: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendQuoteError: string;
+  sendQuoteErrorTitle?: string;
+  onFixSendQuoteError?: () => void;
   sendQuoteLoading: boolean;
   sendQuoteRateText: string | null;
   sendFeeText: string;
@@ -475,10 +477,22 @@ export default function SendModal(p: SendModalProps) {
               {p.sendQuoteError ? (
                 <div
                   id="send-quote-error"
-                  className="ep-money-banner ep-money-banner--danger"
+                  className={`ep-money-banner ep-money-banner--danger${p.onFixSendQuoteError ? " ep-money-banner--with-cta" : ""}`}
                   role="alert"
                 >
-                  {p.sendQuoteError}
+                  {p.sendQuoteErrorTitle ? (
+                    <strong className="ep-money-banner__title">{p.sendQuoteErrorTitle}</strong>
+                  ) : null}
+                  <span className="ep-money-banner__body">{p.sendQuoteError}</span>
+                  {p.onFixSendQuoteError ? (
+                    <button
+                      type="button"
+                      className="ep-money-banner__cta"
+                      onClick={p.onFixSendQuoteError}
+                    >
+                      Open Verification
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 

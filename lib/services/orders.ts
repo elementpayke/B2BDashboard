@@ -234,6 +234,14 @@ type CorridorPhoneErrorData = {
   country?: unknown;
 };
 
+export type SendQuoteErrorInfo = {
+  /** Short headline — makes it clear the problem is NOT a field on this form. */
+  title: string | null;
+  message: string;
+  /** CTA destination when the fix lives outside the send form. */
+  action: "verification" | null;
+};
+
 /**
  * Turn a raw OffRamp quote rejection into copy users can act on.
  *
@@ -243,7 +251,7 @@ type CorridorPhoneErrorData = {
  * destination corridor dial code. Surfacing the account number as "invalid
  * phone" is wrong for bank rails; this remaps that case.
  */
-export function formatSendQuoteError(err: unknown): string {
+export function describeSendQuoteError(err: unknown): SendQuoteErrorInfo {
   const fallback =
     err instanceof ApiRequestError || err instanceof Error
       ? err.message
@@ -252,27 +260,39 @@ export function formatSendQuoteError(err: unknown): string {
     err instanceof ApiRequestError && err.data && typeof err.data === "object"
       ? (err.data as CorridorPhoneErrorData)
       : null;
-  if (!data) return fallback;
 
-  const field = typeof data.field === "string" ? data.field : "";
+  const field = data && typeof data.field === "string" ? data.field : "";
   const dial =
-    typeof data.expected_dial_code === "string" || typeof data.expected_dial_code === "number"
+    data &&
+    (typeof data.expected_dial_code === "string" || typeof data.expected_dial_code === "number")
       ? String(data.expected_dial_code)
       : "";
-  const example = typeof data.example === "string" ? data.example : "";
-  const country = typeof data.country === "string" ? data.country.toUpperCase() : "";
+  const example = data && typeof data.example === "string" ? data.example : "";
+  const country = data && typeof data.country === "string" ? data.country.toUpperCase() : "";
 
-  if (/customer\.phone_number/i.test(field) || /invalid phone number for this corridor/i.test(fallback)) {
-    const where = country ? ` for ${country}` : "";
+  if (
+    /customer\.phone_number/i.test(field) ||
+    /invalid phone number for this corridor/i.test(fallback)
+  ) {
+    const where = country ? ` (${country})` : "";
     const need = dial
-      ? ` This corridor expects a business phone with dial code +${dial}${example ? ` (e.g. ${example})` : ""}.`
+      ? ` It must use dial code +${dial}${example ? ` (e.g. ${example})` : ""}.`
       : example
         ? ` Example format: ${example}.`
         : "";
-    return `This payout${where} was rejected because the business profile phone isn't valid for the corridor.${need} It isn't about the recipient account number — update the business phone on the verification profile, or use a corridor that matches that phone.`;
+    return {
+      title: "Not a field on this form",
+      message: `This payout${where} was blocked by the business contact phone on your Verification profile — not the recipient account or phone above.${need} Update that business phone (or pick a corridor that matches it), then try Review again.`,
+      action: "verification",
+    };
   }
 
-  return fallback;
+  return { title: null, message: fallback, action: null };
+}
+
+/** Convenience wrapper when only the message string is needed. */
+export function formatSendQuoteError(err: unknown): string {
+  return describeSendQuoteError(err).message;
 }
 
 /**
