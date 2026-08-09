@@ -3794,11 +3794,685 @@ body {
   max-width: 36ch;
 }
 
+.ep-fund-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ep-fund-chooser__intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-fund-chooser__sub {
+  margin: -4px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+.ep-fund-chooser__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-fund-chooser__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1.5px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ep-fund-chooser__option[data-selected="true"] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.ep-fund-chooser__option[data-disabled="true"],
+.ep-fund-chooser__option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-fund-chooser__option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Geist", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ep-fund-chooser__badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+
+.ep-fund-chooser__option-body {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-fund-chooser__option-warn {
+  font-size: 12px;
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.ep-fund-chooser__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ep-fund-sc {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ep-fund-sc__back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ep-fund-sc__amount-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+
+.ep-fund-sc__currency-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ep-fund-sc__currency-code {
+  color: var(--ink);
+}
+
+.ep-fund-sc__currency-sub {
+  color: var(--muted2);
+  font-weight: 500;
+}
+
+.ep-fund-sc__amount-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-fund-sc__amount-input-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.ep-fund-sc__amount-prefix {
+  font-family: "Geist", sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-fund-sc__amount-input {
+  width: min(220px, 60vw);
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: "Geist", sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: left;
+}
+
+.ep-fund-sc__hint,
+.ep-fund-sc__body,
+.ep-fund-sc__disclaimer {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  text-align: center;
+}
+
+.ep-fund-sc__warn {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--amber-tint);
+  color: var(--amber);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ep-fund-sc__success-icon {
+  width: 48px;
+  height: 48px;
+  margin: 4px auto 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success, #16a34a) 18%, var(--surface2));
+  color: var(--success, #16a34a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ep-fund-sc__title {
+  text-align: center;
+  font-family: "Geist", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ep-fund-sc__meta {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted2);
+}
+
+.ep-fund-sc__url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.ep-fund-sc__url {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.ep-fund-sc__copy {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: none;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-fund-sc__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ep-fund-sc__btn-secondary,
+.ep-fund-sc__btn-primary {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-fund-sc__btn-secondary {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+}
+
+.ep-fund-sc__rails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ep-fund-sc__rail {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.ep-fund-sc__rail[data-selected="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.ep-fund-sc__rail-asset {
+  font-family: "Geist Mono", monospace;
+}
+
+.ep-fund-sc__rail-net {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.ep-fund-sc__rail-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--indigo) 25%, transparent);
+}
+
+.ep-fund-sc__btn-primary {
+  border: none;
+  background: var(--ink);
+  color: var(--bg);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ep-fund-sc__btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ep-fund-orch-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--indigo-tint);
+  border: 1px solid color-mix(in srgb, var(--indigo) 18%, var(--border));
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.ep-fund-orch-note strong {
+  color: var(--indigo-text);
+  font-size: 13px;
+}
+
+.ep-fund-orch-note__status {
+  font-family: "Geist Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ep-fund-orch-note__err {
+  font-size: 12px;
+  color: var(--amber);
+  font-weight: 600;
+}
+
+/* Account detail screen (full page from UX redesign) */
+.ep-acct-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ep-acct-detail__back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 44px;
+  color: var(--muted);
+  font-family: "Geist", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ep-acct-detail__back:hover {
+  color: var(--ink);
+}
+
+.ep-acct-detail__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ep-acct-detail__flag {
+  width: 34px;
+  height: 25px;
+  border-radius: 5px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ep-acct-detail__flag-fallback {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.ep-acct-detail__identity-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-acct-detail__name {
+  margin: 0;
+  font-family: "Geist", sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.ep-acct-detail__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-acct-detail__rail {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ep-acct-detail__hero {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 24px 26px;
+}
+
+.ep-acct-detail__hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ep-acct-detail__balance-label {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.ep-acct-detail__balance {
+  font-family: "Geist Mono", monospace;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  line-height: 1.1;
+}
+
+.ep-acct-detail__balance-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted2);
+  font-weight: 500;
+}
+
+.ep-acct-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-acct-detail__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-acct-detail__action:hover {
+  border-color: color-mix(in srgb, var(--indigo) 30%, var(--border));
+}
+
+.ep-acct-detail__action--primary {
+  border: none;
+  background: var(--ink);
+  color: var(--bg);
+  padding-inline: 18px;
+}
+
+.ep-acct-detail__action--primary:hover {
+  border: none;
+  opacity: 0.92;
+}
+
+.ep-acct-detail__ranges {
+  display: flex;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+.ep-acct-detail__range {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-acct-detail__range[data-active="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.ep-acct-detail__chart {
+  margin-top: 8px;
+  height: 150px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.ep-acct-detail__chart-line {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--indigo), transparent);
+}
+
+.ep-acct-detail__chart-empty {
+  margin-top: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  color: var(--muted2);
+  text-align: center;
+}
+
+.ep-acct-detail__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+
+.ep-acct-detail__summary-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.ep-acct-detail__summary-k {
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 130px;
+}
+
+.ep-acct-detail__summary-v {
+  font-family: "Geist Mono", monospace;
+  font-weight: 600;
+  flex: 1;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .ep-acct-detail__name {
+    font-size: 22px;
+  }
+
+  .ep-acct-detail__hero {
+    padding: 18px 16px;
+  }
+
+  .ep-acct-detail__balance {
+    font-size: 28px;
+  }
+
+  .ep-acct-detail__chart {
+    height: 100px;
+  }
+
+  .ep-acct-detail__summary-k {
+    width: 96px;
+  }
+}
+
 /* Account detail modal */
 .ep-wallets-detail {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
+}
+
+.ep-wallets-detail__fund-hint {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--indigo-tint);
+  border: 1px solid color-mix(in srgb, var(--indigo) 18%, var(--border));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-wallets-detail__fund-hint-title {
+  font-family: "Geist", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--indigo-text);
+}
+
+.ep-wallets-detail__fund-hint-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.ep-wallets-detail__fund-hint-body strong {
+  font-weight: 700;
+}
+
+.ep-wallets-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-wallets-detail__section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ep-wallets-detail__beneficiary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.ep-wallets-detail__beneficiary-name {
+  font-family: "Geist", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
 }
 
 .ep-wallets-detail__head {
@@ -3833,14 +4507,14 @@ body {
 }
 
 .ep-wallets-detail__name {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Geist", sans-serif;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .ep-wallets-detail__code {
-  font-family: "DM Mono", monospace;
+  font-family: "Geist Mono", monospace;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
@@ -3850,79 +4524,60 @@ body {
 .ep-wallets-detail__rows {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 4px 0;
-  border-radius: 14px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  overflow: hidden;
+  gap: 6px;
 }
 
 .ep-wallets-detail__row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.ep-wallets-detail__row:last-child {
-  border-bottom: none;
-}
-
-@media (min-width: 480px) {
-  .ep-wallets-detail__row {
-    grid-template-columns: 118px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-  }
+  border-radius: 12px;
+  background: var(--surface2);
 }
 
 .ep-wallets-detail__label {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  width: 120px;
 }
 
 .ep-wallets-detail__value {
-  font-family: "DM Mono", monospace;
+  font-family: "Geist", sans-serif;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
   word-break: break-all;
   line-height: 1.45;
   color: var(--ink);
-  letter-spacing: 0.02em;
+  flex: 1;
+  min-width: 0;
 }
 
 .ep-wallets-detail__value--iban {
+  font-family: "Geist Mono", monospace;
   letter-spacing: 0.06em;
   font-size: 13.5px;
 }
 
 .ep-wallets-detail__copy {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 44px;
-  min-width: 72px;
-  padding: 8px 14px;
+  min-height: 32px;
+  min-width: 64px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: none;
   background: var(--ink);
-  color: var(--surface);
-  font-size: 12px;
+  color: var(--bg);
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  justify-self: start;
-}
-
-@media (min-width: 480px) {
-  .ep-wallets-detail__copy {
-    justify-self: end;
-  }
 }
 
 .ep-wallets-detail__copy[data-copied="true"] {
@@ -3941,7 +4596,7 @@ body {
 }
 
 .ep-wallets-detail__pending-title {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Geist", sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -3953,6 +4608,28 @@ body {
   line-height: 1.45;
 }
 
+.ep-wallets-detail__letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 13px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: "Geist", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-wallets-detail__letter:hover {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
+  background: color-mix(in srgb, var(--indigo-tint) 40%, var(--surface2));
+}
+
 .ep-wallets-detail__convert {
   min-height: 48px;
   padding: 12px 16px;
@@ -3960,7 +4637,7 @@ body {
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Geist", sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
@@ -3969,6 +4646,24 @@ body {
 .ep-wallets-detail__convert:hover {
   border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
   background: color-mix(in srgb, var(--indigo-tint) 40%, var(--surface2));
+}
+
+@media (max-width: 479px) {
+  .ep-wallets-detail__row {
+    flex-wrap: wrap;
+  }
+
+  .ep-wallets-detail__label {
+    width: 100%;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .ep-wallets-detail__copy {
+    min-height: 44px;
+  }
 }
 
 /* Create account modal */
