@@ -47,8 +47,10 @@ import {
   entitiesApi,
   describeStablecoinAccountStatus,
   buildStablecoinAccountDetailRows,
-  toPartnerNetwork,
+  buildFundStablecoinRails,
+  formatNetworkLabel,
   isReadyStatus,
+  isFundableStablecoinAccount,
   occupiedStablecoinNetworkCodes,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
@@ -80,6 +82,13 @@ import TxDetailModal from "@/components/transactions/TxDetailModal";
 import WalletsScreen from "@/components/wallets/WalletsScreen";
 import CreateAccountModal from "@/components/wallets/CreateAccountModal";
 import AccountDetailModal from "@/components/wallets/AccountDetailModal";
+import AccountDetailScreen from "@/components/wallets/AccountDetailScreen";
+import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
+import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
+import {
+  africanFundDisabledReason,
+  planAfricanFundOrchestration,
+} from "@/lib/services/fundOrchestration";
 import DepositModal from "@/components/deposit/DepositModal";
 import ReceiveModal from "@/components/deposit/ReceiveModal";
 import VerificationScreen from "@/components/verification/VerificationScreen";
@@ -117,7 +126,17 @@ export default function DashboardApp(props: Props = {}) {
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
     stableSel: "USDC", txFilter: "all",
-    selectedTxId: null as number | null, selectedAcctIdx: 0, selectedAcctKind: "fiat" as "fiat" | "stablecoin", selectedCardIdx: 0,
+    selectedTxId: null as number | null,
+    /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
+    selectedAcctKey: "" as string,
+    selectedAcctKind: "fiat" as "fiat" | "stablecoin",
+    selectedCardIdx: 0,
+    /** "details" | "fund" — same coords modal, fund reframes copy for bank transfer. */
+    acctDetailIntent: "details" as "details" | "fund",
+    /** When set, Deposit OnRamp is funding this fiat account (African auto path). */
+    fundAfricanTargetCurrency: null as string | null,
+    fundConvertStatus: "" as string,
+    fundConvertError: "" as string,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
     apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyCreating: false, apiKeyError: "", newlyCreatedKey: null as any,
     addAccountMenu: false, createAccountKind: "bank", createAccountName: "",
@@ -198,9 +217,13 @@ export default function DashboardApp(props: Props = {}) {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
-    enabled: state.modal === "deposit" && state.depositDone && !!state.depositAccept,
+    enabled:
+      (state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
+      state.depositDone &&
+      !!state.depositAccept,
   });
   const invoicesQuery = useQuery({
+
     queryKey: ["invoices"],
     queryFn: () => invoicesApi.list(),
     retry: false,
@@ -285,6 +308,37 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: listStablecoinAccounts,
     retry: false,
   });
+
+  // Best-effort post-OnRamp convert status (skipped until entity fiat id + FX network_id exist).
+  useEffect(() => {
+    const order = depositStatusQuery.data;
+    const targetFiat = state.fundAfricanTargetCurrency;
+    if (!targetFiat || !order || order.status !== "completed") return;
+    if (state.fundConvertStatus) return;
+
+    const usdcAccount =
+      (stablecoinAccountsQuery.data ?? []).find(
+        (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
+      ) ??
+      (stablecoinAccountsQuery.data ?? []).find(
+        (a) => isReadyStatus(a.status) && a.currency === "USDC",
+      );
+    const plan = planAfricanFundOrchestration({
+      fiatCurrency: targetFiat,
+      fiatAccountId: null,
+      entityId: usdcAccount?.entityId ?? null,
+      usdcAccountId: usdcAccount?.id ?? null,
+      usdcWalletAddress: usdcAccount?.walletAddress ?? null,
+      treasuryWalletAddress: summaryQuery.data?.totals.wallet_address ?? null,
+      convertNetworkId: null,
+    });
+    setState({
+      fundConvertStatus: `skipped: ${plan.blockers[0] || "Auto-convert not ready"}`,
+      fundConvertError: plan.blockers.join(" "),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depositStatusQuery.data?.status, depositStatusQuery.data?.id, state.fundAfricanTargetCurrency, stablecoinAccountsQuery.data]);
+
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
   // details so the Developer screen's webhook rows show real values.
@@ -327,6 +381,7 @@ export default function DashboardApp(props: Props = {}) {
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
     newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
+    fundAfricanTargetCurrency: null, fundConvertStatus: "", fundConvertError: "",
   });
 
   // Ready USDC Base/Polygon FinancialAccounts for the Stablecoin send tab
@@ -477,9 +532,18 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
       try {
-        const walletAddress = summaryQuery.data?.totals.wallet_address;
+        const walletAddress =
+          (state.fundAfricanTargetCurrency
+            ? (stablecoinAccountsQuery.data ?? []).find(
+                (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
+              )?.walletAddress
+            : null) || summaryQuery.data?.totals.wallet_address;
         if (!walletAddress) {
-          throw new Error("No treasury wallet is provisioned for this business yet.");
+          throw new Error(
+            state.fundAfricanTargetCurrency
+              ? "No USDC deposit wallet or treasury wallet is available to receive this OnRamp."
+              : "No treasury wallet is provisioned for this business yet.",
+          );
         }
         const country = COUNTRIES[state.depositCountryIdx];
         const rail = country.rails[state.depositRailIdx] || country.rails[0];
@@ -541,11 +605,63 @@ export default function DashboardApp(props: Props = {}) {
       depositQuoteError: "",
       depositAcceptError: "",
     }));
-  const closeModal = () => setState({ modal: null });
+  const closeModal = () =>
+    setState({
+      modal: null,
+      fundAfricanTargetCurrency: null,
+      fundConvertStatus: "",
+      fundConvertError: "",
+    });
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
-  const openAcctDetail = (kind: "fiat" | "stablecoin", i: number) => () =>
-    setState({ modal: "acctDetail", selectedAcctKind: kind, selectedAcctIdx: i });
+  // UX redesign: account card → full Account detail screen; Details button → modal.
+  const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
+    setState({
+      screen: "accountDetail",
+      selectedAcctKind: kind,
+      selectedAcctKey: key,
+      modal: null,
+      sidebarOpen: false,
+    });
+  const openAcctDetailsModal = () =>
+    setState({ modal: "acctDetail", acctDetailIntent: "details", copiedField: "" });
+  /** Partner docs: fund fiat EUR/USD via bank transfer to deposit-instructions — not OnRamp quote. */
+  const openAcctFundModal = () =>
+    setState({ modal: "acctDetail", acctDetailIntent: "fund", copiedField: "" });
+  const openAcctFundChooser = () =>
+    setState({
+      modal: "fundChooser",
+      fundConvertStatus: "",
+      fundConvertError: "",
+      fundAfricanTargetCurrency: null,
+    });
+  const openAfricanFundOnRamp = () => {
+    const fiatList = depositAccountsQuery.data?.accounts ?? [];
+    const currencyKey =
+      state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
+        ? state.selectedAcctKey.slice("fiat:".length)
+        : "";
+    const currency =
+      state.selectedAcctKind === "fiat"
+        ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey)?.currency ||
+          currencyKey ||
+          "EUR"
+        : "EUR";
+    setState({
+      modal: "deposit",
+      depositStep: 1,
+      depositGroup: "country",
+      depositDone: false,
+      depositQuote: null,
+      depositAccept: null,
+      depositQuoteError: "",
+      depositAcceptError: "",
+      fundAfricanTargetCurrency: String(currency).toUpperCase(),
+      fundConvertStatus: "",
+      fundConvertError: "",
+    });
+  };
+  const backToWallets = () => setState({ screen: "wallets", modal: null });
   const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
   const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
@@ -564,7 +680,6 @@ export default function DashboardApp(props: Props = {}) {
     }
     openModal(name)();
   };
-  const openModalSwapFromAcct = () => setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
 
   const selectSendCountry = (i) => () => setState({ sendCountryIdx: i, sendRailIdx: 0, sendProviderIdx: 0 });
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
@@ -960,9 +1075,10 @@ export default function DashboardApp(props: Props = {}) {
       { key: "team", label: "Team", group: null },
       { key: "developer", label: "Developer", group: null },
     ];
-    const titles = {
+    const titles: Record<string, [string, string]> = {
       home: ["Home", "Your balances, actions, and activity at a glance"],
       wallets: ["Accounts", "One main stablecoin wallet, currency accounts around it"],
+      accountDetail: ["Account", "Balance, details, and activity for this account"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
       invoices: ["Invoices", "Request and track incoming payments"],
@@ -971,7 +1087,7 @@ export default function DashboardApp(props: Props = {}) {
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
     };
-    const [currentTitle, currentSubtitle] = titles[s.screen];
+    const [currentTitle, currentSubtitle] = titles[s.screen] || titles.wallets;
 
     const allCountryChips = (selIdx, selectFn) => COUNTRIES.map((c, i) => ({
       flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectFn(i),
@@ -1102,62 +1218,104 @@ export default function DashboardApp(props: Props = {}) {
     const depositAccountsList = depositAccountsQuery.data?.accounts ?? [];
     const stablecoinAccountsList = stablecoinAccountsQuery.data ?? [];
     const selectedDepositAccount =
-      s.selectedAcctKind === "fiat" ? depositAccountsList[s.selectedAcctIdx] ?? null : null;
+      s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
+        ? depositAccountsList.find(
+            (a) => a.currency.toUpperCase() === s.selectedAcctKey.slice("fiat:".length),
+          ) ?? null
+        : null;
     const selectedStablecoinAccount =
-      s.selectedAcctKind === "stablecoin"
-        ? stablecoinAccountsList[s.selectedAcctIdx] ?? null
+      s.selectedAcctKind === "stablecoin" && s.selectedAcctKey.startsWith("stablecoin:")
+        ? stablecoinAccountsList.find(
+            (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
+          ) ?? null
         : null;
     const acctDetail = selectedDepositAccount
       ? (() => {
           const view = mapDepositAccountToCardView(selectedDepositAccount);
           const [statusColor, statusSoft] = depositStatusColors(view.status);
+          const rows = buildDepositAccountDetailRows(selectedDepositAccount);
+          const bankRows = rows.filter((r) =>
+            /^(iban|bic|swift|bank|account name)/i.test(r.label),
+          );
+          const settleRows = rows.filter(
+            (r) => !/^(iban|bic|swift|bank|account name)/i.test(r.label),
+          );
           return {
             currency: view.currency,
             name: view.name,
+            beneficiary: selectedDepositAccount.account_holder_name || view.name,
             flagUrl: view.iso ? flagUrl(view.iso) : null,
             statusLabel: view.statusLabel,
             statusColor,
             statusSoft,
-            rows: buildDepositAccountDetailRows(selectedDepositAccount),
+            rows,
+            sections: [
+              ...(bankRows.length ? [{ title: "Bank details", rows: bankRows }] : []),
+              ...(settleRows.length ? [{ title: "Settlement", rows: settleRows }] : []),
+            ],
             instructions: selectedDepositAccount.instructions,
             railLabel: `${view.currency} · Fiat`,
-            showConvert: true,
+            showConvert: false,
+            showDownloadLetter: rows.length > 0,
           };
         })()
       : selectedStablecoinAccount
         ? (() => {
-            const networkLabel =
-              toPartnerNetwork(selectedStablecoinAccount.network) ??
-              (selectedStablecoinAccount.network || "—");
+            const networkLabel = formatNetworkLabel(selectedStablecoinAccount.network);
             const statusKey = isReadyStatus(selectedStablecoinAccount.status)
               ? "active"
               : selectedStablecoinAccount.status?.toLowerCase().includes("fail")
                 ? "unavailable"
                 : "pending";
             const [statusColor, statusSoft] = depositStatusColors(statusKey);
+            const rows = buildStablecoinAccountDetailRows(selectedStablecoinAccount);
             return {
               currency: selectedStablecoinAccount.currency,
               name: `${selectedStablecoinAccount.currency} · ${networkLabel}`,
+              beneficiary: `${selectedStablecoinAccount.currency} · ${networkLabel}`,
               flagUrl: null as string | null,
               statusLabel: describeStablecoinAccountStatus(selectedStablecoinAccount.status),
               statusColor,
               statusSoft,
-              rows: buildStablecoinAccountDetailRows(selectedStablecoinAccount),
+              rows,
+              sections: [{ title: "Account", rows }],
               instructions: null as string | null,
               railLabel: `Stablecoin · ${networkLabel}`,
               showConvert: false,
+              showDownloadLetter: false,
             };
           })()
       : null;
+    const acctSummaryLines = (acctDetail?.rows ?? [])
+      .filter((row) => !row.copyValue)
+      .slice(0, 3)
+      .map((row) => ({ k: row.label, v: row.value }));
+    // Prefer a short readable summary when coords-only rows would leave the strip empty.
+    const acctDetailLines =
+      acctSummaryLines.length > 0
+        ? acctSummaryLines
+        : acctDetail
+          ? [
+              { k: "Rail", v: acctDetail.railLabel ?? acctDetail.currency },
+              { k: "Status", v: acctDetail.statusLabel },
+              ...(acctDetail.rows[0]
+                ? [{ k: acctDetail.rows[0].label, v: acctDetail.rows[0].value }]
+                : []),
+            ]
+          : [];
     const cardSel = CARDS[s.selectedCardIdx];
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','Geist',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
-        const active = s.screen === n.key;
+        const active =
+          n.key === "wallets"
+            ? s.screen === "wallets" || s.screen === "accountDetail"
+            : s.screen === n.key;
         return { label: n.label, groupLabel: n.group, select: setScreen(n.key), bg: active ? "var(--indigo)" : "transparent", color: active ? "var(--indigo-on)" : "var(--muted)", weight: active ? 700 : 600, shadow: active ? "0 8px 18px -8px rgba(59,46,211,0.5)" : "none" };
       });
   const isHome = s.screen === "home";
   const isWallets = s.screen === "wallets";
+  const isAccountDetail = s.screen === "accountDetail";
   const isCards = s.screen === "cards";
   const isTransactions = s.screen === "transactions";
   const isInvoices = s.screen === "invoices";
@@ -1177,7 +1335,9 @@ export default function DashboardApp(props: Props = {}) {
             ? s.modal === "send"
             : n.key === "__more"
               ? s.sidebarOpen
-              : s.screen === n.key;
+              : n.key === "wallets"
+                ? s.screen === "wallets" || s.screen === "accountDetail"
+                : s.screen === n.key;
         const select = n.key === "__pay" ? guardMoneyModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
         return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
@@ -1201,7 +1361,7 @@ export default function DashboardApp(props: Props = {}) {
   });
   const stableBalanceRows = stablecoinAccountsList.map((a) => ({
     flagUrl: null as string | null,
-    code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
+    code: `${a.currency}/${formatNetworkLabel(a.network)}`,
     balance: "—",
   }));
   const homeCurrencyChips =
@@ -1250,7 +1410,7 @@ export default function DashboardApp(props: Props = {}) {
   const mainWalletBalance = "—";
   const mainWalletSub = "Stablecoin balance not yet available";
   const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
-  const fiatAccountCards = depositAccountsList.map((a, i) => {
+  const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
     return {
@@ -1262,11 +1422,11 @@ export default function DashboardApp(props: Props = {}) {
       statusSoft,
       primaryDetail: view.primaryDetail,
       secondaryDetail: view.secondaryDetail,
-      openDetail: openAcctDetail("fiat", i),
+      openDetail: openAcctDetail("fiat", `fiat:${view.currency.toUpperCase()}`),
     };
   });
-  const stablecoinAccountCards = stablecoinAccountsList.map((a, i) => {
-    const networkLabel = toPartnerNetwork(a.network) ?? (a.network || "—");
+  const stablecoinAccountCards = stablecoinAccountsList.map((a) => {
+    const networkLabel = formatNetworkLabel(a.network);
     const statusKey = isReadyStatus(a.status)
       ? "active"
       : a.status?.toLowerCase().includes("fail")
@@ -1282,7 +1442,7 @@ export default function DashboardApp(props: Props = {}) {
       statusSoft,
       primaryDetail: networkLabel,
       secondaryDetail: "Stablecoin · on-chain",
-      openDetail: openAcctDetail("stablecoin", i),
+      openDetail: openAcctDetail("stablecoin", `stablecoin:${a.id}`),
     };
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
@@ -1302,6 +1462,24 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
+  const fundingUsdcAccount =
+    stablecoinAccountsList.find(
+      (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
+    ) ??
+    stablecoinAccountsList.find((a) => isFundableStablecoinAccount(a)) ??
+    null;
+  const fundStablecoinRails = buildFundStablecoinRails(stablecoinAccountsList);
+  const africanFundPlan = acctDetail
+    ? planAfricanFundOrchestration({
+        fiatCurrency: acctDetail.currency,
+        fiatAccountId: null,
+        entityId: fundingUsdcAccount?.entityId ?? null,
+        usdcAccountId: fundingUsdcAccount?.id ?? null,
+        usdcWalletAddress: fundingUsdcAccount?.walletAddress ?? null,
+        treasuryWalletAddress: summaryQuery.data?.totals.wallet_address ?? null,
+        convertNetworkId: null,
+      })
+    : null;
   const cardsRecent = decoratedAll.slice(0, 5);
   const corridors = CORRIDORS.map(c => ({
         ...c,
@@ -1483,7 +1661,7 @@ export default function DashboardApp(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: "Account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency} via African rails` : "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isModalSend = s.modal === "send";
@@ -1493,6 +1671,8 @@ export default function DashboardApp(props: Props = {}) {
   const isModalSwap = s.modal === "swap";
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
+  const isModalFundChooser = s.modal === "fundChooser";
+  const isModalFundStablecoin = s.modal === "fundStablecoin";
   const isModalCardDetail = s.modal === "cardDetail";
   const isModalNewCard = s.modal === "newCard";
   const isModalInvoice = s.modal === "invoice";
@@ -1910,6 +2090,37 @@ Create payment
 />
 </>) : null}
 
+{(isAccountDetail && acctDetail) ? (<>
+<AccountDetailScreen
+  name={acctDetail.name}
+  currency={acctDetail.currency}
+  flagUrl={acctDetail.flagUrl}
+  railLabel={acctDetail.railLabel ?? `${acctDetail.currency} · Fiat`}
+  statusLabel={acctDetail.statusLabel}
+  statusColor={acctDetail.statusColor}
+  statusSoft={acctDetail.statusSoft}
+  balance="—"
+  balanceSub="Balance not yet available"
+  summaryLines={acctDetailLines}
+  recent={walletsRecent}
+  canConvert={s.selectedAcctKind === "fiat"}
+  onBack={backToWallets}
+  onOpenDetails={openAcctDetailsModal}
+  onFund={openAcctFundChooser}
+  onSend={guardMoneyModal("send")}
+  onViewAllTx={goTransactions}
+/>
+</>) : null}
+{(isAccountDetail && !acctDetail) ? (<>
+<div className="ep-acct-detail" data-screen-label="Account detail">
+<button type="button" onClick={backToWallets} className="ep-acct-detail__back">← Accounts</button>
+<div className="ep-wallets__empty">
+<div className="ep-wallets__empty-title">Account not found</div>
+<div className="ep-wallets__empty-body">This account is no longer available. Go back to Accounts to pick another.</div>
+</div>
+</div>
+</>) : null}
+
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
 <div className="ep-cards__preview" role="note">
@@ -2309,6 +2520,9 @@ bn.elevated ? (
   depositNetworkLabel={depositNetworkLabel}
   depositAddress={depositAddress}
   closeModal={closeModal}
+  fundTargetCurrency={s.fundAfricanTargetCurrency}
+  fundConvertStatus={s.fundConvertStatus}
+  fundConvertError={s.fundConvertError}
 />
 </>) : null}
 
@@ -2422,8 +2636,59 @@ bn.elevated ? (
 <TxDetailModal txDetail={txDetail} isLoading={txDetailQuery.isLoading} liveStatus={txLiveStatus} />
 </>) : null}
 
+{(isModalFundChooser && acctDetail) ? (<>
+<FundChooserModal
+  currency={acctDetail.currency}
+  accountName={acctDetail.name}
+  onCancel={closeModal}
+  onContinue={(option: FundChooserOption) => {
+    if (option === "bank") {
+      openAcctFundModal();
+      return;
+    }
+    if (option === "stablecoin") {
+      setState({ modal: "fundStablecoin" });
+      return;
+    }
+    if (meQuery.isLoading || meQuery.isPending) return;
+    const status =
+      (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    if (!isKybApproved(status)) {
+      goVerification();
+      if (canOpenKybWizard(status)) openModalKyb();
+      return;
+    }
+    openAfricanFundOnRamp();
+  }}
+  africanDisabled={Boolean(africanFundPlan && !africanFundPlan.canRunAfricanOnRamp)}
+  africanDisabledReason={
+    africanFundPlan ? africanFundDisabledReason(africanFundPlan) : undefined
+  }
+  stablecoinDisabled={fundStablecoinRails.length === 0}
+  stablecoinDisabledReason={
+    fundStablecoinRails.length > 0
+      ? undefined
+      : "No ready stablecoin deposit rails yet. Open a stablecoin account and wait until it is active."
+  }
+/>
+</>) : null}
+
+{(isModalFundStablecoin && acctDetail) ? (<>
+<FundStablecoinModal
+  targetCurrency={acctDetail.currency}
+  targetName={acctDetail.name}
+  rails={fundStablecoinRails}
+  onBack={() => setState({ modal: "fundChooser" })}
+/>
+</>) : null}
+
 {(isModalAcctDetail) ? (<>
-<AccountDetailModal acctDetail={acctDetail} copiedField={s.copiedField} copyField={copyField} openModalSwapFromAcct={openModalSwapFromAcct} />
+<AccountDetailModal
+  acctDetail={acctDetail}
+  intent={s.acctDetailIntent === "fund" ? "fund" : "details"}
+  copiedField={s.copiedField}
+  copyField={copyField}
+/>
 </>) : null}
 
 {(isModalCardDetail) ? (<>

@@ -20,6 +20,12 @@ export type FinancialAccount = {
   currency: string;
   network: string;
   status: string;
+  /** On-chain deposit address when the partner returns one. */
+  walletAddress?: string | null;
+  /** Partner chain warning from deposit-instructions / account payload. */
+  chainDisclaimer?: string | null;
+  /** Hosted checkout URL when the provider returns one (often null). */
+  checkoutUrl?: string | null;
 };
 
 const READY = new Set(["active", "ready", "open", "opened"]);
@@ -118,7 +124,7 @@ export function normalizeNetworkKey(network: string | null | undefined): string 
   return (network || "").trim().toLowerCase();
 }
 
-/** Partner / UI spelling → canonical Base | Polygon label used on preview. */
+/** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
 export function toPartnerNetwork(network: string): "Base" | "Polygon" | null {
   const key = normalizeNetworkKey(network);
   if (key === "base") return "Base";
@@ -126,16 +132,25 @@ export function toPartnerNetwork(network: string): "Base" | "Polygon" | null {
   return null;
 }
 
+/** Dynamic network label for UX — never hardcode a chain the backend didn't return. */
+export function formatNetworkLabel(network: string | null | undefined): string {
+  const raw = (network || "").trim();
+  if (!raw) return "—";
+  return toPartnerNetwork(raw) ?? raw;
+}
+
 /**
- * UI network codes (`BASE` / `POLYGON`) already held as listed USDC accounts.
- * Mirrors Mboka `open_account` uniqueness on (asset_type, currency, network).
+ * UI network codes (`BASE` / `POLYGON`) already held as listed **USDC** accounts
+ * for Phase 4 create uniqueness. Other assets/networks from the API do not
+ * consume these create slots.
  */
 export function occupiedStablecoinNetworkCodes(
   accounts: FinancialAccount[],
 ): Set<string> {
   const occupied = new Set<string>();
   for (const account of accounts) {
-    if (!isListedStablecoinAccount(account)) continue;
+    if (account.assetType.toLowerCase() !== "stablecoin") continue;
+    if (account.currency !== "USDC") continue;
     const partner = toPartnerNetwork(account.network);
     if (partner === "Base") occupied.add("BASE");
     if (partner === "Polygon") occupied.add("POLYGON");
@@ -156,6 +171,20 @@ export function isReadyStatus(status: string | null | undefined): boolean {
   return READY.has((status || "").trim().toLowerCase());
 }
 
+/** Accept only http(s) checkout links — reject javascript:/data:/etc. */
+export function toHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeFinancialAccount(
   row: Record<string, unknown>,
   entityId: string,
@@ -167,19 +196,46 @@ export function normalizeFinancialAccount(
   const currency = String(account.currency ?? "").trim().toUpperCase();
   const network = String(account.network ?? "").trim();
   const status = String(account.status ?? account.provider_status ?? "").trim();
-  return { id, entityId, assetType, currency, network, status };
+  const walletRaw = account.wallet_address ?? account.walletAddress ?? account.address;
+  const walletAddress =
+    typeof walletRaw === "string" && walletRaw.trim() ? walletRaw.trim() : null;
+  const disclaimerRaw = account.chain_disclaimer ?? account.chainDisclaimer;
+  const chainDisclaimer =
+    typeof disclaimerRaw === "string" && disclaimerRaw.trim() ? disclaimerRaw.trim() : null;
+  const checkoutUrl = toHttpUrl(account.checkout_url ?? account.checkoutUrl);
+  return {
+    id,
+    entityId,
+    assetType,
+    currency,
+    network,
+    status,
+    walletAddress,
+    chainDisclaimer,
+    checkoutUrl,
+  };
 }
 
-/** USDC on Base/Polygon — creatable / listable on the Accounts screen. */
+/** Any stablecoin rail returned by the API (for wallets list / fund UX). */
 export function isListedStablecoinAccount(account: FinancialAccount): boolean {
-  if (account.assetType.toLowerCase() !== "stablecoin") return false;
-  if (account.currency !== "USDC") return false;
-  return SEND_NETWORKS.has(normalizeNetworkKey(account.network));
+  return account.assetType.toLowerCase() === "stablecoin" && Boolean(account.currency);
 }
 
-/** Accounts that Phase 4 can send from (ready USDC on Base/Polygon). */
+/** Ready stablecoin rails with a deposit address — fundable via on-chain transfer. */
+export function isFundableStablecoinAccount(account: FinancialAccount): boolean {
+  return (
+    isListedStablecoinAccount(account) &&
+    isReadyStatus(account.status) &&
+    Boolean(account.walletAddress?.trim())
+  );
+}
+
+/** Phase 4 sendable: ready USDC on Base/Polygon only. */
 export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
-  return isListedStablecoinAccount(account) && isReadyStatus(account.status);
+  if (!isListedStablecoinAccount(account)) return false;
+  if (account.currency !== "USDC") return false;
+  if (!SEND_NETWORKS.has(normalizeNetworkKey(account.network))) return false;
+  return isReadyStatus(account.status);
 }
 
 async function collectStablecoinAccounts(
@@ -213,11 +269,16 @@ export async function listSendableStablecoinAccounts(): Promise<FinancialAccount
 }
 
 /**
- * All USDC Base/Polygon partner accounts for the Accounts screen
- * (includes pending — not only send-ready).
+ * All partner stablecoin accounts for the Accounts / fund surfaces
+ * (includes pending; any asset/network the API returns).
  */
 export async function listStablecoinAccounts(): Promise<FinancialAccount[]> {
   return collectStablecoinAccounts(isListedStablecoinAccount);
+}
+
+/** Ready stablecoin accounts that expose a deposit wallet address. */
+export async function listFundableStablecoinAccounts(): Promise<FinancialAccount[]> {
+  return collectStablecoinAccounts(isFundableStablecoinAccount);
 }
 
 export function describeStablecoinAccountStatus(status: string | null | undefined): string {
@@ -237,18 +298,58 @@ export function buildStablecoinAccountDetailRows(
     { label: "Asset", value: account.currency },
     {
       label: "Network",
-      value: toPartnerNetwork(account.network) ?? (account.network || "—"),
+      value: formatNetworkLabel(account.network),
     },
     {
       label: "Status",
       value: describeStablecoinAccountStatus(account.status),
     },
   ];
+  if (account.walletAddress) {
+    rows.push({
+      label: "Deposit address",
+      value: account.walletAddress,
+      copyValue: account.walletAddress,
+    });
+  }
   if (account.id) {
     rows.push({ label: "Account ID", value: account.id, copyValue: account.id });
   }
   return rows;
 }
+
+/**
+ * Build UX rails for the Fund-via-stablecoin flow from API accounts.
+ * One entry per fundable (ready + wallet) account — asset/network come from backend.
+ */
+export function buildFundStablecoinRails(
+  accounts: FinancialAccount[],
+): FundStablecoinRail[] {
+  return accounts.filter(isFundableStablecoinAccount).map((account) => {
+    const networkLabel = formatNetworkLabel(account.network);
+    return {
+      id: account.id,
+      currency: account.currency,
+      network: account.network,
+      networkLabel,
+      walletAddress: account.walletAddress!.trim(),
+      chainDisclaimer:
+        account.chainDisclaimer ||
+        `Send only ${account.currency} on ${networkLabel}. Funds sent on the wrong network may be lost.`,
+      checkoutUrl: account.checkoutUrl ?? null,
+    };
+  });
+}
+
+export type FundStablecoinRail = {
+  id: string;
+  currency: string;
+  network: string;
+  networkLabel: string;
+  walletAddress: string;
+  chainDisclaimer: string;
+  checkoutUrl: string | null;
+};
 
 /** Pick the account matching the UI chain key (`base` / `polygon`). */
 export function accountForNetwork(

@@ -50,6 +50,10 @@ export type DepositModalProps = {
   depositNetworkLabel: string;
   depositAddress: string;
   closeModal: () => void;
+  /** When funding a fiat account via African OnRamp → USDC (best-effort convert). */
+  fundTargetCurrency?: string | null;
+  fundConvertStatus?: string;
+  fundConvertError?: string;
 };
 
 function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
@@ -100,6 +104,22 @@ export default function DepositModal(p: DepositModalProps) {
       {p.depositNotDone ? (
         <div className="ep-money-flow">
           <StepProgress dots={p.depositStepDots || []} label="Deposit progress" />
+
+          {p.fundTargetCurrency ? (
+            <div className="ep-fund-orch-note" role="note">
+              <strong>Funding {p.fundTargetCurrency}</strong>
+              <span>
+                Pay African fiat → USDC. After settlement we attempt an automatic USDC →{" "}
+                {p.fundTargetCurrency} convert (best effort — not a single partner API).
+              </span>
+              {p.fundConvertStatus ? (
+                <span className="ep-fund-orch-note__status">{p.fundConvertStatus}</span>
+              ) : null}
+              {p.fundConvertError ? (
+                <span className="ep-fund-orch-note__err">{p.fundConvertError}</span>
+              ) : null}
+            </div>
+          ) : null}
 
           {p.depositStepIs1 ? (
             <div className="ep-money-stack">
@@ -486,6 +506,18 @@ export default function DepositModal(p: DepositModalProps) {
               ) : null}
               {p.depositLiveStatus.label}
             </span>
+          ) : null}
+
+          {p.fundTargetCurrency && (p.fundConvertStatus || p.fundConvertError) ? (
+            <div className="ep-fund-orch-note" role="status">
+              <strong>Auto-convert to {p.fundTargetCurrency}</strong>
+              {p.fundConvertStatus ? (
+                <span className="ep-fund-orch-note__status">{p.fundConvertStatus}</span>
+              ) : null}
+              {p.fundConvertError ? (
+                <span className="ep-fund-orch-note__err">{p.fundConvertError}</span>
+              ) : null}
+            </div>
           ) : null}
 
           {p.depositIsMobileRail && p.depositPromptSent ? (
