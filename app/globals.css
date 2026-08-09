@@ -1161,7 +1161,7 @@ body {
   }
 }
 
-/* Bottom tab bar — mobile-app parity (elevated Pay center) */
+/* Bottom tab bar — mobile-app parity (elevated Send center) */
 .ep-bottom-nav {
   flex-shrink: 0;
   display: flex;

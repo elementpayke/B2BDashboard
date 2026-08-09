@@ -1325,8 +1325,8 @@ export default function DashboardApp(props: Props = {}) {
   const isDeveloper = s.screen === "developer";
   const bottomNavItems = [
         { key: "home", label: "Home", icon: "⌂", elevated: false },
-        { key: "wallets", label: "Wallets", icon: "▦", elevated: false },
-        { key: "__pay", label: "Pay", icon: "⇄", elevated: true },
+        { key: "wallets", label: "Accounts", icon: "▦", elevated: false },
+        { key: "__pay", label: "Send", icon: "⇄", elevated: true },
         { key: "transactions", label: "Activity", icon: "≣", elevated: false },
         { key: "__more", label: "More", icon: "⋯", elevated: false },
       ].map(n => {
@@ -1848,7 +1848,7 @@ export default function DashboardApp(props: Props = {}) {
   const receiveAcctRail = selectedReceiveAccount
     ? `${currencyLabel(selectedReceiveAccount.currency)} bank deposit`
     : receiveAccountsList.length === 0
-      ? "Issue a currency account from Wallets to receive bank transfers."
+      ? "Issue a currency account from Accounts to receive bank transfers."
       : "—";
   const receiveAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setReceiveAsset(k), bg: s.receiveAsset === k ? "var(--ink)" : "var(--surface2)", color: s.receiveAsset === k ? "var(--bg)" : "var(--ink)" }));
   const receiveNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
