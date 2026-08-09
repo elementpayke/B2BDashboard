@@ -56,7 +56,8 @@ Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
 
 ## Suggested first implementation slice
 
-**T1 → T2 → T4** on branch `feat/ux-parity-shell-home` (tokens + shell + hero), one PR, then continue Wave 1.
+**T1 → T2 → T4** shipped on `feat/ux-parity-shell-home` (PR #28).  
+**T5 + T3** (home body + identity/rates) continue on the same branch.
 
 ## Out of scope for parity PRs
 

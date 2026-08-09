@@ -68,6 +68,9 @@ const SEND_STABLECOIN_NETWORKS = DEPOSIT_NETWORKS.filter(
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
+import SectionHeader from "@/components/ui/SectionHeader";
+import HomeIdentity from "@/components/home/HomeIdentity";
+import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
 import TransactionsScreen from "@/components/transactions/TransactionsScreen";
 import TxDetailModal from "@/components/transactions/TxDetailModal";
@@ -1009,7 +1012,7 @@ export default function DashboardApp(props: Props = {}) {
         statusLabel: label,
         statusColor: color,
         statusSoft: soft,
-        amountColor: sign === "+" ? "var(--indigo-text)" : "var(--ink)",
+        amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
         openDetail: openTxDetail(t.id),
       };
     };
@@ -1708,7 +1711,16 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
-{/* 1. Total balance */}
+<HomeIdentity
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  kybApproved={kybApproved}
+  kybLabel={describeKybStatus(kybStatus)}
+  kybLoading={kybStatusLoading}
+/>
+<RatesMarquee rates={liveRates} />
+
+{/* Hero balance */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
@@ -1741,7 +1753,6 @@ Create payment
 </div>
 </div>
 
-{/* Desktop/tablet: full stats column beside balance */}
 <div className="ep-home__stats-desktop">
 {(homeStats || []).map((hs: any, __i1: number) => (
 <div key={__i1} className="ep-home__stat">
@@ -1752,44 +1763,43 @@ Create payment
 </div>
 </div>
 
-{/* Mobile: compact status chips (transaction status / pending) */}
-<div className="ep-home__stats-mobile" aria-label="Key metrics">
-{(homeStats || []).map((hs: any, __i1: number) => (
-<div key={__i1} className="ep-home__stat-chip">
-<div className="label">{hs.label}</div>
-<div className="value">{hs.value}</div>
-</div>
-))}
-</div>
-
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
-{/* 2. Quick actions */}
-<div className="ep-grid-quick">
+<SectionHeader title="Quick Actions" />
+<div className="ep-home__qa-row" aria-label="Quick actions">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
-<button key={__i1} onClick={qa.open} className={`ep-home__quick${__i1 === 0 ? "" : " ep-quick-secondary"}`} style={{gridColumn: isMobile && __i1 === 0 ? "1 / -1" : undefined}}>
-<span className="ep-home__quick-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}}>{qa.icon}</span>
-<div><b className="ep-home__quick-title">{qa.label}</b><span className="ep-home__quick-desc">{qa.desc}</span></div>
+<button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
+<span className="ep-home__qa-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}} aria-hidden>{qa.icon}</span>
+<span className="ep-home__qa-label">{qa.label}</span>
 </button>
 ))}
 </div>
 
 {(homeCurrencyChips?.length) ? (
-<div className="ep-home__chips" aria-label="Currency balances">
+<>
+<SectionHeader title="Balances" actionLabel="See All" onAction={setScreen("wallets")} />
+<div className="ep-home__balance-rows" aria-label="Currency balances">
 {(homeCurrencyChips || []).map((hc: any, __i1: number) => (
-<div key={__i1} className="ep-home__chip">
-<span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
-<span style={{fontSize: "12px", fontWeight: "700"}}>{hc.code}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "11.5px", color: "var(--muted)"}}>{hc.balance}</span>
-</div>
+<button key={__i1} type="button" className="ep-home__balance-row" onClick={setScreen("wallets")}>
+<span className="ep-home__balance-row-left">
+{hc.flagUrl ? (
+  <span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
+) : (
+  <span className="ep-home__balance-row-avatar" aria-hidden>{String(hc.code).slice(0, 2)}</span>
+)}
+<span className="ep-home__balance-row-code">{hc.code}</span>
+</span>
+<span className="ep-home__balance-row-amt">{hc.balance}</span>
+</button>
 ))}
 </div>
+</>
 ) : null}
 
-{/* 4. Recent activity */}
-<ActivityList title="Recent activity" items={homeRecent} onViewAll={goTransactions} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
+<SectionHeader title="Recent Activity" actionLabel="See All" onAction={goTransactions} />
+<ActivityList title="Recent activity" items={homeRecent} showHeader={false} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
 
 </div>
 </>) : null}
