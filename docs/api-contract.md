@@ -52,6 +52,7 @@ the exact failure mode). See
 | Swap / Bulk-payout modals | Real on/off-ramp swap and bulk CSV payouts are each a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
 | Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
 | Cards screen (+ card detail / fund / issue modals) | **No backend at all**, not even a data model. The original design renders in full against local mock data; all card actions are local-only. |
+| Send money — **saved recipients** | **No Mboka beneficiaries API.** Dashboard-owned BFF: `GET/POST /api/saved-recipients`, `DELETE /api/saved-recipients/{id}`, file-backed under `.data/` for now. Contract: `docs/saved-recipients.md`. SendModal wiring is a separate track. |
 
 > ⚠️ Team and Cards render mock data behind an in-product **Preview** banner
 > so demo balances, card numbers, and teammates are clearly marked as
@@ -232,3 +233,7 @@ list, that transaction's own detail query, and the dashboard summary.
 6. **Dead code**: a few now-unreachable rendervals/handlers remain from the
    original all-mock prototype (e.g. `modalTitle`'s `cardDetail`/`newCard`/
    `fundCard` entries) — harmless, safe to prune in a follow-up pass.
+7. **Saved recipients persistence**: dashboard BFF scaffold exists
+   (`docs/saved-recipients.md`); swap `.data/saved-recipients.json` for
+   Postgres/KV before multi-instance production, and wire SendModal's
+   "select from saved details" UI to `savedRecipientsApi`.
