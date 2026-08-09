@@ -126,6 +126,32 @@ export function toPartnerNetwork(network: string): "Base" | "Polygon" | null {
   return null;
 }
 
+/**
+ * UI network codes (`BASE` / `POLYGON`) already held as listed USDC accounts.
+ * Mirrors Mboka `open_account` uniqueness on (asset_type, currency, network).
+ */
+export function occupiedStablecoinNetworkCodes(
+  accounts: FinancialAccount[],
+): Set<string> {
+  const occupied = new Set<string>();
+  for (const account of accounts) {
+    if (!isListedStablecoinAccount(account)) continue;
+    const partner = toPartnerNetwork(account.network);
+    if (partner === "Base") occupied.add("BASE");
+    if (partner === "Polygon") occupied.add("POLYGON");
+  }
+  return occupied;
+}
+
+export function isStablecoinNetworkOccupied(
+  accounts: FinancialAccount[],
+  networkCode: string,
+): boolean {
+  const partner = toPartnerNetwork(networkCode);
+  if (!partner) return false;
+  return occupiedStablecoinNetworkCodes(accounts).has(partner.toUpperCase());
+}
+
 export function isReadyStatus(status: string | null | undefined): boolean {
   return READY.has((status || "").trim().toLowerCase());
 }

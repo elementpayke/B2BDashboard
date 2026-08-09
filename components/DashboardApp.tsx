@@ -21,6 +21,8 @@ import {
   buildDepositAccountDetailRows,
   currencyIso,
   currencyLabel,
+  occupiedFiatCurrencyCodes,
+  SUPPORTED_IBAN_CURRENCIES,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -47,6 +49,7 @@ import {
   buildStablecoinAccountDetailRows,
   toPartnerNetwork,
   isReadyStatus,
+  occupiedStablecoinNetworkCodes,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import {
@@ -726,11 +729,49 @@ export default function DashboardApp(props: Props = {}) {
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
   const closeAddAccountMenu = () => setState({ addAccountMenu: false });
-  const openCreateAccount = (kind) => () => setState({
-    modal: "createAccount", addAccountMenu: false, createAccountKind: kind,
-    createAccountName: "", createAccountCurrency: "", createAccountStablecoin: "",
-    createAccountNetwork: "", createAccountError: "",
-  });
+  const openCreateAccount = (kind) => () => {
+    const stableOccupied = occupiedStablecoinNetworkCodes(
+      stablecoinAccountsQuery.data ?? [],
+    );
+    const fiatOccupied = occupiedFiatCurrencyCodes(
+      depositAccountsQuery.data?.accounts ?? [],
+    );
+    if (kind === "stablecoin") {
+      const available = (["BASE", "POLYGON"] as const).filter(
+        (code) => !stableOccupied.has(code),
+      );
+      setState({
+        modal: "createAccount",
+        addAccountMenu: false,
+        createAccountKind: "stablecoin",
+        createAccountName: "",
+        createAccountCurrency: "",
+        createAccountStablecoin: available.length > 0 ? "USDC" : "",
+        createAccountNetwork: available.length === 1 ? available[0] : "",
+        createAccountError:
+          available.length === 0
+            ? "You already have USDC accounts on Base and Polygon."
+            : "",
+      });
+      return;
+    }
+    const availableFiat = SUPPORTED_IBAN_CURRENCIES.filter(
+      (code) => !fiatOccupied.has(code),
+    );
+    setState({
+      modal: "createAccount",
+      addAccountMenu: false,
+      createAccountKind: "bank",
+      createAccountName: "",
+      createAccountCurrency: availableFiat.length === 1 ? availableFiat[0] : "",
+      createAccountStablecoin: "",
+      createAccountNetwork: "",
+      createAccountError:
+        availableFiat.length === 0
+          ? "You already have fiat accounts for USD and EUR."
+          : "",
+    });
+  };
   const setCreateAccountName = (e) => setState({ createAccountName: e.target.value });
   const setCreateAccountCurrency = (e) => setState({ createAccountCurrency: e.target.value, createAccountError: "" });
   const setCreateAccountStablecoin = (e) => setState({ createAccountStablecoin: e.target.value, createAccountError: "" });
@@ -807,6 +848,15 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.createAccountStablecoin || !state.createAccountNetwork) {
         return setState({ createAccountError: "Choose a stablecoin and a network." });
       }
+      const occupied = occupiedStablecoinNetworkCodes(
+        stablecoinAccountsQuery.data ?? [],
+      );
+      if (occupied.has(state.createAccountNetwork.trim().toUpperCase())) {
+        return setState({
+          createAccountError:
+            "You already have a USDC account on this network — one per Base/Polygon.",
+        });
+      }
       setState({ createAccountSaving: true, createAccountError: "" });
       try {
         const payload = buildStablecoinOpenPayload({
@@ -829,6 +879,14 @@ export default function DashboardApp(props: Props = {}) {
     }
     if (!state.createAccountCurrency) {
       return setState({ createAccountError: "Choose a currency." });
+    }
+    const occupiedFiat = occupiedFiatCurrencyCodes(
+      depositAccountsQuery.data?.accounts ?? [],
+    );
+    if (occupiedFiat.has(state.createAccountCurrency.trim().toUpperCase())) {
+      return setState({
+        createAccountError: `You already have a ${state.createAccountCurrency.toUpperCase()} account.`,
+      });
     }
     setState({ createAccountSaving: true, createAccountError: "" });
     try {
@@ -1825,6 +1883,13 @@ Create payment
   toggleAddAccountMenu={toggleAddAccountMenu}
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
+  canCreateStablecoin={
+    occupiedStablecoinNetworkCodes(stablecoinAccountsList).size < 2
+  }
+  canCreateBank={
+    occupiedFiatCurrencyCodes(depositAccountsList).size <
+    SUPPORTED_IBAN_CURRENCIES.length
+  }
   accounts={accounts}
   eligible={depositEligible}
   eligibilityLoading={depositEligibilityQuery.isLoading}
@@ -2502,6 +2567,8 @@ bn.elevated ? (
   setCreateAccountNetwork={setCreateAccountNetwork}
   createAccountError={s.createAccountError}
   createAccountSaving={s.createAccountSaving}
+  occupiedNetworks={[...occupiedStablecoinNetworkCodes(stablecoinAccountsList)]}
+  occupiedCurrencies={[...occupiedFiatCurrencyCodes(depositAccountsList)]}
   closeModal={closeModal}
   submitCreateAccount={submitCreateAccount}
 />

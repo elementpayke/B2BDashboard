@@ -3408,6 +3408,16 @@ body {
   background: var(--surface2);
 }
 
+.ep-wallets__menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-wallets__menu-item:disabled:hover,
+.ep-wallets__menu-item:disabled:focus-visible {
+  background: none;
+}
+
 .ep-wallets__menu-icon {
   width: 32px;
   height: 32px;
