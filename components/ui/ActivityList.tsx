@@ -22,6 +22,8 @@ type Props = {
   title: string;
   items: ActivityItem[];
   onViewAll?: () => void;
+  /** Link label next to the section title. Default matches the redesign handoff. */
+  viewAllLabel?: string;
   /** When true, always use card layout (for narrow embeds) */
   forceCards?: boolean;
   emptyLabel?: string;
@@ -39,6 +41,7 @@ export default function ActivityList({
   title,
   items,
   onViewAll,
+  viewAllLabel = "View all →",
   forceCards = false,
   emptyLabel = "No activity yet",
   columns = "activity",
@@ -51,7 +54,7 @@ export default function ActivityList({
           <h2 className="ep-activity__title">{title}</h2>
           {onViewAll ? (
             <button type="button" onClick={onViewAll} className="ep-link-btn">
-              See All
+              {viewAllLabel}
             </button>
           ) : null}
         </div>

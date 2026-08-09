@@ -88,6 +88,15 @@ import WalletsScreen from "@/components/wallets/WalletsScreen";
 import CreateAccountModal from "@/components/wallets/CreateAccountModal";
 import AccountDetailModal from "@/components/wallets/AccountDetailModal";
 import AccountDetailScreen from "@/components/wallets/AccountDetailScreen";
+
+function fiatRailForCurrency(code: string): string {
+  const c = code.toUpperCase();
+  if (c === "EUR") return "IBAN · SEPA";
+  if (c === "GBP") return "IBAN · Faster Pay";
+  if (c === "USD") return "IBAN · SWIFT";
+  if (c === "KES") return "Mobile money";
+  return "Bank transfer";
+}
 import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import {
@@ -119,10 +128,11 @@ export default function DashboardApp(props: Props = {}) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const [state, setStateRaw] = useState<any>(() => ({
-    theme: qp("theme") || props.startTheme || "light", screen: qp("screen") || props.startScreen || "home",
+    theme: props.startTheme || "light", screen: props.startScreen || "home",
     sidebarOpen: false,
-    modal: qp("modal") || null,
-    sendStep: 1, sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    modal: null as string | null,
+    sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
@@ -152,7 +162,7 @@ export default function DashboardApp(props: Props = {}) {
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     fundAmount: "250.00", fundCardDone: false,
-    balanceView: "all", sendGroup: "country", sendMethod: null,
+    balanceView: "all", sendGroup: "country",
   }));
   const setState = useCallback((update: any) => {
     setStateRaw((prev: any) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
@@ -161,6 +171,20 @@ export default function DashboardApp(props: Props = {}) {
   useEffect(() => {
     const timer = setInterval(() => setState((s: any) => ({ quoteSeconds: Math.max(0, s.quoteSeconds - 1) })), 1000);
     return () => clearInterval(timer);
+  }, [setState]);
+
+  // Deep-link query params (screen/modal/theme) — applied after mount so SSR
+  // and the first client render stay identical (avoids hydration mismatch).
+  useEffect(() => {
+    const screen = qp("screen");
+    const modal = qp("modal");
+    const theme = qp("theme");
+    if (!screen && !modal && !theme) return;
+    setState((s: any) => ({
+      ...(screen ? { screen } : {}),
+      ...(modal ? { modal } : {}),
+      ...(theme ? { theme } : {}),
+    }));
   }, [setState]);
 
   // Close the drawer when crossing into desktop chrome.
@@ -378,8 +402,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => setState({ screen: "transactions" });
 
   const openModal = (name) => () => setState({
-    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
-    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    modal: name, sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -698,6 +721,24 @@ export default function DashboardApp(props: Props = {}) {
     }));
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
+  const resetSendMethod = () =>
+    setState({
+      sendMethod: null,
+      sendStep: 1,
+      sendDone: false,
+      sendRecipient: "",
+      sendRecipientName: "",
+      sendAmount: "",
+      sendQuote: null,
+      sendQuoteError: "",
+      sendAcceptError: "",
+      sendPreview: null,
+      sendConfirm: null,
+      sendAccountId: "",
+    });
+  const openConvert = () =>
+    setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
+  const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
@@ -1064,12 +1105,17 @@ export default function DashboardApp(props: Props = {}) {
   /** Send opens on a method chooser, as in the design. Picking bank or
    *  mobile money resolves to the country flow with that rail already
    *  selected, so the user never re-answers the question inside step 1. */
+  /** Send opens on a method chooser. Bank/mobile preselect that rail; fields clear on change. */
   const chooseSendMethod = (m) => () => {
+    if (m === "internal") return;
     const common = {
       sendMethod: m,
       sendStep: 1,
       sendCountryIdx: 0,
       sendProviderIdx: 0,
+      sendRecipient: "",
+      sendRecipientName: "",
+      sendAmount: "",
       sendQuoteError: "",
       sendAcceptError: "",
       sendPreview: null,
@@ -1081,15 +1127,16 @@ export default function DashboardApp(props: Props = {}) {
       setState({ ...common, sendGroup: "crypto" });
       return;
     }
+    const prefer = m === "mobile" ? "mobile" : "bank";
+    const countryIdx = COUNTRIES.findIndex((c) => c.rails.some((r) => r.type === prefer));
+    const idx = countryIdx >= 0 ? countryIdx : 0;
     setState({
       ...common,
       sendGroup: "country",
-      sendRailIdx: railIndexForMethod(COUNTRIES[0].rails, m),
+      sendCountryIdx: idx,
+      sendRailIdx: railIndexForMethod(COUNTRIES[idx].rails, m),
     });
   };
-  const resetSendMethod = () =>
-    setState({ sendMethod: null, sendStep: 1, sendQuoteError: "", sendAcceptError: "" });
-
 
     const s = state;
     const boostDark = props.boostDarkContrast ?? true;
@@ -1120,11 +1167,20 @@ export default function DashboardApp(props: Props = {}) {
     };
     const [currentTitle, currentSubtitle] = titles[s.screen] || titles.wallets;
 
+    const sendCountryChips = COUNTRIES.map((c, i) => ({
+      flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectSendCountry(i),
+      bg: i === s.sendCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendCountryIdx ? "var(--indigo)" : "transparent",
+      selectSend: selectSendCountry(i), sendBg: i === s.sendCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", sendBorder: i === s.sendCountryIdx ? "var(--indigo)" : "transparent",
+      _rails: c.rails,
+    })).filter((c) => {
+      if (s.sendMethod === "mobile") return c._rails.some((r) => r.type === "mobile");
+      if (s.sendMethod === "bank") return c._rails.some((r) => r.type === "bank");
+      return true;
+    });
     const allCountryChips = (selIdx, selectFn) => COUNTRIES.map((c, i) => ({
       flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectFn(i),
       bg: i === selIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === selIdx ? "var(--indigo)" : "transparent",
     }));
-    const sendCountryChips = allCountryChips(s.sendCountryIdx, selectSendCountry).map(c => ({ ...c, selectSend: c.select, sendBg: c.bg, sendBorder: c.border }));
     const sendCountry = COUNTRIES[s.sendCountryIdx];
     const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
     const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
@@ -1285,8 +1341,8 @@ export default function DashboardApp(props: Props = {}) {
               ...(settleRows.length ? [{ title: "Settlement", rows: settleRows }] : []),
             ],
             instructions: selectedDepositAccount.instructions,
-            railLabel: `${view.currency} · Fiat`,
-            showConvert: false,
+            railLabel: fiatRailForCurrency(view.currency),
+            showConvert: true,
             showDownloadLetter: rows.length > 0,
           };
         })()
@@ -1335,7 +1391,7 @@ export default function DashboardApp(props: Props = {}) {
             ]
           : [];
     const cardSel = CARDS[s.selectedCardIdx];
-  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','Geist',sans-serif", ...vars };
+  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
         const active =
@@ -1434,16 +1490,20 @@ export default function DashboardApp(props: Props = {}) {
   const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
+    const key = `fiat:${view.currency.toUpperCase()}`;
     return {
+      key,
       currency: view.currency,
       name: view.name,
+      label: view.name,
       flagUrl: view.iso ? flagUrl(view.iso) : null,
+      rail: fiatRailForCurrency(view.currency),
+      balance: "—",
+      detail: view.primaryDetail,
       statusLabel: view.statusLabel,
       statusColor,
       statusSoft,
-      primaryDetail: view.primaryDetail,
-      secondaryDetail: view.secondaryDetail,
-      openDetail: openAcctDetail("fiat", `fiat:${view.currency.toUpperCase()}`),
+      openDetail: openAcctDetail("fiat", key),
     };
   });
   const stablecoinAccountCards = stablecoinAccountsList.map((a) => {
@@ -1454,16 +1514,20 @@ export default function DashboardApp(props: Props = {}) {
         ? "unavailable"
         : "pending";
     const [statusColor, statusSoft] = depositStatusColors(statusKey);
+    const key = `stablecoin:${a.id}`;
     return {
+      key,
       currency: a.currency,
-      name: `${a.currency} · ${networkLabel}`,
+      name: a.currency,
+      label: `${a.currency} · ${networkLabel}`,
       flagUrl: null as string | null,
+      rail: `Stablecoin · ${networkLabel}`,
+      balance: "—",
+      detail: networkLabel,
       statusLabel: describeStablecoinAccountStatus(a.status),
       statusColor,
       statusSoft,
-      primaryDetail: networkLabel,
-      secondaryDetail: "Stablecoin · on-chain",
-      openDetail: openAcctDetail("stablecoin", `stablecoin:${a.id}`),
+      openDetail: openAcctDetail("stablecoin", key),
     };
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
@@ -1959,8 +2023,8 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
 <aside className="ep-sidebar" aria-label="Main navigation">
 <button onClick={exitApp} className="ep-sidebar__brand">
-<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
-<div style={{minWidth: 0}}><div style={{fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
+<img src="/logo-elementpay.png" alt="" width={32} height={32} className="ep-sidebar__logo" />
+<div style={{minWidth: 0}}><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
 </button>
 
 <nav className="ep-sidebar__nav">
@@ -1977,14 +2041,14 @@ export default function DashboardApp(props: Props = {}) {
 </nav>
 
 <div className="ep-sidebar__rates">
-<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
+<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
 {(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
 <div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "1px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
 ))}
 </div>
 
 <div className="ep-sidebar__profile">
-<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
+<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
 <div style={{minWidth: "0", flex: 1}}><div style={{fontSize: "11.5px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
 <button onClick={toggleTheme} aria-label="Toggle theme" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>{themeIcon}</button>
 <button onClick={logout} title="Log out" aria-label="Log out" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "12px", flexShrink: "0"}}>⏻</button>
@@ -2142,6 +2206,7 @@ Create payment
   }}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}
+  onConvert={openConvert}
 />
 </>) : null}
 
@@ -2158,11 +2223,12 @@ Create payment
   balanceSub="Balance not yet available"
   summaryLines={acctDetailLines}
   recent={walletsRecent}
-  canConvert={s.selectedAcctKind === "fiat"}
+  canConvert={Boolean(acctDetail.showConvert)}
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
   onFund={openAcctFundChooser}
   onSend={guardMoneyModal("send")}
+  onConvert={openConvert}
   onViewAllTx={goTransactions}
 />
 </>) : null}
@@ -2238,7 +2304,7 @@ Create payment
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
 <div style={{display: "flex", justifyContent: "flex-end"}}>
-<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
+<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
 </div>
 <InvoiceList items={invoices} emptyLabel={invoicesQuery.isLoading ? "Loading…" : "No invoices yet"} />
 </div>
@@ -2625,7 +2691,7 @@ bn.elevated ? (
 <div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
 <span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
 <span style={{color: "var(--muted)"}}>{row.rail}</span>
-<span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
+<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
 </div>
 </React.Fragment>
 ))}
@@ -2633,16 +2699,16 @@ bn.elevated ? (
 <div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
 </div>
-<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
+<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
 </div>
 </>) : null}
 </>) : null}
 {(bulkDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
+<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
@@ -2651,44 +2717,47 @@ bn.elevated ? (
 
 {(isModalSwap) ? (<>
 {(swapNotAccepted) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div style={{display: "flex", gap: "8px"}}>
-<button onClick={setOnramp} style={{flex: "1", padding: "10px", borderRadius: "12px", border: `1.5px solid ${(onrampTabBorder)}`, background: (onrampTabBg), color: (onrampTabColor), fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Fiat → Stablecoin</button>
-<button onClick={setOfframp} style={{flex: "1", padding: "10px", borderRadius: "12px", border: `1.5px solid ${(offrampTabBorder)}`, background: (offrampTabBg), color: (offrampTabColor), fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Stablecoin → Fiat</button>
+<div className="ep-convert">
+<div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
+<button type="button" role="tab" aria-selected={s.onrampDir === "onramp"} data-active={s.onrampDir === "onramp" ? "true" : "false"} className="ep-convert__tab" onClick={setOnramp}>Fiat → Stablecoin</button>
+<button type="button" role="tab" aria-selected={s.onrampDir === "offramp"} data-active={s.onrampDir === "offramp" ? "true" : "false"} className="ep-convert__tab" onClick={setOfframp}>Stablecoin → Fiat</button>
 </div>
-<div style={{background: "var(--surface2)", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px"}}>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500"}}>{swapAmountFrom}</span>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapFromCcy}</span>
+<div className="ep-convert__quote">
+<div className="ep-convert__row">
+<span className="ep-convert__amount">{swapAmountFrom}</span>
+<span className="ep-convert__ccy">{swapFromCcy}</span>
 </div>
-<div style={{textAlign: "center", color: "var(--muted2)", fontSize: "13px"}}>↓</div>
-<div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500", color: "var(--indigo-text)"}}>{swapAmountTo}</span>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapToCcy}</span>
+<div className="ep-convert__arrow" aria-hidden>↓</div>
+<div className="ep-convert__row">
+<span className="ep-convert__amount ep-convert__amount--out">{swapAmountTo}</span>
+<span className="ep-convert__ccy">{swapToCcy}</span>
 </div>
 </div>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px"}}>
-<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Rate</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "600"}}>{swapRate}</span></div>
-<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Settles via</span><span style={{fontWeight: "600"}}>{swapSettle}</span></div>
+<div className="ep-convert__meta">
+<div className="ep-convert__meta-row"><span className="ep-convert__meta-k">Rate</span><span className="ep-convert__meta-v ep-convert__meta-v--mono">{swapRate}</span></div>
+<div className="ep-convert__meta-row"><span className="ep-convert__meta-k">Settles via</span><span className="ep-convert__meta-v">{swapSettle}</span></div>
 </div>
 {(quoteExpired) ? (<>
-<div style={{padding: "12px 14px", borderRadius: "12px", background: "var(--red-tint)", display: "flex", flexDirection: "column", gap: "2px"}}><span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--red)"}}>Rate expired</span><span style={{fontSize: "11.5px", color: "var(--muted)"}}>Refresh to fetch an up-to-date rate.</span></div>
+<div className="ep-convert__expired" role="alert"><span className="ep-convert__expired-title">Rate expired</span><span className="ep-convert__expired-body">Refresh to fetch an up-to-date rate. A stale quote cannot be accepted.</span></div>
 </>) : null}
 {(quoteLive) ? (<>
-<div style={{height: "4px", borderRadius: "2px", background: "var(--surface3)", overflow: "hidden"}}><div style={{height: "100%", background: "var(--indigo)", width: `${(quoteProgress)}%`, transition: "width 1s linear"}} /></div>
+<div className="ep-convert__timer" role="timer" aria-live="off">
+<span className="ep-convert__timer-label">Quote locks for {s.quoteSeconds}s</span>
+<div className="ep-convert__timer-track"><div className="ep-convert__timer-fill" style={{width: `${quoteProgress}%`}} /></div>
+</div>
 </>) : null}
-<div style={{display: "flex", gap: "8px"}}>
-<button onClick={refreshQuote} style={{flex: "1", padding: "10px", borderRadius: "12px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Refresh quote</button>
-<button onClick={acceptQuote} disabled={quoteExpired} style={{flex: "1", padding: "10px", borderRadius: "12px", border: "none", background: (acceptBg), color: (acceptColor), fontSize: "12.5px", fontWeight: "700", cursor: (acceptCursor)}}>Accept & settle</button>
+<div className="ep-convert__actions">
+<button type="button" className="ep-convert__btn ep-convert__btn--ghost" onClick={refreshQuote}>Refresh quote</button>
+<button type="button" className="ep-convert__btn ep-convert__btn--primary" onClick={acceptQuote} disabled={quoteExpired}>Accept &amp; settle</button>
 </div>
 </div>
 </>) : null}
 {(swapAccepted) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Swap complete</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Settled via {swapSettle}.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
+<div className="ep-convert__success">
+<span className="ep-convert__success-icon" aria-hidden>✓</span>
+<span className="ep-convert__success-title">Swap complete</span>
+<span className="ep-convert__success-body">Settled via {swapSettle}.</span>
+<button type="button" className="ep-convert__btn ep-convert__btn--ghost" style={{width: "auto", minWidth: 120, marginTop: 6}} onClick={closeModal}>Done</button>
 </div>
 </>) : null}
 </>) : null}
@@ -2749,6 +2818,7 @@ bn.elevated ? (
   intent={s.acctDetailIntent === "fund" ? "fund" : "details"}
   copiedField={s.copiedField}
   copyField={copyField}
+  openModalSwapFromAcct={openModalSwapFromAcct}
 />
 </>) : null}
 
@@ -2824,13 +2894,13 @@ bn.elevated ? (
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Client name</span><input value={invClient} onChange={setInvClient} placeholder="e.g. Acme GmbH" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={invAmount} onChange={setInvAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 {invoiceError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{invoiceError}</div>) : null}
-<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
+<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
 </div>
 </>) : null}
 {(invoiceDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
+<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>{invClient} will get a payment link by email.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>

@@ -120,7 +120,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center" }}>
         <span style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px" }}>✓</span>
-        <span style={{ fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>KYB submitted</span>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>KYB submitted</span>
         <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>Compliance review usually takes 1–2 business days.</span>
         <button type="button" onClick={p.closeModal} style={{ marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}>
           Done
@@ -286,7 +286,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
 
       <div style={{ display: "flex", gap: "8px" }}>
         {p.step > 1 ? (
-          <button type="button" onClick={p.backStep} disabled={p.busy} style={{ flex: 1, padding: "13px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer" }}>
+          <button type="button" onClick={p.backStep} disabled={p.busy} style={{ flex: 1, padding: "13px", borderRadius: "14px", border: "1.5px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer" }}>
             Back
           </button>
         ) : null}
@@ -294,7 +294,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
           type="button"
           onClick={p.nextStep}
           disabled={p.busy || (p.step === 4 && !p.docsComplete)}
-          style={{ flex: 2, padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: p.busy ? "wait" : "pointer", opacity: p.busy ? 0.7 : 1 }}
+          style={{ flex: 2, padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: p.busy ? "wait" : "pointer", opacity: p.busy ? 0.7 : 1 }}
         >
           {p.busy ? "Saving…" : p.step === 4 ? "Submit for review" : "Continue"}
         </button>

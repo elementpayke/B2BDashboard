@@ -8,7 +8,7 @@ export type AccountDetailSummaryLine = {
   v: string;
 };
 
-const BALANCE_RANGES = ["1D", "1W", "1M", "3M", "1Y", "All"] as const;
+const BALANCE_RANGES = ["7 Days", "30 Days", "90 Days"] as const;
 type BalanceRange = (typeof BALANCE_RANGES)[number];
 
 export type AccountDetailScreenProps = {
@@ -24,11 +24,13 @@ export type AccountDetailScreenProps = {
   balanceSub?: string;
   summaryLines: AccountDetailSummaryLine[];
   recent: ActivityItem[];
+  /** Show Convert in the action row (fiat accounts). */
   canConvert?: boolean;
   onBack: () => void;
   onOpenDetails: () => void;
   onFund: () => void;
   onSend: () => void;
+  onConvert?: () => void;
   onViewAllTx: () => void;
 };
 
@@ -44,15 +46,16 @@ export default function AccountDetailScreen({
   balanceSub,
   summaryLines,
   recent,
-  canConvert = true,
+  canConvert = false,
   onBack,
   onOpenDetails,
   onFund,
   onSend,
+  onConvert,
   onViewAllTx,
 }: AccountDetailScreenProps) {
   // Visual shell only — range selection does not invent a history series.
-  const [range, setRange] = useState<BalanceRange>("1M");
+  const [range, setRange] = useState<BalanceRange>("30 Days");
 
   return (
     <div data-screen-label="Account detail" className="ep-acct-detail">
@@ -70,11 +73,11 @@ export default function AccountDetailScreen({
           />
         ) : (
           <span className="ep-acct-detail__flag-fallback" aria-hidden>
-            {currency.slice(0, 1)}
+            ◈
           </span>
         )}
         <div className="ep-acct-detail__identity-text">
-          <h2 className="ep-acct-detail__name">{name}</h2>
+          <h1 className="ep-acct-detail__name">{name}</h1>
           <div className="ep-acct-detail__meta">
             <span className="ep-acct-detail__rail">{railLabel}</span>
             <StatusBadge
@@ -106,13 +109,20 @@ export default function AccountDetailScreen({
             >
               Details
             </button>
-            {canConvert ? (
+            <button
+              type="button"
+              onClick={onFund}
+              className="ep-acct-detail__action"
+            >
+              Fund <span aria-hidden>＋</span>
+            </button>
+            {canConvert && onConvert ? (
               <button
                 type="button"
-                onClick={onFund}
+                onClick={onConvert}
                 className="ep-acct-detail__action"
               >
-                Fund <span aria-hidden>＋</span>
+                Convert
               </button>
             ) : null}
             <button
@@ -120,6 +130,22 @@ export default function AccountDetailScreen({
               onClick={onSend}
               className="ep-acct-detail__action ep-acct-detail__action--primary"
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M21.5 2.5L11 13"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M21.5 2.5L15 21l-4-8-8-4 18.5-6.5z"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
               Send
             </button>
           </div>
@@ -169,6 +195,7 @@ export default function AccountDetailScreen({
         title="Recent transactions"
         items={recent}
         onViewAll={onViewAllTx}
+        viewAllLabel="View all →"
         emptyLabel="No transactions for this account yet"
       />
     </div>
