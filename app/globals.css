@@ -5413,6 +5413,12 @@ select.ep-wallets-create__control {
   line-height: 1.45;
 }
 
+.ep-money-hint--inline {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
 .ep-money-input {
   width: 100%;
   min-height: 48px;

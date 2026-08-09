@@ -65,6 +65,8 @@ export type SendModalProps = {
   sendRecipientLabel: string;
   sendRecipient: string;
   setSendRecipient: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** When mobile money — rewrite local 07… to +254… (E.164) on blur. */
+  normalizeSendRecipientPhone?: (e?: React.FocusEvent<HTMLInputElement>) => void;
   sendRecipientPlaceholder: string;
   sendAmount: string;
   setSendAmount: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -432,10 +434,25 @@ export default function SendModal(p: SendModalProps) {
                     className="ep-money-input"
                     value={p.sendRecipient}
                     onChange={p.setSendRecipient}
+                    onBlur={p.normalizeSendRecipientPhone}
                     placeholder={p.sendRecipientPlaceholder}
                     autoComplete="off"
                     spellCheck={false}
+                    inputMode={
+                      p.sendRecipientLabel?.toLowerCase().includes("phone") ||
+                      p.sendRecipientLabel?.toLowerCase().includes("mobile")
+                        ? "tel"
+                        : undefined
+                    }
                   />
+                  {!p.sendIsCrypto &&
+                  (p.sendRecipientLabel?.toLowerCase().includes("phone") ||
+                    p.sendRecipientLabel?.toLowerCase().includes("mobile")) ? (
+                    <span className="ep-money-hint ep-money-hint--inline">
+                      Local numbers like 07… convert to international format (e.g. +254…) when you
+                      leave the field.
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="ep-money-field">

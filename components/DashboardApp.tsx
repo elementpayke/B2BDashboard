@@ -31,6 +31,7 @@ import {
   buildPaymentInstructionRows,
   formatQuoteFees,
   formatSendQuoteError,
+  toE164,
   isQuoteExpiredError,
   isQuoteAlreadyAcceptedError,
   newIdempotencyKey,
@@ -534,11 +535,21 @@ export default function DashboardApp(props: Props = {}) {
             : Math.min(state.sendProviderIdx, providerOptions.length - 1);
         const providerName = providerOptions[providerIdx] || providerOptions[0];
         const networkId = networkIdForProvider(catalogProviders, providerName);
+        // Sync the input to E.164 before quote so the user sees +254… and
+        // the payload matches (mobile rails only).
+        const recipientRaw = state.sendRecipient.trim();
+        const recipientAccountNumber =
+          rail.type === "mobile"
+            ? toE164(recipientRaw, country.dialCode)
+            : recipientRaw;
+        if (rail.type === "mobile" && recipientAccountNumber !== recipientRaw) {
+          setState({ sendRecipient: recipientAccountNumber });
+        }
         const payload = buildSendQuotePayload({
           currency: country.code,
           countryIso: country.iso,
           railType: rail.type,
-          recipientAccountNumber: state.sendRecipient.trim(),
+          recipientAccountNumber,
           recipientName: state.sendRecipientName.trim(),
           amount: state.sendAmount.trim(),
           refundAddress,
@@ -823,6 +834,21 @@ export default function DashboardApp(props: Props = {}) {
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
+  /** Mobile money: rewrite local numbers (07…) to E.164 (+254…) in the field. */
+  const normalizeSendRecipientPhone = (e?: React.FocusEvent<HTMLInputElement>) => {
+    setState((prev: any) => {
+      if (prev.sendGroup !== "country") return {};
+      const country = COUNTRIES[prev.sendCountryIdx] || COUNTRIES[0];
+      const rail = country.rails[prev.sendRailIdx] || country.rails[0];
+      const isMobile = prev.sendMethod === "mobile" || rail?.type === "mobile";
+      if (!isMobile || !country.dialCode) return {};
+      const raw = String(e?.currentTarget?.value ?? prev.sendRecipient ?? "").trim();
+      if (!raw) return {};
+      const next = toE164(raw, country.dialCode);
+      if (next === prev.sendRecipient) return {};
+      return { sendRecipient: next };
+    });
+  };
   const pickSendProvider = (index: number) => setState({ sendProviderIdx: index });
   const applySavedRecipient = (r: SavedRecipient) => {
     setSaveRecipientMessage("");
@@ -844,13 +870,16 @@ export default function DashboardApp(props: Props = {}) {
         patch.sendProviderIdx = 0;
       }
     }
+    const country = COUNTRIES[countryIdx] || COUNTRIES[0];
+    const railIdx =
+      typeof patch.sendRailIdx === "number" ? (patch.sendRailIdx as number) : state.sendRailIdx;
+    const rail = country.rails[railIdx] || country.rails[0];
+    const isMobile =
+      state.sendMethod === "mobile" || r.railType === "mobile" || rail?.type === "mobile";
+    if (isMobile && country.dialCode) {
+      patch.sendRecipient = toE164(String(r.accountNumber || ""), country.dialCode);
+    }
     if (r.provider && state.sendGroup === "country") {
-      const country = COUNTRIES[countryIdx] || COUNTRIES[0];
-      const railIdx =
-        typeof patch.sendRailIdx === "number"
-          ? patch.sendRailIdx
-          : state.sendRailIdx;
-      const rail = country.rails[railIdx as number] || country.rails[0];
       const catalogProviders = offRampProvidersForRail(
         sendCatalogQuery.data,
         country.iso,
@@ -871,7 +900,7 @@ export default function DashboardApp(props: Props = {}) {
   };
   const saveCurrentRecipientDetails = async () => {
     const name = state.sendRecipientName.trim();
-    const account = state.sendRecipient.trim();
+    let account = state.sendRecipient.trim();
     if (!account || (state.sendGroup === "country" && !name)) return;
     const rail: SavedRecipientRail =
       state.sendGroup === "crypto"
@@ -880,6 +909,10 @@ export default function DashboardApp(props: Props = {}) {
           ? "mobile"
           : "bank";
     const country = COUNTRIES[state.sendCountryIdx] || COUNTRIES[0];
+    if (rail === "mobile" && country.dialCode) {
+      account = toE164(account, country.dialCode);
+      if (account !== state.sendRecipient.trim()) setState({ sendRecipient: account });
+    }
     const countryRail = country.rails[state.sendRailIdx] || country.rails[0];
     const catalogProviders = offRampProvidersForRail(
       sendCatalogQuery.data,
@@ -2018,7 +2051,12 @@ export default function DashboardApp(props: Props = {}) {
     ? { label: sendLiveLabel as string, color: sendLiveColor as string, soft: sendLiveSoft as string, isSettling: !sendStatusQuery.isTerminal }
     : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
-  const sendRecipientPlaceholder = s.sendGroup === "crypto" ? "0x… (EVM address)" : sendRail.placeholder;
+  const sendRecipientPlaceholder =
+    s.sendGroup === "crypto"
+      ? "0x… (EVM address)"
+      : sendRail.type === "mobile" && sendCountry.dialCode
+        ? `+${sendCountry.dialCode}712345678`
+        : sendRail.placeholder;
   const sendCorridorText = s.sendGroup === "crypto"
     ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base/Polygon"} via account send — min 1.00 USDC.`
     : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
@@ -2779,6 +2817,7 @@ Create payment
   sendRecipientLabel={sendRecipientLabel}
   sendRecipient={sendRecipient}
   setSendRecipient={setSendRecipient}
+  normalizeSendRecipientPhone={normalizeSendRecipientPhone}
   sendRecipientPlaceholder={sendRecipientPlaceholder}
   sendAmount={sendAmount}
   setSendAmount={setSendAmount}
