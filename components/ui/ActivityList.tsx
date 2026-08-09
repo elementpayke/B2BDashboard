@@ -51,7 +51,7 @@ export default function ActivityList({
           <h2 className="ep-activity__title">{title}</h2>
           {onViewAll ? (
             <button type="button" onClick={onViewAll} className="ep-link-btn">
-              View all →
+              See All
             </button>
           ) : null}
         </div>

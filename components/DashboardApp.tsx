@@ -68,6 +68,9 @@ const SEND_STABLECOIN_NETWORKS = DEPOSIT_NETWORKS.filter(
 import ActivityList from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
+import SectionHeader from "@/components/ui/SectionHeader";
+import HomeIdentity from "@/components/home/HomeIdentity";
+import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
 import TransactionsScreen from "@/components/transactions/TransactionsScreen";
 import TxDetailModal from "@/components/transactions/TxDetailModal";
@@ -1009,7 +1012,7 @@ export default function DashboardApp(props: Props = {}) {
         statusLabel: label,
         statusColor: color,
         statusSoft: soft,
-        amountColor: sign === "+" ? "var(--indigo-text)" : "var(--ink)",
+        amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
         openDetail: openTxDetail(t.id),
       };
     };
@@ -1089,7 +1092,7 @@ export default function DashboardApp(props: Props = {}) {
           })()
       : null;
     const cardSel = CARDS[s.selectedCardIdx];
-  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
+  const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'Geist','Geist',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
         const active = s.screen === n.key;
@@ -1105,17 +1108,22 @@ export default function DashboardApp(props: Props = {}) {
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
   const bottomNavItems = [
-        { key: "home", label: "Home", icon: "⌂" },
-        { key: "wallets", label: "Accounts", icon: "▦" },
-        { key: "__send", label: "Send", icon: "↗" },
-        { key: "transactions", label: "Activity", icon: "≣" },
-        { key: "__more", label: "More", icon: "⋯" },
+        { key: "home", label: "Home", icon: "⌂", elevated: false },
+        { key: "wallets", label: "Wallets", icon: "▦", elevated: false },
+        { key: "__pay", label: "Pay", icon: "⇄", elevated: true },
+        { key: "transactions", label: "Activity", icon: "≣", elevated: false },
+        { key: "__more", label: "More", icon: "⋯", elevated: false },
       ].map(n => {
-        const active = s.screen === n.key;
-        const select = n.key === "__send" ? openModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
-        return { label: n.label, icon: n.icon, select, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
+        const active =
+          n.key === "__pay"
+            ? s.modal === "send"
+            : n.key === "__more"
+              ? s.sidebarOpen
+              : s.screen === n.key;
+        const select = n.key === "__pay" ? guardMoneyModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
+        return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
-  const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "var(--indigo-on)" }));
+  const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
   // No real total-balance source exists yet: it is a currency-accounts
   // aggregate (IBAN/Wallets scope, deferred), and the only backend field in
   // this neighborhood — `totals.user_balance` — is an untyped Privy
@@ -1129,16 +1137,21 @@ export default function DashboardApp(props: Props = {}) {
   const homeTotalBalance = "—";
   const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
   // Fiat IBAN chips + partner USDC Base/Polygon chips. No invented balances.
-  const homeCurrencyChips = s.balanceView === "stablecoin"
-    ? stablecoinAccountsList.map((a) => ({
-        flagUrl: null as string | null,
-        code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
-        balance: "—",
-      }))
-    : depositAccountsList.map((a) => {
-        const view = mapDepositAccountToCardView(a);
-        return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
-      });
+  const fiatBalanceRows = depositAccountsList.map((a) => {
+    const view = mapDepositAccountToCardView(a);
+    return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
+  });
+  const stableBalanceRows = stablecoinAccountsList.map((a) => ({
+    flagUrl: null as string | null,
+    code: `${a.currency}/${toPartnerNetwork(a.network) ?? a.network}`,
+    balance: "—",
+  }));
+  const homeCurrencyChips =
+    s.balanceView === "stablecoin"
+      ? stableBalanceRows
+      : s.balanceView === "fiat"
+        ? fiatBalanceRows
+        : [...fiatBalanceRows, ...stableBalanceRows];
   // Unknown while /auth/me is in flight — distinct from a real "pending" KYB
   // status, so we don't flash "Start verification" for already-approved businesses.
   const kybStatusLoading = (meQuery.isLoading || meQuery.isPending) && !meQuery.data;
@@ -1161,6 +1174,16 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
+  const heroActions = [
+    { label: "Send", icon: "↗", open: guardMoneyModal("send") },
+    { label: "Top up", icon: "＋", open: guardMoneyModal("deposit") },
+    { label: "Receive", icon: "↙", open: openModal("receive") },
+    { label: "Accounts", icon: "▦", open: setScreen("wallets") },
+  ];
+  const heroPills = [
+    { label: "Money in · 30d", value: homeStats[0]?.value ?? "—" },
+    { label: "Awaiting", value: homeStats[2]?.value ?? "—" },
+  ];
   const homeRecent = decoratedAll.slice(0, 4);
   // No real stablecoin settlement-wallet balance source exists yet — same
   // reasoning as `homeTotalBalance` above. Previously hardcoded to
@@ -1645,8 +1668,8 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
 <aside className="ep-sidebar" aria-label="Main navigation">
 <button onClick={exitApp} className="ep-sidebar__brand">
-<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
-<div style={{minWidth: 0}}><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
+<span style={{width: "28px", height: "28px", borderRadius: "8px", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "13px", fontWeight: "700", flexShrink: "0"}}>E</span>
+<div style={{minWidth: 0}}><div style={{fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
 </button>
 
 <nav className="ep-sidebar__nav">
@@ -1663,14 +1686,14 @@ export default function DashboardApp(props: Props = {}) {
 </nav>
 
 <div className="ep-sidebar__rates">
-<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'DM Sans',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
+<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'Geist',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
 {(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
 <div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "1px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
 ))}
 </div>
 
 <div className="ep-sidebar__profile">
-<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
+<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Geist Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
 <div style={{minWidth: "0", flex: 1}}><div style={{fontSize: "11.5px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
 <button onClick={toggleTheme} aria-label="Toggle theme" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>{themeIcon}</button>
 <button onClick={logout} title="Log out" aria-label="Log out" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "12px", flexShrink: "0"}}>⏻</button>
@@ -1698,7 +1721,16 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
-{/* 1. Total balance */}
+<HomeIdentity
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  kybApproved={kybApproved}
+  kybLabel={describeKybStatus(kybStatus)}
+  kybLoading={kybStatusLoading}
+/>
+<RatesMarquee rates={liveRates} />
+
+{/* Hero balance */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
@@ -1713,9 +1745,24 @@ Create payment
 </div>
 <div className="ep-home__balance-value">{homeTotalBalance}</div>
 <div className="ep-home__balance-sub">{balanceViewSub}</div>
+<div className="ep-home__hero-pills" aria-label="Key metrics">
+{(heroPills || []).map((pill: any, __i1: number) => (
+<div key={__i1} className="ep-home__hero-pill">
+<span className="label">{pill.label}</span>
+<span className="value">{pill.value}</span>
+</div>
+))}
+</div>
+<div className="ep-home__hero-actions" aria-label="Quick money actions">
+{(heroActions || []).map((ha: any, __i1: number) => (
+<button key={__i1} type="button" onClick={ha.open} className="ep-home__hero-action">
+<span className="ep-home__hero-action-icon" aria-hidden>{ha.icon}</span>
+<span className="ep-home__hero-action-label">{ha.label}</span>
+</button>
+))}
+</div>
 </div>
 
-{/* Desktop/tablet: full stats column beside balance */}
 <div className="ep-home__stats-desktop">
 {(homeStats || []).map((hs: any, __i1: number) => (
 <div key={__i1} className="ep-home__stat">
@@ -1726,44 +1773,43 @@ Create payment
 </div>
 </div>
 
-{/* Mobile: compact status chips (transaction status / pending) */}
-<div className="ep-home__stats-mobile" aria-label="Key metrics">
-{(homeStats || []).map((hs: any, __i1: number) => (
-<div key={__i1} className="ep-home__stat-chip">
-<div className="label">{hs.label}</div>
-<div className="value">{hs.value}</div>
-</div>
-))}
-</div>
-
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
-{/* 2. Quick actions */}
-<div className="ep-grid-quick">
+<SectionHeader title="Quick Actions" />
+<div className="ep-home__qa-row" aria-label="Quick actions">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
-<button key={__i1} onClick={qa.open} className={`ep-home__quick${__i1 === 0 ? "" : " ep-quick-secondary"}`} style={{gridColumn: isMobile && __i1 === 0 ? "1 / -1" : undefined}}>
-<span className="ep-home__quick-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}}>{qa.icon}</span>
-<div><b className="ep-home__quick-title">{qa.label}</b><span className="ep-home__quick-desc">{qa.desc}</span></div>
+<button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
+<span className="ep-home__qa-icon" style={{background: (qa.iconBg), color: (qa.iconColor)}} aria-hidden>{qa.icon}</span>
+<span className="ep-home__qa-label">{qa.label}</span>
 </button>
 ))}
 </div>
 
 {(homeCurrencyChips?.length) ? (
-<div className="ep-home__chips" aria-label="Currency balances">
+<>
+<SectionHeader title="Balances" actionLabel="See All" onAction={setScreen("wallets")} />
+<div className="ep-home__balance-rows" aria-label="Currency balances">
 {(homeCurrencyChips || []).map((hc: any, __i1: number) => (
-<div key={__i1} className="ep-home__chip">
-<span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
-<span style={{fontSize: "12px", fontWeight: "700"}}>{hc.code}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "11.5px", color: "var(--muted)"}}>{hc.balance}</span>
-</div>
+<button key={__i1} type="button" className="ep-home__balance-row" onClick={setScreen("wallets")}>
+<span className="ep-home__balance-row-left">
+{hc.flagUrl ? (
+  <span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
+) : (
+  <span className="ep-home__balance-row-avatar" aria-hidden>{String(hc.code).slice(0, 2)}</span>
+)}
+<span className="ep-home__balance-row-code">{hc.code}</span>
+</span>
+<span className="ep-home__balance-row-amt">{hc.balance}</span>
+</button>
 ))}
 </div>
+</>
 ) : null}
 
-{/* 4. Recent activity */}
-<ActivityList title="Recent activity" items={homeRecent} onViewAll={goTransactions} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
+<SectionHeader title="Recent Activity" actionLabel="See All" onAction={goTransactions} />
+<ActivityList title="Recent activity" items={homeRecent} showHeader={false} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
 
 </div>
 </>) : null}
@@ -1861,7 +1907,7 @@ Create payment
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
 <div style={{display: "flex", justifyContent: "flex-end"}}>
-<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
+<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
 </div>
 <InvoiceList items={invoices} emptyLabel={invoicesQuery.isLoading ? "Loading…" : "No invoices yet"} />
 </div>
@@ -2075,17 +2121,19 @@ Create payment
 {(isCompact) ? (<>
 <nav className="ep-bottom-nav" aria-label="Primary mobile">
 {(bottomNavItems || []).map((bn: any, __i1: number) => (
-<button key={__i1} type="button" onClick={bn.select} style={{color: bn.color}}>
+bn.elevated ? (
+<button key={bn.key || __i1} type="button" className="ep-bottom-nav__pay" data-active={bn.active ? "true" : "false"} onClick={bn.select} aria-label={bn.label}>
+<span className="ep-bottom-nav__pay-orb" aria-hidden>{bn.icon}</span>
+<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
+</button>
+) : (
+<button key={bn.key || __i1} type="button" data-active={bn.active ? "true" : "false"} onClick={bn.select} style={{color: bn.color}}>
 <span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
 <span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
 </button>
+)
 ))}
 </nav>
-{!modalOpen ? (
-<button type="button" className="ep-fab" onClick={guardMoneyModal("send")} aria-label="Create payment">
-<span aria-hidden>↗</span> Create payment
-</button>
-) : null}
 </>) : null}
 </main>
 </div>
@@ -2237,7 +2285,7 @@ Create payment
 <div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
 <span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
 <span style={{color: "var(--muted)"}}>{row.rail}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
 </div>
 </React.Fragment>
 ))}
@@ -2245,16 +2293,16 @@ Create payment
 <div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
 <div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
+<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
 </div>
-<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
+<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
 </div>
 </>) : null}
 </>) : null}
 {(bulkDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
@@ -2270,17 +2318,17 @@ Create payment
 </div>
 <div style={{background: "var(--surface2)", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "6px"}}>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "24px", fontWeight: "500"}}>{swapAmountFrom}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500"}}>{swapAmountFrom}</span>
 <span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapFromCcy}</span>
 </div>
 <div style={{textAlign: "center", color: "var(--muted2)", fontSize: "13px"}}>↓</div>
 <div style={{display: "flex", alignItems: "center", justifyContent: "space-between"}}>
-<span style={{fontFamily: "'DM Mono',monospace", fontSize: "24px", fontWeight: "500", color: "var(--indigo-text)"}}>{swapAmountTo}</span>
+<span style={{fontFamily: "'Geist Mono',monospace", fontSize: "24px", fontWeight: "500", color: "var(--indigo-text)"}}>{swapAmountTo}</span>
 <span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)", padding: "5px 10px", background: "var(--surface3)", borderRadius: "8px"}}>{swapToCcy}</span>
 </div>
 </div>
 <div style={{display: "flex", flexDirection: "column", gap: "8px", fontSize: "12.5px"}}>
-<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Rate</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "600"}}>{swapRate}</span></div>
+<div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Rate</span><span style={{fontFamily: "'Geist Mono',monospace", fontWeight: "600"}}>{swapRate}</span></div>
 <div style={{display: "flex", justifyContent: "space-between"}}><span style={{color: "var(--muted)"}}>Settles via</span><span style={{fontWeight: "600"}}>{swapSettle}</span></div>
 </div>
 {(quoteExpired) ? (<>
@@ -2298,7 +2346,7 @@ Create payment
 {(swapAccepted) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Swap complete</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Swap complete</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>Settled via {swapSettle}.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
@@ -2385,13 +2433,13 @@ Create payment
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Client name</span><input value={invClient} onChange={setInvClient} placeholder="e.g. Acme GmbH" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 <div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={invAmount} onChange={setInvAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
 {invoiceError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{invoiceError}</div>) : null}
-<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
+<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Geist',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
 </div>
 </>) : null}
 {(invoiceDone) ? (<>
 <div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
 <span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
+<span style={{fontFamily: "'Geist',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
 <span style={{fontSize: "12.5px", color: "var(--muted)"}}>{invClient} will get a payment link by email.</span>
 <button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
