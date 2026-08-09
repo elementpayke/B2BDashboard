@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import StatusBadge from "@/components/ui/StatusBadge";
 
@@ -7,6 +7,9 @@ export type AccountDetailSummaryLine = {
   k: string;
   v: string;
 };
+
+const BALANCE_RANGES = ["1D", "1W", "1M", "3M", "1Y", "All"] as const;
+type BalanceRange = (typeof BALANCE_RANGES)[number];
 
 export type AccountDetailScreenProps = {
   name: string;
@@ -48,6 +51,9 @@ export default function AccountDetailScreen({
   onSend,
   onViewAllTx,
 }: AccountDetailScreenProps) {
+  // Visual shell only — range selection does not invent a history series.
+  const [range, setRange] = useState<BalanceRange>("1M");
+
   return (
     <div data-screen-label="Account detail" className="ep-acct-detail">
       <button type="button" onClick={onBack} className="ep-acct-detail__back">
@@ -83,7 +89,7 @@ export default function AccountDetailScreen({
 
       <section className="ep-acct-detail__hero" aria-label={`${name} balance`}>
         <div className="ep-acct-detail__hero-top">
-          <div>
+          <div className="ep-acct-detail__hero-balance">
             <div className="ep-acct-detail__balance-label">{name} balance</div>
             <div className="ep-acct-detail__balance" aria-live="polite">
               {balance}
@@ -92,7 +98,7 @@ export default function AccountDetailScreen({
               <div className="ep-acct-detail__balance-sub">{balanceSub}</div>
             ) : null}
           </div>
-          <div className="ep-acct-detail__actions">
+          <div className="ep-acct-detail__actions" role="group" aria-label="Account actions">
             <button
               type="button"
               onClick={onOpenDetails}
@@ -117,6 +123,26 @@ export default function AccountDetailScreen({
               Send
             </button>
           </div>
+        </div>
+
+        <div
+          className="ep-acct-detail__ranges"
+          role="tablist"
+          aria-label="Balance history range"
+        >
+          {BALANCE_RANGES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="tab"
+              aria-selected={range === r}
+              data-active={range === r ? "true" : "false"}
+              className="ep-acct-detail__range"
+              onClick={() => setRange(r)}
+            >
+              {r}
+            </button>
+          ))}
         </div>
 
         {/* Visual shell only — no invented chart series until a real balance source exists. */}
