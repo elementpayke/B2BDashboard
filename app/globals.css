@@ -799,7 +799,7 @@ body {
 .ep-txn-detail__value {
   font-weight: 600;
   text-align: right;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .ep-txn-detail__wallet {
@@ -1299,7 +1299,7 @@ body {
   justify-content: center;
   font-family: "DM Mono", monospace;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   flex-shrink: 0;
 }
 
@@ -1406,7 +1406,7 @@ body {
 .ep-rates-marquee__value {
   font-family: "DM Mono", monospace;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
 }
 
@@ -1600,7 +1600,7 @@ body {
   justify-content: center;
   font-family: "DM Mono", monospace;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 500;
   flex-shrink: 0;
 }
 
@@ -1614,7 +1614,7 @@ body {
 .ep-home__balance-row-amt {
   font-family: "DM Mono", monospace;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 
@@ -2848,7 +2848,7 @@ body {
   background: var(--surface2);
   font-family: "DM Mono", monospace;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 500;
   display: flex;
   align-items: center;
   color: var(--ink);
@@ -3795,7 +3795,7 @@ body {
   font-size: 11.5px;
   font-weight: 500;
   color: var(--muted);
-  word-break: break-word;
+  overflow-wrap: anywhere;
   line-height: 1.35;
 }
 
@@ -4525,7 +4525,7 @@ body {
 
 .ep-acct-detail__summary-v {
   font-family: "DM Mono", monospace;
-  font-weight: 600;
+  font-weight: 500;
   flex: 1;
   word-break: break-all;
 }
@@ -5048,6 +5048,27 @@ select.ep-wallets-create__control {
   border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
 }
 
+.ep-send-methods__row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-send-methods__row:disabled:hover {
+  border-color: var(--border);
+}
+
+.ep-send-methods__soon {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface3);
+}
+
 .ep-send-methods__icon {
   width: 40px;
   height: 40px;
@@ -5248,7 +5269,7 @@ select.ep-wallets-create__control {
 
 .ep-convert__timer-label {
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
   font-family: "DM Mono", monospace;
 }
@@ -5410,7 +5431,7 @@ select.ep-wallets-create__control {
 .ep-money-input--amount {
   font-family: "DM Mono", monospace;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -5442,7 +5463,7 @@ select.ep-wallets-create__control {
 
 .ep-money-phone__code {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--muted);
   font-family: "DM Mono", monospace;
   flex-shrink: 0;
@@ -5635,13 +5656,13 @@ select.ep-wallets-create__control {
   font-weight: 700;
   color: var(--ink);
   text-align: right;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 
 .ep-money-review__v--mono {
   font-family: "DM Mono", monospace;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5746,7 +5767,7 @@ select.ep-wallets-create__control {
 .ep-money-copy-row__value {
   font-family: "DM Mono", monospace;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
   word-break: break-all;
   line-height: 1.45;
@@ -5813,7 +5834,7 @@ select.ep-wallets-create__control {
 
 .ep-money-kv__v {
   font-family: "DM Mono", monospace;
-  font-weight: 600;
+  font-weight: 500;
   flex: 1;
   word-break: break-all;
   min-width: 0;
@@ -6456,7 +6477,7 @@ select.ep-wallets-create__control {
 .ep-reports__bar-day {
   font-family: "DM Mono", monospace;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted2);
   letter-spacing: 0.02em;
 }
@@ -6481,7 +6502,7 @@ select.ep-wallets-create__control {
 .ep-reports__chip-code {
   font-family: "DM Mono", monospace;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--ink);
 }
 
@@ -6839,7 +6860,7 @@ select.ep-wallets-create__control {
 .ep-developer__env {
   font-family: "DM Mono", monospace;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 500;
   background: var(--surface2);
   color: var(--muted);
   padding: 5px 10px;

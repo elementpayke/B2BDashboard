@@ -7,7 +7,8 @@ import type { CSSProperties } from "react";
 export const AUTH_INDIGO = "#3B2ED3";
 export const AUTH_INK = "#131126";
 export const AUTH_MUTED = "#4C4A66";
-export const AUTH_MUTED_SOFT = "#8B89A6";
+/** Soft secondary text — darkened for ≥4.5:1 on the auth canvas `#F6F4EF`. */
+export const AUTH_MUTED_SOFT = "#6B6980";
 
 export const authPageStyle: CSSProperties = {
   minHeight: "100dvh",

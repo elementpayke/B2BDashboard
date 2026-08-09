@@ -724,27 +724,21 @@ export default function DashboardApp(props: Props = {}) {
   const selectSendProvider = (i) => () => setState({ sendProviderIdx: i });
   /** Method chooser (presentation) — maps onto existing country/crypto send groups. */
   const selectSendMethod = (method: "bank" | "mobile" | "crypto" | "internal") => () => {
+    // Internal transfers have no API yet — keep the chooser row visible but inert.
+    if (method === "internal") return;
+    const clearedInputs = { sendRecipient: "", sendRecipientName: "", sendAmount: "" };
     if (method === "crypto") {
       setState({
         sendMethod: method,
         sendGroup: "crypto",
         sendStep: 1,
+        ...clearedInputs,
         sendQuoteError: "",
         sendAcceptError: "",
         sendPreview: null,
         sendConfirm: null,
         sendAccountId: "",
         sendAsset: "usdc",
-      });
-      return;
-    }
-    if (method === "internal") {
-      setState({
-        sendMethod: method,
-        sendGroup: "country",
-        sendStep: 1,
-        sendQuoteError: "",
-        sendAcceptError: "",
       });
       return;
     }
@@ -760,6 +754,7 @@ export default function DashboardApp(props: Props = {}) {
       sendRailIdx: railIdx,
       sendProviderIdx: 0,
       sendStep: 1,
+      ...clearedInputs,
       sendQuoteError: "",
       sendAcceptError: "",
       sendPreview: null,
@@ -781,10 +776,9 @@ export default function DashboardApp(props: Props = {}) {
       sendConfirm: null,
       sendAccountId: "",
     });
-  const openModalSwapFromAcct = () =>
-    setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
   const openConvert = () =>
     setState({ modal: "swap", swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 });
+  const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
@@ -1523,9 +1517,12 @@ export default function DashboardApp(props: Props = {}) {
   const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
+    const key = `fiat:${view.currency.toUpperCase()}`;
     return {
+      key,
       currency: view.currency,
       name: view.name,
+      label: view.name,
       flagUrl: view.iso ? flagUrl(view.iso) : null,
       rail: fiatRailForCurrency(view.currency),
       balance: "—",
@@ -1533,7 +1530,7 @@ export default function DashboardApp(props: Props = {}) {
       statusLabel: view.statusLabel,
       statusColor,
       statusSoft,
-      openDetail: openAcctDetail("fiat", `fiat:${view.currency.toUpperCase()}`),
+      openDetail: openAcctDetail("fiat", key),
     };
   });
   const stablecoinAccountCards = stablecoinAccountsList.map((a) => {
@@ -1544,9 +1541,12 @@ export default function DashboardApp(props: Props = {}) {
         ? "unavailable"
         : "pending";
     const [statusColor, statusSoft] = depositStatusColors(statusKey);
+    const key = `stablecoin:${a.id}`;
     return {
+      key,
       currency: a.currency,
       name: a.currency,
+      label: `${a.currency} · ${networkLabel}`,
       flagUrl: null as string | null,
       rail: `Stablecoin · ${networkLabel}`,
       balance: "—",
@@ -1554,7 +1554,7 @@ export default function DashboardApp(props: Props = {}) {
       statusLabel: describeStablecoinAccountStatus(a.status),
       statusColor,
       statusSoft,
-      openDetail: openAcctDetail("stablecoin", `stablecoin:${a.id}`),
+      openDetail: openAcctDetail("stablecoin", key),
     };
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
@@ -1806,11 +1806,17 @@ export default function DashboardApp(props: Props = {}) {
   const sendNotDone = !s.sendDone;
   const sendMethod = s.sendMethod as "bank" | "mobile" | "crypto" | "internal" | null;
   const internalAccounts = accounts.map((a) => ({
-    label: a.name,
+    key: a.key,
+    label: a.label ?? a.name,
     code: a.currency,
     flagUrl: a.flagUrl,
-    selected: s.sendRecipient === a.name,
-    select: () => setState({ sendRecipient: a.name, sendRecipientName: a.name }),
+    selected: s.sendAccountId === a.key,
+    select: () =>
+      setState({
+        sendAccountId: a.key,
+        sendRecipient: a.key,
+        sendRecipientName: a.label ?? a.name,
+      }),
   }));
   const sendQuoteLoading = s.sendQuoteLoading;
   const sendQuoteError = s.sendQuoteError;
@@ -2241,12 +2247,12 @@ Create payment
   balanceSub="Balance not yet available"
   summaryLines={acctDetailLines}
   recent={walletsRecent}
-  canConvert={s.selectedAcctKind === "fiat"}
+  canConvert={Boolean(acctDetail.showConvert)}
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
   onFund={openAcctFundChooser}
   onSend={guardMoneyModal("send")}
-  onConvert={openModalSwapFromAcct}
+  onConvert={openConvert}
   onViewAllTx={goTransactions}
 />
 </>) : null}
@@ -2761,7 +2767,7 @@ bn.elevated ? (
 <div className="ep-convert__expired" role="alert"><span className="ep-convert__expired-title">Rate expired</span><span className="ep-convert__expired-body">Refresh to fetch an up-to-date rate. A stale quote cannot be accepted.</span></div>
 </>) : null}
 {(quoteLive) ? (<>
-<div className="ep-convert__timer" role="timer" aria-live="polite" aria-label={`Quote expires in ${s.quoteSeconds} seconds`}>
+<div className="ep-convert__timer" role="timer" aria-live="off">
 <span className="ep-convert__timer-label">Quote locks for {s.quoteSeconds}s</span>
 <div className="ep-convert__timer-track"><div className="ep-convert__timer-fill" style={{width: `${quoteProgress}%`}} /></div>
 </div>

@@ -16,6 +16,7 @@ import {
   authInputStyle,
   authButtonStyle,
   authErrorStyle,
+  AUTH_MUTED_SOFT,
 } from "@/components/auth/authStyles";
 
 export default function SignupPage() {
@@ -119,7 +120,7 @@ export default function SignupPage() {
                 style={{
                   fontSize: "12px",
                   fontWeight: 600,
-                  color: req.met ? "#1B7A3D" : "#8B89A6",
+                  color: req.met ? "#1B7A3D" : AUTH_MUTED_SOFT,
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",

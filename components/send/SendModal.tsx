@@ -27,7 +27,14 @@ export type SendModalProps = {
   sendAssetCode: string;
   sendChainLabel: string;
   /** Own accounts for the internal-transfer picker (presentation). */
-  internalAccounts: { label: string; code: string; flagUrl: string | null; select: () => void; selected: boolean }[];
+  internalAccounts: {
+    key?: string;
+    label: string;
+    code: string;
+    flagUrl: string | null;
+    select: () => void;
+    selected: boolean;
+  }[];
   sendNext: () => void;
   sendBack: () => void;
   sendDestinationSummary: string;
@@ -79,6 +86,7 @@ const METHODS: {
   key: "bank" | "mobile" | "crypto" | "internal";
   title: string;
   desc: string;
+  disabled?: boolean;
   icon: React.ReactNode;
 }[] = [
   {
@@ -127,7 +135,8 @@ const METHODS: {
   {
     key: "internal",
     title: "Internal transfer",
-    desc: "Move funds between your own accounts",
+    desc: "Coming soon — move funds between your own accounts",
+    disabled: true,
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
@@ -158,16 +167,22 @@ export default function SendModal(p: SendModalProps) {
                   key={m.key}
                   type="button"
                   className="ep-send-methods__row"
-                  onClick={p.selectSendMethod(m.key)}
+                  onClick={m.disabled ? undefined : p.selectSendMethod(m.key)}
+                  disabled={m.disabled}
+                  aria-disabled={m.disabled || undefined}
                 >
                   <span className="ep-send-methods__icon">{m.icon}</span>
                   <span className="ep-send-methods__copy">
                     <span className="ep-send-methods__title">{m.title}</span>
                     <span className="ep-send-methods__desc">{m.desc}</span>
                   </span>
-                  <span className="ep-send-methods__chev" aria-hidden>
-                    ›
-                  </span>
+                  {!m.disabled ? (
+                    <span className="ep-send-methods__chev" aria-hidden>
+                      ›
+                    </span>
+                  ) : (
+                    <span className="ep-send-methods__soon">Soon</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -185,14 +200,14 @@ export default function SendModal(p: SendModalProps) {
                   {p.sendIsInternal ? (
                     <>
                       <p className="ep-money-hint">Choose one of your accounts to receive the transfer.</p>
-                      <div className="ep-send-internal" role="list">
+                      <div className="ep-send-internal" role="group" aria-label="Your accounts">
                         {(p.internalAccounts || []).map((a, i) => (
                           <button
-                            key={`${a.code}-${i}`}
+                            key={a.key ?? `${a.code}-${i}`}
                             type="button"
-                            role="listitem"
                             className="ep-send-internal__row"
                             data-selected={a.selected ? "true" : "false"}
+                            aria-pressed={a.selected}
                             onClick={a.select}
                           >
                             {a.flagUrl ? (
