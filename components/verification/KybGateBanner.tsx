@@ -80,7 +80,7 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             border: "none",
             background: "var(--indigo)",
             color: "var(--indigo-on)",
-            fontFamily: "'Geist',sans-serif",
+            fontFamily: "'Space Grotesk',sans-serif",
             fontSize: "12.5px",
             fontWeight: 700,
             cursor: "pointer",

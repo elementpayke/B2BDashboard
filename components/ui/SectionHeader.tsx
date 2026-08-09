@@ -6,7 +6,7 @@ type SectionHeaderProps = {
   onAction?: () => void;
 };
 
-/** Mobile-parity section title row (Geist 16 bold + optional brand action). */
+/** Section title row (Space Grotesk 16 bold + optional brand action). */
 export default function SectionHeader({ title, actionLabel, onAction }: SectionHeaderProps) {
   return (
     <div className="ep-section-header">

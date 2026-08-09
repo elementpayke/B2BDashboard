@@ -16,11 +16,11 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
-  font-family: Geist, system-ui, sans-serif;
+  font-family: 'DM Sans', system-ui, sans-serif;
 }
 
 :focus-visible {
-  outline: 2px solid var(--indigo, #4f2ce0);
+  outline: 2px solid var(--indigo, #3B2ED3);
   outline-offset: 2px;
 }
 
@@ -43,7 +43,7 @@ body {
 /* ── Shared primitives ─────────────────────────────────────────── */
 
 .ep-mono {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
 }
 
 .ep-align-end {
@@ -66,7 +66,7 @@ body {
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .ep-flag {
@@ -265,7 +265,7 @@ body {
 
 .ep-activity__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -380,7 +380,7 @@ body {
 .ep-activity__meta {
   color: var(--muted2);
   font-size: 11px;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -504,7 +504,7 @@ body {
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 700;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   padding: 10px 16px;
   min-height: 44px;
   border-radius: 999px;
@@ -519,7 +519,7 @@ body {
 
 .ep-txn-filter:focus-visible,
 .ep-txn-pager__btn:focus-visible {
-  outline: 2px solid var(--indigo, #4f2ce0);
+  outline: 2px solid var(--indigo, #3B2ED3);
   outline-offset: 2px;
 }
 
@@ -551,7 +551,7 @@ body {
 .ep-txn-pager__btn {
   font-size: 12px;
   font-weight: 700;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   padding: 10px 16px;
   min-height: 44px;
   min-width: 44px;
@@ -904,7 +904,7 @@ body {
   border-radius: 12px;
   border: none;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   text-align: left;
 }
 
@@ -924,7 +924,7 @@ body {
   border-radius: 14px;
   background: var(--ink-panel);
   color: var(--ink-panel-text);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 10.5px;
 }
 
@@ -1061,9 +1061,9 @@ body {
 
 .ep-header h1 {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1187,7 +1187,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   color: var(--muted2);
 }
 
@@ -1217,7 +1217,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   color: var(--muted2);
 }
 
@@ -1242,7 +1242,7 @@ body {
 }
 
 .ep-bottom-nav__pay[data-active="true"] .ep-bottom-nav__pay-orb {
-  background: var(--brand-deep, #3d24b3);
+  background: var(--indigo);
 }
 
 @media (min-width: 1024px) {
@@ -1289,7 +1289,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
@@ -1300,7 +1300,7 @@ body {
 }
 
 .ep-home-identity__name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1343,7 +1343,7 @@ body {
   display: none;
   align-items: center;
   gap: 6px;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   color: var(--muted2);
@@ -1396,7 +1396,7 @@ body {
 }
 
 .ep-rates-marquee__value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink);
@@ -1427,7 +1427,7 @@ body {
 
 .ep-section-header__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1439,7 +1439,7 @@ body {
   background: none;
   padding: 4px 0;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--indigo-text);
@@ -1501,7 +1501,7 @@ body {
 }
 
 .ep-home__qa-label {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
@@ -1590,37 +1590,39 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 9px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
 .ep-home__balance-row-code {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
 }
 
 .ep-home__balance-row-amt {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
 }
 
+/* v2: flat indigo hero with a coloured drop shadow. The earlier three-stop
+   brand gradient is gone along with its --hero-gradient token. */
 .ep-home__balance {
   border-radius: 24px;
-  padding: 18px 18px 16px;
-  color: #ffffff;
-  background: var(--hero-gradient, linear-gradient(135deg, #3d24b3 0%, #6c4bf2 50%, #83007c 100%));
+  padding: 22px 26px;
+  color: var(--indigo-on);
+  background: var(--indigo);
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 18px 40px -18px rgba(61, 36, 179, 0.55);
+  box-shadow: 0 22px 48px -20px rgba(59, 46, 211, 0.4);
   min-height: 0;
   gap: 10px;
 }
@@ -1640,7 +1642,7 @@ body {
   text-transform: uppercase;
   opacity: 0.8;
   font-weight: 700;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .ep-home__balance-tabs {
@@ -1662,7 +1664,7 @@ body {
 }
 
 .ep-home__balance-value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: clamp(28px, 4vw, 36px);
   font-weight: 500;
   margin: 4px 0 0;
@@ -1671,7 +1673,7 @@ body {
 }
 
 .ep-home__balance-sub {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 11.5px;
   opacity: 0.75;
   position: relative;
@@ -1703,7 +1705,7 @@ body {
 }
 
 .ep-home__hero-pill .value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 13px;
   font-weight: 500;
 }
@@ -1727,7 +1729,7 @@ body {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   min-height: 64px;
 }
 
@@ -1820,7 +1822,7 @@ body {
 }
 
 .ep-home__stat-value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 15px;
   font-weight: 500;
 }
@@ -1868,7 +1870,7 @@ body {
   flex-direction: column;
   gap: 8px;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   position: relative;
   min-height: 44px;
   min-width: 0;
@@ -1886,7 +1888,7 @@ body {
 }
 
 .ep-home__quick-title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -2156,7 +2158,7 @@ body {
   border: 1.5px solid var(--input-border);
   background: var(--input-bg);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -2231,7 +2233,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   /* Keep action buttons above mobile keyboard when possible */
   overscroll-behavior: contain;
   isolation: isolate;
@@ -2288,7 +2290,7 @@ body {
 
 .ep-modal__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: var(--ink);
@@ -2352,7 +2354,7 @@ body {
   font-size: 16px; /* prevents iOS zoom */
   font-weight: 600;
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .ep-btn-primary {
@@ -2362,7 +2364,7 @@ body {
   border: none;
   background: var(--indigo);
   color: var(--indigo-on);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
@@ -2376,7 +2378,7 @@ body {
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
@@ -2409,7 +2411,7 @@ body {
   font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 /* ── Developer / secret rows ───────────────────────────────────── */
@@ -2422,7 +2424,7 @@ body {
   padding: 12px;
   border-radius: 12px;
   background: var(--surface2);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12px;
 }
 
@@ -2444,7 +2446,7 @@ body {
   padding: 8px 14px;
   border-radius: 999px;
   border: none;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
@@ -2506,7 +2508,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
   font-size: 16px;
   flex-shrink: 0;
@@ -2524,7 +2526,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -2603,7 +2605,7 @@ body {
   padding: 10px 16px;
   border-radius: 999px;
   border: none;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -2744,7 +2746,7 @@ body {
 
 .ep-landing-hero__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(28px, 6vw, 52px);
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -2792,7 +2794,7 @@ body {
 
 .ep-landing-converter__title {
   margin: 0 0 4px;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: var(--ink);
@@ -2820,7 +2822,7 @@ body {
   border-radius: 14px;
   border: 1.5px solid var(--input-border);
   background: var(--input-bg);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 16px;
   color: var(--ink);
   outline: none;
@@ -2836,7 +2838,7 @@ body {
   min-height: 48px;
   border-radius: 14px;
   background: var(--surface2);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12.5px;
   font-weight: 700;
   display: flex;
@@ -2875,7 +2877,7 @@ body {
 }
 
 .ep-landing-converter__out {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: clamp(20px, 5vw, 26px);
   font-weight: 500;
   display: block;
@@ -2888,7 +2890,7 @@ body {
   margin-top: 6px;
   font-size: 11px;
   opacity: 0.78;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
 }
 
 .ep-landing-converter__meta {
@@ -2899,7 +2901,7 @@ body {
   font-size: 11px;
   color: var(--muted2);
   margin: 12px 0 0;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
 }
 
 .ep-landing-converter__meta dd {
@@ -2934,7 +2936,7 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted2);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .ep-landing-coverage__list {
@@ -2997,7 +2999,7 @@ body {
 }
 
 .ep-landing-section__title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(22px, 4vw, 34px);
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -3043,14 +3045,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
   font-size: 16px;
 }
 
 .ep-landing-feature__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -3124,7 +3126,7 @@ body {
 .ep-landing-rails__tag {
   margin-left: auto;
   color: var(--ink-panel-text);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 11px;
 }
 
@@ -3142,7 +3144,7 @@ body {
 }
 
 .ep-landing-stat__value {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(22px, 4vw, 32px);
   font-weight: 700;
   color: var(--indigo-text);
@@ -3182,7 +3184,7 @@ body {
 }
 
 .ep-landing-cta-band__title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(22px, 4vw, 36px);
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -3344,7 +3346,7 @@ body {
   display: inline-flex;
   align-self: flex-start;
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--indigo-on);
@@ -3355,7 +3357,7 @@ body {
 }
 
 .ep-wallets__balance {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: clamp(26px, 6vw, 34px);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -3364,7 +3366,7 @@ body {
 }
 
 .ep-wallets__balance-sub {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--muted);
@@ -3387,7 +3389,7 @@ body {
   padding: 8px 16px;
   border-radius: 999px;
   border: none;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
@@ -3451,7 +3453,7 @@ body {
 
 .ep-wallets__section-title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -3479,7 +3481,7 @@ body {
   border: none;
   background: var(--ink-panel);
   color: #fff;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
@@ -3519,7 +3521,7 @@ body {
   border: none;
   background: none;
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   cursor: pointer;
   text-align: left;
 }
@@ -3547,9 +3549,9 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.02em;
   background: var(--indigo-tint);
   color: var(--indigo-text);
@@ -3613,7 +3615,7 @@ body {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 5px 10px;
@@ -3647,7 +3649,7 @@ body {
   border: none;
   background: var(--red);
   color: #fff;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -3724,7 +3726,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--indigo-text);
   overflow: hidden;
   flex-shrink: 0;
@@ -3738,7 +3740,7 @@ body {
 }
 
 .ep-wallets__card-name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.2;
@@ -3761,7 +3763,7 @@ body {
 }
 
 .ep-wallets__card-detail {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 14.5px;
   font-weight: 500;
   letter-spacing: 0.01em;
@@ -3773,7 +3775,7 @@ body {
 .ep-wallets__card-secondary {
   font-size: 11.5px;
   color: var(--muted);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   line-height: 1.35;
   word-break: break-word;
 }
@@ -3857,7 +3859,7 @@ body {
   gap: 9px;
   color: var(--muted);
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   transition: border-color 140ms ease, background 140ms ease;
 }
 
@@ -3881,7 +3883,7 @@ body {
 }
 
 .ep-wallets__new-label {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -3901,7 +3903,7 @@ body {
 }
 
 .ep-wallets__empty-title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
@@ -3970,14 +3972,14 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
 }
 
 .ep-fund-chooser__badge {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 3px 8px;
@@ -4066,7 +4068,7 @@ body {
 }
 
 .ep-fund-sc__amount-prefix {
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 34px;
   font-weight: 700;
   color: var(--ink);
@@ -4077,7 +4079,7 @@ body {
   border: none;
   background: transparent;
   outline: none;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 34px;
   font-weight: 700;
   color: var(--ink);
@@ -4119,7 +4121,7 @@ body {
 
 .ep-fund-sc__title {
   text-align: center;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 700;
 }
@@ -4209,7 +4211,7 @@ body {
 }
 
 .ep-fund-sc__rail-asset {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
 }
 
 .ep-fund-sc__rail-net {
@@ -4219,7 +4221,7 @@ body {
 
 .ep-fund-sc__rail-tag {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 2px 6px;
@@ -4261,7 +4263,7 @@ body {
 }
 
 .ep-fund-orch-note__status {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 11.5px;
   color: var(--muted);
 }
@@ -4289,7 +4291,7 @@ body {
   padding: 0;
   min-height: 44px;
   color: var(--muted);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -4324,7 +4326,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 15px;
   flex-shrink: 0;
 }
@@ -4338,7 +4340,7 @@ body {
 
 .ep-acct-detail__name {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -4380,7 +4382,7 @@ body {
 }
 
 .ep-acct-detail__balance {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 34px;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -4481,7 +4483,7 @@ body {
 
 .ep-acct-detail__chart-empty {
   margin-top: 8px;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 11px;
   color: var(--muted2);
   text-align: center;
@@ -4512,7 +4514,7 @@ body {
 }
 
 .ep-acct-detail__summary-v {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-weight: 600;
   flex: 1;
   word-break: break-all;
@@ -4578,7 +4580,7 @@ body {
 }
 
 .ep-wallets-detail__fund-hint-title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--indigo-text);
@@ -4620,7 +4622,7 @@ body {
 }
 
 .ep-wallets-detail__beneficiary-name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 600;
   text-align: right;
@@ -4654,19 +4656,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 16px;
 }
 
 .ep-wallets-detail__name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .ep-wallets-detail__code {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
@@ -4697,7 +4699,7 @@ body {
 }
 
 .ep-wallets-detail__value {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
   font-size: 14px;
   letter-spacing: 0.01em;
@@ -4709,7 +4711,7 @@ body {
 }
 
 .ep-wallets-detail__value--iban {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   letter-spacing: 0.06em;
   font-size: 13.5px;
 }
@@ -4748,7 +4750,7 @@ body {
 }
 
 .ep-wallets-detail__pending-title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
@@ -4771,7 +4773,7 @@ body {
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -4789,7 +4791,7 @@ body {
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
@@ -4845,7 +4847,7 @@ body {
   background: var(--indigo);
   color: var(--indigo-on);
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   flex-shrink: 0;
@@ -4885,7 +4887,7 @@ body {
   font-size: 16px;
   color: var(--ink);
   box-sizing: border-box;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .ep-wallets-create__control:focus {
@@ -4939,7 +4941,7 @@ select.ep-wallets-create__control {
   padding: 12px 22px;
   border-radius: 12px;
   border: none;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -5035,7 +5037,7 @@ select.ep-wallets-create__control {
   font-size: 16px;
   font-weight: 600;
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   box-sizing: border-box;
 }
 
@@ -5044,7 +5046,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-money-input--amount {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -5062,7 +5064,7 @@ select.ep-wallets-create__control {
   font-weight: 600;
   color: var(--ink);
   outline: none;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .ep-money-phone {
@@ -5080,7 +5082,7 @@ select.ep-wallets-create__control {
   font-size: 13px;
   font-weight: 700;
   color: var(--muted);
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   flex-shrink: 0;
 }
 
@@ -5104,7 +5106,7 @@ select.ep-wallets-create__control {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   flex-shrink: 0;
 }
 
@@ -5125,7 +5127,7 @@ select.ep-wallets-create__control {
   color: var(--ink);
   cursor: pointer;
   flex-shrink: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .ep-money-chip__code {
@@ -5154,7 +5156,7 @@ select.ep-wallets-create__control {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -5190,7 +5192,7 @@ select.ep-wallets-create__control {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   white-space: nowrap;
 }
 
@@ -5276,7 +5278,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-money-review__v--mono {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -5334,7 +5336,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-money-success__title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -5380,7 +5382,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-money-copy-row__value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -5407,7 +5409,7 @@ select.ep-wallets-create__control {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .ep-money-copy-btn:disabled {
@@ -5448,7 +5450,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-money-kv__v {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-weight: 600;
   flex: 1;
   word-break: break-all;
@@ -5566,7 +5568,7 @@ select.ep-wallets-create__control {
 .ep-cards__preview-badge,
 .ep-team__preview-badge {
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 5px 10px;
@@ -5598,7 +5600,7 @@ select.ep-wallets-create__control {
 .ep-team__title,
 .ep-developer__title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -5618,7 +5620,7 @@ select.ep-wallets-create__control {
   border: none;
   background: var(--indigo);
   color: var(--indigo-on);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
@@ -5689,14 +5691,14 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__plastic-label {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
 }
 
 .ep-cards__plastic-status {
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 5px 10px;
@@ -5716,7 +5718,7 @@ select.ep-wallets-create__control {
 
 .ep-cards__plastic-balance {
   display: block;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: clamp(18px, 4.5vw, 22px);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -5725,7 +5727,7 @@ select.ep-wallets-create__control {
 
 .ep-cards__plastic-pan {
   display: block;
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 13.5px;
   letter-spacing: 0.14em;
   margin-top: 10px;
@@ -5745,7 +5747,7 @@ select.ep-wallets-create__control {
   border: 1px solid var(--glass-border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -5802,7 +5804,7 @@ select.ep-wallets-create__control {
   min-height: 44px;
   padding: 12px 14px;
   border-radius: 14px;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
@@ -5891,7 +5893,7 @@ select.ep-wallets-create__control {
   border: 1.5px solid var(--input-border);
   background: var(--input-bg);
   outline: none;
-  font-family: Geist, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 16px;
   font-weight: 600;
   color: var(--ink);
@@ -5930,7 +5932,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__success-title {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14.5px;
   font-weight: 700;
   color: var(--ink);
@@ -5982,7 +5984,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-reports__stat-value {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: clamp(20px, 4vw, 24px);
   font-weight: 500;
   margin-top: 6px;
@@ -6014,7 +6016,7 @@ select.ep-wallets-create__control {
 
 .ep-reports__panel-title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
@@ -6090,7 +6092,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-reports__bar-day {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 10px;
   font-weight: 600;
   color: var(--muted2);
@@ -6115,7 +6117,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-reports__chip-code {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 12px;
   font-weight: 700;
   color: var(--ink);
@@ -6148,7 +6150,7 @@ select.ep-wallets-create__control {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -6158,7 +6160,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-team__name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   color: var(--ink);
@@ -6268,7 +6270,7 @@ select.ep-wallets-create__control {
 
 .ep-team__invite-title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 17px;
   font-weight: 700;
   color: var(--ink);
@@ -6319,7 +6321,7 @@ select.ep-wallets-create__control {
 }
 
 .ep-team__role-label {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
 }
@@ -6367,7 +6369,7 @@ select.ep-wallets-create__control {
 
 .ep-developer__banner-badge {
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 5px 10px;
@@ -6392,7 +6394,7 @@ select.ep-wallets-create__control {
   border: none;
   background: transparent;
   color: var(--indigo-text);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -6415,7 +6417,7 @@ select.ep-wallets-create__control {
 
 .ep-developer__empty-title {
   margin: 0;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: var(--ink);
@@ -6466,14 +6468,14 @@ select.ep-wallets-create__control {
 }
 
 .ep-developer__card-name {
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
 }
 
 .ep-developer__env {
-  font-family: "Geist Mono", monospace;
+  font-family: "DM Mono", monospace;
   font-size: 10.5px;
   font-weight: 700;
   background: var(--surface2);
@@ -6497,7 +6499,7 @@ select.ep-wallets-create__control {
   padding: 8px 12px;
   border-radius: 12px;
   color: var(--red);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -6521,7 +6523,7 @@ select.ep-wallets-create__control {
   padding: 8px 14px;
   border-radius: 999px;
   border: none;
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -6560,7 +6562,7 @@ select.ep-wallets-create__control {
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
@@ -6600,7 +6602,7 @@ select.ep-wallets-create__control {
   border: none;
   background: var(--indigo);
   color: var(--indigo-on);
-  font-family: Geist, sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;

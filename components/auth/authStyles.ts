@@ -2,20 +2,20 @@ import type { CSSProperties } from "react";
 
 // Light-theme palette for auth pages (outside dashboard theme toggle).
 // Touch-friendly sizing for mobile keyboards and 44px+ targets.
-// Brand aligned to mobile-app tokens (#4f2ce0).
+// Brand aligned to the v2 design handoff (#3B2ED3).
 
-export const AUTH_INDIGO = "#4f2ce0";
-export const AUTH_INK = "#0a0a0a";
-export const AUTH_MUTED = "#525252";
-export const AUTH_MUTED_SOFT = "#737373";
+export const AUTH_INDIGO = "#3B2ED3";
+export const AUTH_INK = "#131126";
+export const AUTH_MUTED = "#4C4A66";
+export const AUTH_MUTED_SOFT = "#8B89A6";
 
 export const authPageStyle: CSSProperties = {
   minHeight: "100dvh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "#f4f5f9",
-  fontFamily: "'Geist',sans-serif",
+  background: "#F6F4EF",
+  fontFamily: "'DM Sans',sans-serif",
   padding: "16px",
   paddingBottom: "max(16px, env(safe-area-inset-bottom))",
 };
@@ -37,7 +37,7 @@ export const authBrandRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "10px",
-  fontFamily: "'Geist',sans-serif",
+  fontFamily: "'Space Grotesk',sans-serif",
   fontWeight: 700,
   fontSize: "16px",
   color: AUTH_INK,
@@ -53,14 +53,14 @@ export const authBrandMarkStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontFamily: "'Geist Mono',monospace",
+  fontFamily: "'DM Mono',monospace",
   fontSize: "14px",
   flexShrink: 0,
 };
 
 export const authTitleStyle: CSSProperties = {
   margin: 0,
-  fontFamily: "'Geist',sans-serif",
+  fontFamily: "'Space Grotesk',sans-serif",
   fontSize: "22px",
   fontWeight: 800,
   color: AUTH_INK,
@@ -121,7 +121,7 @@ export const authButtonStyle: CSSProperties = {
   border: "none",
   background: AUTH_INDIGO,
   color: "#fff",
-  fontFamily: "'Geist',sans-serif",
+  fontFamily: "'Space Grotesk',sans-serif",
   fontSize: "14px",
   fontWeight: 700,
   cursor: "pointer",
