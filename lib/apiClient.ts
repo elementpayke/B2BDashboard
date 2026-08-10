@@ -7,11 +7,14 @@
 
 export class ApiRequestError extends Error {
   readonly status: number;
+  /** Optional envelope `data` from Mboka (field hints, expected dial code, …). */
+  readonly data: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, data: unknown = null) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -95,7 +98,7 @@ async function envelopeFromResponse<T>(res: Response): Promise<T> {
       sessionLostHandler?.();
       throw new SessionExpiredError();
     }
-    throw new ApiRequestError(message, res.status);
+    throw new ApiRequestError(message, res.status, json.data ?? null);
   }
 
   // Successful envelopes may intentionally return `data: null` (e.g. DELETE).

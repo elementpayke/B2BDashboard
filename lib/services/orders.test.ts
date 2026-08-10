@@ -194,6 +194,7 @@ describe("formatQuoteFees", () => {
   });
 });
 
+
 const depositParams = {
   currency: "kes",
   countryIso: "ke",
