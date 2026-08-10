@@ -939,7 +939,7 @@ export default function DashboardApp(props: Props = {}) {
         name: name || account,
         account,
         rail,
-        countryCode: state.sendGroup === "country" ? country.code : undefined,
+        countryCode: state.sendGroup === "country" ? country.iso.toUpperCase() : undefined,
         countryName: state.sendGroup === "country" ? country.name : undefined,
         currency: state.sendGroup === "country" ? country.code : state.sendAsset.toUpperCase(),
         provider,
@@ -1690,7 +1690,7 @@ export default function DashboardApp(props: Props = {}) {
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: openMoneyFlow("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;

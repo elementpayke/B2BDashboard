@@ -104,28 +104,31 @@ export async function requireSessionBusiness(
     return errorEnvelope(401, "Session expired", clearSessionCookies);
   }
 
+  const applyRefreshed =
+    refreshedTokens != null
+      ? (res: NextResponse) => setSessionCookies(res, refreshedTokens!)
+      : undefined;
+
   if (result.status >= 500 || !result.json) {
-    return errorEnvelope(502, "Unable to verify session");
+    return errorEnvelope(502, "Unable to verify session", applyRefreshed);
   }
 
   if (result.status !== 200 || result.json.status !== "success") {
     return errorEnvelope(
       result.status >= 400 && result.status < 600 ? result.status : 401,
       result.json.message ?? "Authentication required",
+      applyRefreshed,
     );
   }
 
   const businessId = result.json.data?.business?.id;
   if (typeof businessId !== "number" || !Number.isFinite(businessId)) {
-    return errorEnvelope(403, "No business on this session");
+    return errorEnvelope(403, "No business on this session", applyRefreshed);
   }
 
-  const tokens = refreshedTokens;
   return {
     businessId,
-    applySessionCookies: tokens
-      ? (res) => setSessionCookies(res, tokens)
-      : undefined,
+    applySessionCookies: applyRefreshed,
   };
 }
 

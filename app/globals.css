@@ -5776,6 +5776,34 @@ select.ep-wallets-create__control {
   position: relative;
 }
 
+.ep-send-recipient__readonly {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2, color-mix(in srgb, var(--ink) 4%, transparent));
+  color: var(--ink);
+}
+
+.ep-send-recipient__readonly .ep-send-recipient__select-flag {
+  position: static;
+  transform: none;
+  flex-shrink: 0;
+}
+
+.ep-send-recipient__readonly-text {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.ep-send-recipient__readonly-muted {
+  color: var(--muted2);
+  font-weight: 400;
+}
+
 .ep-send-recipient__select-wrap--leading .ep-send-recipient__select {
   padding-left: 44px;
 }

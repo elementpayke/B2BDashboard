@@ -304,10 +304,14 @@ export default function SendModal(p: SendModalProps) {
                       </div>
                     </div>
                     <div className="ep-money-field">
-                      <label className="ep-money-label" htmlFor="send-dest-currency">
+                      <span className="ep-money-label" id="send-dest-currency">
                         Currency
-                      </label>
-                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
+                      </span>
+                      <div
+                        className="ep-send-recipient__readonly"
+                        role="status"
+                        aria-labelledby="send-dest-currency"
+                      >
                         {p.sendCountryFlagUrl ? (
                           <span
                             className="ep-money-flag ep-send-recipient__select-flag"
@@ -315,19 +319,15 @@ export default function SendModal(p: SendModalProps) {
                             aria-hidden
                           />
                         ) : null}
-                        <select
-                          id="send-dest-currency"
-                          className="ep-money-input ep-send-recipient__select"
-                          value={String(p.sendCountryIdx)}
-                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
-                          aria-label="Currency"
-                        >
-                          {(p.sendCountryChips || []).map((c: any) => (
-                            <option key={`ccy-${c.idx}`} value={c.idx}>
-                              {c.code} · {c.name}
-                            </option>
-                          ))}
-                        </select>
+                        <span className="ep-send-recipient__readonly-text">
+                          <strong>{p.sendCurrencyCode}</strong>
+                          {p.sendCurrencyName ? (
+                            <span className="ep-send-recipient__readonly-muted">
+                              {" "}
+                              · {p.sendCurrencyName}
+                            </span>
+                          ) : null}
+                        </span>
                       </div>
                     </div>
                   </>
@@ -398,7 +398,8 @@ export default function SendModal(p: SendModalProps) {
                   </div>
                 ) : null}
 
-                {p.sendIsCountry && (p.sendProviderOptions || []).length > 0 ? (
+                {p.sendIsCountry &&
+                (catalogBusy || (p.sendProviderOptions || []).length > 0) ? (
                   <div className="ep-money-field">
                     <label className="ep-money-label" htmlFor="send-provider">
                       {p.sendRecipientLabel?.toLowerCase().includes("phone") ||
@@ -412,12 +413,17 @@ export default function SendModal(p: SendModalProps) {
                         className="ep-money-input ep-send-recipient__select"
                         value={String(p.sendProviderIdx)}
                         onChange={(e) => p.selectSendProvider(Number(e.target.value))}
+                        disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
                       >
-                        {(p.sendProviderOptions || []).map((name, i) => (
-                          <option key={`${name}-${i}`} value={i}>
-                            {name}
-                          </option>
-                        ))}
+                        {catalogBusy && (p.sendProviderOptions || []).length === 0 ? (
+                          <option value={0}>Loading providers…</option>
+                        ) : (
+                          (p.sendProviderOptions || []).map((name, i) => (
+                            <option key={`${name}-${i}`} value={i}>
+                              {name}
+                            </option>
+                          ))
+                        )}
                       </select>
                     </div>
                   </div>

@@ -72,7 +72,7 @@ All responses use the shared dashboard envelope:
 - `accountNumber` — non-empty, ≤ 256 chars after trim (**alias:** `account`)
 - `railType` — one of `bank` \| `mobile` \| `crypto` (**alias:** `rail`)
 - Extra UI-only fields such as `countryName` are ignored
-- `network` — required when `railType === "crypto"`; omitted/ignored otherwise may be stored but UI should send it for crypto
+- `network` — required when `railType === "crypto"` (sent for crypto sends); otherwise optional / may be `null`
 - Optional fields trimmed; empty string → `null`
 - Max **100** recipients per business (soft limit; `400` when exceeded)
 
@@ -82,28 +82,13 @@ All responses use the shared dashboard envelope:
 
 ## Client
 
-**Canonical / typed BFF helpers** — `lib/services/savedRecipients.ts`:
+**Shared types + helpers** — `lib/services/savedRecipients.ts` (schemas,
+`toSendFormFields`, summary formatting).
 
-```ts
-import { savedRecipientsApi, toSendFormFields } from "@/lib/services/savedRecipients";
-
-const { items } = await savedRecipientsApi.list();
-const saved = await savedRecipientsApi.create({
-  label: recipientName,
-  accountNumber: phoneOrAccountOrAddress,
-  railType: "mobile", // or bank | crypto
-  countryCode: "KE",
-  currency: "KES",
-  provider: selectedProviderId,
-});
-await savedRecipientsApi.remove(saved.id);
-
-// Prefill Send form after user picks a row
-const fields = toSendFormFields(saved);
-```
-
-**UI stub (name/account/rail + localStorage fallback)** —
-`lib/clients/savedRecipientsApi.ts`:
+**Browser client (session cookies)** — `lib/clients/savedRecipientsApi.ts`:
+calls same-origin `/api/saved-recipients` (not `/api/mboka/...`). Falls back
+to `localStorage` only on transport failure (offline); auth and API errors
+are rethrown.
 
 ```ts
 import {
@@ -111,12 +96,22 @@ import {
   createSavedRecipient,
   formatSavedRecipientSubtitle,
 } from "@/lib/clients/savedRecipientsApi";
+import { toSendFormFields } from "@/lib/services/savedRecipients";
 
 const rows = await listSavedRecipients();
-await createSavedRecipient({ name, account, rail: "mobile", countryCode: "KE" });
-```
+const saved = await createSavedRecipient({
+  name: recipientName,
+  account: phoneOrAccountOrAddress,
+  rail: "mobile", // or bank | crypto
+  countryCode: "KE",
+  currency: "KES",
+  provider: selectedProviderName,
+  network: undefined, // required for crypto (e.g. "Base")
+});
 
-Both use same-origin session cookies — **not** `/api/mboka/...`.
+// Prefill Send form after user picks a row
+const fields = toSendFormFields(saved);
+```
 
 ## Persistence
 
@@ -130,6 +125,5 @@ Both use same-origin session cookies — **not** `/api/mboka/...`.
 ## Not in this scaffold
 
 - Mboka proxy endpoints (none documented)
-- SendModal UI wiring (separate track)
 - Update/PATCH of an existing recipient
 - Sharing recipients across team members beyond the business scope

@@ -52,12 +52,17 @@ async function ensureLoaded(): Promise<StoreShape> {
 }
 
 async function persist(store: StoreShape): Promise<void> {
-  writeChain = writeChain.then(async () => {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const tmp = `${DATA_FILE}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
-    await fs.rename(tmp, DATA_FILE);
-  });
+  // Always continue the chain after reject so one failed write does not
+  // poison every subsequent persist for the process lifetime.
+  writeChain = writeChain.then(
+    async () => {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      const tmp = `${DATA_FILE}.${process.pid}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify(store, null, 2), "utf8");
+      await fs.rename(tmp, DATA_FILE);
+    },
+    () => undefined,
+  );
   await writeChain;
 }
 

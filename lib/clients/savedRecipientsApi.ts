@@ -2,11 +2,16 @@
 
 /**
  * Browser client for saved recipients.
- * Prefers `/api/saved-recipients`; falls back to localStorage when the API
- * is unavailable (offline / before deploy of the BFF routes).
+ * Prefers `/api/saved-recipients`; falls back to localStorage only when the
+ * request never reaches a responding BFF (network / offline). Server and
+ * auth errors are rethrown so the UI can surface them.
  */
 
-import { authEnvelope } from "@/lib/apiClient";
+import {
+  ApiRequestError,
+  SessionExpiredError,
+  authEnvelope,
+} from "@/lib/apiClient";
 import {
   formatSavedRecipientSummary,
   type RailType,
@@ -20,47 +25,15 @@ export type SavedRecipientRail = RailType;
 
 const STORAGE_KEY = "ep.savedRecipients.v1";
 
-const DEMO_SEED: SavedRecipient[] = [
-  {
-    id: "demo-ke-equity",
-    businessId: 0,
-    label: "Jane Mukami",
-    accountNumber: "0100234567",
-    railType: "bank",
-    countryCode: "KE",
-    currency: "KES",
-    provider: "Equity Bank",
-    network: null,
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "demo-ke-mpesa",
-    businessId: 0,
-    label: "Wanjiru Njeri",
-    accountNumber: "0712345678",
-    railType: "mobile",
-    countryCode: "KE",
-    currency: "KES",
-    provider: "M-Pesa",
-    network: null,
-    createdAt: "2026-01-02T00:00:00.000Z",
-    updatedAt: "2026-01-02T00:00:00.000Z",
-  },
-];
-
 function readLocal(): SavedRecipient[] {
-  if (typeof window === "undefined") return [...DEMO_SEED];
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(DEMO_SEED));
-      return [...DEMO_SEED];
-    }
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as SavedRecipient[];
-    return Array.isArray(parsed) ? parsed : [...DEMO_SEED];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return [...DEMO_SEED];
+    return [];
   }
 }
 
@@ -80,14 +53,23 @@ function newId(): string {
   return `sr_${Date.now().toString(36)}`;
 }
 
+/** True when the BFF never answered (offline / CORS / aborted) — not 4xx/5xx. */
+function isTransportFailure(err: unknown): boolean {
+  if (err instanceof SessionExpiredError || err instanceof ApiRequestError) {
+    return false;
+  }
+  return true;
+}
+
 export async function listSavedRecipients(): Promise<SavedRecipient[]> {
   try {
     const data = await authEnvelope<SavedRecipientList>("GET", "/api/saved-recipients");
     if (data?.items) return data.items;
-  } catch {
-    /* fall back */
+    return [];
+  } catch (err) {
+    if (!isTransportFailure(err)) throw err;
+    return readLocal();
   }
-  return readLocal();
 }
 
 export type SaveRecipientInput = {
@@ -114,7 +96,8 @@ export async function createSavedRecipient(input: SaveRecipientInput): Promise<S
 
   try {
     return await authEnvelope<SavedRecipient>("POST", "/api/saved-recipients", body);
-  } catch {
+  } catch (err) {
+    if (!isTransportFailure(err)) throw err;
     const now = new Date().toISOString();
     const saved: SavedRecipient = {
       id: newId(),
