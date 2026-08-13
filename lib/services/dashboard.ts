@@ -41,13 +41,60 @@ function formatFxRate(rate: number): string {
 }
 
 /**
+ * Normalize a rate map: uppercase keys, finite positive numbers only.
+ * Never invents missing quotes.
+ */
+export function normalizeExchangeRates(
+  fx: ExchangeRates | null | undefined,
+): ExchangeRates | null {
+  if (!fx?.base || !fx.rates || typeof fx.rates !== "object") return null;
+  const base = fx.base.trim().toUpperCase();
+  if (!base) return null;
+  const rates: Record<string, number> = {};
+  for (const [rawCode, rawRate] of Object.entries(fx.rates)) {
+    const code = rawCode.trim().toUpperCase();
+    if (!code || code === base) continue;
+    const rate =
+      typeof rawRate === "number"
+        ? rawRate
+        : typeof rawRate === "string"
+          ? Number(String(rawRate).replace(/,/g, ""))
+          : Number.NaN;
+    if (!Number.isFinite(rate) || rate <= 0) continue;
+    rates[code] = rate;
+  }
+  return { base, rates };
+}
+
+/**
+ * Merge FX snapshots. Later sources win on conflicting quote codes.
+ * Base must agree (or later source replaces base + rates).
+ */
+export function mergeExchangeRates(
+  ...sources: Array<ExchangeRates | null | undefined>
+): ExchangeRates | null {
+  let merged: ExchangeRates | null = null;
+  for (const src of sources) {
+    const next = normalizeExchangeRates(src);
+    if (!next) continue;
+    if (!merged || merged.base !== next.base) {
+      merged = { base: next.base, rates: { ...next.rates } };
+      continue;
+    }
+    merged = { base: merged.base, rates: { ...merged.rates, ...next.rates } };
+  }
+  return merged;
+}
+
+/**
  * Build up to three LIVE RATES rows from dashboard summary `fx_rates`.
  * Missing/invalid rates render as "—" — never hardcoded fake numbers.
  */
 export function liveRateRowsFromSummary(
   fx: ExchangeRates | null | undefined,
 ): LiveRateRow[] {
-  if (!fx?.base || !fx.rates || typeof fx.rates !== "object") {
+  const normalized = normalizeExchangeRates(fx);
+  if (!normalized) {
     return LIVE_RATE_PLACEHOLDERS;
   }
 
@@ -55,15 +102,18 @@ export function liveRateRowsFromSummary(
   const seen = new Set<string>();
 
   const pushQuote = (quote: string) => {
-    if (quote === fx.base || seen.has(quote)) return;
-    const rate = fx.rates[quote];
+    if (quote === normalized.base || seen.has(quote)) return;
+    const rate = normalized.rates[quote];
     if (typeof rate !== "number" || !Number.isFinite(rate)) return;
     seen.add(quote);
-    rows.push({ pair: `${fx.base}/${quote}`, value: formatFxRate(rate) });
+    rows.push({
+      pair: `${normalized.base}/${quote}`,
+      value: formatFxRate(rate),
+    });
   };
 
   for (const quote of PREFERRED_FX_QUOTES) pushQuote(quote);
-  for (const quote of Object.keys(fx.rates)) {
+  for (const quote of Object.keys(normalized.rates)) {
     if (rows.length >= 3) break;
     pushQuote(quote);
   }
@@ -73,4 +123,7 @@ export function liveRateRowsFromSummary(
 
 export const dashboardApi = {
   summary: () => apiEnvelope<DashboardSummary>("GET", "/v1/dashboard/summary"),
+  /** Public USD-base indicative rates (YC African corridors via Mboka). */
+  exchangeRates: () =>
+    apiEnvelope<ExchangeRates>("GET", "/v1/exchange-rates"),
 };

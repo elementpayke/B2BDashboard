@@ -26,6 +26,12 @@ export type FinancialAccount = {
   chainDisclaimer?: string | null;
   /** Hosted checkout URL when the provider returns one (often null). */
   checkoutUrl?: string | null;
+  /** Live balance when the partner includes it on list/get. */
+  balance?: {
+    available?: string | null;
+    current?: string | null;
+    currency?: string | null;
+  } | null;
 };
 
 const READY = new Set(["active", "ready", "open", "opened"]);
@@ -203,6 +209,23 @@ export function normalizeFinancialAccount(
   const chainDisclaimer =
     typeof disclaimerRaw === "string" && disclaimerRaw.trim() ? disclaimerRaw.trim() : null;
   const checkoutUrl = toHttpUrl(account.checkout_url ?? account.checkoutUrl);
+  const balanceRaw = asRecord(account.balance);
+  const balance = balanceRaw
+    ? {
+        available:
+          typeof balanceRaw.available === "string" || typeof balanceRaw.available === "number"
+            ? String(balanceRaw.available)
+            : null,
+        current:
+          typeof balanceRaw.current === "string" || typeof balanceRaw.current === "number"
+            ? String(balanceRaw.current)
+            : null,
+        currency:
+          typeof balanceRaw.currency === "string" && balanceRaw.currency.trim()
+            ? balanceRaw.currency.trim().toUpperCase()
+            : currency || null,
+      }
+    : null;
   return {
     id,
     entityId,
@@ -213,6 +236,7 @@ export function normalizeFinancialAccount(
     walletAddress,
     chainDisclaimer,
     checkoutUrl,
+    balance,
   };
 }
 
@@ -290,7 +314,7 @@ export function describeStablecoinAccountStatus(status: string | null | undefine
   return status;
 }
 
-/** Card/detail rows for a partner stablecoin account (no invented balance). */
+/** Card/detail rows for a partner stablecoin account. */
 export function buildStablecoinAccountDetailRows(
   account: FinancialAccount,
 ): { label: string; value: string; copyValue?: string }[] {
@@ -305,6 +329,14 @@ export function buildStablecoinAccountDetailRows(
       value: describeStablecoinAccountStatus(account.status),
     },
   ];
+  const available =
+    account.balance?.available?.trim() || account.balance?.current?.trim() || "";
+  if (available) {
+    rows.push({
+      label: "Available balance",
+      value: `${available} ${account.balance?.currency || account.currency}`,
+    });
+  }
   if (account.walletAddress) {
     rows.push({
       label: "Deposit address",

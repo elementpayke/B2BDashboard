@@ -92,11 +92,6 @@ export const INVOICES = [
   {id:"INV-0232",client:"Lagos Freight Co",amount:"USD 3,200.00",status:"pending"},
   {id:"INV-0233",client:"Kigali Roasters",amount:"USD 980.00",status:"overdue"},
 ];
-export const CARDS = [
-  {label:"Marketing Ads",last4:"4471",balance:"$1,240.00",bg:"#131126",status:"active"},
-  {label:"Ops Spend",last4:"9982",balance:"$620.50",bg:"#3B2ED3",status:"active"},
-  {label:"Contractor Pay",last4:"1120",balance:"$0.00",bg:"#131126",status:"frozen"},
-];
 export const STATUS_MAP = {
   done:["Settled","var(--indigo-text)","var(--indigo-tint)"],
   pending:["Pending","var(--amber)","var(--amber-tint)"],

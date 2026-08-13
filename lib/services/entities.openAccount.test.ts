@@ -59,6 +59,25 @@ describe("listed vs sendable stablecoin accounts", () => {
     expect(isListedStablecoinAccount(pending)).toBe(true);
     expect(isSendableStablecoinAccount(pending)).toBe(false);
   });
+
+  it("forwards partner balance when present", () => {
+    const acct = normalizeFinancialAccount(
+      {
+        id: "65",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Base",
+        status: "active",
+        balance: { available: "337.54", current: "337.54", currency: "USDC" },
+      },
+      "20",
+    )!;
+    expect(acct.balance).toEqual({
+      available: "337.54",
+      current: "337.54",
+      currency: "USDC",
+    });
+  });
 });
 
 describe("occupiedStablecoinNetworkCodes", () => {

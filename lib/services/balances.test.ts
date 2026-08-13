@@ -1,0 +1,187 @@
+import { describe, expect, it } from "vitest";
+import {
+  assertSufficientBalance,
+  convertAmountWithRates,
+  describeDisplayTotalSub,
+  formatAccountBalance,
+  formatCurrencyBalanceLines,
+  formatHomeTotalBalance,
+  formatSummedBalance,
+  parseBalanceNumber,
+  sumAvailableBalances,
+  sumBalancesByCurrency,
+  totalBalanceInDisplayCurrency,
+} from "@/lib/services/balances";
+
+describe("formatAccountBalance", () => {
+  it("prefers available and formats", () => {
+    expect(
+      formatAccountBalance({ available: "337.54", current: "400", currency: "USDC" }),
+    ).toBe("337.54");
+  });
+
+  it("returns em dash when missing", () => {
+    expect(formatAccountBalance(null)).toBe("—");
+    expect(formatAccountBalance({})).toBe("—");
+  });
+});
+
+describe("assertSufficientBalance", () => {
+  it("throws when amount exceeds available", () => {
+    expect(() =>
+      assertSufficientBalance({
+        amount: "400",
+        balance: { available: "337.54", currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).toThrow(/Insufficient USDC/);
+  });
+
+  it("allows when under available", () => {
+    expect(() =>
+      assertSufficientBalance({
+        amount: "100",
+        balance: { available: "337.54", currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).not.toThrow();
+  });
+
+  it("skips when balance unknown", () => {
+    expect(() =>
+      assertSufficientBalance({
+        amount: "999999",
+        balance: null,
+        currency: "USDC",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("sumAvailableBalances", () => {
+  it("sums known balances only", () => {
+    expect(
+      sumAvailableBalances([
+        { available: "100" },
+        { available: "37.54" },
+        null,
+      ]),
+    ).toBeCloseTo(137.54);
+    expect(formatSummedBalance([{ available: "100" }, { available: "37.5" }])).toBe(
+      "137.50",
+    );
+    expect(parseBalanceNumber({ available: "10.5" })).toBe(10.5);
+  });
+});
+
+describe("sumBalancesByCurrency / formatHomeTotalBalance", () => {
+  it("collapses same-currency rails and never FX-sums unlike codes", () => {
+    const items = [
+      { currency: "USDC", balance: { available: "300" } },
+      { currency: "USDC", balance: { available: "38.79" } },
+      { currency: "EUR", balance: { available: "810.20" } },
+      { currency: "USD", balance: { available: "10" } },
+      { currency: "GBP", balance: null },
+    ];
+    expect(sumBalancesByCurrency(items)).toEqual([
+      { currency: "EUR", total: 810.2, label: "810.20" },
+      { currency: "USDC", total: 338.79, label: "338.79" },
+      { currency: "USD", total: 10, label: "10.00" },
+    ]);
+    expect(formatCurrencyBalanceLines(items)).toEqual([
+      "810.20 EUR",
+      "338.79 USDC",
+      "10.00 USD",
+    ]);
+    expect(formatHomeTotalBalance(items)).toBe("810.20 EUR · 338.79 USDC · 10.00 USD");
+  });
+
+  it("returns em dash / empty when nothing known", () => {
+    expect(formatHomeTotalBalance([])).toBe("—");
+    expect(formatHomeTotalBalance([{ currency: "EUR", balance: null }])).toBe("—");
+    expect(formatCurrencyBalanceLines([])).toEqual([]);
+  });
+
+  it("formats a single-currency total with the code", () => {
+    expect(
+      formatHomeTotalBalance([
+        { currency: "USDC", balance: { available: "100" } },
+        { currency: "USDC", balance: { available: "37.5" } },
+      ]),
+    ).toBe("137.50 USDC");
+  });
+});
+
+describe("convertAmountWithRates / totalBalanceInDisplayCurrency", () => {
+  const fx = {
+    base: "USD",
+    rates: { KES: 130, NGN: 1600, TZS: 2500 },
+  };
+
+  it("converts via USD base and keeps same-currency 1:1 without rates", () => {
+    expect(convertAmountWithRates(10, "USD", "KES", fx)).toBeCloseTo(1300);
+    expect(convertAmountWithRates(260, "KES", "USD", fx)).toBeCloseTo(2);
+    expect(convertAmountWithRates(100, "EUR", "EUR", null)).toBe(100);
+    expect(convertAmountWithRates(100, "EUR", "USD", fx)).toBeNull();
+    expect(convertAmountWithRates(100, "USDC", "USD", fx)).toBeNull();
+  });
+
+  it("sums convertible balances into one display currency and lists gaps", () => {
+    const items = [
+      { currency: "USD", balance: { available: "10" } },
+      { currency: "KES", balance: { available: "1300" } },
+      { currency: "EUR", balance: { available: "810.20" } },
+      { currency: "USDC", balance: { available: "338.79" } },
+    ];
+    const usd = totalBalanceInDisplayCurrency(items, "USD", fx);
+    expect(usd.total).toBeCloseTo(20);
+    expect(usd.label).toBe("20.00 USD");
+    expect(usd.included).toEqual(["KES", "USD"]);
+    expect(usd.excluded).toEqual(["EUR", "USDC"]);
+
+    const kes = totalBalanceInDisplayCurrency(items, "KES", fx);
+    expect(kes.total).toBeCloseTo(2600);
+    expect(kes.label).toBe("2,600.00 KES");
+    expect(kes.excluded).toEqual(["EUR", "USDC"]);
+  });
+
+  it("returns em dash when nothing converts", () => {
+    const result = totalBalanceInDisplayCurrency(
+      [
+        { currency: "EUR", balance: { available: "10" } },
+        { currency: "USDC", balance: { available: "5" } },
+      ],
+      "USD",
+      fx,
+    );
+    expect(result).toEqual({
+      total: null,
+      label: "—",
+      included: [],
+      excluded: ["EUR", "USDC"],
+    });
+    expect(
+      describeDisplayTotalSub(result, {
+        balanceView: "all",
+        displayCurrency: "USD",
+      }),
+    ).toBe("No FX rate for EUR, USDC → USD");
+  });
+
+  it("describes indicative conversion when all included", () => {
+    const result = totalBalanceInDisplayCurrency(
+      [
+        { currency: "USD", balance: { available: "10" } },
+        { currency: "KES", balance: { available: "130" } },
+      ],
+      "USD",
+      fx,
+    );
+    expect(
+      describeDisplayTotalSub(result, {
+        balanceView: "fiat",
+        displayCurrency: "USD",
+      }),
+    ).toBe("Indicative FX → USD");
+  });
+});
