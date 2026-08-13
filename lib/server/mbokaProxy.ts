@@ -104,15 +104,22 @@ async function doFetch(
   // an absolute Location (sometimes with the wrong scheme after a proxy),
   // which previously produced ERR_SSL_PACKET_LENGTH_TOO_LONG against plain
   // HTTP uvicorn. Path + query from Location is enough.
+  //
+  // Assign onto a URL built from the base rather than re-parsing the path as
+  // a relative reference: a Location whose path begins with `//` (e.g.
+  // `https://upstream//evil.example/x`) parses as protocol-relative, which
+  // would send the request — carrying the Authorization header — to that host.
   const resolved = new URL(location, getMbokaApiBase());
-  const redirectUrl = new URL(
-    `${resolved.pathname}${resolved.search}`,
-    getMbokaApiBase(),
-  );
+  const redirectUrl = new URL(getMbokaApiBase());
+  redirectUrl.pathname = resolved.pathname;
+  redirectUrl.search = resolved.search;
+  // Manual again, so one hop is all we follow. A further redirect is returned
+  // to the caller as-is instead of being chased off-origin.
   return fetch(redirectUrl, {
     method: request.method,
     headers,
     body: bodyBuffer ? bodyBuffer.slice(0) : null,
+    redirect: "manual",
     signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
   });
 }

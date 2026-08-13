@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/apiClient", () => ({
+  apiEnvelope: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 import {
   describeConversionRate,
   formatConvertAmount,
@@ -68,5 +76,34 @@ describe("secondsUntilExpiry", () => {
     // Without the UTC fix this would parse as local and go negative in UTC+3.
     expect(secondsUntilExpiry("2026-08-12T17:21:00")).toBe(180);
     expect(secondsUntilExpiry("2026-08-12T17:21:00Z")).toBe(180);
+  });
+});
+
+describe("conversionsApi.accept idempotency", () => {
+  it("derives the default key from the quote id, so a retry deduplicates", async () => {
+    const { conversionsApi } = await import("@/lib/services/conversions");
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({} as never);
+
+    await conversionsApi.accept("q-123");
+    await conversionsApi.accept("q-123");
+
+    const keys = mocked.mock.calls.map(
+      (call) => (call[3] as { headers?: Record<string, string> })?.headers?.["Idempotency-Key"],
+    );
+    expect(keys).toEqual(["conversion-accept:q-123", "conversion-accept:q-123"]);
+  });
+
+  it("still honours an explicit key", async () => {
+    const { conversionsApi } = await import("@/lib/services/conversions");
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({} as never);
+
+    await conversionsApi.accept("q-9", "caller-key");
+
+    const opts = mocked.mock.calls[0][3] as { headers?: Record<string, string> };
+    expect(opts.headers?.["Idempotency-Key"]).toBe("caller-key");
   });
 });

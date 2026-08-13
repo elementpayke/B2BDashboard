@@ -214,3 +214,26 @@ describe("buildCreateBankAccountPayload", () => {
     );
   });
 });
+
+describe("buildDepositAccountDetailRows — balance row", () => {
+  it("formats the balance so the detail row matches the card view", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      balance: { available: "25", current: "25", currency: "EUR" },
+    };
+    const row = buildDepositAccountDetailRows(account).find(
+      (r) => r.label === "Available balance",
+    );
+    expect(row?.value).toBe("25.00 EUR");
+    expect(mapDepositAccountToCardView(account).balance).toBe("25.00");
+  });
+
+  it("omits the row when the partner returned no balance", () => {
+    const account: DepositAccount = { currency: "USD", status: "active", iban: "US1234567890123456" };
+    expect(
+      buildDepositAccountDetailRows(account).some((r) => r.label === "Available balance"),
+    ).toBe(false);
+  });
+});

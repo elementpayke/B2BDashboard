@@ -1,5 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
-import { formatAccountBalance } from "@/lib/services/balances";
+import { formatAccountBalance, pickAvailableBalance } from "@/lib/services/balances";
 
 /**
  * Deposit ("currency") accounts — IBAN/bank coordinates issued by the provider.
@@ -255,12 +255,12 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   if (account.reference) {
     rows.push({ label: "Reference", value: account.reference, copyValue: account.reference });
   }
-  const bal =
-    account.balance?.available?.trim() || account.balance?.current?.trim() || "";
-  if (bal) {
+  // Format through the shared helper so the detail row and the card view
+  // never disagree (raw `25` vs formatted `25.00`) on the same account.
+  if (pickAvailableBalance(account.balance)) {
     rows.push({
       label: "Available balance",
-      value: `${bal} ${account.balance?.currency || account.currency}`,
+      value: `${formatAccountBalance(account.balance)} ${account.balance?.currency || account.currency}`,
     });
   }
   if (account.destination_wallet) {

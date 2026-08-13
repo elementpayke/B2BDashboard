@@ -88,6 +88,7 @@ import {
   describeDisplayTotalSub,
   formatAccountBalance,
   formatSummedBalance,
+  parseBalanceNumber,
   readStoredDisplayCurrency,
   totalBalanceInDisplayCurrency,
   writeStoredDisplayCurrency,
@@ -224,6 +225,7 @@ export default function DashboardApp(props: Props = {}) {
     newCardError: "",
     newlyIssuedCard: null as IssuedCard | null,
     cardFreezeBusy: false,
+    cardFreezeError: "",
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
@@ -951,7 +953,7 @@ export default function DashboardApp(props: Props = {}) {
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
   const openCardDetail = (cardId: string) => () =>
-    setState({ modal: "cardDetail", selectedCardId: cardId, cardFreezeBusy: false });
+    setState({ modal: "cardDetail", selectedCardId: cardId, cardFreezeBusy: false, cardFreezeError: "" });
   const openNewCard = () => {
     const prefill = cardholderPrefillFromKybProfile(
       meQuery.data?.kyb_summary?.profile ?? null,
@@ -1413,6 +1415,17 @@ export default function DashboardApp(props: Props = {}) {
         if (!hop2Amount) {
           throw new Error("First hop settled but no USDC amount returned for hop 2.");
         }
+        // Hop 1 has settled — the funds are in the USDC bridge account. Pin the
+        // flow to hop 2 *before* quoting, so a failed quote leaves a retryable
+        // state instead of one that re-accepts the spent hop-1 quote_id.
+        setState({
+          convertHop: 2,
+          convertBridgeUsdcId: bridgeId,
+          convertSourceAccountId: bridgeId,
+          convertDestAccountId: finalFiatId,
+          convertQuote: null,
+          convertAmount: String(hop2Amount),
+        });
         const hop2 = await conversionsApi.quote({
           source_account_id: bridgeId,
           destination_account_id: finalFiatId,
@@ -1572,7 +1585,7 @@ export default function DashboardApp(props: Props = {}) {
     const cardId = state.selectedCardId;
     const card = (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === cardId);
     if (!funding || !card) return;
-    setState({ cardFreezeBusy: true });
+    setState({ cardFreezeBusy: true, cardFreezeError: "" });
     try {
       const frozen = (card.status || "").toLowerCase() === "frozen";
       const updated = frozen
@@ -1581,9 +1594,11 @@ export default function DashboardApp(props: Props = {}) {
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
       setState({ cardFreezeBusy: false, selectedCardId: updated.id });
     } catch (err) {
+      // Own field: the card detail modal renders this one. `newCardError` only
+      // surfaces inside the issue-card modal, so a failed toggle looked silent.
       setState({
         cardFreezeBusy: false,
-        newCardError:
+        cardFreezeError:
           err instanceof Error ? err.message : "Couldn't update card freeze state.",
       });
     }
@@ -2705,6 +2720,7 @@ export default function DashboardApp(props: Props = {}) {
         currency: a.currency.toUpperCase(),
         label: `${view.name} (${a.currency.toUpperCase()})`,
         balanceLabel: view.hasBalance ? view.balance : "—",
+        balanceAmount: parseBalanceNumber(a.balance),
       };
     });
   const usdcConvertAccounts = stablecoinAccountsList
@@ -2714,6 +2730,7 @@ export default function DashboardApp(props: Props = {}) {
       currency: "USDC",
       label: `USDC · ${formatNetworkLabel(a.network)}`,
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
+      balanceAmount: parseBalanceNumber(a.balance),
     }));
   const convertMode: ConvertMode =
     s.convertMode === "stable_to_fiat" || s.convertMode === "fiat_to_fiat"
@@ -2771,6 +2788,7 @@ export default function DashboardApp(props: Props = {}) {
   const newCardError = s.newCardError;
   const newlyIssuedCard = s.newlyIssuedCard as IssuedCard | null;
   const cardFreezeBusy = s.cardFreezeBusy;
+  const cardFreezeError = s.cardFreezeError;
   const invClient = s.invClient;
   const invAmount = s.invAmount;
   const invoiceNotDone = !s.invoiceDone;
@@ -3691,6 +3709,9 @@ bn.elevated ? (
 <span className="ep-cards__toggle-knob" style={{left: cardDetail.freezeKnobLeft}} />
 </button>
 </div>
+{cardFreezeError ? (
+  <div className="ep-cards__note" role="alert" style={{color: "var(--red)"}}>{cardFreezeError}</div>
+) : null}
 <button type="button" onClick={terminateCard} className="ep-cards__modal-danger">Close</button>
 </div>
 </>) : null}

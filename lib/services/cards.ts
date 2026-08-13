@@ -123,21 +123,21 @@ export async function resolveUsdFundingAccount(params: {
         // try next entity
       }
     }
-    if (entities[0]?.id) {
-      return {
-        entityId: String(entities[0].id),
-        accountId,
-        currency: "USD",
-        balanceLabel: formatAccountBalance(depositUsd.balance),
-        status: depositUsd.status,
-        accountMask: maskIban(depositUsd.iban),
-      };
-    }
+    // No fallback to entities[0]: `DepositAccount` carries no entity id, and
+    // the card endpoint nests accountId under entityId. Pairing the account
+    // with an unverified entity would issue against the wrong pair (or fail
+    // upstream). Fall through to the scan below instead.
   }
 
   for (const entity of entities) {
     if (!entity?.id) continue;
-    const raw = await entitiesApi.listAccounts(entity.id);
+    let raw: unknown;
+    try {
+      raw = await entitiesApi.listAccounts(entity.id);
+    } catch {
+      // One unreachable entity must not hide a valid USD account on a later one.
+      continue;
+    }
     for (const row of extractAccountRows(raw)) {
       const account = normalizeFinancialAccount(row, entity.id);
       if (!account) continue;

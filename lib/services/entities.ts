@@ -1,4 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
+import { formatAccountBalance, pickAvailableBalance } from "@/lib/services/balances";
 
 /** `GET /v1/entities` row (local ProviderEntity projection). */
 export type ProviderEntity = {
@@ -100,6 +101,18 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+/**
+ * Keep a partner balance amount only when it parses to a finite number.
+ * `String(...)` alone would turn `NaN`, `Infinity`, or `"n/a"` into a string
+ * that formatting passes straight through to the UI as a balance.
+ */
+function toBalanceAmount(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  return Number.isFinite(Number(raw.replace(/,/g, ""))) ? raw : null;
 }
 
 /** Pull an accounts array out of common partner list envelopes. */
@@ -212,14 +225,8 @@ export function normalizeFinancialAccount(
   const balanceRaw = asRecord(account.balance);
   const balance = balanceRaw
     ? {
-        available:
-          typeof balanceRaw.available === "string" || typeof balanceRaw.available === "number"
-            ? String(balanceRaw.available)
-            : null,
-        current:
-          typeof balanceRaw.current === "string" || typeof balanceRaw.current === "number"
-            ? String(balanceRaw.current)
-            : null,
+        available: toBalanceAmount(balanceRaw.available),
+        current: toBalanceAmount(balanceRaw.current),
         currency:
           typeof balanceRaw.currency === "string" && balanceRaw.currency.trim()
             ? balanceRaw.currency.trim().toUpperCase()
@@ -329,12 +336,11 @@ export function buildStablecoinAccountDetailRows(
       value: describeStablecoinAccountStatus(account.status),
     },
   ];
-  const available =
-    account.balance?.available?.trim() || account.balance?.current?.trim() || "";
-  if (available) {
+  // Shared helpers, so this row matches the formatting used on account cards.
+  if (pickAvailableBalance(account.balance)) {
     rows.push({
       label: "Available balance",
-      value: `${available} ${account.balance?.currency || account.currency}`,
+      value: `${formatAccountBalance(account.balance)} ${account.balance?.currency || account.currency}`,
     });
   }
   if (account.walletAddress) {

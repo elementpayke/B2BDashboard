@@ -11,7 +11,10 @@ export type ConvertAccountOption = {
   id: string;
   currency: string;
   label: string;
+  /** Localized, for display only — never parse this back into a number. */
   balanceLabel: string;
+  /** Raw available balance. Null when the partner returned none. */
+  balanceAmount: number | null;
 };
 
 export type ConvertMode = "fiat_to_stable" | "stable_to_fiat" | "fiat_to_fiat";
@@ -58,7 +61,7 @@ function friendlyError(message: string): { title: string; body: string } {
   if (lower.includes("insufficient")) {
     return { title: "Not enough balance", body: m };
   }
-  if (lower.includes("min")) {
+  if (lower.includes("minimum")) {
     return { title: "Amount too small", body: m };
   }
   if (lower.includes("usdc account")) {
@@ -84,6 +87,12 @@ export default function ConvertFlow(p: ConvertFlowProps) {
   const available =
     source && source.balanceLabel && source.balanceLabel !== "—"
       ? source.balanceLabel
+      : null;
+  // Max fills from the raw amount. Deriving it from `available` would break in
+  // locales that group with periods (`1.234,56` → `1.234.56`).
+  const maxAmount =
+    source && typeof source.balanceAmount === "number" && source.balanceAmount > 0
+      ? source.balanceAmount
       : null;
 
   if (p.done) {
@@ -203,11 +212,11 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 <label className="ep-money-label" htmlFor="convert-amount">
                   Amount{source ? ` (${source.currency})` : ""}
                 </label>
-                {available ? (
+                {available && maxAmount !== null ? (
                   <button
                     type="button"
                     className="ep-convert__max"
-                    onClick={() => p.onAmount(available.replace(/,/g, ""))}
+                    onClick={() => p.onAmount(maxAmount.toFixed(2))}
                   >
                     Max {available}
                   </button>

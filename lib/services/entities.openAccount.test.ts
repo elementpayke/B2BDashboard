@@ -118,3 +118,29 @@ describe("resolvePrimaryEntityId", () => {
     await expect(resolvePrimaryEntityId()).rejects.toThrow(/partner entity/);
   });
 });
+
+describe("balance normalization", () => {
+  const normalize = (balance: unknown) =>
+    normalizeFinancialAccount(
+      { id: "65", asset_type: "stablecoin", currency: "USDC", network: "Base", status: "active", balance },
+      "20",
+    )!.balance;
+
+  it("drops amounts that do not parse to a finite number", () => {
+    expect(normalize({ available: "n/a", current: Number.NaN })).toEqual({
+      available: null,
+      current: null,
+      currency: "USDC",
+    });
+    expect(normalize({ available: Number.POSITIVE_INFINITY })).toMatchObject({
+      available: null,
+    });
+  });
+
+  it("keeps well-formed amounts verbatim", () => {
+    expect(normalize({ available: "337.54", current: 12 })).toMatchObject({
+      available: "337.54",
+      current: "12",
+    });
+  });
+});

@@ -1,5 +1,4 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
-import { newIdempotencyKey } from "@/lib/services/orders";
 
 /**
  * Phase 3 account conversions — EUR/GBP/USD ↔ USDC via Mboka
@@ -99,8 +98,14 @@ export const conversionsApi = {
     });
   },
 
+  /**
+   * The default key is derived from `quoteId`, not minted fresh: a quote is
+   * accepted exactly once, and the UI lets the user press "Accept & settle"
+   * again after a failure. A random key per attempt would let a request that
+   * reached the backend and then timed out settle twice on retry.
+   */
   accept(quoteId: string, idempotencyKey?: string): Promise<ConversionOut> {
-    const key = idempotencyKey || newIdempotencyKey();
+    const key = idempotencyKey || `conversion-accept:${quoteId}`;
     return apiEnvelope<ConversionOut>(
       "POST",
       `/v1/conversions/${encodeURIComponent(quoteId)}/accept`,
