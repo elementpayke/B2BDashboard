@@ -7,6 +7,15 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd ../Mboka-Backend && exec ./myenv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+      ],
+      "port": 8000
     }
   ]
 }
