@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { liveRateRowsFromSummary } from "./dashboard";
+import {
+  liveRateRowsFromSummary,
+  mergeExchangeRates,
+  normalizeExchangeRates,
+} from "./dashboard";
 
 describe("liveRateRowsFromSummary", () => {
   it("returns em-dash placeholders when fx_rates are missing", () => {
@@ -38,5 +42,28 @@ describe("liveRateRowsFromSummary", () => {
       { pair: "USD/EUR", value: "0.92" },
       { pair: "USD/GBP", value: "0.78" },
     ]);
+  });
+});
+
+describe("normalizeExchangeRates / mergeExchangeRates", () => {
+  it("drops non-finite rates and uppercases codes", () => {
+    expect(
+      normalizeExchangeRates({
+        base: "usd",
+        rates: { kes: 130, bad: Number.NaN, zero: 0 },
+      }),
+    ).toEqual({ base: "USD", rates: { KES: 130 } });
+  });
+
+  it("merges later sources over earlier ones on the same base", () => {
+    expect(
+      mergeExchangeRates(
+        { base: "USD", rates: { KES: 100, NGN: 1000 } },
+        { base: "USD", rates: { KES: 130, TZS: 2500 } },
+      ),
+    ).toEqual({
+      base: "USD",
+      rates: { KES: 130, NGN: 1000, TZS: 2500 },
+    });
   });
 });

@@ -1773,6 +1773,53 @@ body {
   border-radius: 999px;
 }
 
+.ep-home__balance-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ep-home__display-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 3px 8px 3px 10px;
+  border-radius: 999px;
+  min-height: 32px;
+}
+
+.ep-home__display-currency-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.ep-home__display-currency-select {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: "DM Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 14px 2px 0;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='white' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 8px 5px;
+}
+
+.ep-home__display-currency-select option {
+  color: #111;
+}
+
 .ep-home__balance-tab {
   padding: 6px 10px;
   min-height: 32px;
@@ -1790,6 +1837,18 @@ body {
   margin: 4px 0 0;
   letter-spacing: -0.02em;
   position: relative;
+}
+
+.ep-home__balance-value--multi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: clamp(18px, 2.8vw, 24px);
+  line-height: 1.25;
+}
+
+.ep-home__balance-line {
+  display: block;
 }
 
 .ep-home__balance-sub {
@@ -1978,6 +2037,10 @@ body {
   .ep-home__balance-value {
     font-size: clamp(28px, 2.6vw, 36px);
     margin: 6px 0 0;
+  }
+
+  .ep-home__balance-value--multi {
+    font-size: clamp(18px, 2vw, 24px);
   }
 
   .ep-home__balance-sub {
@@ -5173,25 +5236,86 @@ select.ep-wallets-create__control {
 .ep-convert {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 14px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.ep-convert__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ep-convert__lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.ep-convert__legs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-convert__swap {
+  text-align: center;
+  color: var(--muted2);
+  font-size: 14px;
+  line-height: 1;
+  margin: -2px 0;
+}
+
+.ep-convert__amount-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-convert__max {
+  border: 0;
+  background: transparent;
+  color: var(--indigo-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  font-family: "DM Sans", sans-serif;
+}
+
+.ep-convert__max:hover {
+  text-decoration: underline;
+}
+
+.ep-convert__avail {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: "DM Mono", monospace;
 }
 
 .ep-convert__tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ep-convert__tab {
   flex: 1;
-  padding: 10px;
-  border-radius: 12px;
+  padding: 9px 6px;
+  border-radius: 10px;
   border: 1.5px solid var(--border);
   background: var(--surface2);
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   font-family: 'DM Sans', sans-serif;
+  line-height: 1.2;
 }
 
 .ep-convert__tab[data-active="true"] {
@@ -6275,6 +6399,63 @@ select.ep-wallets-create__control {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Fixed plastic width — never shrinks with more cards; row scrolls instead.
+     Mobile: one dominant card + next-card peek. Tablet/desktop: fixed larger plastics. */
+  --ep-card-w: min(340px, calc(100vw - 48px));
+  --ep-card-gap: 14px;
+}
+
+@media (min-width: 640px) {
+  .ep-cards {
+    --ep-card-w: 360px;
+    --ep-card-gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ep-cards {
+    --ep-card-w: 400px;
+    --ep-card-gap: 18px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .ep-cards {
+    --ep-card-w: 420px;
+    --ep-card-gap: 20px;
+  }
+}
+
+.ep-cards__funding-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.ep-cards__empty {
+  padding: 28px 18px;
+  border-radius: 16px;
+  border: 1.5px dashed var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.ep-cards__secrets {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  text-align: left;
+  box-sizing: border-box;
 }
 
 .ep-cards__preview,
@@ -6356,39 +6537,69 @@ select.ep-wallets-create__control {
   filter: brightness(1.04);
 }
 
-.ep-cards__grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
+.ep-cards__cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
 }
 
-@media (min-width: 640px) {
-  .ep-cards__grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
+.ep-cards__grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: var(--ep-card-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 12px;
+  width: 100%;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--indigo) 45%, transparent) transparent;
+}
+
+.ep-cards__grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.ep-cards__grid::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--indigo) 40%, transparent);
+  border-radius: 999px;
 }
 
 .ep-cards__item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  flex: 0 0 var(--ep-card-w);
+  width: var(--ep-card-w);
+  max-width: var(--ep-card-w);
+  min-width: var(--ep-card-w);
+  scroll-snap-align: start;
 }
 
 .ep-cards__plastic {
   aspect-ratio: 1.586;
   width: 100%;
+  height: auto;
+  flex-shrink: 0;
   border: none;
-  border-radius: 22px;
+  border-radius: clamp(18px, 2.4vw, 26px);
   position: relative;
   overflow: hidden;
-  padding: 20px;
+  padding: clamp(18px, 2.2vw, 26px);
   color: #fff;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
   text-align: left;
-  box-shadow: 0 14px 34px -18px rgba(19, 17, 38, 0.45);
+  box-shadow: 0 18px 40px -18px rgba(19, 17, 38, 0.5);
+  box-sizing: border-box;
 }
 
 .ep-cards__plastic::after {
@@ -6416,16 +6627,21 @@ select.ep-wallets-create__control {
 
 .ep-cards__plastic-label {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 13.5px;
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
 }
 
 .ep-cards__plastic-status {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.2);
   flex-shrink: 0;
@@ -6433,52 +6649,105 @@ select.ep-wallets-create__control {
 
 .ep-cards__plastic-eyebrow {
   display: block;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.65;
+  opacity: 0.7;
 }
 
 .ep-cards__plastic-balance {
   display: block;
   font-family: "DM Mono", monospace;
-  font-size: clamp(18px, 4.5vw, 22px);
+  font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.02em;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .ep-cards__plastic-pan {
   display: block;
   font-family: "DM Mono", monospace;
-  font-size: 13.5px;
+  font-size: 14px;
   letter-spacing: 0.14em;
-  margin-top: 10px;
+  margin-top: 12px;
   opacity: 0.92;
+}
+
+@media (min-width: 640px) {
+  .ep-cards__plastic-label {
+    font-size: 17px;
+  }
+
+  .ep-cards__plastic-balance {
+    font-size: 26px;
+  }
+
+  .ep-cards__plastic-pan {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ep-cards__plastic-label {
+    font-size: 18px;
+  }
+
+  .ep-cards__plastic-balance {
+    font-size: 28px;
+  }
+
+  .ep-cards__plastic-pan {
+    font-size: 16px;
+    letter-spacing: 0.16em;
+  }
 }
 
 .ep-cards__actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .ep-cards__action {
   flex: 1;
   min-height: 44px;
-  padding: 10px;
-  border-radius: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: var(--surface2);
   color: var(--ink);
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .ep-cards__action:hover {
   background: var(--surface3);
+}
+
+@media (max-width: 639px) {
+  .ep-cards__plastic {
+    border-radius: 20px;
+    padding: 18px;
+  }
+
+  .ep-cards__plastic-pan {
+    letter-spacing: 0.12em;
+  }
+
+  .ep-cards__head {
+    align-items: flex-start;
+  }
+
+  .ep-cards__cta {
+    width: 100%;
+  }
+
+  .ep-cards__head .ep-cards__cta {
+    width: auto;
+    margin-left: auto;
+  }
 }
 
 .ep-cards__modal {
@@ -6489,15 +6758,17 @@ select.ep-wallets-create__control {
 
 .ep-cards__modal-plastic {
   aspect-ratio: 1.586;
-  max-width: 280px;
+  max-width: min(100%, var(--ep-card-w, 400px));
   width: 100%;
   margin: 0 auto;
-  border-radius: 20px;
+  border-radius: 22px;
   color: #fff;
-  padding: 16px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  box-sizing: border-box;
+  box-shadow: 0 18px 40px -18px rgba(19, 17, 38, 0.5);
 }
 
 .ep-cards__modal-row {

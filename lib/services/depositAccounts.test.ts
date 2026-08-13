@@ -136,10 +136,25 @@ describe("mapDepositAccountToCardView", () => {
     );
   });
 
-  it("never fabricates a balance field on the card view", () => {
-    const account: DepositAccount = { currency: "USD", status: "active", iban: "US1234567890123456" };
-    const view = mapDepositAccountToCardView(account);
-    expect(view).not.toHaveProperty("balance");
+  it("shows partner available balance when present, otherwise —", () => {
+    const withBal: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      balance: { available: "25.00", current: "25.00", currency: "EUR" },
+    };
+    const funded = mapDepositAccountToCardView(withBal);
+    expect(funded.balance).toBe("25.00");
+    expect(funded.hasBalance).toBe(true);
+
+    const empty: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "US1234567890123456",
+    };
+    const blank = mapDepositAccountToCardView(empty);
+    expect(blank.balance).toBe("—");
+    expect(blank.hasBalance).toBe(false);
   });
 });
 
@@ -197,5 +212,28 @@ describe("buildCreateBankAccountPayload", () => {
     expect(() => buildCreateBankAccountPayload({ currency: "GBP" })).toThrow(
       /available yet/,
     );
+  });
+});
+
+describe("buildDepositAccountDetailRows — balance row", () => {
+  it("formats the balance so the detail row matches the card view", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      balance: { available: "25", current: "25", currency: "EUR" },
+    };
+    const row = buildDepositAccountDetailRows(account).find(
+      (r) => r.label === "Available balance",
+    );
+    expect(row?.value).toBe("25.00 EUR");
+    expect(mapDepositAccountToCardView(account).balance).toBe("25.00");
+  });
+
+  it("omits the row when the partner returned no balance", () => {
+    const account: DepositAccount = { currency: "USD", status: "active", iban: "US1234567890123456" };
+    expect(
+      buildDepositAccountDetailRows(account).some((r) => r.label === "Available balance"),
+    ).toBe(false);
   });
 });

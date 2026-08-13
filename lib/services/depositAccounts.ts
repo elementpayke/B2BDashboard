@@ -1,4 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
+import { formatAccountBalance, pickAvailableBalance } from "@/lib/services/balances";
 
 /**
  * Deposit ("currency") accounts — IBAN/bank coordinates issued by the provider.
@@ -110,14 +111,19 @@ export function isStablecoinNetworkSupported(code: string): boolean {
 
 /**
  * Mirrors the backend's `DepositAccountOut` (`app/schema/deposit_accounts.py`).
- * There is deliberately **no balance field** — the aggregator's IBAN payin
- * rail only ever returns deposit coordinates, never a live balance. Any UI
- * that wants a number here must compute it from a real source or render
- * `—`; never invent one (see docs/api-contract.md).
+ * `balance` is optional — partner fiat rails (e.g. Nuvion) return it on
+ * `GET /partner/entities/{id}/accounts`; older responses omit it.
  */
 export type DepositAccountStatus = "active" | "pending" | "unavailable";
 
+export type DepositAccountBalance = {
+  available?: string | null;
+  current?: string | null;
+  currency?: string | null;
+};
+
 export type DepositAccount = {
+  id?: string | null;
   currency: string;
   status: DepositAccountStatus;
   account_holder_name?: string | null;
@@ -131,6 +137,7 @@ export type DepositAccount = {
   destination_network?: string | null;
   instructions?: string | null;
   last_updated_at?: string | null;
+  balance?: DepositAccountBalance | null;
 };
 
 export type DepositAccountListResult = {
@@ -186,11 +193,24 @@ export type DepositAccountCardView = {
   primaryDetail: string;
   /** Bank name / BIC, when available — secondary line under the primary detail. */
   secondaryDetail: string;
+  /** Formatted available balance, or `—` when the partner did not return one. */
+  balance: string;
+  /** True when `balance` came from the partner (not a placeholder). */
+  hasBalance: boolean;
 };
 
 /**
+ * Format partner `balance.available` (preferred) or `balance.current` for UI.
+ * Returns `—` when missing/unparseable — never invents a figure.
+ */
+export function formatDepositAccountBalance(
+  account: Pick<DepositAccount, "currency" | "balance">,
+): string {
+  return formatAccountBalance(account.balance);
+}
+
+/**
  * Pure mapper from a raw `DepositAccountOut` to display-ready card fields.
- * No balance is derived here — see `DepositAccount` above.
  */
 export function mapDepositAccountToCardView(account: DepositAccount): DepositAccountCardView {
   const primaryDetail = account.iban
@@ -199,6 +219,7 @@ export function mapDepositAccountToCardView(account: DepositAccount): DepositAcc
   const secondaryDetail = [account.bic, account.account_holder_name]
     .filter((v): v is string => Boolean(v))
     .join(" · ");
+  const balance = formatDepositAccountBalance(account);
   return {
     currency: account.currency,
     name: currencyLabel(account.currency),
@@ -207,6 +228,8 @@ export function mapDepositAccountToCardView(account: DepositAccount): DepositAcc
     statusLabel: describeDepositAccountStatus(account.status),
     primaryDetail,
     secondaryDetail,
+    balance,
+    hasBalance: balance !== "—",
   };
 }
 
@@ -231,6 +254,14 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   }
   if (account.reference) {
     rows.push({ label: "Reference", value: account.reference, copyValue: account.reference });
+  }
+  // Format through the shared helper so the detail row and the card view
+  // never disagree (raw `25` vs formatted `25.00`) on the same account.
+  if (pickAvailableBalance(account.balance)) {
+    rows.push({
+      label: "Available balance",
+      value: `${formatAccountBalance(account.balance)} ${account.balance?.currency || account.currency}`,
+    });
   }
   if (account.destination_wallet) {
     rows.push({

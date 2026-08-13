@@ -26,7 +26,7 @@ the exact failure mode). See
 | Area | Endpoints | Notes |
 |---|---|---|
 | Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes. Reset email/code are handed off via tab `sessionStorage` (never left in the URL); if Mboka email links still arrive with `?email=&code=`, the reset page migrates them into sessionStorage and immediately strips the query. Access/refresh tokens remain httpOnly cookies. |
-| Dashboard (Home) | `GET /v1/dashboard/summary` | Money in/out 30d, pending count. Total-balance hero number stays mock — see Gaps. |
+| Dashboard (Home) | `GET /v1/dashboard/summary`; `GET /v1/exchange-rates`; Total balance from `GET /v1/iban/accounts` + `GET /v1/entities/{id}/accounts` | Money in/out 30d, pending count from summary. Hero **Total balance** is **one** figure in the user's default display currency (localStorage `ep.displayCurrency.v1`; no Mboka preference API). Conversion uses Mboka USD-base indicative FX: prefer live `GET /v1/exchange-rates` (KES, NGN, GHS, UGX, TZS, ZAR, MWK), merged with summary `fx_rates` (often KES/NGN/GHS). Same-currency always 1:1. **No invented rates** — balances without a rate (today typically EUR / GBP / CAD / USDC) are excluded with a subtitle note, or the hero shows `—`. All / Fiat / Stablecoin filters convert only that filtered set. `totals.user_balance` (Privy) unused for the hero. |
 | Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}`, `GET /v1/orders` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. The dedicated Transactions screen's status filter + Prev/Next pagination are server-side via `GET /v1/orders?status=&limit=&offset=` — see Transaction history pagination below for why. |
 | Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transactions-page"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
@@ -35,28 +35,28 @@ the exact failure mode). See
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
 | Add Account → Stablecoin Account | `GET /v1/entities`, `POST /v1/entities/{id}/accounts` | Opens a partner FinancialAccount (`asset_type: stablecoin`). **USDC on Base/Polygon only** — USDT and Ethereum render disabled (same Phase 4 limits as Send). Uses the first linked entity; fails closed with a clear message when none exist. `display_name` is sent from the Account name field. |
-| Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts`, `GET /v1/entities` → `GET /v1/entities/{id}/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The IBAN list call only runs once eligibility confirms `eligible: true`. Cards merge fiat IBAN accounts with partner USDC Base/Polygon accounts (including pending). **No balance field** on either source — cards never invent one (see Simulated table below). |
+| Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts`, `GET /v1/entities` → `GET /v1/entities/{id}/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The IBAN list call only runs once eligibility confirms `eligible: true`. Cards merge fiat IBAN accounts with partner USDC Base/Polygon accounts (including pending). **Balances** come from partner `balance.{available,current}` when present (fiat via IBAN list; USDC via entity accounts). |
+| Balances (per-account + Home total) | `GET /v1/iban/accounts`, `GET /v1/entities/{id}/accounts`, `GET /v1/exchange-rates` | Partner `balance.available` (fallback `current`) on fiat IBAN and entity stablecoin accounts, formatted through `lib/services/balances.ts`. A missing balance renders `—` — never invented. Convert and USDC Send refuse amounts above the known available. Home **Total balance** uses `totalBalanceInDisplayCurrency` with Mboka indicative FX (`GET /v1/exchange-rates` ∪ summary `fx_rates`); currencies with no rate are excluded from the total, never faked. |
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
 | Send money ("Stablecoin" tab) | `GET /v1/entities`, `GET /v1/entities/{id}/accounts`, `POST /v1/accounts/{account_id}/sends/preview`, `POST /v1/accounts/{account_id}/sends` | Phase 4 account-native USDC send (Base/Polygon). Preview → confirm with **required** `Idempotency-Key`. Not Privy wallet transfer. See Account-send mapping notes below. |
 | Deposit / Top up ("by country" tab) | `POST /v1/orders/quote` (`order_type: OnRamp`), `POST /v1/orders/{quote_id}/accept` | Fiat-in top-up to the business treasury wallet. Shows `payment_instructions` after accept (momo STK prompt or bank coordinates). Reuses `GET /v1/supported/catalog` for OnRamp provider `networkId`, `useOrderStatus` for post-accept polling, and `Idempotency-Key` on quote. See OnRamp mapping notes below. |
+| Convert (intra FX) | `POST /v1/conversions/quote`, `POST /v1/conversions/{quote_id}/accept`, `GET /v1/conversions/{id}` | Ledger FX between owned deposit accounts: **EUR/GBP/USD ↔ USDC**. Fiat↔fiat (e.g. EUR→USD) is **not** a single rail — UI runs two hops via a ready USDC account (`components/convert/ConvertFlow.tsx`, `lib/services/conversions.ts`). Min amount **1.00**. Requires synced local FinancialAccount ids from IBAN list / entity accounts. |
+| Cards | `GET/POST /v1/entities/{entity_id}/accounts/{account_id}/cards`, freeze/unfreeze | **Active fiat USD only** — every card is linked to that funding account and spends its balance (not a separate card wallet). PAN/CVV returned once on create. `lib/services/cards.ts` + Cards screen. |
 | Receive (fiat tab) | `GET /v1/iban/accounts` | Shows real IBAN/bank deposit coordinates from issued currency accounts (Track 3). No balances — coordinates only. |
 | Receive (stablecoin tab) | `GET /v1/dashboard/summary` → `totals.wallet_address` | Shows the business treasury wallet address for on-chain deposits. Network/asset picker stays UI-only until a real multi-chain deposit endpoint exists. |
 
-## Simulated (local only, no backend call)
+## Limited or local-only surfaces
 
 | Area | Why |
 |---|---|
-| Wallets / **per-account balance number** and **"Main wallet" stablecoin balance** | **No real source exists.** `DepositAccountOut` (the list/create response) has no balance field — the aggregator's IBAN rail only ever returns deposit coordinates, not a live balance, and there's no stablecoin-wallet balance endpoint either. Account cards show currency, status, and masked IBAN/bank coordinates (or network for stablecoin) instead of a number; the "Main wallet" hero renders `—`. It previously showed a hardcoded per-currency mock balance (e.g. `$184,220.55`) and `USDC 180,860.00` — do not restore either until backed by a real source. |
-| Home "Total balance" | **No real source exists.** It is a currency-accounts aggregate (individual accounts have no balance field either — see above), and `totals.user_balance` is an untyped Privy passthrough that reports `null` when Privy has no balance. Renders `—` rather than a number. It previously showed a hardcoded `$548,830.55`, which on a real empty account was indistinguishable from a true balance — do not restore a figure here until it is computed from a real source. The currency chip strip beneath it now lists real deposit-account currencies (from `GET /v1/iban/accounts`) and partner USDC networks with `—` in place of the old per-currency mock balances. |
 | Deposit / Top up — **Stablecoin** tab | No standalone stablecoin deposit endpoint — the tab shows the treasury wallet from dashboard summary (same address OnRamp settles to) rather than faking a separate account. |
-| Swap / Bulk-payout modals | Real on/off-ramp swap and bulk CSV payouts are each a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
+| Bulk-payout modal | Real bulk CSV payouts are a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
 | Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
-| Cards screen (+ card detail / fund / issue modals) | **No backend at all**, not even a data model. The original design renders in full against local mock data; all card actions are local-only. |
+| Cards — **Fund / Withdraw as prepaid load** | Partner docs: `amount` on issue is **not** a card wallet top-up. Cards spend the linked **USD** account balance. UI “Fund USD” opens the USD deposit fund flow instead of a fake card load. |
 | Send money — **saved recipients** | **No Mboka beneficiaries API.** Dashboard-owned BFF: `GET/POST /api/saved-recipients`, `DELETE /api/saved-recipients/{id}`, file-backed under `.data/` for now. Contract: `docs/saved-recipients.md`. Wired in Send (save + pick from saved details). |
 
-> ⚠️ Team and Cards render mock data behind an in-product **Preview** banner
-> so demo balances, card numbers, and teammates are clearly marked as
-> simulated. Wiring them to real backends is tracked in Gaps 1 and 2 below.
+> ⚠️ Team still renders mock data behind an in-product **Preview** banner.
+> Cards issuing is live against active fiat USD (`lib/services/cards.ts`).
 
 ## Account-send mapping notes (`lib/services/accountSends.ts`)
 
@@ -189,6 +189,23 @@ the order is terminal (`completed`/`failed`/`refunded`/`canceled`) or frozen
 frozen order to later resolve). On terminal it invalidates the transactions
 list, that transaction's own detail query, and the dashboard summary.
 
+## Convert mapping notes (`lib/services/conversions.ts`)
+
+- Partner ledger FX only supports **fiat ↔ USDC** (EUR / GBP / USD). There is
+  no direct EUR↔USD rail.
+- Dashboard modes:
+  - **Fiat → USDC** / **USDC → Fiat**: one quote → accept.
+  - **EUR ↔ USD**, and the other pairs among the three supported fiat
+    currencies (EUR↔GBP, GBP↔USD): two hops via a ready USDC
+    FinancialAccount — hop 1 source fiat→USDC, hop 2 USDC→destination fiat.
+    Hop 1 settles before hop 2 is quoted, so the UI pins itself to hop 2
+    first — a failed hop-2 quote stays retryable from the USDC bridge.
+- Quote/accept go through `POST /v1/conversions/quote` and
+  `POST /v1/conversions/{quote_id}/accept` (Mboka Phase 3). Requires locally
+  synced `FinancialAccount` IDs (populated when listing IBAN / entity
+  accounts). Accept defaults its `Idempotency-Key` to the quote id, so a user
+  retry after a timeout cannot settle the same conversion twice.
+
 ## Gaps / follow-up tasks
 
 > **Track 0 (UI extraction):** Send / Transactions / Wallets / Deposit modal
@@ -202,8 +219,11 @@ list, that transaction's own detail query, and the dashboard summary.
 > create flow is fully wired end to end (create → list invalidation), gated on
 > eligibility. Pure display mappers (masking, status labels, detail-row
 > selection) live in `lib/services/depositAccounts.ts` with Vitest coverage.
-> Home "Total balance" stays `—`; its currency chip strip lists real deposit-
-> account currencies (also `—` per chip). `components/deposit/ReceiveModal.tsx`
+> Home "Total balance" reads partner balances from those same lists and
+> converts the All / Fiat / Stablecoin filtered set into the user's default
+> display currency via Mboka indicative FX (`totalBalanceInDisplayCurrency`).
+> Currency chip strip under Balances stays per-account (not FX-converted).
+> `components/deposit/ReceiveModal.tsx`
 > still uses the `ACCOUNTS` mock for fiat receive coordinates — out of this
 > track's scope (see OnRamp deposit-quote track).
 
@@ -211,8 +231,7 @@ list, that transaction's own detail query, and the dashboard summary.
    `POST .../members/invite`, `PATCH .../members/{user_id}`,
    `DELETE .../members/{user_id}` using the existing `BusinessMembership`
    model, then wire the Team screen for real.
-2. **Cards**: no data model exists; would need a card-issuing integration
-   (own scope, own review).
+2. **Cards**: ~~no data model exists~~ **Issuing wired** — virtual cards on active fiat USD via partner `…/cards` (`lib/services/cards.ts`). Card **funding** (acquiring charges) and spend transactions remain follow-ups; sandbox spend is empty per partner docs.
 3. **KYB wizard**: ~~build the real multi-step business-verification form~~ **Done (Track 5)** — `components/verification/*` + `lib/services/kyb.ts` drive `POST/PATCH …/kyb/profile`, `PUT …/kyb/address`, `POST …/kyb/initiate`, multipart `POST …/kyb/documents`, `POST …/documents/submit`, `POST …/shareholders`, `POST …/shareholders/documents`, `POST …/kyb/submit`. Tier 3 institutional upgrade modal remains simulated.
 4. **Send modal — Stablecoin tab**: ~~no backend endpoint for direct
    wallet-to-wallet transfers~~ **Done (Track 8)** — Phase 4

@@ -100,11 +100,26 @@ async function doFetch(
   if (!location) {
     return first;
   }
-  const redirectUrl = new URL(location, getMbokaApiBase());
+  // Always re-home redirects onto the configured API base. Upstream may emit
+  // an absolute Location (sometimes with the wrong scheme after a proxy),
+  // which previously produced ERR_SSL_PACKET_LENGTH_TOO_LONG against plain
+  // HTTP uvicorn. Path + query from Location is enough.
+  //
+  // Assign onto a URL built from the base rather than re-parsing the path as
+  // a relative reference: a Location whose path begins with `//` (e.g.
+  // `https://upstream//evil.example/x`) parses as protocol-relative, which
+  // would send the request — carrying the Authorization header — to that host.
+  const resolved = new URL(location, getMbokaApiBase());
+  const redirectUrl = new URL(getMbokaApiBase());
+  redirectUrl.pathname = resolved.pathname;
+  redirectUrl.search = resolved.search;
+  // Manual again, so one hop is all we follow. A further redirect is returned
+  // to the caller as-is instead of being chased off-origin.
   return fetch(redirectUrl, {
     method: request.method,
     headers,
     body: bodyBuffer ? bodyBuffer.slice(0) : null,
+    redirect: "manual",
     signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
   });
 }
@@ -115,6 +130,29 @@ async function doFetch(
  * anything the client sent), and transparently refreshing+retrying once on
  * a 401 before giving up.
  */
+function upstreamUnavailableResponse(err: unknown): NextResponse {
+  const cause = err instanceof Error ? err.cause : undefined;
+  const code =
+    cause && typeof cause === "object" && "code" in cause
+      ? String((cause as { code?: unknown }).code ?? "")
+      : err instanceof Error
+        ? err.name
+        : "";
+  const timedOut =
+    code === "TimeoutError" ||
+    (err instanceof Error && /timeout|aborted/i.test(err.message));
+  return NextResponse.json(
+    {
+      status: "error",
+      message: timedOut
+        ? "Upstream request timed out. Please try again."
+        : "Upstream request failed. Please try again.",
+      data: null,
+    },
+    { status: timedOut ? 504 : 502 },
+  );
+}
+
 export async function proxyRequest(
   request: NextRequest,
   backendPathWithQuery: string,
@@ -125,7 +163,12 @@ export async function proxyRequest(
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const bodyBuffer = hasBody ? await request.arrayBuffer() : null;
 
-  let upstream = await doFetch(request, backendPathWithQuery, accessToken, bodyBuffer);
+  let upstream: Response;
+  try {
+    upstream = await doFetch(request, backendPathWithQuery, accessToken, bodyBuffer);
+  } catch (err) {
+    return upstreamUnavailableResponse(err);
+  }
 
   // Refresh whenever a refresh cookie is present — including the common case
   // where the shorter-lived access cookie has already expired and the browser
@@ -137,7 +180,11 @@ export async function proxyRequest(
       clearSessionCookies(res);
       return res;
     }
-    upstream = await doFetch(request, backendPathWithQuery, refreshed.access_token, bodyBuffer);
+    try {
+      upstream = await doFetch(request, backendPathWithQuery, refreshed.access_token, bodyBuffer);
+    } catch (err) {
+      return upstreamUnavailableResponse(err);
+    }
     const res = await toNextResponse(upstream);
     if (upstream.status === 401) {
       // Refresh reported success but the new token still isn't accepted —

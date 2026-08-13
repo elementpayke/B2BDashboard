@@ -221,6 +221,46 @@ describe("proxyRequest", () => {
     expect(res.status).toBe(201);
   });
 
+  it("keeps a redirect on the configured origin even when the Location path begins with // (protocol-relative escape)", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 307,
+          // Path starts with `//`, so naive re-parsing treats evil.example as the host.
+          headers: { location: "http://localhost:8000//evil.example/steal" },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
+
+    const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" }, path: "/v1/dashboard/summary" });
+    await proxyRequest(req, "/api/v1/dashboard/summary");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const followed = new URL(String(fetchMock.mock.calls[1][0]));
+    expect(followed.host).toBe("localhost:8000");
+    expect(String(followed)).toBe("http://localhost:8000//evil.example/steal");
+    // The session token must never leave the configured origin.
+    expect((fetchMock.mock.calls[1][1].headers as Headers).get("authorization")).toBe("Bearer token");
+    expect(fetchMock.mock.calls[1][1].redirect).toBe("manual");
+  });
+
+  it("does not chase a second redirect off-origin", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 307, headers: { location: "/api/v1/dashboard/summary/" } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, { status: 307, headers: { location: "https://evil.example/steal" } }),
+      );
+
+    const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" } });
+    const res = await proxyRequest(req, "/api/v1/dashboard/summary");
+
+    // Two calls only: the follow-up redirect is returned, not followed.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(res.status).toBe(307);
+  });
+
   it("round-trips a binary (non-JSON) response body unmodified, e.g. an invoice PDF", async () => {
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // "%PDF-1.4"
     fetchMock.mockResolvedValueOnce(

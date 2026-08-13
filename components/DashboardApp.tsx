@@ -5,10 +5,14 @@ import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   flagUrl, COUNTRIES, CURRENCIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
   DEPOSIT_NETWORKS, DEPOSIT_ADDRESSES, ACCOUNTS, ROLES, TEAM_MEMBERS,
-  CORRIDORS, BULK_ROWS, CARDS, STATUS_MAP,
+  CORRIDORS, BULK_ROWS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
-import { dashboardApi, liveRateRowsFromSummary } from "@/lib/services/dashboard";
+import {
+  dashboardApi,
+  liveRateRowsFromSummary,
+  mergeExchangeRates,
+} from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { TX_FILTERS } from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
@@ -77,12 +81,45 @@ import {
 } from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
+import {
+  assertSufficientBalance,
+  DEFAULT_DISPLAY_CURRENCY,
+  DISPLAY_CURRENCY_OPTIONS,
+  describeDisplayTotalSub,
+  formatAccountBalance,
+  formatSummedBalance,
+  parseBalanceNumber,
+  readStoredDisplayCurrency,
+  totalBalanceInDisplayCurrency,
+  writeStoredDisplayCurrency,
+  type DisplayCurrency,
+} from "@/lib/services/balances";
+import {
+  conversionsApi,
+  secondsUntilExpiry,
+  type ConversionOut,
+} from "@/lib/services/conversions";
+import ConvertFlow, { type ConvertMode } from "@/components/convert/ConvertFlow";
+import {
+  cardsApi,
+  cardholderPrefillFromKybProfile,
+  cardPlasticBg,
+  describeCardStatus,
+  describeUsdFunding,
+  describeUsdFundingIssueNote,
+  isValidCardE164,
+  isValidCardholderEmail,
+  newCardReference,
+  resolveUsdFundingAccount,
+  type IssuedCard,
+  type UsdFundingAccount,
+} from "@/lib/services/cards";
 
 /** Phase 4 account-sends support Base + Polygon USDC only. */
 const SEND_STABLECOIN_NETWORKS = DEPOSIT_NETWORKS.filter(
   (n) => n.key === "base" || n.key === "polygon",
 );
-import ActivityList from "@/components/ui/ActivityList";
+import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
@@ -149,12 +186,23 @@ export default function DashboardApp(props: Props = {}) {
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
+    convertMode: "fiat_to_stable" as ConvertMode,
+    convertSourceAccountId: "",
+    convertDestAccountId: "",
+    convertAmount: "",
+    convertQuote: null as ConversionOut | null,
+    convertQuoteLoading: false,
+    convertAccepting: false,
+    convertError: "",
+    convertHop: 1 as 1 | 2,
+    convertBridgeUsdcId: "" as string,
+    convertFiatPair: ["EUR", "USD"] as [string, string],
     stableSel: "USDC", txFilter: "all",
     selectedTxId: null as number | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
-    selectedCardIdx: 0,
+    selectedCardId: "" as string,
     /** "details" | "fund" — same coords modal, fund reframes copy for bank transfer. */
     acctDetailIntent: "details" as "details" | "fund",
     /** When set, Deposit OnRamp is funding this fiat account (African auto path). */
@@ -167,10 +215,19 @@ export default function DashboardApp(props: Props = {}) {
     createAccountCurrency: "", createAccountStablecoin: "", createAccountNetwork: "",
     createAccountSaving: false, createAccountError: "",
     teamMembers: TEAM_MEMBERS, inviteOpen: false, inviteName: "", inviteEmail: "", inviteRole: "operator",
-    newCardLabel: "", newCardDone: false,
+    newCardLabel: "",
+    newCardFirstName: "",
+    newCardLastName: "",
+    newCardEmail: "",
+    newCardPhone: "",
+    newCardDone: false,
+    newCardIssuing: false,
+    newCardError: "",
+    newlyIssuedCard: null as IssuedCard | null,
+    cardFreezeBusy: false,
+    cardFreezeError: "",
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
-    fundAmount: "250.00", fundCardDone: false,
     balanceView: "all", sendGroup: "country",
   }));
   const setState = useCallback((update: any) => {
@@ -178,7 +235,14 @@ export default function DashboardApp(props: Props = {}) {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => setState((s: any) => ({ quoteSeconds: Math.max(0, s.quoteSeconds - 1) })), 1000);
+    const timer = setInterval(() => {
+      setState((s: any) => {
+        if (s.convertQuote?.expires_at) {
+          return { quoteSeconds: secondsUntilExpiry(s.convertQuote.expires_at) };
+        }
+        return { quoteSeconds: Math.max(0, s.quoteSeconds - 1) };
+      });
+    }, 1000);
     return () => clearInterval(timer);
   }, [setState]);
 
@@ -208,6 +272,19 @@ export default function DashboardApp(props: Props = {}) {
   const queryClient = useQueryClient();
   const [saveRecipientBusy, setSaveRecipientBusy] = useState(false);
   const [saveRecipientMessage, setSaveRecipientMessage] = useState("");
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(
+    DEFAULT_DISPLAY_CURRENCY,
+  );
+  useEffect(() => {
+    setDisplayCurrency(readStoredDisplayCurrency());
+  }, []);
+  const selectDisplayCurrency = (code: string) => {
+    const next = code.trim().toUpperCase();
+    if (!(DISPLAY_CURRENCY_OPTIONS as readonly string[]).includes(next)) return;
+    const typed = next as DisplayCurrency;
+    setDisplayCurrency(typed);
+    writeStoredDisplayCurrency(typed);
+  };
   useEffect(() => {
     setSessionLostHandler(() => {
       queryClient.clear();
@@ -229,6 +306,12 @@ export default function DashboardApp(props: Props = {}) {
     },
   });
   const summaryQuery = useQuery({ queryKey: ["dashboard-summary"], queryFn: dashboardApi.summary, retry: false });
+  const exchangeRatesQuery = useQuery({
+    queryKey: ["exchange-rates"],
+    queryFn: dashboardApi.exchangeRates,
+    retry: false,
+    staleTime: 60_000,
+  });
   const transactionsQuery = useQuery({
     queryKey: ["transactions"],
     queryFn: transactionsApi.list,
@@ -349,6 +432,82 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
   });
 
+  const cardsSurfaceOpen =
+    state.screen === "cards" ||
+    state.modal === "newCard" ||
+    state.modal === "cardDetail";
+  // Prefer IBAN USD once eligibility+list settle; still allow entity-account fallback.
+  const usdFundingReady =
+    depositEligibilityQuery.isFetched &&
+    (depositEligibilityQuery.data?.eligible !== true ||
+      depositAccountsQuery.isFetched);
+  const usdFundingQuery = useQuery({
+    queryKey: ["usd-funding-account", depositAccountsQuery.dataUpdatedAt],
+    queryFn: () =>
+      resolveUsdFundingAccount({
+        depositAccounts: depositAccountsQuery.data?.accounts ?? [],
+      }),
+    enabled: cardsSurfaceOpen && usdFundingReady,
+    retry: false,
+    staleTime: 30_000,
+  });
+
+  const issuedCardsQuery = useQuery({
+    queryKey: [
+      "issued-cards",
+      usdFundingQuery.data?.entityId,
+      usdFundingQuery.data?.accountId,
+    ],
+    queryFn: () =>
+      cardsApi.list(
+        usdFundingQuery.data!.entityId,
+        usdFundingQuery.data!.accountId,
+      ),
+    enabled: Boolean(
+      cardsSurfaceOpen &&
+        usdFundingQuery.data?.entityId &&
+        usdFundingQuery.data?.accountId,
+    ),
+    retry: false,
+    staleTime: 15_000,
+  });
+
+  // Prefill convert accounts once lists load so the form isn't empty.
+  useEffect(() => {
+    if (state.screen !== "convert") return;
+    const fiat = (depositAccountsQuery.data?.accounts ?? [])
+      .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+      .map((a) => String(a.id));
+    const usdc = (stablecoinAccountsQuery.data ?? [])
+      .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
+      .map((a) => String(a.id));
+    const mode = state.convertMode;
+    const hop = state.convertHop;
+    const sources =
+      mode === "stable_to_fiat" || (mode === "fiat_to_fiat" && hop === 2) ? usdc : fiat;
+    const dests =
+      mode === "fiat_to_stable"
+        ? usdc
+        : fiat.filter((id) => id !== (state.convertSourceAccountId || sources[0]));
+    setState((s: any) => {
+      const next: Record<string, string> = {};
+      if (!s.convertSourceAccountId && sources[0]) next.convertSourceAccountId = sources[0];
+      if (!s.convertDestAccountId && dests[0]) next.convertDestAccountId = dests[0];
+      if (!s.convertBridgeUsdcId && usdc[0]) next.convertBridgeUsdcId = usdc[0];
+      return Object.keys(next).length ? next : {};
+    });
+  }, [
+    state.screen,
+    state.convertMode,
+    state.convertHop,
+    state.convertSourceAccountId,
+    state.convertDestAccountId,
+    state.convertBridgeUsdcId,
+    depositAccountsQuery.data,
+    stablecoinAccountsQuery.data,
+    setState,
+  ]);
+
   // Best-effort post-OnRamp convert status (skipped until entity fiat id + FX network_id exist).
   useEffect(() => {
     const order = depositStatusQuery.data;
@@ -420,7 +579,16 @@ export default function DashboardApp(props: Props = {}) {
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
-    newCardLabel: "", newCardDone: false, invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
+    convertMode: "fiat_to_stable" as ConvertMode,
+    convertSourceAccountId: "",
+    convertDestAccountId: "",
+    convertAmount: "",
+    convertQuote: null,
+    convertQuoteLoading: false,
+    convertAccepting: false,
+    convertError: "",
+    convertHop: 1,
+    convertBridgeUsdcId: "",
     fundAfricanTargetCurrency: null, fundConvertStatus: "", fundConvertError: "",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
@@ -580,6 +748,11 @@ export default function DashboardApp(props: Props = {}) {
         if (!account) {
           throw new Error("No ready USDC account on this network.");
         }
+        assertSufficientBalance({
+          amount: state.sendAmount.trim(),
+          balance: account.balance,
+          currency: account.currency || "USDC",
+        });
         const payload = buildSendPreviewPayload({
           toAddress: state.sendRecipient.trim(),
           amount: state.sendAmount.trim(),
@@ -779,8 +952,27 @@ export default function DashboardApp(props: Props = {}) {
     }));
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
-  const openCardDetail = (i) => () => setState({ modal: "cardDetail", selectedCardIdx: i });
-  const openNewCard = () => setState({ modal: "newCard", newCardLabel: "", newCardDone: false });
+  const openCardDetail = (cardId: string) => () =>
+    setState({ modal: "cardDetail", selectedCardId: cardId, cardFreezeBusy: false, cardFreezeError: "" });
+  const openNewCard = () => {
+    const prefill = cardholderPrefillFromKybProfile(
+      meQuery.data?.kyb_summary?.profile ?? null,
+    );
+    const sessionEmail = meQuery.data?.user?.email?.trim() || "";
+    setState({
+      modal: "newCard",
+      newCardLabel: "",
+      newCardDone: false,
+      newCardIssuing: false,
+      newCardError: "",
+      newlyIssuedCard: null,
+      // Cardholder must be a person — never the business legal name.
+      newCardFirstName: prefill.first_name || "",
+      newCardLastName: prefill.last_name || "",
+      newCardEmail: prefill.email || sessionEmail,
+      newCardPhone: prefill.phone_number || "",
+    });
+  };
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
   const openModalTier = () => setState({ modal: "tier", tierDone: false });
   const openModalKyb = () => setState({ modal: "kyb" });
@@ -1104,10 +1296,168 @@ export default function DashboardApp(props: Props = {}) {
   const runBulkPayout = () => setState({ bulkDone: true });
 
   const setStable = (k) => () => setState({ stableSel: k });
-  const setOnramp = () => setState({ onrampDir: "onramp" });
-  const setOfframp = () => setState({ onrampDir: "offramp" });
-  const refreshQuote = () => setState({ quoteSeconds: 87 });
-  const acceptQuote = () => { if (state.quoteSeconds > 0) setState({ swapAccepted: true }); };
+  const setConvertMode = (mode: ConvertMode) =>
+    setState({
+      convertMode: mode,
+      convertSourceAccountId: "",
+      convertDestAccountId: "",
+      convertQuote: null,
+      convertError: "",
+      convertHop: 1,
+      swapAccepted: false,
+      quoteSeconds: 0,
+    });
+  /** Resolve a ready USDC FinancialAccount id for fiat↔fiat bridging. */
+  const resolveUsdcBridgeId = (): string => {
+    const fromState = (state.convertBridgeUsdcId || "").trim();
+    if (fromState) return fromState;
+    const ready = (stablecoinAccountsQuery.data ?? []).find(
+      (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
+    );
+    return ready?.id ? String(ready.id) : "";
+  };
+  const refreshConvertQuote = async () => {
+    const sourceId = state.convertSourceAccountId;
+    const selectedDestId = state.convertDestAccountId;
+    const amount = state.convertAmount;
+    const twoHopHop1 =
+      state.convertMode === "fiat_to_fiat" && state.convertHop === 1;
+    const bridgeId = twoHopHop1 ? resolveUsdcBridgeId() : "";
+    // Hop 1 of EUR↔USD quotes source fiat → USDC; selectedDestId is the final fiat.
+    const quoteDestId = twoHopHop1 ? bridgeId : selectedDestId;
+
+    if (!sourceId || !selectedDestId || !amount.trim()) {
+      setState({ convertError: "Pick both accounts and enter an amount (min 1.00)." });
+      return;
+    }
+    if (twoHopHop1 && !bridgeId) {
+      setState({
+        convertError:
+          "Open a ready USDC account (Base or Polygon) first — fiat↔fiat converts via USDC.",
+      });
+      return;
+    }
+
+    // Client-side available-balance guard when the partner exposed a balance.
+    const fiatSource = (depositAccountsQuery.data?.accounts ?? []).find(
+      (a) => String(a.id) === sourceId,
+    );
+    const stableSource = (stablecoinAccountsQuery.data ?? []).find(
+      (a) => String(a.id) === sourceId,
+    );
+    try {
+      if (fiatSource) {
+        assertSufficientBalance({
+          amount,
+          balance: fiatSource.balance,
+          currency: fiatSource.currency,
+        });
+      } else if (stableSource) {
+        assertSufficientBalance({
+          amount,
+          balance: stableSource.balance,
+          currency: stableSource.currency,
+        });
+      }
+    } catch (err) {
+      setState({
+        convertError: err instanceof Error ? err.message : "Insufficient balance.",
+      });
+      return;
+    }
+
+    setState({
+      convertQuoteLoading: true,
+      convertError: "",
+      convertQuote: null,
+      swapAccepted: false,
+      ...(bridgeId ? { convertBridgeUsdcId: bridgeId } : {}),
+    });
+    try {
+      const quote = await conversionsApi.quote({
+        source_account_id: sourceId,
+        destination_account_id: quoteDestId,
+        amount,
+      });
+      setState({
+        convertQuoteLoading: false,
+        convertQuote: quote,
+        quoteSeconds: secondsUntilExpiry(quote.expires_at) || 120,
+      });
+    } catch (err) {
+      setState({
+        convertQuoteLoading: false,
+        convertError:
+          err instanceof Error ? err.message : "Couldn't get a conversion quote.",
+      });
+    }
+  };
+  const acceptConvertQuote = async () => {
+    const quote = state.convertQuote;
+    if (!quote?.quote_id || state.quoteSeconds <= 0) return;
+    const bridgeId = resolveUsdcBridgeId();
+    const finalFiatId = state.convertDestAccountId;
+    setState({ convertAccepting: true, convertError: "" });
+    try {
+      const accepted = await conversionsApi.accept(quote.quote_id);
+      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+
+      // EUR↔USD two-hop: after hop 1 (fiat→USDC), quote hop 2 (USDC→other fiat).
+      if (
+        state.convertMode === "fiat_to_fiat" &&
+        state.convertHop === 1 &&
+        bridgeId &&
+        finalFiatId
+      ) {
+        const hop2Amount = accepted.destination_amount || quote.destination_amount;
+        if (!hop2Amount) {
+          throw new Error("First hop settled but no USDC amount returned for hop 2.");
+        }
+        // Hop 1 has settled — the funds are in the USDC bridge account. Pin the
+        // flow to hop 2 *before* quoting, so a failed quote leaves a retryable
+        // state instead of one that re-accepts the spent hop-1 quote_id.
+        setState({
+          convertHop: 2,
+          convertBridgeUsdcId: bridgeId,
+          convertSourceAccountId: bridgeId,
+          convertDestAccountId: finalFiatId,
+          convertQuote: null,
+          convertAmount: String(hop2Amount),
+        });
+        const hop2 = await conversionsApi.quote({
+          source_account_id: bridgeId,
+          destination_account_id: finalFiatId,
+          amount: String(hop2Amount),
+        });
+        setState({
+          convertAccepting: false,
+          convertHop: 2,
+          convertBridgeUsdcId: bridgeId,
+          convertSourceAccountId: bridgeId,
+          convertDestAccountId: finalFiatId,
+          convertQuote: hop2,
+          convertAmount: String(hop2Amount),
+          quoteSeconds: secondsUntilExpiry(hop2.expires_at) || 120,
+          convertError: "",
+        });
+        return;
+      }
+
+      setState({
+        convertAccepting: false,
+        swapAccepted: true,
+        convertQuote: accepted,
+      });
+    } catch (err) {
+      setState({
+        convertAccepting: false,
+        convertError:
+          err instanceof Error ? err.message : "Couldn't accept this conversion.",
+      });
+    }
+  };
   const setTxFilter = (f) => () => setState({ txFilter: f });
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
@@ -1164,18 +1514,107 @@ export default function DashboardApp(props: Props = {}) {
   const toggleRevealKey = (id) => () => setState(s => ({ apiKeyRevealed: { ...s.apiKeyRevealed, [id]: !s.apiKeyRevealed[id] } }));
   const toggleRevealSecret = (id) => () => setState(s => ({ secretRevealed: { ...s.secretRevealed, [id]: !s.secretRevealed[id] } }));
 
-  // Cards + Team have no backend yet, so these stay local/simulated exactly
-  // as the original design prototype had them. See docs/api-contract.md.
-  const setNewCardLabel = (e) => setState({ newCardLabel: e.target.value });
-  const issueCard = () => { if (state.newCardLabel.trim()) setState({ newCardDone: true }); };
-  const toggleFreezeCard = () => setState(s => ({ cardFrozen: !s.cardFrozen }));
-  const fundCard = () => setState({ modal: "fundCard", fundCardDone: false });
-  const withdrawCard = () => setState({ modal: "fundCard", fundCardDone: false });
-  const openFundCardDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
-  const openWithdrawDirect = (i) => (e) => { e.stopPropagation(); setState({ modal: "fundCard", fundCardDone: false, selectedCardIdx: i }); };
+  // Cards: issue / list / freeze against an active fiat USD funding account.
+  const setNewCardLabel = (e) => setState({ newCardLabel: e.target.value, newCardError: "" });
+  const setNewCardFirstName = (e) => setState({ newCardFirstName: e.target.value, newCardError: "" });
+  const setNewCardLastName = (e) => setState({ newCardLastName: e.target.value, newCardError: "" });
+  const setNewCardEmail = (e) => setState({ newCardEmail: e.target.value, newCardError: "" });
+  const setNewCardPhone = (e) => setState({ newCardPhone: e.target.value, newCardError: "" });
+  const issueCard = async () => {
+    const label = state.newCardLabel.trim();
+    const funding = usdFundingQuery.data;
+    const firstName = state.newCardFirstName.trim();
+    const lastName = state.newCardLastName.trim();
+    const email = state.newCardEmail.trim();
+    const phone = state.newCardPhone.trim();
+    if (!funding) {
+      setState({
+        newCardError:
+          "Open an active USD deposit account first — every card must be linked to USD.",
+      });
+      return;
+    }
+    if (!label) {
+      setState({ newCardError: "Enter a card label." });
+      return;
+    }
+    if (!firstName || !lastName) {
+      setState({ newCardError: "Enter the cardholder’s first and last name." });
+      return;
+    }
+    if (!isValidCardholderEmail(email)) {
+      setState({ newCardError: "Enter a valid cardholder email." });
+      return;
+    }
+    if (!isValidCardE164(phone)) {
+      setState({
+        newCardError: "Enter phone in E.164 format (e.g. +12125550198).",
+      });
+      return;
+    }
+    setState({ newCardIssuing: true, newCardError: "" });
+    try {
+      const issued = await cardsApi.create(funding.entityId, funding.accountId, {
+        type: "virtual",
+        reference: newCardReference(label),
+        card_name: label,
+        cardholder: {
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone_number: phone,
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      setState({
+        newCardIssuing: false,
+        newCardDone: true,
+        newlyIssuedCard: issued,
+        selectedCardId: issued.id,
+      });
+    } catch (err) {
+      setState({
+        newCardIssuing: false,
+        newCardError:
+          err instanceof Error ? err.message : "Couldn't issue this card.",
+      });
+    }
+  };
+  const toggleFreezeCard = async () => {
+    const funding = usdFundingQuery.data;
+    const cardId = state.selectedCardId;
+    const card = (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === cardId);
+    if (!funding || !card) return;
+    setState({ cardFreezeBusy: true, cardFreezeError: "" });
+    try {
+      const frozen = (card.status || "").toLowerCase() === "frozen";
+      const updated = frozen
+        ? await cardsApi.unfreeze(funding.entityId, funding.accountId, card.id)
+        : await cardsApi.freeze(funding.entityId, funding.accountId, card.id);
+      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      setState({ cardFreezeBusy: false, selectedCardId: updated.id });
+    } catch (err) {
+      // Own field: the card detail modal renders this one. `newCardError` only
+      // surfaces inside the issue-card modal, so a failed toggle looked silent.
+      setState({
+        cardFreezeBusy: false,
+        cardFreezeError:
+          err instanceof Error ? err.message : "Couldn't update card freeze state.",
+      });
+    }
+  };
+  const fundCard = () =>
+    setState({
+      modal: "acctDetail",
+      acctDetailIntent: "fund",
+      selectedAcctKind: "fiat",
+      selectedAcctKey: "fiat:USD",
+    });
+  const openFundCardDirect = (_cardId: string) => (e) => {
+    e.stopPropagation();
+    fundCard();
+  };
   const terminateCard = () => setState({ modal: null });
-  const setFundAmount = (e) => setState({ fundAmount: e.target.value });
-  const submitFundCard = () => { if (state.fundAmount.trim()) setState({ fundCardDone: true }); };
 
   const openInvite = () => setState({ inviteOpen: true, inviteName: "", inviteEmail: "", inviteRole: "operator" });
   const closeInvite = () => setState({ inviteOpen: false });
@@ -1467,9 +1906,6 @@ export default function DashboardApp(props: Props = {}) {
       bulkBorder: s.bulkSelected.includes(i) ? "var(--indigo)" : "transparent",
     }));
 
-    const quoteExpired = s.quoteSeconds <= 0;
-    const isOnrampDir = s.onrampDir === "onramp";
-
     // Real transactions from the backend (thin read-view over merchant_orders).
     // TransactionOut has no counterparty name/country — those fields are
     // display-only stand-ins, not fabricated financial data.
@@ -1516,8 +1952,8 @@ export default function DashboardApp(props: Props = {}) {
             isFetching: txStatusQuery.isFetching,
           }
         : null;
-    // Deposit accounts have no balance field (see docs/api-contract.md) — the
-    // color/soft pair below drives the status pill only, never a number.
+    // Deposit account status pills — balances come from partner `balance`
+    // when present (see docs/api-contract.md / lib/services/balances.ts).
     const depositStatusPalette: Record<string, [string, string]> = {
       active: ["var(--indigo-text)", "var(--indigo-tint)"],
       pending: ["var(--amber)", "var(--amber-tint)"],
@@ -1558,6 +1994,8 @@ export default function DashboardApp(props: Props = {}) {
             statusLabel: view.statusLabel,
             statusColor,
             statusSoft,
+            balance: view.balance,
+            balanceSub: view.hasBalance ? "Available balance" : "Balance not yet available",
             rows,
             sections: [
               ...(bankRows.length ? [{ title: "Bank details", rows: bankRows }] : []),
@@ -1587,6 +2025,12 @@ export default function DashboardApp(props: Props = {}) {
               statusLabel: describeStablecoinAccountStatus(selectedStablecoinAccount.status),
               statusColor,
               statusSoft,
+              balance: formatAccountBalance(selectedStablecoinAccount.balance, {
+                maximumFractionDigits: 6,
+              }),
+              balanceSub: formatAccountBalance(selectedStablecoinAccount.balance) !== "—"
+                ? "Available balance"
+                : "Balance not yet available",
               rows,
               sections: [{ title: "Account", rows }],
               instructions: null as string | null,
@@ -1613,7 +2057,14 @@ export default function DashboardApp(props: Props = {}) {
                 : []),
             ]
           : [];
-    const cardSel = CARDS[s.selectedCardIdx];
+    const issuedCardsList = issuedCardsQuery.data?.cards ?? [];
+    const cardSel =
+      issuedCardsList.find((c) => c.id === s.selectedCardId) || null;
+    const usdFunding: UsdFundingAccount | null = usdFundingQuery.data ?? null;
+    const usdSpendLabel =
+      usdFunding && usdFunding.balanceLabel !== "—"
+        ? `$${usdFunding.balanceLabel}`
+        : "—";
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
   const mainNavItems = navMap.map(n => {
@@ -1652,27 +2103,52 @@ export default function DashboardApp(props: Props = {}) {
         return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
       });
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
-  // No real total-balance source exists yet: it is a currency-accounts
-  // aggregate (IBAN/Wallets scope, deferred), and the only backend field in
-  // this neighborhood — `totals.user_balance` — is an untyped Privy
-  // passthrough that reports null whenever Privy has no balance to give.
-  //
-  // So this renders an em dash rather than a number. It previously showed a
-  // hardcoded "$548,830.55", which is worse than showing nothing: on a real
-  // account with no money in it, an invented balance is indistinguishable
-  // from a true one. Restore a figure here only when it is computed from a
-  // real source. See docs/api-contract.md.
-  const homeTotalBalance = "—";
-  const balanceViewSub = s.balanceView === "stablecoin" ? "Stablecoin balance not yet available" : s.balanceView === "fiat" ? "Fiat account balance not yet available" : "Balance not yet available";
-  // Fiat IBAN chips + partner USDC Base/Polygon chips. No invented balances.
+  // Total balance hero: one figure in the user's default display currency,
+  // converted via Mboka indicative FX only (never invent rates).
+  const usdcBalances = stablecoinAccountsList
+    .filter((a) => a.currency === "USDC")
+    .map((a) => a.balance);
+  const usdcTotalLabel = formatSummedBalance(usdcBalances, { maximumFractionDigits: 2 });
+  const anyStableBalance = usdcTotalLabel !== "—";
+  const fiatLedgerItems = depositAccountsList.map((a) => ({
+    currency: a.currency,
+    balance: a.balance,
+  }));
+  const stableLedgerItems = stablecoinAccountsList.map((a) => ({
+    currency: a.currency,
+    balance: a.balance,
+  }));
+  const homeTotalLedgerItems =
+    s.balanceView === "stablecoin"
+      ? stableLedgerItems.filter((a) => (a.currency || "").toUpperCase() === "USDC")
+      : s.balanceView === "fiat"
+        ? fiatLedgerItems
+        : [...fiatLedgerItems, ...stableLedgerItems];
+  const homeFxRates = mergeExchangeRates(
+    summaryQuery.data?.fx_rates,
+    exchangeRatesQuery.data,
+  );
+  const homeDisplayTotal = totalBalanceInDisplayCurrency(
+    homeTotalLedgerItems,
+    displayCurrency,
+    homeFxRates,
+    { maximumFractionDigits: 2 },
+  );
+  const balanceViewSub = describeDisplayTotalSub(homeDisplayTotal, {
+    balanceView: (s.balanceView === "fiat" || s.balanceView === "stablecoin"
+      ? s.balanceView
+      : "all") as "all" | "fiat" | "stablecoin",
+    displayCurrency,
+  });
+  // Fiat IBAN chips + partner USDC Base/Polygon chips.
   const fiatBalanceRows = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
-    return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: "—" };
+    return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: view.balance };
   });
   const stableBalanceRows = stablecoinAccountsList.map((a) => ({
     flagUrl: null as string | null,
     code: `${a.currency}/${formatNetworkLabel(a.network)}`,
-    balance: "—",
+    balance: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
   }));
   const homeCurrencyChips =
     s.balanceView === "stablecoin"
@@ -1694,7 +2170,7 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;
-  const liveRates = liveRateRowsFromSummary(summaryQuery.data?.fx_rates);
+  const liveRates = liveRateRowsFromSummary(homeFxRates);
   const fmtUsd = (v: string | number | undefined) =>
     v == null ? "—" : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const homeStats = [
@@ -1703,12 +2179,11 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
   const homeRecent = decoratedAll.slice(0, 4);
-  // No real stablecoin settlement-wallet balance source exists yet — same
-  // reasoning as `homeTotalBalance` above. Previously hardcoded to
-  // "USDC 180,860.00", which read as live on an account with none. Restore
-  // a figure here only once it's computed from a real source.
-  const mainWalletBalance = "—";
-  const mainWalletSub = "Stablecoin balance not yet available";
+  const mainWalletBalance =
+    usdcTotalLabel === "—" ? "—" : `${usdcTotalLabel} USDC`;
+  const mainWalletSub = anyStableBalance
+    ? "Available across ready USDC rails"
+    : "Stablecoin balance not yet available";
   const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
   const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
@@ -1721,7 +2196,7 @@ export default function DashboardApp(props: Props = {}) {
       label: view.name,
       flagUrl: view.iso ? flagUrl(view.iso) : null,
       rail: fiatRailForCurrency(view.currency),
-      balance: "—",
+      balance: view.balance,
       detail: view.primaryDetail,
       statusLabel: view.statusLabel,
       statusColor,
@@ -1738,6 +2213,7 @@ export default function DashboardApp(props: Props = {}) {
         : "pending";
     const [statusColor, statusSoft] = depositStatusColors(statusKey);
     const key = `stablecoin:${a.id}`;
+    const balance = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
     return {
       key,
       currency: a.currency,
@@ -1745,7 +2221,7 @@ export default function DashboardApp(props: Props = {}) {
       label: `${a.currency} · ${networkLabel}`,
       flagUrl: null as string | null,
       rail: `Stablecoin · ${networkLabel}`,
-      balance: "—",
+      balance,
       detail: networkLabel,
       statusLabel: describeStablecoinAccountStatus(a.status),
       statusColor,
@@ -1788,7 +2264,7 @@ export default function DashboardApp(props: Props = {}) {
         convertNetworkId: null,
       })
     : null;
-  const cardsRecent = decoratedAll.slice(0, 5);
+  const cardsRecent: ActivityItem[] = [];
   const corridors = CORRIDORS.map(c => ({
         ...c,
         flagUrl: flagUrl(c.iso),
@@ -1796,7 +2272,34 @@ export default function DashboardApp(props: Props = {}) {
         statusColor: c.status === "live" ? "var(--indigo-text)" : "var(--amber)",
         statusSoft: c.status === "live" ? "var(--indigo-tint)" : "var(--amber-tint)",
       }));
-  const cards = CARDS.map((c,i) => ({ ...c, openDetail: openCardDetail(i), statusLabel: c.status === "active" ? "Active" : "Frozen", filter: c.status === "frozen" ? "saturate(0.2) opacity(0.7)" : "none", fund: openFundCardDirect(i), withdraw: openWithdrawDirect(i), freeze: openCardDetail(i) }));
+  const cards = issuedCardsList.map((c, i) => {
+    const frozen = (c.status || "").toLowerCase() === "frozen";
+    return {
+      id: c.id,
+      label: c.card_name || `Card ···· ${c.last_four || ""}`,
+      last4: c.last_four || "————",
+      balance: usdSpendLabel,
+      bg: cardPlasticBg(i),
+      status: frozen ? "frozen" : "active",
+      statusLabel: describeCardStatus(c.status),
+      filter: frozen ? "saturate(0.2) opacity(0.7)" : "none",
+      openDetail: openCardDetail(c.id),
+      fund: openFundCardDirect(c.id),
+      freeze: openCardDetail(c.id),
+    };
+  });
+  const cardsLoading = usdFundingQuery.isLoading || issuedCardsQuery.isLoading;
+  const cardsError =
+    usdFundingQuery.isError || issuedCardsQuery.isError
+      ? (usdFundingQuery.error instanceof Error
+          ? usdFundingQuery.error.message
+          : issuedCardsQuery.error instanceof Error
+            ? issuedCardsQuery.error.message
+            : "Couldn't load cards.")
+      : !usdFunding && !usdFundingQuery.isLoading
+        ? "Open an active USD deposit account to issue cards."
+        : "";
+  const cardsFundingHint = describeUsdFunding(usdFunding);
   const txFilters = TX_FILTERS.map((f) => ({ label: f.label, select: setTxFilter(f.key), bg: s.txFilter === f.key ? "var(--indigo)" : "var(--surface2)", color: s.txFilter === f.key ? "var(--indigo-on)" : "var(--muted)" }));
   const invoices = (invoicesQuery.data?.items ?? []).map((inv) => {
     const [l, c, soft] = STATUS_MAP[inv.status] || ["Draft", "var(--muted)", "var(--surface2)"];
@@ -1988,9 +2491,6 @@ export default function DashboardApp(props: Props = {}) {
   const isModalTier = s.modal === "tier";
   const isModalKyb = s.modal === "kyb";
   const isModalFundCard = s.modal === "fundCard";
-  const fundAmount = s.fundAmount;
-  const fundCardNotDone = !s.fundCardDone;
-  const fundCardDone = s.fundCardDone;
   const sendIsCountry = s.sendGroup === "country";
   const sendIsCrypto = s.sendGroup === "crypto";
   const sendRailHasChoice = railHasChoice(sendCountry.rails, s.sendMethod);
@@ -2211,29 +2711,84 @@ export default function DashboardApp(props: Props = {}) {
   const bulkLoaded = s.bulkLoaded;
   const bulkNotDone = !s.bulkDone;
   const bulkDone = s.bulkDone;
-  const onrampTabBg = isOnrampDir ? "var(--indigo-tint)" : "transparent";
-  const onrampTabBorder = isOnrampDir ? "var(--indigo)" : "var(--border)";
-  const onrampTabColor = isOnrampDir ? "var(--indigo-text)" : "var(--muted)";
-  const offrampTabBg = !isOnrampDir ? "var(--indigo-tint)" : "transparent";
-  const offrampTabBorder = !isOnrampDir ? "var(--indigo)" : "var(--border)";
-  const offrampTabColor = !isOnrampDir ? "var(--indigo-text)" : "var(--muted)";
-  const swapAmountFrom = isOnrampDir ? "10,000.00" : "5,000.00";
-  const swapFromCcy = isOnrampDir ? "KES" : "USDC";
-  const swapAmountTo = isOnrampDir ? "77.34" : "645,300.00";
-  const swapToCcy = isOnrampDir ? "USDC" : "KES";
-  const swapRate = "1 USDC = 129.32 KES";
-  const swapSettle = isOnrampDir ? "Base · USDC" : "M-Pesa (Safaricom)";
-  const quoteLive = !quoteExpired;
-  const quoteProgress = Math.round((s.quoteSeconds / 90) * 100);
-  const acceptBg = quoteExpired ? "var(--surface3)" : "var(--indigo)";
-  const acceptColor = quoteExpired ? "var(--muted)" : "var(--indigo-on)";
-  const acceptCursor = quoteExpired ? "not-allowed" : "pointer";
-  const swapNotAccepted = !s.swapAccepted;
+  const fiatConvertAccounts = depositAccountsList
+    .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+    .map((a) => {
+      const view = mapDepositAccountToCardView(a);
+      return {
+        id: String(a.id),
+        currency: a.currency.toUpperCase(),
+        label: `${view.name} (${a.currency.toUpperCase()})`,
+        balanceLabel: view.hasBalance ? view.balance : "—",
+        balanceAmount: parseBalanceNumber(a.balance),
+      };
+    });
+  const usdcConvertAccounts = stablecoinAccountsList
+    .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
+    .map((a) => ({
+      id: String(a.id),
+      currency: "USDC",
+      label: `USDC · ${formatNetworkLabel(a.network)}`,
+      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
+      balanceAmount: parseBalanceNumber(a.balance),
+    }));
+  const convertMode: ConvertMode =
+    s.convertMode === "stable_to_fiat" || s.convertMode === "fiat_to_fiat"
+      ? s.convertMode
+      : "fiat_to_stable";
+  const convertBridgeUsdcId = s.convertBridgeUsdcId || usdcConvertAccounts[0]?.id || "";
+  const convertSourceAccounts =
+    convertMode === "stable_to_fiat" || (convertMode === "fiat_to_fiat" && s.convertHop === 2)
+      ? usdcConvertAccounts
+      : fiatConvertAccounts;
+  // Fiat↔fiat hop 1: pick final fiat dest in the UI; quote uses USDC under the hood.
+  const convertDestAccounts =
+    convertMode === "fiat_to_stable"
+      ? usdcConvertAccounts
+      : convertMode === "fiat_to_fiat" && s.convertHop === 1
+        ? fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId)
+        : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
+  const convertHopLabel =
+    convertMode === "fiat_to_fiat"
+      ? s.convertHop === 1
+        ? "Hop 1 of 2 — convert source fiat to USDC (then USDC → destination)"
+        : "Hop 2 of 2 — convert USDC to destination fiat"
+      : null;
   const swapAccepted = s.swapAccepted;
-  const cardDetail: any = cardSel ? { ...cardSel, freezeTrack: s.cardFrozen ? "var(--indigo)" : "var(--surface3)", freezeKnobLeft: s.cardFrozen ? "23px" : "3px" } : {};
+  const cardIsFrozen = (cardSel?.status || "").toLowerCase() === "frozen";
+  const cardDetail: any = cardSel
+    ? {
+        id: cardSel.id,
+        label: cardSel.card_name || `Card ···· ${cardSel.last_four || ""}`,
+        last4: cardSel.last_four || "————",
+        balance: usdSpendLabel,
+        bg: cardPlasticBg(
+          Math.max(
+            0,
+            issuedCardsList.findIndex((c) => c.id === cardSel.id),
+          ),
+        ),
+        status: cardSel.status,
+        freezeTrack: cardIsFrozen ? "var(--indigo)" : "var(--surface3)",
+        freezeKnobLeft: cardIsFrozen ? "23px" : "3px",
+        exp:
+          cardSel.expiration_month && cardSel.expiration_year
+            ? `${cardSel.expiration_month}/${cardSel.expiration_year}`
+            : null,
+      }
+    : {};
   const newCardLabel = s.newCardLabel;
+  const newCardFirstName = s.newCardFirstName;
+  const newCardLastName = s.newCardLastName;
+  const newCardEmail = s.newCardEmail;
+  const newCardPhone = s.newCardPhone;
   const newCardNotDone = !s.newCardDone;
   const newCardDone = s.newCardDone;
+  const newCardIssuing = s.newCardIssuing;
+  const newCardError = s.newCardError;
+  const newlyIssuedCard = s.newlyIssuedCard as IssuedCard | null;
+  const cardFreezeBusy = s.cardFreezeBusy;
+  const cardFreezeError = s.cardFreezeError;
   const invClient = s.invClient;
   const invAmount = s.invAmount;
   const invoiceNotDone = !s.invoiceDone;
@@ -2336,6 +2891,20 @@ Create payment
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
 <span className="ep-home__balance-label">Total balance</span>
+<div className="ep-home__balance-controls">
+<label className="ep-home__display-currency">
+  <span className="ep-home__display-currency-label">Show in</span>
+  <select
+    className="ep-home__display-currency-select"
+    value={displayCurrency}
+    aria-label="Default display currency"
+    onChange={(e) => selectDisplayCurrency(e.target.value)}
+  >
+    {DISPLAY_CURRENCY_OPTIONS.map((code) => (
+      <option key={code} value={code}>{code}</option>
+    ))}
+  </select>
+</label>
 <div className="ep-home__balance-tabs">
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (
 <React.Fragment key={__i1}>
@@ -2344,7 +2913,10 @@ Create payment
 ))}
 </div>
 </div>
-<div className="ep-home__balance-value">{homeTotalBalance}</div>
+</div>
+<div className="ep-home__balance-value">
+{homeDisplayTotal.label}
+</div>
 <div className="ep-home__balance-sub">{balanceViewSub}</div>
 </div>
 
@@ -2472,8 +3044,8 @@ Create payment
   statusLabel={acctDetail.statusLabel}
   statusColor={acctDetail.statusColor}
   statusSoft={acctDetail.statusSoft}
-  balance="—"
-  balanceSub="Balance not yet available"
+  balance={acctDetail.balance ?? "—"}
+  balanceSub={acctDetail.balanceSub ?? "Balance not yet available"}
   summaryLines={acctDetailLines}
   recent={walletsRecent}
   canConvert={Boolean(acctDetail.showConvert)}
@@ -2497,38 +3069,49 @@ Create payment
 
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
-<div className="ep-cards__preview" role="note">
-<span className="ep-cards__preview-badge">Preview</span>
-<span className="ep-cards__preview-text">Card balances and numbers are simulated demo data — not live accounts.</span>
-</div>
 <div className="ep-cards__head">
 <h2 className="ep-cards__title">Virtual cards · {cards.length}</h2>
-<button type="button" onClick={openNewCard} className="ep-cards__cta">+ New card</button>
+<button type="button" onClick={openNewCard} className="ep-cards__cta" disabled={!usdFunding}>+ New card</button>
 </div>
+<p className="ep-cards__funding-hint">{cardsFundingHint}</p>
+{cardsError ? (
+  <div className="ep-cards__preview" role="alert">
+    <span className="ep-cards__preview-badge">USD required</span>
+    <span className="ep-cards__preview-text">{cardsError}</span>
+  </div>
+) : null}
+{cardsLoading ? (
+  <div className="ep-cards__empty">Loading cards…</div>
+) : cards.length === 0 && !cardsError ? (
+  <div className="ep-cards__empty">No cards yet. Issue a virtual card linked to your USD account.</div>
+) : (
 <div className="ep-cards__grid">
-{(cards || []).map((c: any, __i1: number) => (
-<div key={__i1} className="ep-cards__item">
+{(cards || []).map((c: any) => (
+<div key={c.id} className="ep-cards__item">
 <button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
 <div className="ep-cards__plastic-top">
 <span className="ep-cards__plastic-label">{c.label}</span>
 <span className="ep-cards__plastic-status">{c.statusLabel}</span>
 </div>
 <div className="ep-cards__plastic-body">
-<span className="ep-cards__plastic-eyebrow">Available to spend</span>
+<span className="ep-cards__plastic-eyebrow">Linked USD available</span>
 <span className="ep-cards__plastic-balance">{c.balance}</span>
 <span className="ep-cards__plastic-pan">•••• •••• •••• {c.last4}</span>
 </div>
 </button>
 <div className="ep-cards__actions">
-<button type="button" onClick={c.fund} className="ep-cards__action">Fund</button>
-<button type="button" onClick={c.withdraw} className="ep-cards__action">Withdraw</button>
+<button type="button" onClick={c.fund} className="ep-cards__action">Fund USD</button>
 <button type="button" onClick={c.freeze} className="ep-cards__action">Manage</button>
 </div>
 </div>
 ))}
 </div>
-
-<ActivityList title="Recent transactions" items={cardsRecent} onViewAll={goTransactions} />
+)}
+<ActivityList
+  title="Card transactions"
+  items={cardsRecent}
+  emptyLabel="No card spend yet. Authorizations show here after the card is used (sandbox may stay empty)."
+/>
 </div>
 </>) : null}
 
@@ -2912,50 +3495,53 @@ Create payment
 </section>) : null}
 
 {(isConvertFlow) ? (<section className="ep-flow" data-screen-label="Convert">
-{(swapNotAccepted) ? (<>
-<div className="ep-convert">
-<div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
-<button type="button" role="tab" aria-selected={s.onrampDir === "onramp"} data-active={s.onrampDir === "onramp" ? "true" : "false"} className="ep-convert__tab" onClick={setOnramp}>Fiat → Stablecoin</button>
-<button type="button" role="tab" aria-selected={s.onrampDir === "offramp"} data-active={s.onrampDir === "offramp" ? "true" : "false"} className="ep-convert__tab" onClick={setOfframp}>Stablecoin → Fiat</button>
-</div>
-<div className="ep-convert__quote">
-<div className="ep-convert__row">
-<span className="ep-convert__amount">{swapAmountFrom}</span>
-<span className="ep-convert__ccy">{swapFromCcy}</span>
-</div>
-<div className="ep-convert__arrow" aria-hidden>↓</div>
-<div className="ep-convert__row">
-<span className="ep-convert__amount ep-convert__amount--out">{swapAmountTo}</span>
-<span className="ep-convert__ccy">{swapToCcy}</span>
-</div>
-</div>
-<div className="ep-convert__meta">
-<div className="ep-convert__meta-row"><span className="ep-convert__meta-k">Rate</span><span className="ep-convert__meta-v ep-convert__meta-v--mono">{swapRate}</span></div>
-<div className="ep-convert__meta-row"><span className="ep-convert__meta-k">Settles via</span><span className="ep-convert__meta-v">{swapSettle}</span></div>
-</div>
-{(quoteExpired) ? (<>
-<div className="ep-convert__expired" role="alert"><span className="ep-convert__expired-title">Rate expired</span><span className="ep-convert__expired-body">Refresh to fetch an up-to-date rate. A stale quote cannot be accepted.</span></div>
-</>) : null}
-{(quoteLive) ? (<>
-<div className="ep-convert__timer" role="timer" aria-live="off">
-<span className="ep-convert__timer-label">Quote locks for {s.quoteSeconds}s</span>
-<div className="ep-convert__timer-track"><div className="ep-convert__timer-fill" style={{width: `${quoteProgress}%`}} /></div>
-</div>
-</>) : null}
-<div className="ep-convert__actions">
-<button type="button" className="ep-convert__btn ep-convert__btn--ghost" onClick={refreshQuote}>Refresh quote</button>
-<button type="button" className="ep-convert__btn ep-convert__btn--primary" onClick={acceptQuote} disabled={quoteExpired}>Accept &amp; settle</button>
-</div>
-</div>
-</>) : null}
-{(swapAccepted) ? (<>
-<div className="ep-convert__success">
-<span className="ep-convert__success-icon" aria-hidden>✓</span>
-<span className="ep-convert__success-title">Swap complete</span>
-<span className="ep-convert__success-body">Settled via {swapSettle}.</span>
-<button type="button" className="ep-convert__btn ep-convert__btn--ghost" style={{width: "auto", minWidth: 120, marginTop: 6}} onClick={closeModal}>Done</button>
-</div>
-</>) : null}
+<ConvertFlow
+  mode={convertMode}
+  onMode={(mode) => {
+    setConvertMode(mode);
+    if (mode === "fiat_to_fiat" && convertBridgeUsdcId) {
+      setState({ convertBridgeUsdcId });
+    }
+  }}
+  sourceAccounts={convertSourceAccounts}
+  destinationAccounts={convertDestAccounts}
+  sourceAccountId={s.convertSourceAccountId}
+  destinationAccountId={s.convertDestAccountId}
+  onSourceAccount={(id) =>
+    setState({
+      convertSourceAccountId: id,
+      convertQuote: null,
+      convertError: "",
+      swapAccepted: false,
+    })
+  }
+  onDestinationAccount={(id) =>
+    setState({
+      convertDestAccountId: id,
+      convertBridgeUsdcId: convertBridgeUsdcId || s.convertBridgeUsdcId,
+      convertQuote: null,
+      convertError: "",
+      swapAccepted: false,
+    })
+  }
+  amount={s.convertAmount}
+  onAmount={(value) => setState({ convertAmount: value, convertQuote: null, convertError: "" })}
+  quote={s.convertQuote}
+  quoteSeconds={s.quoteSeconds}
+  quoteLoading={s.convertQuoteLoading}
+  acceptLoading={s.convertAccepting}
+  error={s.convertError}
+  hopLabel={convertHopLabel}
+  done={swapAccepted}
+  doneBody={
+    s.convertQuote
+      ? `${s.convertQuote.source_amount} ${s.convertQuote.source_currency} → ${s.convertQuote.destination_amount ?? "—"} ${s.convertQuote.destination_currency}`
+      : undefined
+  }
+  onRefreshQuote={() => void refreshConvertQuote()}
+  onAccept={() => void acceptConvertQuote()}
+  onDone={exitMoneyFlow}
+/>
 </section>) : null}
 
 
@@ -3104,60 +3690,97 @@ bn.elevated ? (
 <span className="ep-cards__plastic-pan">•••• •••• •••• {cardDetail.last4}</span>
 </div>
 <div className="ep-cards__modal-row">
-<span>Available to spend</span>
+<span>Linked USD available</span>
 <b className="ep-mono">{cardDetail.balance}</b>
 </div>
+{cardDetail.exp ? (
+<div className="ep-cards__modal-row">
+<span>Expires</span>
+<b className="ep-mono">{cardDetail.exp}</b>
+</div>
+) : null}
+<div className="ep-cards__note">Cards spend against your linked USD deposit account — not a separate card wallet.</div>
 <div className="ep-cards__modal-actions">
-<button type="button" onClick={fundCard} className="ep-cards__modal-primary">Fund card</button>
-<button type="button" onClick={withdrawCard} className="ep-cards__modal-secondary">Withdraw</button>
+<button type="button" onClick={fundCard} className="ep-cards__modal-primary">Fund USD account</button>
 </div>
 <div className="ep-cards__modal-row">
-<span className="ep-cards__freeze-label">Freeze card</span>
-<button type="button" onClick={toggleFreezeCard} className="ep-cards__toggle" style={{background: cardDetail.freezeTrack}} aria-pressed={!!s.cardFrozen} aria-label={s.cardFrozen ? "Unfreeze card" : "Freeze card"}>
+<span className="ep-cards__freeze-label">{cardIsFrozen ? "Unfreeze card" : "Freeze card"}</span>
+<button type="button" onClick={() => void toggleFreezeCard()} className="ep-cards__toggle" style={{background: cardDetail.freezeTrack}} aria-pressed={cardIsFrozen} disabled={cardFreezeBusy} aria-label={cardIsFrozen ? "Unfreeze card" : "Freeze card"}>
 <span className="ep-cards__toggle-knob" style={{left: cardDetail.freezeKnobLeft}} />
 </button>
 </div>
-<button type="button" onClick={terminateCard} className="ep-cards__modal-danger">Terminate card</button>
+{cardFreezeError ? (
+  <div className="ep-cards__note" role="alert" style={{color: "var(--red)"}}>{cardFreezeError}</div>
+) : null}
+<button type="button" onClick={terminateCard} className="ep-cards__modal-danger">Close</button>
 </div>
 </>) : null}
 
 {(isModalFundCard) ? (<>
-{(fundCardNotDone) ? (<>
 <div className="ep-cards__modal">
-<label className="ep-cards__field">
-<span className="ep-cards__field-label">Amount (USD)</span>
-<input value={fundAmount} onChange={setFundAmount} placeholder="250.00" className="ep-cards__input" inputMode="decimal" />
-</label>
-<div className="ep-cards__note">Funded from your main USDC wallet. Demo only — balances won’t change.</div>
-<button type="button" onClick={submitFundCard} className="ep-cards__modal-primary">Load funds</button>
+<div className="ep-cards__note">
+Cards spend your linked USD deposit balance — there is no separate card wallet to load.
 </div>
-</>) : null}
-{(fundCardDone) ? (<>
-<div className="ep-cards__success">
-<span className="ep-cards__success-icon" aria-hidden>✓</span>
-<span className="ep-cards__success-title">Card funded</span>
-<span className="ep-cards__success-text">${fundAmount} loaded, available immediately.</span>
-<button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
+<button type="button" onClick={fundCard} className="ep-cards__modal-primary">Fund USD account</button>
 </div>
-</>) : null}
 </>) : null}
 
 {(isModalNewCard) ? (<>
 {(newCardNotDone) ? (<>
 <div className="ep-cards__modal">
+{!usdFunding ? (
+  <div className="ep-cards__note" role="alert">
+    Open an active USD deposit account before issuing cards. Every card must be linked to USD.
+  </div>
+) : (
+  <div className="ep-cards__note">
+    {describeUsdFundingIssueNote(usdFunding)}
+  </div>
+)}
 <label className="ep-cards__field">
 <span className="ep-cards__field-label">Card label</span>
-<input value={newCardLabel} onChange={setNewCardLabel} placeholder="e.g. Marketing Ads" className="ep-cards__input" />
+<input value={newCardLabel} onChange={setNewCardLabel} placeholder="e.g. Marketing Ads" className="ep-cards__input" autoComplete="off" />
 </label>
-<div className="ep-cards__note">Issues a virtual USD card for team spend. Preview — not a live card.</div>
-<button type="button" onClick={issueCard} className="ep-cards__modal-primary">Issue card</button>
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Cardholder first name</span>
+<input value={newCardFirstName} onChange={setNewCardFirstName} placeholder="Jane" className="ep-cards__input" autoComplete="given-name" />
+</label>
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Cardholder last name</span>
+<input value={newCardLastName} onChange={setNewCardLastName} placeholder="Doe" className="ep-cards__input" autoComplete="family-name" />
+</label>
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Cardholder email</span>
+<input value={newCardEmail} onChange={setNewCardEmail} type="email" placeholder="jane@company.com" className="ep-cards__input" autoComplete="email" />
+</label>
+<label className="ep-cards__field">
+<span className="ep-cards__field-label">Phone (E.164)</span>
+<input value={newCardPhone} onChange={setNewCardPhone} placeholder="+12125550198" className="ep-cards__input" inputMode="tel" autoComplete="tel" />
+</label>
+{newCardError ? (
+  <div className="ep-cards__note" role="alert" style={{color: "var(--red)"}}>{newCardError}</div>
+) : null}
+<button type="button" onClick={() => void issueCard()} className="ep-cards__modal-primary" disabled={!usdFunding || newCardIssuing}>
+{newCardIssuing ? "Issuing…" : "Issue card on USD"}
+</button>
 </div>
 </>) : null}
 {(newCardDone) ? (<>
 <div className="ep-cards__success">
 <span className="ep-cards__success-icon" aria-hidden>✓</span>
 <span className="ep-cards__success-title">Card issued</span>
-<span className="ep-cards__success-text">Ready to use immediately.</span>
+<span className="ep-cards__success-text">
+{newlyIssuedCard?.card_name || "Virtual card"} ···· {newlyIssuedCard?.last_four || "————"}
+</span>
+{newlyIssuedCard?.number ? (
+  <div className="ep-cards__secrets" role="status">
+    <div className="ep-cards__note">PAN and CVV are shown once — copy them now.</div>
+    <div className="ep-cards__modal-row"><span>Number</span><b className="ep-mono">{newlyIssuedCard.number}</b></div>
+    <div className="ep-cards__modal-row"><span>CVV</span><b className="ep-mono">{newlyIssuedCard.cvv}</b></div>
+  </div>
+) : (
+  <div className="ep-cards__note">Credentials were not returned (same reference replay). Use Manage to view last four.</div>
+)}
 <button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
 </div>
 </>) : null}
