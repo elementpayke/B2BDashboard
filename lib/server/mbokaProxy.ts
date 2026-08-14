@@ -164,50 +164,93 @@ export async function proxyRequest(
   const bodyBuffer = hasBody ? await request.arrayBuffer() : null;
 
   let upstream: Response;
+  let upstreamBody: ArrayBuffer;
   try {
     upstream = await doFetch(request, backendPathWithQuery, accessToken, bodyBuffer);
+    upstreamBody = await upstream.arrayBuffer();
   } catch (err) {
     return upstreamUnavailableResponse(err);
   }
 
-  // Refresh whenever a refresh cookie is present — including the common case
-  // where the shorter-lived access cookie has already expired and the browser
-  // stopped sending it.
-  if (upstream.status === 401 && refreshToken) {
-    const refreshed = await refreshTokens(refreshToken);
-    if (!refreshed) {
-      const res = await toNextResponse(upstream);
+  // A 401 the backend is only relaying from *its* upstream aggregator says
+  // nothing about this user's session — refreshing or clearing cookies over
+  // it would log a perfectly good session out (see isDownstreamAuthFailure).
+  if (upstream.status === 401 && !isDownstreamAuthFailure(upstreamBody)) {
+    // Refresh whenever a refresh cookie is present — including the common case
+    // where the shorter-lived access cookie has already expired and the browser
+    // stopped sending it.
+    if (refreshToken) {
+      const refreshed = await refreshTokens(refreshToken);
+      if (!refreshed) {
+        const res = toNextResponse(upstream, upstreamBody);
+        clearSessionCookies(res);
+        return res;
+      }
+      let retryBody: ArrayBuffer;
+      try {
+        upstream = await doFetch(request, backendPathWithQuery, refreshed.access_token, bodyBuffer);
+        retryBody = await upstream.arrayBuffer();
+      } catch (err) {
+        return upstreamUnavailableResponse(err);
+      }
+      const res = toNextResponse(upstream, retryBody);
+      if (upstream.status === 401 && !isDownstreamAuthFailure(retryBody)) {
+        // Refresh reported success but the new token still isn't accepted —
+        // treat the session as broken rather than persisting a token that
+        // doesn't actually work.
+        clearSessionCookies(res);
+      } else {
+        setSessionCookies(res, refreshed);
+      }
+      return res;
+    }
+
+    if (accessToken) {
+      const res = toNextResponse(upstream, upstreamBody);
       clearSessionCookies(res);
       return res;
     }
-    try {
-      upstream = await doFetch(request, backendPathWithQuery, refreshed.access_token, bodyBuffer);
-    } catch (err) {
-      return upstreamUnavailableResponse(err);
-    }
-    const res = await toNextResponse(upstream);
-    if (upstream.status === 401) {
-      // Refresh reported success but the new token still isn't accepted —
-      // treat the session as broken rather than persisting a token that
-      // doesn't actually work.
-      clearSessionCookies(res);
-    } else {
-      setSessionCookies(res, refreshed);
-    }
-    return res;
   }
 
-  if (upstream.status === 401 && accessToken) {
-    const res = await toNextResponse(upstream);
-    clearSessionCookies(res);
-    return res;
-  }
-
-  return toNextResponse(upstream);
+  return toNextResponse(upstream, upstreamBody);
 }
 
-async function toNextResponse(upstream: Response): Promise<NextResponse> {
-  const bodyBuffer = await upstream.arrayBuffer();
+/**
+ * True when a 401 body is the backend relaying a *downstream* auth failure
+ * (its aggregator/partner credentials) rather than rejecting this user.
+ *
+ * The two are structurally distinct in the backend's envelope:
+ *
+ *   session   → {"status":"error","message":"Invalid JWT token: …","data":null}
+ *   downstream→ {"status":"error","message":"Aggregator returned 401 for …",
+ *                "data":{"upstream":{…,"message":"Invalid or revoked API key"}}}
+ *
+ * Only the first should end the session. Conflating them meant a dead partner
+ * API key logged every user out the moment the dashboard loaded, because
+ * /v1/supported/catalog and friends 401 on every page load.
+ */
+export function isDownstreamAuthFailure(body: ArrayBuffer): boolean {
+  if (body.byteLength === 0) return false;
+  try {
+    const json = JSON.parse(new TextDecoder().decode(body)) as {
+      data?: unknown;
+    };
+    const data = json?.data;
+    return (
+      typeof data === "object" &&
+      data !== null &&
+      Object.prototype.hasOwnProperty.call(data, "upstream")
+    );
+  } catch {
+    // Not a JSON envelope — can't prove it's downstream, so treat it as a
+    // session failure (the safe direction: log out rather than hang on).
+    return false;
+  }
+}
+
+/** Body is passed in rather than read here — the caller has already consumed
+ *  the stream to classify a 401, and it can only be read once. */
+function toNextResponse(upstream: Response, bodyBuffer: ArrayBuffer): NextResponse {
   const res = new NextResponse(bodyBuffer, {
     status: upstream.status,
     statusText: upstream.statusText,

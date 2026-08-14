@@ -36,7 +36,25 @@ export function isSessionExpiredError(error: unknown): boolean {
   );
 }
 
-function isAuthFailure(status: number, message?: string): boolean {
+/**
+ * A 401 the backend is only relaying from its own upstream aggregator (a dead
+ * partner API key, say) is not this user's session going bad. Those envelopes
+ * carry `data.upstream`; genuine session failures carry `data: null`. Treating
+ * both as session loss logged users out on sight, because endpoints like
+ * /v1/supported/catalog 401 on every dashboard load when the partner key is
+ * revoked. Mirrors `isDownstreamAuthFailure` in lib/server/mbokaProxy.ts,
+ * which likewise stops the proxy clearing the session cookies.
+ */
+function isDownstreamAuthFailure(data: unknown): boolean {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    Object.prototype.hasOwnProperty.call(data, "upstream")
+  );
+}
+
+function isAuthFailure(status: number, message?: string, data?: unknown): boolean {
+  if (isDownstreamAuthFailure(data)) return false;
   if (status === 401) return true;
   const text = message?.trim() ?? "";
   if (!text) return false;
@@ -94,7 +112,7 @@ async function envelopeFromResponse<T>(res: Response): Promise<T> {
 
   if (!res.ok || json.status !== "success") {
     const message = json.message ?? `Request failed (${res.status})`;
-    if (isAuthFailure(res.status, message)) {
+    if (isAuthFailure(res.status, message, json.data)) {
       sessionLostHandler?.();
       throw new SessionExpiredError();
     }

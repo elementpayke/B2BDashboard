@@ -274,4 +274,96 @@ describe("proxyRequest", () => {
     expect(Array.from(buf)).toEqual(Array.from(bytes));
     expect(res.headers.get("content-type")).toBe("application/pdf");
   });
+  // Regression: a dead partner API key made the backend 401 on
+  // /v1/supported/catalog, /v1/exchange-rates and /v1/iban/accounts on every
+  // dashboard load. The proxy read that as session loss, cleared the cookies,
+  // and the user was bounced to /login the instant they signed in.
+  describe("a 401 relayed from the backend's own upstream", () => {
+    const aggregator401 = {
+      status: "error",
+      message: "Aggregator returned 401 for /partner/catalog",
+      data: { upstream: { status: "error", message: "Invalid or revoked API key", data: null } },
+    };
+
+    it("does not clear the session cookies", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, aggregator401));
+
+      const req = makeRequest({
+        cookies: { [ACCESS_COOKIE]: "good-token", [REFRESH_COOKIE]: "good-refresh" },
+        path: "/v1/supported/catalog",
+      });
+      const res = await proxyRequest(req, "/api/v1/supported/catalog");
+
+      expect(res.status).toBe(401);
+      expect(res.cookies.get(ACCESS_COOKIE)).toBeUndefined();
+      expect(res.cookies.get(REFRESH_COOKIE)).toBeUndefined();
+    });
+
+    it("does not burn a token refresh on it", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, aggregator401));
+
+      const req = makeRequest({
+        cookies: { [ACCESS_COOKIE]: "good-token", [REFRESH_COOKIE]: "good-refresh" },
+        path: "/v1/supported/catalog",
+      });
+      await proxyRequest(req, "/api/v1/supported/catalog");
+
+      // One call: no /api/auth/refresh, no retry.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("passes the envelope through to the caller untouched", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, aggregator401));
+
+      const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "good-token" } });
+      const res = await proxyRequest(req, "/api/v1/supported/catalog");
+
+      expect(await res.json()).toEqual(aggregator401);
+    });
+
+    it("still clears the session on a genuine JWT rejection (data: null)", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(401, { status: "error", message: "Invalid JWT token: Invalid token.", data: null }),
+      );
+
+      const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "stale-token" } });
+      const res = await proxyRequest(req, "/api/v1/dashboard/summary");
+
+      expect(res.cookies.get(ACCESS_COOKIE)?.value).toBe("");
+      expect(res.cookies.get(REFRESH_COOKIE)?.value).toBe("");
+    });
+
+    it("keeps the refreshed session when the retry hits a downstream 401", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(401, { status: "error", message: "invalid jwt", data: null }))
+        .mockResolvedValueOnce(
+          jsonResponse(200, {
+            status: "success",
+            message: "ok",
+            data: { access_token: "new-at", refresh_token: "new-rt" },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse(401, aggregator401));
+
+      const req = makeRequest({
+        cookies: { [ACCESS_COOKIE]: "stale", [REFRESH_COOKIE]: "good-refresh" },
+      });
+      const res = await proxyRequest(req, "/api/v1/supported/catalog");
+
+      // The refresh worked; only the aggregator is broken, so persist it.
+      expect(res.cookies.get(ACCESS_COOKIE)?.value).toBe("new-at");
+      expect(res.cookies.get(REFRESH_COOKIE)?.value).toBe("new-rt");
+    });
+
+    it("treats a non-JSON 401 body as a session failure", async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response("<html>401</html>", { status: 401, headers: { "content-type": "text/html" } }),
+      );
+
+      const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" } });
+      const res = await proxyRequest(req, "/api/v1/dashboard/summary");
+
+      expect(res.cookies.get(ACCESS_COOKIE)?.value).toBe("");
+    });
+  });
 });
