@@ -48,7 +48,7 @@ describe("toPayloadUsdAmount", () => {
   });
 
   it("returns null for empty, zero, negative and junk input", () => {
-    for (const bad of ["", "   ", "0", "-5", "abc"]) {
+    for (const bad of ["", "   ", "0", "-5", "abc", "1e3", "0x10", "Infinity"]) {
       expect(toPayloadUsdAmount(bad, { currency: "USD", rate: 130.5 })).toBeNull();
     }
   });

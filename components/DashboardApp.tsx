@@ -714,9 +714,13 @@ export default function DashboardApp(props: Props = {}) {
         summaryQuery.data?.fx_rates,
         exchangeRatesQuery.data,
       );
+      const amountRate = indicativeRate(
+        amountRates?.rates,
+        COUNTRIES[state.sendCountryIdx].code,
+      );
       const usdAmount = toPayloadUsdAmount(state.sendAmount, {
-        currency: state.sendAmountCurrency,
-        rate: indicativeRate(amountRates?.rates, COUNTRIES[state.sendCountryIdx].code),
+        currency: amountRate ? state.sendAmountCurrency : "USD",
+        rate: amountRate,
       });
       if (!usdAmount) {
         setState({
@@ -1903,7 +1907,7 @@ export default function DashboardApp(props: Props = {}) {
       bg: i === selIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === selIdx ? "var(--indigo)" : "transparent",
     }));
     const sendCountry = COUNTRIES[s.sendCountryIdx];
-    const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
+    const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), selected: i === s.sendRailIdx, bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
     const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
     // Real catalog providers for this corridor when the aggregator has one
     // (carries a real networkId — see sendNext). While the first catalog
@@ -2695,8 +2699,8 @@ export default function DashboardApp(props: Props = {}) {
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
   // Phase 4: USDC only (USDT has no account-send path).
-  const sendAssets = ["usdc"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const sendChains = SEND_STABLECOIN_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const sendAssets = ["usdc"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), selected: s.sendAsset === k, bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
+  const sendChains = SEND_STABLECOIN_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), selected: s.sendChain === n.key, bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const sendAssetCode = s.sendAsset.toUpperCase();
   const sendChainLabel = SEND_STABLECOIN_NETWORKS.find(n => n.key === s.sendChain)?.label || s.sendChain;
   const sendDestinationSummary = buildSendDestinationSummary({

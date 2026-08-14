@@ -354,6 +354,7 @@ export default function SendModal(p: SendModalProps) {
                             type="button"
                             onClick={r.select}
                             className="ep-money-rail"
+                            aria-pressed={r.selected}
                             style={{ background: r.bg, color: r.color }}
                           >
                             {r.label}
@@ -427,6 +428,7 @@ export default function SendModal(p: SendModalProps) {
                           type="button"
                           onClick={as.select}
                           className="ep-money-seg__btn"
+                          aria-pressed={as.selected}
                           style={{ background: as.bg, color: as.color }}
                         >
                           {as.label}
@@ -449,6 +451,7 @@ export default function SendModal(p: SendModalProps) {
                           type="button"
                           onClick={ch.select}
                           className="ep-money-network"
+                          aria-pressed={ch.selected}
                           style={{ borderColor: ch.border, background: ch.bg, color: ch.color }}
                         >
                           {ch.label}
@@ -463,7 +466,7 @@ export default function SendModal(p: SendModalProps) {
                 </>
               )}
 
-              {p.sendQuoteError ? (
+              {p.sendQuoteError && !p.sendBlockedNoNetworkId ? (
                 <div className="ep-money-banner ep-money-banner--danger" role="alert">
                   {p.sendQuoteError}
                 </div>
@@ -672,7 +675,7 @@ export default function SendModal(p: SendModalProps) {
                         role="group"
                         aria-label="Amount currency"
                       >
-                        {["USD", p.sendLocalCurrency].map((code) => (
+                        {Array.from(new Set(["USD", p.sendLocalCurrency])).map((code) => (
                           <button
                             key={code}
                             type="button"

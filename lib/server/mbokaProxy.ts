@@ -164,10 +164,12 @@ export async function proxyRequest(
   const bodyBuffer = hasBody ? await request.arrayBuffer() : null;
 
   let upstream: Response;
-  let upstreamBody: ArrayBuffer;
+  let upstreamBody: ArrayBuffer | null = null;
   try {
     upstream = await doFetch(request, backendPathWithQuery, accessToken, bodyBuffer);
-    upstreamBody = await upstream.arrayBuffer();
+    if (upstream.status === 401) {
+      upstreamBody = await upstream.arrayBuffer();
+    }
   } catch (err) {
     return upstreamUnavailableResponse(err);
   }
@@ -175,7 +177,11 @@ export async function proxyRequest(
   // A 401 the backend is only relaying from *its* upstream aggregator says
   // nothing about this user's session — refreshing or clearing cookies over
   // it would log a perfectly good session out (see isDownstreamAuthFailure).
-  if (upstream.status === 401 && !isDownstreamAuthFailure(upstreamBody)) {
+  if (
+    upstream.status === 401 &&
+    upstreamBody !== null &&
+    !isDownstreamAuthFailure(upstreamBody)
+  ) {
     // Refresh whenever a refresh cookie is present — including the common case
     // where the shorter-lived access cookie has already expired and the browser
     // stopped sending it.
@@ -186,15 +192,21 @@ export async function proxyRequest(
         clearSessionCookies(res);
         return res;
       }
-      let retryBody: ArrayBuffer;
+      let retryBody: ArrayBuffer | null = null;
       try {
         upstream = await doFetch(request, backendPathWithQuery, refreshed.access_token, bodyBuffer);
-        retryBody = await upstream.arrayBuffer();
+        if (upstream.status === 401) {
+          retryBody = await upstream.arrayBuffer();
+        }
       } catch (err) {
         return upstreamUnavailableResponse(err);
       }
       const res = toNextResponse(upstream, retryBody);
-      if (upstream.status === 401 && !isDownstreamAuthFailure(retryBody)) {
+      if (
+        upstream.status === 401 &&
+        retryBody !== null &&
+        !isDownstreamAuthFailure(retryBody)
+      ) {
         // Refresh reported success but the new token still isn't accepted —
         // treat the session as broken rather than persisting a token that
         // doesn't actually work.
@@ -248,10 +260,9 @@ export function isDownstreamAuthFailure(body: ArrayBuffer): boolean {
   }
 }
 
-/** Body is passed in rather than read here — the caller has already consumed
- *  the stream to classify a 401, and it can only be read once. */
-function toNextResponse(upstream: Response, bodyBuffer: ArrayBuffer): NextResponse {
-  const res = new NextResponse(bodyBuffer, {
+/** A classified 401 passes its buffered body; all other responses stream. */
+function toNextResponse(upstream: Response, bodyBuffer: ArrayBuffer | null): NextResponse {
+  const res = new NextResponse(bodyBuffer ?? upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
   });

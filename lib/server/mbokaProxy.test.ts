@@ -263,13 +263,17 @@ describe("proxyRequest", () => {
 
   it("round-trips a binary (non-JSON) response body unmodified, e.g. an invoice PDF", async () => {
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // "%PDF-1.4"
-    fetchMock.mockResolvedValueOnce(
-      new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } }),
-    );
+    const upstream = new Response(bytes, {
+      status: 200,
+      headers: { "content-type": "application/pdf" },
+    });
+    const arrayBuffer = vi.spyOn(upstream, "arrayBuffer");
+    fetchMock.mockResolvedValueOnce(upstream);
 
     const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" }, path: "/v1/invoices/1/pdf" });
     const res = await proxyRequest(req, "/api/v1/invoices/1/pdf");
 
+    expect(arrayBuffer).not.toHaveBeenCalled();
     const buf = new Uint8Array(await res.arrayBuffer());
     expect(Array.from(buf)).toEqual(Array.from(bytes));
     expect(res.headers.get("content-type")).toBe("application/pdf");
