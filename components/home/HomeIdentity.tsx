@@ -1,4 +1,5 @@
 "use client";
+import MbokaMark from "@/components/brand/MbokaMark";
 
 type HomeIdentityProps = {
   businessName: string;
@@ -39,8 +40,8 @@ export default function HomeIdentity({
         </div>
       </div>
       <div className="ep-home-identity__mark" aria-hidden>
-        <span className="ep-home-identity__mark-cube" />
-        ElementPay
+        <MbokaMark size={14} title={null} />
+        Mboka
       </div>
     </div>
   );

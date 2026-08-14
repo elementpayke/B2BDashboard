@@ -56,6 +56,39 @@ describe("apiClient", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: a revoked partner API key made the backend relay 401s from
+  // its aggregator on every dashboard load. Treating those as session loss
+  // fired the logout handler the moment the user signed in.
+  it("does not treat a 401 relayed from the backend's upstream as session loss", async () => {
+    const handler = vi.fn();
+    setSessionLostHandler(handler);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, {
+        status: "error",
+        message: "Aggregator returned 401 for /partner/catalog",
+        data: { upstream: { status: "error", message: "Invalid or revoked API key", data: null } },
+      }),
+    );
+
+    await expect(apiEnvelope("GET", "/v1/supported/catalog")).rejects.toMatchObject({
+      name: "ApiRequestError",
+      status: 401,
+      message: "Aggregator returned 401 for /partner/catalog",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("still treats a 401 with a null data envelope as session loss", async () => {
+    const handler = vi.fn();
+    setSessionLostHandler(handler);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { status: "error", message: "Invalid JWT token: Invalid token.", data: null }),
+    );
+
+    await expect(apiEnvelope("GET", "/v1/transactions")).rejects.toBeInstanceOf(SessionExpiredError);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("classifies an auth-failure message as SessionExpiredError even on a non-401 status", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "error", message: "Invalid JWT token", data: null }));
     await expect(apiEnvelope("GET", "/v1/transactions")).rejects.toBeInstanceOf(SessionExpiredError);

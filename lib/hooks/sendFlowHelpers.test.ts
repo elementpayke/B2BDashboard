@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlySendQuoteError,
+  sendRailBlockedByMissingNetworkId,
   railIndexForMethod,
   sendRailHasChoice,
 } from "./sendFlowHelpers";
@@ -96,5 +98,47 @@ describe("sendRailHasChoice", () => {
 
   it("tolerates missing rails", () => {
     expect(sendRailHasChoice(undefined, null)).toBe(false);
+  });
+});
+
+describe("sendRailBlockedByMissingNetworkId", () => {
+  const base = { sendGroup: "country", networkId: undefined, catalogSettled: true };
+
+  it("blocks a country corridor with no aggregator institution id", () => {
+    // Both bank and momo account types are rejected by the backend's own
+    // validation without payment_method.network_id.
+    expect(sendRailBlockedByMissingNetworkId(base)).toBe(true);
+  });
+
+  it("allows it once the catalog supplies an id", () => {
+    expect(sendRailBlockedByMissingNetworkId({ ...base, networkId: "MPESA" })).toBe(false);
+  });
+
+  it("stays quiet while the catalog is still loading", () => {
+    expect(sendRailBlockedByMissingNetworkId({ ...base, catalogSettled: false })).toBe(false);
+  });
+
+  it("does not apply to the stablecoin group, which never sends a networkId", () => {
+    expect(sendRailBlockedByMissingNetworkId({ ...base, sendGroup: "crypto" })).toBe(false);
+  });
+});
+
+describe("friendlySendQuoteError", () => {
+  it("replaces the raw field-path error with something a user can act on", () => {
+    const out = friendlySendQuoteError("payment_method.network_id is required for this rail");
+    expect(out).not.toMatch(/network_id/);
+    expect(out).toMatch(/can't be priced right now/i);
+  });
+
+  it("explains an aggregator credential failure as ours, not the user's", () => {
+    const out = friendlySendQuoteError("Aggregator returned 401 for /partner/orders/quote");
+    expect(out).toMatch(/temporarily unavailable/i);
+    expect(out).toMatch(/not your details/i);
+  });
+
+  it("passes an ordinary backend message through untouched", () => {
+    expect(friendlySendQuoteError("Amount is below the minimum for this corridor.")).toBe(
+      "Amount is below the minimum for this corridor.",
+    );
   });
 });

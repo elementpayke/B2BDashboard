@@ -8,8 +8,6 @@ import {
   AUTH_INK,
   authPageStyle,
   authCardStyle,
-  authBrandRowStyle,
-  authBrandMarkStyle,
   authTitleStyle,
   authSubtitleStyle,
   authLabelStyle,
@@ -24,6 +22,7 @@ import {
   authHintStyle,
   authFieldRowStyle,
 } from "@/components/auth/authStyles";
+import AuthBrand from "@/components/brand/AuthBrand";
 import { stashResetEmail } from "@/lib/auth/resetHandoff";
 
 function forgotPasswordErrorMessage(err: unknown): string {
@@ -35,17 +34,6 @@ function forgotPasswordErrorMessage(err: unknown): string {
     return "Unable to reach the server. Check your connection and try again.";
   }
   return "Unable to request a password reset. Please try again.";
-}
-
-function AuthBrand() {
-  return (
-    <div style={authBrandRowStyle}>
-      <span style={authBrandMarkStyle} aria-hidden>
-        E
-      </span>
-      ElementPay
-    </div>
-  );
 }
 
 export default function ForgotPasswordPage() {

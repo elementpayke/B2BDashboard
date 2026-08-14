@@ -1,4 +1,5 @@
 "use client";
+import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useState } from "react";
 
 export type DepositModalProps = {
@@ -489,9 +490,11 @@ export default function DepositModal(p: DepositModalProps) {
 
       {p.depositDone ? (
         <div className="ep-money-success">
-          <span className="ep-money-success__icon" aria-hidden>
-            ✓
-          </span>
+          <MbokaMark
+            size={48}
+            motion={p.depositLiveStatus?.isSettling ? "inflight" : "settlement"}
+            title={null}
+          />
           <span className="ep-money-success__title">Top-up started</span>
           <span className="ep-money-success__body">{p.depositResultText}</span>
 
@@ -502,7 +505,7 @@ export default function DepositModal(p: DepositModalProps) {
               role="status"
             >
               {p.depositLiveStatus.isSettling ? (
-                <span className="ep-money-status__dot" aria-hidden />
+                <MbokaMark size={14} motion="inflight" tone="mono" title={null} />
               ) : null}
               {p.depositLiveStatus.label}
             </span>

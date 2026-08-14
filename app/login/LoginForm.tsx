@@ -7,8 +7,6 @@ import { ApiRequestError } from "@/lib/apiClient";
 import {
   authPageStyle,
   authCardStyle,
-  authBrandRowStyle,
-  authBrandMarkStyle,
   authTitleStyle,
   authSubtitleStyle,
   authLabelStyle,
@@ -22,6 +20,7 @@ import {
   authHintStyle,
   authFieldRowStyle,
 } from "@/components/auth/authStyles";
+import AuthBrand from "@/components/brand/AuthBrand";
 
 /** Only same-origin relative paths; blocks open redirects via `//…` or absolute URLs. */
 function safeNextPath(raw: string | null): string {
@@ -66,14 +65,9 @@ export function LoginFormFallback() {
 function AuthChrome() {
   return (
     <header>
-      <div style={authBrandRowStyle}>
-        <span style={authBrandMarkStyle} aria-hidden>
-          E
-        </span>
-        ElementPay
-      </div>
+      <AuthBrand />
       <h1 style={authTitleStyle}>Sign in to your business</h1>
-      <p style={authSubtitleStyle}>Access your ElementPay dashboard with your work email.</p>
+      <p style={authSubtitleStyle}>Access your Mboka dashboard with your work email.</p>
     </header>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import MbokaMark from "@/components/brand/MbokaMark";
 import React from "react";
 import ActivityList from "@/components/ui/ActivityList";
 
@@ -204,7 +205,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       {p.eligibilityLoading ? (
         <div className="ep-wallets__banner ep-wallets__banner--loading" role="status">
-          <span className="ep-wallets__spinner" aria-hidden />
+          <MbokaMark size={18} motion="inflight" title={null} />
           <span className="ep-wallets__banner-text" style={{ color: "var(--muted)" }}>
             Checking account eligibility…
           </span>
