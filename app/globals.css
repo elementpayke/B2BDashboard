@@ -1,4 +1,4 @@
-/* ElementPay B2B — responsive design system
+/* Mboka B2B — responsive design system
    Breakpoints: mobile <640 | tablet 640–1023 | desktop ≥1024 | large ≥1440
 */
 
@@ -10,6 +10,30 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+}
+
+/* Light-theme defaults so brand tokens resolve outside the dashboard root
+   (auth pages, landing, printed documents). DashboardApp sets the same
+   custom properties inline on its own root, which overrides these for the
+   themed subtree — including the dark palette. Values mirror LIGHT in
+   components/mockData.ts and the brand kit's four colour tokens:
+   indigo #3B2ED3 · indigo lift #7C6FFF (dark only) · ink #131126 ·
+   bone #F6F4EF (never pure white). */
+:root {
+  --bg: #f6f4ef;
+  --surface2: rgba(19, 17, 38, 0.045);
+  --surface3: rgba(19, 17, 38, 0.09);
+  --border: rgba(19, 17, 38, 0.08);
+  --panel: #ffffff;
+  --ink: #131126;
+  --muted: #4c4a66;
+  --muted2: #8b89a6;
+  --indigo: #3b2ed3;
+  --indigo-on: #fff;
+  --indigo-text: #3b2ed3;
+  --indigo-tint: #eeedfb;
+  --ink-panel: #131126;
+  --ink-panel-text: #8b89a6;
 }
 
 body {
@@ -593,15 +617,6 @@ body {
   color: var(--muted);
 }
 
-.ep-txn-detail__spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--indigo);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
 .ep-txn-detail__hero {
   text-align: center;
   padding: 8px 0 2px;
@@ -884,14 +899,6 @@ body {
   cursor: pointer;
   text-align: left;
   min-height: 44px;
-  flex-shrink: 0;
-}
-
-.ep-sidebar__logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  object-fit: contain;
   flex-shrink: 0;
 }
 
@@ -1472,13 +1479,6 @@ body {
   font-weight: 700;
   color: var(--muted2);
   flex-shrink: 0;
-}
-
-.ep-home-identity__mark-cube {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--indigo);
 }
 
 @media (min-width: 640px) {
@@ -2592,27 +2592,14 @@ body {
   min-height: 44px;
 }
 
-.ep-landing-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--indigo);
-  color: var(--indigo-on);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "DM Mono", monospace;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.ep-landing-brand__name {
+/* Narrow screens show the symbol alone; the wordmark returns at 400px. */
+.ep-landing-brand .ep-logo__text {
   display: none;
 }
 
 @media (min-width: 400px) {
-  .ep-landing-brand__name {
-    display: inline;
+  .ep-landing-brand .ep-logo__text {
+    display: flex;
   }
 }
 
@@ -3741,16 +3728,6 @@ body {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  flex-shrink: 0;
-}
-
-.ep-wallets__spinner {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--indigo) 25%, transparent);
-  border-top-color: var(--indigo);
-  animation: spin 0.8s linear infinite;
   flex-shrink: 0;
 }
 
@@ -5857,25 +5834,11 @@ select.ep-wallets-create__control {
 .ep-send-recipient__card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   padding: 14px;
   border-radius: 18px;
-  background: var(--surface2);
+  background: var(--panel);
   border: 1px solid var(--border);
-}
-
-.ep-send-recipient__readonly {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1.5px solid var(--input-border);
-  background: var(--input-bg);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink);
 }
 
 .ep-send-recipient__ccy {
@@ -5900,15 +5863,16 @@ select.ep-wallets-create__control {
   position: relative;
 }
 
+/* Read-only echo of a step-1 choice: filled surface, no input border. */
 .ep-send-recipient__readonly {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   min-height: 48px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface-2, color-mix(in srgb, var(--ink) 4%, transparent));
+  padding: 12px 14px;
+  border: none;
+  border-radius: 14px;
+  background: var(--surface2);
   color: var(--ink);
 }
 
@@ -6073,19 +6037,6 @@ select.ep-wallets-create__control {
   text-align: center;
 }
 
-.ep-money-success__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--indigo-tint);
-  color: var(--indigo-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  font-weight: 700;
-}
-
 .ep-money-success__title {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 15px;
@@ -6110,14 +6061,6 @@ select.ep-wallets-create__control {
   padding: 6px 12px;
   border-radius: 999px;
   min-height: 28px;
-}
-
-.ep-money-status__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: pulse-dot 1.2s ease-in-out infinite;
 }
 
 .ep-money-copy-row {
@@ -7647,4 +7590,227 @@ select.ep-wallets-create__control {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* ── Brand: Mboka "Chamfer" ─────────────────────────────────────
+   Two blocks cut on the same 45° angle. The cut is also the motion
+   signature — the three state-change animations below all move on that
+   angle. Static everywhere else: a mark that moves on every screen stops
+   meaning anything.
+   Never recolour outside the four brand tokens (indigo / indigo lift /
+   ink / bone), never rotate the mark, never equalise the two blocks.
+*/
+
+.ep-mark {
+  display: block;
+  flex-shrink: 0;
+}
+
+.ep-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--ep-logo-size, 32px) * 0.31);
+  min-width: 0;
+}
+
+/* Clear space on all sides equals the chamfer cut — one quarter of the
+   mark's height. Opt-in, for standalone placements (auth, landing). */
+.ep-logo--framed {
+  padding: calc(var(--ep-logo-size, 32px) * 0.25);
+}
+
+.ep-logo__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ep-logo__word {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: calc(var(--ep-logo-size, 32px) * 0.45);
+  line-height: 1.15;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ep-logo__sub {
+  font-size: calc(var(--ep-logo-size, 32px) * 0.33);
+  font-weight: 600;
+  color: var(--muted2);
+  line-height: 1.3;
+}
+
+/* 5b · In flight — a band of light crosses both blocks on the chamfer
+   angle. Replaces every spinner in the product. */
+@keyframes ep-mark-inflight {
+  from {
+    transform: translateX(-16px);
+  }
+  to {
+    transform: translateX(60px);
+  }
+}
+
+/* 5a · Settlement — two sides converge, the seam lights as they meet,
+   then they settle. Plays once, on funds landing. */
+@keyframes ep-mark-settle-front {
+  0% {
+    transform: translate(-6px, -6px);
+  }
+  55% {
+    transform: translate(0.8px, 0.8px);
+  }
+  75%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes ep-mark-settle-back {
+  0% {
+    transform: translate(6px, 6px);
+  }
+  55% {
+    transform: translate(-0.8px, -0.8px);
+  }
+  75%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes ep-mark-settle-seam {
+  0%,
+  45% {
+    opacity: 0;
+  }
+  58% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 5c · Routing — the block holds while providers rotate behind it. */
+@keyframes ep-mark-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ep-mark--inflight .ep-mark__band {
+    animation: ep-mark-inflight 1.15s linear infinite;
+  }
+
+  .ep-mark--settlement .ep-mark__front {
+    animation: ep-mark-settle-front 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 1 both;
+  }
+
+  .ep-mark--settlement .ep-mark__back {
+    animation: ep-mark-settle-back 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 1 both;
+  }
+
+  .ep-mark--settlement .ep-mark__seam {
+    animation: ep-mark-settle-seam 0.9s linear 1 both;
+  }
+
+  .ep-mark--routing .ep-mark__orbit {
+    transform-box: view-box;
+    transform-origin: 22px 22px;
+    animation: ep-mark-orbit 3.2s linear infinite;
+  }
+}
+
+/* Reduced motion falls back to the interlocked still, per the kit. */
+@media (prefers-reduced-motion: reduce) {
+  .ep-mark--inflight .ep-mark__band,
+  .ep-mark--routing .ep-mark__orbit,
+  .ep-mark--settlement .ep-mark__seam {
+    display: none;
+  }
+
+  .ep-mark--inflight .ep-mark__front {
+    fill-opacity: 1;
+  }
+
+  .ep-mark--inflight .ep-mark__back {
+    fill-opacity: 0.45;
+  }
+}
+
+/* Busy button state — the in-flight mark stands in for a spinner, so waiting
+   looks like the product working rather than the page hanging. */
+.ep-btn-busy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 5c · Rerouting note — the mark orbits, the copy stays calm. */
+.ep-money-rerouting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.ep-txn-detail__receipt {
+  margin-top: 16px;
+  width: 100%;
+}
+
+/* Amount field: label plus the USD / local-currency entry toggle. */
+.ep-money-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ep-money-seg--sm {
+  padding: 2px;
+  gap: 2px;
+}
+
+.ep-money-seg--sm .ep-money-seg__btn {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* Indicative conversion under the amount input. Deliberately states that the
+   figure is not yet binding — the quote is what commits us. */
+.ep-money-equiv {
+  display: block;
+  margin-top: 6px;
+  font-family: "DM Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ep-money-equiv strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ep-money-equiv__note {
+  display: block;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  color: var(--muted2);
 }

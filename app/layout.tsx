@@ -3,7 +3,7 @@ import "./globals.css";
 import QueryProvider from "@/lib/providers/QueryProvider";
 
 export const metadata: Metadata = {
-  title: "ElementPay — Business",
+  title: "Mboka — Business",
   description: "Move business money at internet speed",
 };
 

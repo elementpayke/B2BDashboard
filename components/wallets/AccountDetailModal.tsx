@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 
 export type AccountDetailRow = {
   label: string;
@@ -65,28 +66,32 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
 
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
   const beneficiary = acctDetail.beneficiary || acctDetail.name;
-  const lines = [
-    "ElementPay — Bank letter",
-    "========================",
-    "",
-    `Account: ${acctDetail.name}`,
-    `Rail: ${acctDetail.railLabel ?? acctDetail.currency}`,
-    `Beneficiary: ${beneficiary}`,
-    "",
-  ];
-  for (const row of acctDetail.rows) {
-    lines.push(`${row.label}: ${formatSensitiveValue(row.label, row.value)}`);
-  }
-  lines.push("", "Generated from your ElementPay dashboard for recipient verification.");
-  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `elementpay-${acctDetail.currency.toLowerCase()}-bank-letter.txt`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  openBrandedDocument(
+    {
+      fileTitle: `Mboka — ${acctDetail.currency} bank letter`,
+      heading: "Bank letter",
+      subheading: "Account coordinates for recipient verification.",
+      sections: [
+        {
+          title: "Account",
+          rows: [
+            { label: "Account", value: acctDetail.name },
+            { label: "Rail", value: acctDetail.railLabel ?? acctDetail.currency },
+            { label: "Beneficiary", value: beneficiary },
+          ],
+        },
+        {
+          title: "Coordinates",
+          rows: acctDetail.rows.map((row) => ({
+            label: row.label,
+            value: formatSensitiveValue(row.label, row.value),
+            mono: true,
+          })),
+        },
+      ],
+    },
+    `mboka-${acctDetail.currency.toLowerCase()}-bank-letter`,
+  );
 }
 
 function DetailRow({

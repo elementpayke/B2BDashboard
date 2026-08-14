@@ -3,8 +3,8 @@ import { Suspense } from "react";
 import LoginForm, { LoginFormFallback } from "./LoginForm";
 
 export const metadata: Metadata = {
-  title: "Sign in · ElementPay",
-  description: "Sign in to your ElementPay business dashboard.",
+  title: "Sign in · Mboka",
+  description: "Sign in to your Mboka business dashboard.",
 };
 
 /**

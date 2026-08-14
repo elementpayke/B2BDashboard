@@ -34,30 +34,8 @@ export const authCardStyle: CSSProperties = {
   boxShadow: "0 12px 40px rgba(19,17,38,0.06)",
 };
 
-export const authBrandRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  fontFamily: "'Space Grotesk',sans-serif",
-  fontWeight: 700,
-  fontSize: "16px",
-  color: AUTH_INK,
-  marginBottom: "8px",
-};
-
-export const authBrandMarkStyle: CSSProperties = {
-  width: "32px",
-  height: "32px",
-  borderRadius: "10px",
-  background: AUTH_INDIGO,
-  color: "#fff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontFamily: "'DM Mono',monospace",
-  fontSize: "14px",
-  flexShrink: 0,
-};
+/* The brand lockup lives in components/brand/AuthBrand.tsx — the old
+   letter-in-a-square placeholder was replaced by the Chamfer mark. */
 
 export const authTitleStyle: CSSProperties = {
   margin: 0,

@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useId, useRef, useState } from "react";
+import MbokaMark from "@/components/brand/MbokaMark";
 import {
   formatSavedRecipientSubtitle,
   type SavedRecipient,
@@ -54,6 +55,26 @@ export type SendModalProps = {
   sendProviderOptions: string[];
   selectSendProvider: (index: number) => void;
   sendProviderIdx: number;
+  /** Country group on a bank rail — drives the "Bank" field on step 2. */
+  sendIsBankRail: boolean;
+  /** Corridor is running on standby providers — shows the rerouting note. */
+  sendProvidersAreFallback: boolean;
+  /** No aggregator institution id for this corridor — the quote cannot succeed. */
+  sendBlockedNoNetworkId: boolean;
+  /** Currency the amount box is being typed in — "USD" or the destination's. */
+  sendAmountCurrency: string;
+  /** What actually leaves, from the quote's `user_pays` once one exists. */
+  sendYouPayText: string;
+  sendLocalCurrency: string;
+  /** False when we hold no rate for the corridor, so USD is the only option. */
+  sendCanEnterLocal: boolean;
+  setSendAmountCurrency: (currency: string) => void;
+  /** "≈ 130,500.00 KES" — indicative, pre-quote. Null when no rate. */
+  sendAmountEquivalent: string | null;
+  /** Indicative "1 USD = 130.50 KES" shown while entering an amount. */
+  sendIndicativeRateLine: string | null;
+  /** Binding "1 USD = 130.50 KES" from the quote, shown on review. */
+  sendQuotedRateLine: string | null;
   savedRecipients: SavedRecipient[];
   savedRecipientsLoading?: boolean;
   onSelectSavedRecipient: (recipient: SavedRecipient) => void;
@@ -259,7 +280,206 @@ export default function SendModal(p: SendModalProps) {
           </button>
           <StepProgress dots={p.sendStepDots || []} label="Send payment progress" />
 
-          {/* Destination (country/provider) lives on recipient details — no separate chip step. */}
+          {p.sendStepIs1 ? (
+            <div className="ep-money-stack">
+              <span className="ep-money-step-label">Step 1 · Where is this going?</span>
+
+              {p.sendIsCountry ? (
+                <>
+                  <div className="ep-send-recipient__card" role="group" aria-label="Destination">
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="send-country">
+                        Destination country
+                      </label>
+                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
+                        {p.sendCountryFlagUrl ? (
+                          <span
+                            className="ep-money-flag ep-send-recipient__select-flag"
+                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <select
+                          id="send-country"
+                          className="ep-money-input ep-send-recipient__select"
+                          value={String(p.sendCountryIdx)}
+                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
+                        >
+                          {(p.sendCountryChips || []).map((c: any) => (
+                            <option key={c.idx} value={c.idx}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-currency-label">
+                        Currency
+                      </span>
+                      <div
+                        className="ep-send-recipient__readonly"
+                        role="status"
+                        aria-labelledby="send-currency-label"
+                      >
+                        {p.sendCountryFlagUrl ? (
+                          <span
+                            className="ep-money-flag ep-send-recipient__select-flag"
+                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span className="ep-send-recipient__readonly-text">
+                          <strong>{p.sendCurrencyCode}</strong>
+                          {p.sendCurrencyName ? (
+                            <span className="ep-send-recipient__readonly-muted">
+                              {" "}
+                              {p.sendCurrencyName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {p.sendRailHasChoice ? (
+                    <div className="ep-money-field">
+                      <span className="ep-money-label" id="send-rail-label">
+                        Payout rail
+                      </span>
+                      <div className="ep-money-tabs" role="group" aria-labelledby="send-rail-label">
+                        {(p.sendRailChips || []).map((r: any, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={r.select}
+                            className="ep-money-rail"
+                            style={{ background: r.bg, color: r.color }}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {catalogBusy || (p.sendProviderOptions || []).length > 0 ? (
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="send-provider-1">
+                        {p.sendProviderLabel}
+                      </label>
+                      <div className="ep-send-recipient__select-wrap">
+                        <select
+                          id="send-provider-1"
+                          className="ep-money-input ep-send-recipient__select"
+                          value={String(p.sendProviderIdx)}
+                          onChange={(e) => p.selectSendProvider(Number(e.target.value))}
+                          disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
+                        >
+                          {catalogBusy && (p.sendProviderOptions || []).length === 0 ? (
+                            <option value={0}>Loading providers…</option>
+                          ) : (
+                            (p.sendProviderOptions || []).map((name, i) => (
+                              <option key={`${name}-${i}`} value={i}>
+                                {name}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* 5c · Routing — the block holds while providers rotate
+                      behind it. Reliability is the point: the corridor is
+                      still open, only the provider list moved. */}
+                  {p.sendBlockedNoNetworkId ? (
+                    <div className="ep-money-rerouting" role="alert">
+                      <MbokaMark size={18} motion="routing" title={null} />
+                      <span>
+                        We can&apos;t price this corridor right now — our provider list is
+                        unavailable, so there is no route to send on. Please try again shortly.
+                      </span>
+                    </div>
+                  ) : p.sendProvidersAreFallback ? (
+                    <div className="ep-money-rerouting" role="note">
+                      <MbokaMark size={18} motion="routing" title={null} />
+                      <span>
+                        Live provider data isn&apos;t available for this corridor right now —
+                        routing through standby providers.
+                      </span>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <p className="ep-money-hint">
+                    Sends stablecoin directly on-chain — no bank or mobile money involved.
+                  </p>
+                  <div className="ep-money-field">
+                    <span className="ep-money-label" id="send-asset-label">
+                      Asset
+                    </span>
+                    <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label">
+                      {(p.sendAssets || []).map((as: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={as.select}
+                          className="ep-money-seg__btn"
+                          style={{ background: as.bg, color: as.color }}
+                        >
+                          {as.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ep-money-field">
+                    <span className="ep-money-label" id="send-chain-label">
+                      Confirm the chain you&apos;re sending to
+                    </span>
+                    <div
+                      className="ep-money-tabs ep-money-tabs--wrap"
+                      role="group"
+                      aria-labelledby="send-chain-label"
+                    >
+                      {(p.sendChains || []).map((ch: any, i: number) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={ch.select}
+                          className="ep-money-network"
+                          style={{ borderColor: ch.border, background: ch.bg, color: ch.color }}
+                        >
+                          {ch.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ep-money-banner ep-money-banner--warn">
+                      Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
+                      sending to the wrong network can lose funds.
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {p.sendQuoteError ? (
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                  {p.sendQuoteError}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                className="ep-btn-primary"
+                onClick={p.sendNext}
+                disabled={catalogBusy || p.sendBlockedNoNetworkId}
+                aria-busy={catalogBusy || undefined}
+              >
+                {catalogBusy ? "Loading providers…" : "Continue"}
+              </button>
+            </div>
+          ) : null}
 
           {p.sendStepIs2 ? (
             <div className="ep-money-stack ep-send-recipient">
@@ -274,14 +494,19 @@ export default function SendModal(p: SendModalProps) {
                 onSelect={p.onSelectSavedRecipient}
               />
 
+              {/* Destination is chosen on step 1 — echoed read-only here. */}
               <div className="ep-send-recipient__card" role="group" aria-label="Destination">
                 {p.sendIsCountry ? (
                   <>
                     <div className="ep-money-field">
-                      <label className="ep-money-label" htmlFor="send-dest-country">
+                      <span className="ep-money-label" id="send-dest-country">
                         Destination country
-                      </label>
-                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
+                      </span>
+                      <div
+                        className="ep-send-recipient__readonly"
+                        role="status"
+                        aria-labelledby="send-dest-country"
+                      >
                         {p.sendCountryFlagUrl ? (
                           <span
                             className="ep-money-flag ep-send-recipient__select-flag"
@@ -289,18 +514,9 @@ export default function SendModal(p: SendModalProps) {
                             aria-hidden
                           />
                         ) : null}
-                        <select
-                          id="send-dest-country"
-                          className="ep-money-input ep-send-recipient__select"
-                          value={String(p.sendCountryIdx)}
-                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
-                        >
-                          {(p.sendCountryChips || []).map((c: any) => (
-                            <option key={c.idx} value={c.idx}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
+                        <span className="ep-send-recipient__readonly-text">
+                          <strong>{p.sendCountryName}</strong>
+                        </span>
                       </div>
                     </div>
                     <div className="ep-money-field">
@@ -324,7 +540,7 @@ export default function SendModal(p: SendModalProps) {
                           {p.sendCurrencyName ? (
                             <span className="ep-send-recipient__readonly-muted">
                               {" "}
-                              · {p.sendCurrencyName}
+                              {p.sendCurrencyName}
                             </span>
                           ) : null}
                         </span>
@@ -337,18 +553,14 @@ export default function SendModal(p: SendModalProps) {
                       <span className="ep-money-label" id="send-asset-label-r">
                         Asset
                       </span>
-                      <div className="ep-money-seg" role="group" aria-labelledby="send-asset-label-r">
-                        {(p.sendAssets || []).map((as: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={as.select}
-                            className="ep-money-seg__btn"
-                            style={{ background: as.bg, color: as.color }}
-                          >
-                            {as.label}
-                          </button>
-                        ))}
+                      <div
+                        className="ep-send-recipient__readonly"
+                        role="status"
+                        aria-labelledby="send-asset-label-r"
+                      >
+                        <span className="ep-send-recipient__readonly-text">
+                          <strong>{p.sendAssetCode}</strong>
+                        </span>
                       </div>
                     </div>
                     <div className="ep-money-field">
@@ -356,25 +568,13 @@ export default function SendModal(p: SendModalProps) {
                         Network
                       </span>
                       <div
-                        className="ep-money-tabs ep-money-tabs--wrap"
-                        role="group"
+                        className="ep-send-recipient__readonly"
+                        role="status"
                         aria-labelledby="send-chain-label-r"
                       >
-                        {(p.sendChains || []).map((ch: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={ch.select}
-                            className="ep-money-network"
-                            style={{
-                              borderColor: ch.border,
-                              background: ch.bg,
-                              color: ch.color,
-                            }}
-                          >
-                            {ch.label}
-                          </button>
-                        ))}
+                        <span className="ep-send-recipient__readonly-text">
+                          <strong>{p.sendChainLabel}</strong>
+                        </span>
                       </div>
                     </div>
                   </>
@@ -398,14 +598,14 @@ export default function SendModal(p: SendModalProps) {
                   </div>
                 ) : null}
 
-                {p.sendIsCountry &&
+                {/* Bank rails repeat the institution picker here, per the design.
+                    Mobile rails pick their operator on step 1 only. Both write
+                    the same provider index — the aggregator takes one id. */}
+                {p.sendIsBankRail &&
                 (catalogBusy || (p.sendProviderOptions || []).length > 0) ? (
                   <div className="ep-money-field">
                     <label className="ep-money-label" htmlFor="send-provider">
-                      {p.sendRecipientLabel?.toLowerCase().includes("phone") ||
-                      p.sendRecipientLabel?.toLowerCase().includes("mobile")
-                        ? "Provider"
-                        : "Bank"}
+                      Bank
                     </label>
                     <div className="ep-send-recipient__select-wrap">
                       <select
@@ -462,9 +662,35 @@ export default function SendModal(p: SendModalProps) {
                 </div>
 
                 <div className="ep-money-field">
-                  <label className="ep-money-label" htmlFor="send-amount">
-                    Amount (USD)
-                  </label>
+                  <div className="ep-money-label-row">
+                    <label className="ep-money-label" htmlFor="send-amount">
+                      Amount ({p.sendAmountCurrency})
+                    </label>
+                    {p.sendCanEnterLocal ? (
+                      <div
+                        className="ep-money-seg ep-money-seg--sm"
+                        role="group"
+                        aria-label="Amount currency"
+                      >
+                        {["USD", p.sendLocalCurrency].map((code) => (
+                          <button
+                            key={code}
+                            type="button"
+                            className="ep-money-seg__btn"
+                            aria-pressed={p.sendAmountCurrency === code}
+                            onClick={() => p.setSendAmountCurrency(code)}
+                            style={{
+                              background:
+                                p.sendAmountCurrency === code ? "var(--ink)" : "transparent",
+                              color: p.sendAmountCurrency === code ? "var(--bg)" : "var(--ink)",
+                            }}
+                          >
+                            {code}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <input
                     id="send-amount"
                     className="ep-money-input ep-money-input--amount"
@@ -473,8 +699,23 @@ export default function SendModal(p: SendModalProps) {
                     placeholder="0.00"
                     inputMode="decimal"
                     autoComplete="off"
-                    aria-describedby={p.sendQuoteError ? "send-quote-error" : undefined}
+                    aria-describedby={
+                      p.sendQuoteError
+                        ? "send-quote-error"
+                        : p.sendAmountEquivalent
+                          ? "send-amount-equiv"
+                          : undefined
+                    }
                   />
+                  {p.sendAmountEquivalent ? (
+                    <span className="ep-money-equiv" id="send-amount-equiv">
+                      <strong>{p.sendAmountEquivalent}</strong>
+                      {p.sendIndicativeRateLine ? ` · ${p.sendIndicativeRateLine}` : ""}
+                      <span className="ep-money-equiv__note">
+                        Indicative. The exact amount is locked on the next step.
+                      </span>
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -522,12 +763,26 @@ export default function SendModal(p: SendModalProps) {
 
           {p.sendStepIs3 ? (
             <div className="ep-money-stack ep-money-stack--tight">
-              <span className="ep-money-step-label">Step 2 · Review & confirm</span>
+              <span className="ep-money-step-label">Step 3 · Review & confirm</span>
               <div className="ep-money-review" role="group" aria-label="Payment summary">
                 <div className="ep-money-review__row">
                   <span className="ep-money-review__k">To</span>
                   <span className="ep-money-review__v">{p.sendRecipient}</span>
                 </div>
+                {p.sendIsCountry ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Holder</span>
+                    <span className="ep-money-review__v">{p.sendRecipientName}</span>
+                  </div>
+                ) : null}
+                {p.sendIsBankRail ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Bank</span>
+                    <span className="ep-money-review__v">
+                      {p.sendProviderOptions?.[p.sendProviderIdx] ?? ""}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="ep-money-review__row">
                   <span className="ep-money-review__k">Via</span>
                   <span className="ep-money-review__v">{p.sendDestinationSummary}</span>
@@ -541,14 +796,22 @@ export default function SendModal(p: SendModalProps) {
                 <div className="ep-money-review__row ep-money-review__row--emphasis">
                   <span className="ep-money-review__k">You send</span>
                   <span className="ep-money-review__v ep-money-review__v--mono">
-                    ${p.sendAmount} USD
+                    {p.sendYouPayText}
                   </span>
                 </div>
                 {p.sendQuoteRateText ? (
-                  <div className="ep-money-review__row">
+                  <div className="ep-money-review__row ep-money-review__row--emphasis">
                     <span className="ep-money-review__k">Recipient gets</span>
                     <span className="ep-money-review__v ep-money-review__v--mono">
                       {p.sendQuoteRateText}
+                    </span>
+                  </div>
+                ) : null}
+                {p.sendQuotedRateLine ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Rate</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
+                      {p.sendQuotedRateLine}
                     </span>
                   </div>
                 ) : null}
@@ -584,7 +847,14 @@ export default function SendModal(p: SendModalProps) {
                   disabled={p.sendAccepting}
                   aria-busy={p.sendAccepting || undefined}
                 >
-                  {p.sendAccepting ? "Sending…" : "Confirm & send ↗"}
+                  {p.sendAccepting ? (
+                    <span className="ep-btn-busy">
+                      <MbokaMark size={16} motion="inflight" tone="inverse" title={null} />
+                      Sending…
+                    </span>
+                  ) : (
+                    "Confirm & send ↗"
+                  )}
                 </button>
               </div>
             </div>
@@ -594,12 +864,14 @@ export default function SendModal(p: SendModalProps) {
 
       {p.sendDone ? (
         <div className="ep-money-success">
-          <span className="ep-money-success__icon" aria-hidden>
-            ✓
-          </span>
+          <MbokaMark
+            size={48}
+            motion={p.sendLiveStatus?.isSettling ? "inflight" : "settlement"}
+            title={null}
+          />
           <span className="ep-money-success__title">Payment on its way</span>
           <span className="ep-money-success__body">
-            {p.sendResultText || `$${p.sendAmount} USD to ${p.sendRecipient} · ${p.sendArrivalText}`}
+            {p.sendResultText || `${p.sendYouPayText} to ${p.sendRecipient} · ${p.sendArrivalText}`}
           </span>
           {p.sendLiveStatus ? (
             <span
@@ -608,7 +880,7 @@ export default function SendModal(p: SendModalProps) {
               role="status"
             >
               {p.sendLiveStatus.isSettling ? (
-                <span className="ep-money-status__dot" aria-hidden />
+                <MbokaMark size={14} motion="inflight" tone="mono" title={null} />
               ) : null}
               {p.sendLiveStatus.label}
             </span>

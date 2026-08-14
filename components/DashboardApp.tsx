@@ -72,11 +72,21 @@ import {
   providerNamesFromCatalog,
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
+import {
+  canEnterInLocalCurrency,
+  describeAmountEquivalent,
+  formatFeeDual,
+  formatRateLine,
+  indicativeRate,
+  toPayloadUsdAmount,
+} from "@/lib/services/sendAmount";
 import { useViewport } from "@/lib/responsive";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlySendQuoteError,
   railIndexForMethod,
+  sendRailBlockedByMissingNetworkId,
   sendRailHasChoice as railHasChoice,
 } from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
@@ -126,6 +136,8 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
 import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
+import MbokaLogo from "@/components/brand/MbokaLogo";
+import MbokaMark from "@/components/brand/MbokaMark";
 import TransactionsScreen from "@/components/transactions/TransactionsScreen";
 import TxDetailModal from "@/components/transactions/TxDetailModal";
 import WalletsScreen from "@/components/wallets/WalletsScreen";
@@ -178,7 +190,7 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
@@ -572,7 +584,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => setState({ screen: "transactions" });
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
@@ -643,6 +655,33 @@ export default function DashboardApp(props: Props = {}) {
     if (state.sendStep === 1 && state.sendGroup === "country" && !sendCatalogSettled) {
       return;
     }
+    // A bank rail with no catalog-backed provider has no `networkId`, and the
+    // backend rejects that payload outright. Stop here rather than collect a
+    // recipient and an amount first and fail at the quote.
+    if (state.sendStep === 1 && state.sendGroup === "country") {
+      const country = COUNTRIES[state.sendCountryIdx];
+      const rail = country.rails[state.sendRailIdx] || country.rails[0];
+      const providers = offRampProvidersForRail(
+        sendCatalogQuery.data,
+        country.iso,
+        rail.type,
+        country.code,
+      );
+      const options = providerNamesFromCatalog(providers, rail.options, sendCatalogSettled);
+      const name = options[Math.min(state.sendProviderIdx, Math.max(0, options.length - 1))] || "";
+      if (
+        sendRailBlockedByMissingNetworkId({
+          sendGroup: state.sendGroup,
+          networkId: networkIdForProvider(providers, name),
+          catalogSettled: sendCatalogSettled,
+        })
+      ) {
+        setState({
+          sendQuoteError: friendlySendQuoteError("network_id is required"),
+        });
+        return;
+      }
+    }
     // Stablecoin tab step 1 → 2: require a ready USDC account on the chosen
     // network before collecting the recipient (Phase 4).
     if (state.sendStep === 1 && state.sendGroup === "crypto") {
@@ -668,6 +707,23 @@ export default function DashboardApp(props: Props = {}) {
     // Step 2 -> 3: OffRamp quote (by country) or account-send preview (stablecoin).
     if (state.sendStep === 2 && state.sendGroup === "country") {
       if (!state.sendRecipient.trim() || !state.sendRecipientName.trim() || !state.sendAmount.trim()) return;
+      // The box may be in the destination currency; the payload always prices
+      // from USD. Converting here (not at keystroke time) keeps the entered
+      // figure exactly as typed in the field.
+      const amountRates = mergeExchangeRates(
+        summaryQuery.data?.fx_rates,
+        exchangeRatesQuery.data,
+      );
+      const usdAmount = toPayloadUsdAmount(state.sendAmount, {
+        currency: state.sendAmountCurrency,
+        rate: indicativeRate(amountRates?.rates, COUNTRIES[state.sendCountryIdx].code),
+      });
+      if (!usdAmount) {
+        setState({
+          sendQuoteError: "Enter an amount greater than zero.",
+        });
+        return;
+      }
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
         const refundAddress = summaryQuery.data?.totals.wallet_address;
@@ -718,7 +774,7 @@ export default function DashboardApp(props: Props = {}) {
           railType: rail.type,
           recipientAccountNumber,
           recipientName: state.sendRecipientName.trim(),
-          amount: state.sendAmount.trim(),
+          amount: usdAmount,
           refundAddress,
           // Mobile rails need E.164; the field's placeholder is local format.
           dialCode: country.dialCode,
@@ -731,7 +787,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuoteLoading: false,
           sendQuoteError:
             err instanceof ApiRequestError || err instanceof Error
-              ? err.message
+              ? friendlySendQuoteError(err.message)
               : "Couldn't get a quote. Try again.",
         });
       }
@@ -770,7 +826,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuoteLoading: false,
           sendQuoteError:
             err instanceof ApiRequestError || err instanceof Error
-              ? err.message
+              ? friendlySendQuoteError(err.message)
               : "Couldn't preview this send. Try again.",
         });
       }
@@ -780,9 +836,9 @@ export default function DashboardApp(props: Props = {}) {
   };
   const sendBack = () =>
     setState((s: any) => {
-      // Recipient form is the first step after the method chooser — Back
-      // returns to the chooser instead of the old country-chip step.
-      if (s.sendStep <= 2) {
+      // Step 1 (destination) is the first step after the method chooser, so
+      // Back from there returns to the chooser and clears the draft.
+      if (s.sendStep <= 1) {
         return {
           sendMethod: null,
           sendStep: 1,
@@ -1210,7 +1266,9 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({
         sendAccepting: false,
-        sendAcceptError: err instanceof ApiRequestError ? err.message : "Couldn't send the payment. Try again.",
+        sendAcceptError: err instanceof ApiRequestError
+          ? friendlySendQuoteError(err.message)
+          : "Couldn't send the payment. Try again.",
       });
     }
   };
@@ -1754,18 +1812,19 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
-  /** Send opens on a method chooser. Bank/mobile preselect that rail; jump
-   *  straight into recipient details (country/currency/account on one form). */
+  /** Send opens on a method chooser. Bank/mobile preselect that rail, then the
+   *  flow runs the design's three steps: destination → recipient → review. */
   const chooseSendMethod = (m) => () => {
     if (m === "internal") return;
     const common = {
       sendMethod: m,
-      sendStep: 2,
+      sendStep: 1,
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
       sendRecipientName: "",
       sendAmount: "",
+      sendAmountCurrency: "USD",
       sendQuoteError: "",
       sendAcceptError: "",
       sendPreview: null,
@@ -2563,6 +2622,43 @@ export default function DashboardApp(props: Props = {}) {
     ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base/Polygon"} via account send — min 1.00 USDC.`
     : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
+  // Field label for the provider select — the aggregator's institution list
+  // is the mobile-money operator on mobile rails and the bank on bank rails.
+  const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money provider" : "Bank";
+  // The catalog settled with no live provider for this corridor, so the chips
+  // came from the hardcoded standby list (see providerNamesFromCatalog). The
+  // corridor still works — traffic is just not on a live-listed provider —
+  // which is the product's one real "rerouting" state.
+  const sendProvidersAreFallback =
+    sendCatalogSettled &&
+    (sendCatalogProviders?.length ?? 0) === 0 &&
+    sendProviderOptions.length > 0;
+  // Bank rails can't be quoted without the aggregator's institution id, which
+  // only the catalog carries — so this corridor is a dead end until it loads.
+  // Dual-currency amount entry. The toggle only appears for corridors the
+  // summary carries a rate for — without one we cannot turn local input into
+  // the USD the payload prices from, so USD-only is the honest option.
+  const sendLocalCurrency = sendCountry.code;
+  const sendIndicativeRate = indicativeRate(homeFxRates?.rates, sendLocalCurrency);
+  const sendCanEnterLocal = sendIsCountry && canEnterInLocalCurrency(homeFxRates?.rates, sendLocalCurrency);
+  const sendAmountCurrency = sendCanEnterLocal ? s.sendAmountCurrency : "USD";
+  // Indicative only — flagged with "≈" and never sent anywhere. The binding
+  // figures come back on the quote.
+  const sendAmountEquivalent = sendIsCountry
+    ? describeAmountEquivalent(
+        s.sendAmount,
+        { currency: sendAmountCurrency, rate: sendIndicativeRate },
+        sendLocalCurrency,
+      )
+    : null;
+  const sendIndicativeRateLine = sendIsCountry
+    ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
+    : null;
+  const sendBlockedNoNetworkId = sendRailBlockedByMissingNetworkId({
+    sendGroup: s.sendGroup,
+    networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
+    catalogSettled: sendCatalogSettled,
+  });
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
@@ -2594,7 +2690,7 @@ export default function DashboardApp(props: Props = {}) {
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
   const depositAssetCode = s.depositAsset.toUpperCase();
   const sendStep = s.sendStep;
-  const sendStepDots = buildSendStepDots(s.sendStep >= 3 ? 2 : 1, 2);
+  const sendStepDots = buildSendStepDots(s.sendStep, 3);
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
@@ -2613,11 +2709,33 @@ export default function DashboardApp(props: Props = {}) {
   // OffRamp quote (by country) or account-send preview (stablecoin).
   const sendQuote = s.sendQuote;
   const sendPreview = s.sendPreview;
+  // Fee in both currencies, converted at the *quote's* rate so it lines up
+  // with the figures beside it rather than with a rate that has since moved.
   const sendFeeText = s.sendGroup === "crypto"
     ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} USDC` : "Fee from preview")
     : sendQuote
-      ? formatQuoteFees(sendQuote.amounts.fees)
+      ? formatFeeDual(
+          formatQuoteFees(sendQuote.amounts.fees),
+          sendQuote.amounts.rate,
+          sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
+        )
       : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+  // Binding rate from the quote — exact, no "≈". Falls back to the indicative
+  // line only before a quote exists, where the UI labels it as an estimate.
+  // What actually leaves the account. Once quoted this is the aggregator's
+  // own `user_pays`, never the raw input — which may have been typed in the
+  // destination currency and must not be re-labelled as dollars.
+  const sendYouPayText = s.sendGroup === "crypto"
+    ? `${s.sendAmount} USDC`
+    : sendQuote
+      ? `${sendQuote.amounts.user_pays.amount} ${sendQuote.amounts.user_pays.currency}`
+      : `${s.sendAmount} ${sendAmountCurrency}`;
+  const sendQuotedRateLine = sendQuote
+    ? formatRateLine(
+        sendQuote.amounts.rate,
+        sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
+      )
+    : null;
   const sendArrivalText = s.sendGroup === "crypto"
     ? (sendPreview?.expires_at
       ? `Preview valid until ${new Date(sendPreview.expires_at).toLocaleTimeString()}`
@@ -2806,9 +2924,8 @@ export default function DashboardApp(props: Props = {}) {
 
 <div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
 <aside className="ep-sidebar" aria-label="Main navigation">
-<button onClick={exitApp} className="ep-sidebar__brand">
-<img src="/logo-elementpay.png" alt="" width={32} height={32} className="ep-sidebar__logo" />
-<div style={{minWidth: 0}}><div style={{fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "13.5px", letterSpacing: "-0.01em", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>ElementPay</div><div style={{fontSize: "10px", color: "var(--muted2)", fontWeight: "600"}}>Business</div></div>
+<button onClick={exitApp} className="ep-sidebar__brand" aria-label="Mboka home">
+<MbokaLogo size={32} sub="Business" />
 </button>
 
 <nav className="ep-sidebar__nav">
@@ -3382,10 +3499,21 @@ Create payment
   sendCurrencyName={currencyLabel(sendCountry.code)}
   sendCountryIdx={s.sendCountryIdx}
   selectSendCountry={(i) => selectSendCountry(i)()}
-  sendProviderLabel={sendProvider}
+  sendProviderLabel={sendProviderLabel}
   sendProviderOptions={sendProviderOptions}
   selectSendProvider={pickSendProvider}
   sendProviderIdx={sendProviderIdx}
+  sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
+  sendProvidersAreFallback={sendProvidersAreFallback}
+  sendBlockedNoNetworkId={sendBlockedNoNetworkId}
+  sendAmountCurrency={sendAmountCurrency}
+  sendYouPayText={sendYouPayText}
+  sendLocalCurrency={sendLocalCurrency}
+  sendCanEnterLocal={sendCanEnterLocal}
+  setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
+  sendAmountEquivalent={sendAmountEquivalent}
+  sendIndicativeRateLine={sendIndicativeRateLine}
+  sendQuotedRateLine={sendQuotedRateLine}
   savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
     if (sendIsCrypto) return r.railType === "crypto";
     if (s.sendMethod === "mobile") return r.railType === "mobile";

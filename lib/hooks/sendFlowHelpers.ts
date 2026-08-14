@@ -23,6 +23,48 @@ export function buildSendStepDots(sendStep: number, total = 3): { on: boolean }[
   return Array.from({ length: total }, (_, i) => ({ on: i + 1 <= sendStep }));
 }
 
+/**
+ * Whether this corridor can actually be quoted.
+ *
+ * Both country rails require `destination.networkId` — the aggregator's
+ * institution id, which only comes from `GET /v1/supported/catalog`. The
+ * backend rejects the quote on its own validation without it
+ * ("payment_method.network_id is required for this rail"), for `bank` and
+ * `momo` account types alike, so when the catalog is unavailable there is no
+ * payload that can succeed.
+ *
+ * `providerNamesFromCatalog` still falls back to a hardcoded display list in
+ * that case, which is fine for rendering the corridor but cannot carry an id
+ * — so the flow has to stop at step 1 rather than let someone fill in a
+ * recipient and an amount and only fail at the quote.
+ */
+export function sendRailBlockedByMissingNetworkId(input: {
+  sendGroup: string;
+  /** Result of networkIdForProvider for the selected provider. */
+  networkId: string | undefined;
+  /** False while the first catalog fetch is still in flight. */
+  catalogSettled: boolean;
+}): boolean {
+  if (input.sendGroup !== "country") return false;
+  if (!input.catalogSettled) return false;
+  return !input.networkId;
+}
+
+/**
+ * Human copy for the quote failures whose raw backend message is a field
+ * path or an internal integration detail. Everything else passes through —
+ * the backend's own wording is usually better than a substitute.
+ */
+export function friendlySendQuoteError(message: string): string {
+  if (/network_id is required/i.test(message)) {
+    return "This corridor can't be priced right now — our provider list is unavailable, so we can't route the payment. Please try again shortly.";
+  }
+  if (/invalid or revoked api key|aggregator returned 401/i.test(message)) {
+    return "Payouts are temporarily unavailable — our payment partner rejected the connection. This is on us, not your details.";
+  }
+  return message;
+}
+
 /** The four entry points on the Send method chooser. `internal` has no
  *  backend yet, so it is presented disabled rather than omitted. */
 export type SendMethod = "bank" | "mobile" | "crypto" | "internal";

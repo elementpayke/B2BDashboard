@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { flagUrl, CURRENCIES, LIGHT, DARK, DARK_HC_OVERRIDES } from "./mockData";
+import MbokaLogo from "@/components/brand/MbokaLogo";
 
 export default function Landing() {
   const router = useRouter();
@@ -75,11 +76,8 @@ export default function Landing() {
       <div data-screen-label="Landing" className="ep-landing__page">
         <header className="ep-landing-header">
           <div className="ep-landing-header-inner">
-            <a href="#top" className="ep-landing-brand" aria-label="ElementPay home">
-              <span className="ep-landing-mark" aria-hidden>
-                E
-              </span>
-              <span className="ep-landing-brand__name">ElementPay</span>
+            <a href="#top" className="ep-landing-brand" aria-label="Mboka home">
+              <MbokaLogo size={32} />
             </a>
 
             <nav className="ep-landing-nav" aria-label="Primary">
@@ -311,7 +309,7 @@ export default function Landing() {
         </main>
 
         <footer className="ep-landing-footer">
-          <p>© 2026 ElementPay · Move business money at internet speed</p>
+          <p>© 2026 Mboka · Move business money at internet speed</p>
         </footer>
       </div>
     </div>

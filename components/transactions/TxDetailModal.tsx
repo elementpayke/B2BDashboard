@@ -1,6 +1,13 @@
 "use client";
+import MbokaMark from "@/components/brand/MbokaMark";
 import React from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { openBrandedDocument } from "@/lib/documents/brandedDocument";
+import {
+  buildTransactionReceipt,
+  isReceiptable,
+  receiptFilename,
+} from "@/lib/documents/transactionReceipt";
 
 export type TxDetailModalProps = {
   txDetail: any;
@@ -102,7 +109,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   if (!txDetail) {
     return isLoading ? (
       <div className="ep-txn-detail__loading" role="status" aria-live="polite">
-        <span className="ep-txn-detail__spinner" aria-hidden />
+        <MbokaMark size={20} motion="inflight" title={null} />
         Loading transaction…
       </div>
     ) : null;
@@ -207,6 +214,21 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
           </DetailRow>
         ))}
       </div>
+
+      {isReceiptable(txDetail.status) ? (
+        <button
+          type="button"
+          className="ep-btn-secondary ep-txn-detail__receipt"
+          onClick={() =>
+            openBrandedDocument(
+              buildTransactionReceipt(txDetail),
+              receiptFilename(txDetail),
+            )
+          }
+        >
+          Download receipt
+        </button>
+      ) : null}
     </div>
   );
 }

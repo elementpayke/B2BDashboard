@@ -140,7 +140,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
       {p.step === 1 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 1 · Business details</span>
-          <TextField label="Legal name" value={p.draft.legalName} onChange={(v) => p.patchDraft({ legalName: v })} placeholder="ElementPay Ltd" autoComplete="organization" />
+          <TextField label="Legal name" value={p.draft.legalName} onChange={(v) => p.patchDraft({ legalName: v })} placeholder="Mboka Ltd" autoComplete="organization" />
           <TextField label="Registration number" value={p.draft.registrationNumber} onChange={(v) => p.patchDraft({ registrationNumber: v })} placeholder="BN123456" />
           <CountrySelect
             label="Country of incorporation"
