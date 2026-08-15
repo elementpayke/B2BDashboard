@@ -73,6 +73,10 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import {
+  describeMissingTreasuryWallet,
+  resolveTreasuryWalletAddress,
+} from "@/lib/services/treasuryWallet";
+import {
   canEnterInLocalCurrency,
   describeAmountEquivalent,
   formatFeeDual,
@@ -540,7 +544,10 @@ export default function DashboardApp(props: Props = {}) {
       entityId: usdcAccount?.entityId ?? null,
       usdcAccountId: usdcAccount?.id ?? null,
       usdcWalletAddress: usdcAccount?.walletAddress ?? null,
-      treasuryWalletAddress: summaryQuery.data?.totals.wallet_address ?? null,
+      treasuryWalletAddress: resolveTreasuryWalletAddress({
+      summaryWallet: summaryQuery.data?.totals.wallet_address,
+      stablecoinAccounts: stablecoinAccountsQuery.data,
+    }),
       convertNetworkId: null,
     });
     setState({
@@ -730,9 +737,15 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
-        const refundAddress = summaryQuery.data?.totals.wallet_address;
+        // Summary carries the canonical address but fails independently of
+        // the session; a ready USDC account holds the same one. Only call the
+        // business unprovisioned when both are genuinely empty.
+        const refundAddress = resolveTreasuryWalletAddress({
+          summaryWallet: summaryQuery.data?.totals.wallet_address,
+          stablecoinAccounts: stablecoinAccountsQuery.data,
+        });
         if (!refundAddress) {
-          throw new Error("No treasury wallet is provisioned for this business yet.");
+          throw new Error(describeMissingTreasuryWallet(summaryQuery.isError));
         }
         const country = COUNTRIES[state.sendCountryIdx];
         const rail = country.rails[state.sendRailIdx] || country.rails[0];
@@ -877,7 +890,11 @@ export default function DashboardApp(props: Props = {}) {
             ? (stablecoinAccountsQuery.data ?? []).find(
                 (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
               )?.walletAddress
-            : null) || summaryQuery.data?.totals.wallet_address;
+            : null) ||
+          resolveTreasuryWalletAddress({
+            summaryWallet: summaryQuery.data?.totals.wallet_address,
+            stablecoinAccounts: stablecoinAccountsQuery.data,
+          });
         if (!walletAddress) {
           throw new Error(
             state.fundAfricanTargetCurrency
@@ -2323,7 +2340,10 @@ export default function DashboardApp(props: Props = {}) {
         entityId: fundingUsdcAccount?.entityId ?? null,
         usdcAccountId: fundingUsdcAccount?.id ?? null,
         usdcWalletAddress: fundingUsdcAccount?.walletAddress ?? null,
-        treasuryWalletAddress: summaryQuery.data?.totals.wallet_address ?? null,
+        treasuryWalletAddress: resolveTreasuryWalletAddress({
+      summaryWallet: summaryQuery.data?.totals.wallet_address,
+      stablecoinAccounts: stablecoinAccountsQuery.data,
+    }),
         convertNetworkId: null,
       })
     : null;
@@ -2690,7 +2710,10 @@ export default function DashboardApp(props: Props = {}) {
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Bank", v: depositProvider }]
         : depositPaymentInstructionRows;
   const depositNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
-  const treasuryWalletAddress = summaryQuery.data?.totals.wallet_address ?? null;
+  const treasuryWalletAddress = resolveTreasuryWalletAddress({
+      summaryWallet: summaryQuery.data?.totals.wallet_address,
+      stablecoinAccounts: stablecoinAccountsQuery.data,
+    });
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
   const depositAssetCode = s.depositAsset.toUpperCase();
   const sendStep = s.sendStep;
