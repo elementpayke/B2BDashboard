@@ -8291,3 +8291,232 @@ select.ep-wallets-create__control {
   font-size: 11px;
   color: var(--muted2);
 }
+
+/* ── Managed USDC Account (Stellar) ─────────────────────────────
+   Quiet operational surface: same card/panel language as the rest of
+   Accounts. The demo badge is the only thing that should read as
+   scaffolding — everything else is production-shaped.
+*/
+
+.ep-stellar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-stellar-card {
+  width: 100%;
+  max-width: 360px;
+  text-align: left;
+}
+
+.ep-stellar-card--loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  max-width: 360px;
+}
+
+.ep-stellar-card__asset {
+  font-size: 0.62em;
+  color: var(--muted2);
+  font-weight: 500;
+}
+
+.ep-stellar-demo-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface3);
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ep-stellar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  min-width: 0;
+}
+
+.ep-stellar-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ep-stellar-panel__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-stellar-panel__label .ep-stellar-demo-badge {
+  margin-left: 0;
+}
+
+.ep-stellar-panel__balance {
+  margin-top: 6px;
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.ep-stellar-panel__balance span {
+  font-size: 0.5em;
+  color: var(--muted2);
+}
+
+.ep-stellar-panel__sub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.ep-stellar-panel__network {
+  color: var(--muted2);
+}
+
+.ep-stellar-panel__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-stellar-panel__actions > button {
+  width: auto;
+  min-width: 104px;
+}
+
+.ep-stellar-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface2);
+}
+
+.ep-stellar-more__title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-stellar-more__body {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ep-stellar-more > button {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.ep-stellar-deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ep-stellar-explorer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--indigo-text);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Demo control. Visually fenced so it never reads as product chrome. */
+.ep-stellar-demo {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.ep-stellar-demo__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-stellar-demo__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ep-stellar-demo__chip {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ep-stellar-demo__chip[data-selected="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+@media (max-width: 639px) {
+  .ep-stellar-card,
+  .ep-stellar-card--loading {
+    max-width: none;
+  }
+
+  .ep-stellar-panel__actions,
+  .ep-stellar-more > button {
+    width: 100%;
+  }
+
+  .ep-stellar-panel__actions > button {
+    flex: 1;
+  }
+}

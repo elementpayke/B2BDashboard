@@ -49,6 +49,13 @@ export type WalletsScreenProps = {
   goTransactions: () => void;
   /** Opens the Convert (quote → accept) flow from Accounts. */
   onConvert?: () => void;
+  /**
+   * The managed USDC Account surface, rendered as its own block under the
+   * accounts row. Passed in as a node rather than folded into `accounts` so
+   * simulated data never joins the real, API-backed array — and so the
+   * expanded detail view isn't nested inside the horizontal scroller.
+   */
+  managedSection?: React.ReactNode;
 };
 
 function AccountCardSkeleton() {
@@ -304,6 +311,8 @@ export default function WalletsScreen(p: WalletsScreenProps) {
           ) : null}
         </div>
       ) : null}
+
+      {p.managedSection}
 
       <ActivityList
         title="Recent activity"

@@ -144,6 +144,7 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
 import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
+import StellarUsdcSection from "@/components/stellar/StellarUsdcSection";
 import MbokaMark from "@/components/brand/MbokaMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
 import HeaderRates from "@/components/navigation/HeaderRates";
@@ -3114,6 +3115,7 @@ Create payment
 
 {(isWallets) ? (<>
 <WalletsScreen
+  managedSection={<StellarUsdcSection isMobile={isMobile} />}
   isMobile={isMobile}
   mainWalletBalance={mainWalletBalance}
   mainWalletSub={mainWalletSub}
