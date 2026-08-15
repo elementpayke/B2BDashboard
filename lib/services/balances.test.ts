@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   assertSufficientBalance,
   convertAmountWithRates,
+  currentBalanceFromAccount,
   describeDisplayTotalSub,
   formatAccountBalance,
   formatCurrencyBalanceLines,
   formatHomeTotalBalance,
   formatSummedBalance,
   parseBalanceNumber,
+  pendingBalanceFromAccount,
   sumAvailableBalances,
   sumBalancesByCurrency,
   totalBalanceInDisplayCurrency,
@@ -23,6 +25,48 @@ describe("formatAccountBalance", () => {
   it("returns em dash when missing", () => {
     expect(formatAccountBalance(null)).toBe("—");
     expect(formatAccountBalance({})).toBe("—");
+  });
+});
+
+describe("pendingBalanceFromAccount", () => {
+  it("returns the booked amount above the available balance", () => {
+    expect(
+      pendingBalanceFromAccount({
+        available: "1,200.25",
+        current: "1,500.50",
+        currency: "USD",
+      }),
+    ).toEqual({ available: "300.25", current: "300.25", currency: "USD" });
+  });
+
+  it("does not infer pending money when either partner value is missing", () => {
+    expect(pendingBalanceFromAccount({ current: "500", currency: "USD" })).toBeNull();
+    expect(pendingBalanceFromAccount({ available: "500", currency: "USD" })).toBeNull();
+  });
+
+  it("returns zero when no booked money is pending", () => {
+    expect(
+      pendingBalanceFromAccount({ available: "500", current: "500", currency: "USD" }),
+    ).toEqual({ available: "0", current: "0", currency: "USD" });
+    expect(
+      pendingBalanceFromAccount({ available: "600", current: "500", currency: "USD" }),
+    ).toEqual({ available: "0", current: "0", currency: "USD" });
+  });
+});
+
+describe("currentBalanceFromAccount", () => {
+  it("uses booked current balance for the headline total", () => {
+    expect(
+      currentBalanceFromAccount({ available: "500", current: "650", currency: "USD" }),
+    ).toEqual({ available: "650", current: "650", currency: "USD" });
+  });
+
+  it("falls back to available when the partner omits current", () => {
+    expect(currentBalanceFromAccount({ available: "500", currency: "USD" })).toEqual({
+      available: "500",
+      current: "500",
+      currency: "USD",
+    });
   });
 });
 

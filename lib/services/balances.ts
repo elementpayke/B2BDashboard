@@ -88,6 +88,33 @@ export function parseBalanceNumber(
   return Number.isFinite(n) ? n : null;
 }
 
+/** Booked balance for the headline total; falls back to available when omitted. */
+export function currentBalanceFromAccount(
+  balance: AccountBalance | null | undefined,
+): AccountBalance | null {
+  const current = balance?.current?.trim() || balance?.available?.trim();
+  if (!current) return null;
+  return { available: current, current, currency: balance?.currency };
+}
+
+/** Amount booked but not yet available. Requires both values from the partner. */
+export function pendingBalanceFromAccount(
+  balance: AccountBalance | null | undefined,
+): AccountBalance | null {
+  const availableRaw = balance?.available?.trim();
+  const currentRaw = balance?.current?.trim();
+  if (!availableRaw || !currentRaw) return null;
+
+  const available = Number(availableRaw.replace(/,/g, ""));
+  const current = Number(currentRaw.replace(/,/g, ""));
+  if (!Number.isFinite(available) || !Number.isFinite(current)) {
+    return null;
+  }
+
+  const pending = String(Math.max(current - available, 0));
+  return { available: pending, current: pending, currency: balance?.currency };
+}
+
 /**
  * Format for UI. Returns `—` when missing/unparseable — never invents a figure.
  */

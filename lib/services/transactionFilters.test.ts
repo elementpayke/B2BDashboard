@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { filterTransactions, TX_FILTERS } from "./transactionFilters";
+import {
+  filterTransactions,
+  searchTransactions,
+  TX_FILTERS,
+} from "./transactionFilters";
 import type { Transaction } from "./transactions";
 
 function tx(overrides: Partial<Transaction>): Transaction {
@@ -47,5 +51,52 @@ describe("filterTransactions", () => {
 
   it("falls back to returning everything for an unknown filter key rather than throwing", () => {
     expect(filterTransactions(items, "not-a-real-filter")).toEqual(items);
+  });
+});
+
+describe("searchTransactions", () => {
+  const items = [
+    tx({
+      id: 1,
+      direction: "in",
+      provider: "Acme Payments",
+      currency: "KES",
+      created_at: "2026-08-13T12:00:00Z",
+    }),
+    tx({
+      id: 2,
+      direction: "out",
+      status: "processing",
+      external_order_id: "supplier-77",
+      currency: "NGN",
+      created_at: "2026-07-01T12:00:00Z",
+    }),
+  ];
+
+  it("filters incoming and outgoing directions without changing status semantics", () => {
+    expect(searchTransactions(items, { primary: "incoming" }).map((item) => item.id)).toEqual([1]);
+    expect(searchTransactions(items, { primary: "outgoing" }).map((item) => item.id)).toEqual([2]);
+  });
+
+  it("searches provider and reference fields case-insensitively", () => {
+    expect(
+      searchTransactions(items, { primary: "all", query: "ACME" }).map((item) => item.id),
+    ).toEqual([1]);
+    expect(
+      searchTransactions(items, { primary: "all", query: "supplier-77" }).map(
+        (item) => item.id,
+      ),
+    ).toEqual([2]);
+  });
+
+  it("combines currency and date filters against the latest transaction set", () => {
+    expect(
+      searchTransactions(items, {
+        primary: "all",
+        currency: "KES",
+        dateRange: "7d",
+        now: new Date("2026-08-14T12:00:00Z"),
+      }).map((item) => item.id),
+    ).toEqual([1]);
   });
 });

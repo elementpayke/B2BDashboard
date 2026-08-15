@@ -14,7 +14,13 @@ import {
   mergeExchangeRates,
 } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
-import { TX_FILTERS } from "@/lib/services/transactionFilters";
+import { presentTransaction } from "@/lib/services/transactionPresentation";
+import { describeTransactionStatus } from "@/lib/services/transactionStatus";
+import {
+  PRIMARY_TX_FILTERS,
+  searchTransactions,
+  type PrimaryTransactionFilter,
+} from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
 import { authApi } from "@/lib/services/auth";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
@@ -93,12 +99,14 @@ import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hook
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
+  currentBalanceFromAccount,
   DEFAULT_DISPLAY_CURRENCY,
   DISPLAY_CURRENCY_OPTIONS,
   describeDisplayTotalSub,
   formatAccountBalance,
   formatSummedBalance,
   parseBalanceNumber,
+  pendingBalanceFromAccount,
   readStoredDisplayCurrency,
   totalBalanceInDisplayCurrency,
   writeStoredDisplayCurrency,
@@ -136,8 +144,11 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
 import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
-import MbokaLogo from "@/components/brand/MbokaLogo";
 import MbokaMark from "@/components/brand/MbokaMark";
+import DesktopSidebar from "@/components/navigation/DesktopSidebar";
+import HeaderRates from "@/components/navigation/HeaderRates";
+import MobileBottomNav from "@/components/navigation/MobileBottomNav";
+import MoreSheet from "@/components/navigation/MoreSheet";
 import TransactionsScreen from "@/components/transactions/TransactionsScreen";
 import TxDetailModal from "@/components/transactions/TxDetailModal";
 import WalletsScreen from "@/components/wallets/WalletsScreen";
@@ -153,6 +164,7 @@ function fiatRailForCurrency(code: string): string {
   if (c === "KES") return "Mobile money";
   return "Bank transfer";
 }
+
 import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import {
@@ -176,7 +188,6 @@ type Props = {
 
 export default function DashboardApp(props: Props = {}) {
   const router = useRouter();
-  const exitApp = () => router.push("/");
   const viewport = useViewport(props.forceMobile);
   const isCompact = viewport.isCompact;
   const isMobile = viewport.isMobile;
@@ -186,6 +197,7 @@ export default function DashboardApp(props: Props = {}) {
   const [state, setStateRaw] = useState<any>(() => ({
     theme: props.startTheme || "light", screen: props.startScreen || "home",
     sidebarOpen: false,
+    moreOpen: false,
     modal: null as string | null,
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
@@ -209,7 +221,11 @@ export default function DashboardApp(props: Props = {}) {
     convertHop: 1 as 1 | 2,
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
-    stableSel: "USDC", txFilter: "all",
+    stableSel: "USDC",
+    txFilter: "all" as PrimaryTransactionFilter,
+    txSearch: "",
+    txCurrency: "all",
+    txDateRange: "all" as "all" | "7d" | "30d",
     selectedTxId: null as number | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
@@ -272,9 +288,11 @@ export default function DashboardApp(props: Props = {}) {
     }));
   }, [setState]);
 
-  // Close the drawer when crossing into desktop chrome.
+  // Close compact navigation when crossing into desktop chrome.
   useEffect(() => {
-    if (!isCompact && state.sidebarOpen) setState({ sidebarOpen: false });
+    if (!isCompact && (state.sidebarOpen || state.moreOpen)) {
+      setState({ sidebarOpen: false, moreOpen: false });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompact]);
 
@@ -330,7 +348,10 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     refetchInterval: 15_000,
   });
-  const txFilterStatus = TX_FILTERS.find((f) => f.key === state.txFilter)?.status ?? "all";
+  const txFilterStatus =
+    state.txFilter === "processing" || state.txFilter === "failed"
+      ? state.txFilter
+      : "all";
   const transactionsPageQuery = useTransactionsPage(txFilterStatus);
   // Tx detail modal fetches by id, not by list index/position — the list can
   // reorder or refetch (15s poll above) while the modal is open, and an
@@ -578,10 +599,12 @@ export default function DashboardApp(props: Props = {}) {
 
 
   const toggleTheme = () => setState(s => ({ theme: s.theme === "light" ? "dark" : "light" }));
-  const toggleSidebar = () => setState(s => ({ sidebarOpen: !s.sidebarOpen }));
-  const closeSidebar = () => setState({ sidebarOpen: false });
-  const setScreen = (s) => () => setState({ screen: s, sidebarOpen: false });
-  const goTransactions = () => setState({ screen: "transactions" });
+  const closeMore = useCallback(() => setState({ moreOpen: false }), [setState]);
+  const setScreen = (screen: string) => () =>
+    setState({ screen, sidebarOpen: false, moreOpen: false });
+  const navigateToScreen = (screen: string) =>
+    setState({ screen, sidebarOpen: false, moreOpen: false });
+  const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
@@ -606,6 +629,8 @@ export default function DashboardApp(props: Props = {}) {
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
   const openModal = (name) => () => setState({
     modal: name,
+    moreOpen: false,
+    sidebarOpen: false,
     ...moneyFlowReset,
   });
   const isMoneyFlowScreen = (screen: string) =>
@@ -616,6 +641,7 @@ export default function DashboardApp(props: Props = {}) {
       screen: name,
       modal: null,
       sidebarOpen: false,
+      moreOpen: false,
       moneyFlowReturn: isMoneyFlowScreen(prev.screen)
         ? (prev.moneyFlowReturn || "home")
         : prev.screen || "home",
@@ -1036,7 +1062,7 @@ export default function DashboardApp(props: Props = {}) {
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
   const openModalTier = () => setState({ modal: "tier", tierDone: false });
   const openModalKyb = () => setState({ modal: "kyb" });
-  const goVerification = () => setState({ screen: "verification", sidebarOpen: false });
+  const goVerification = () => setState({ screen: "verification", sidebarOpen: false, moreOpen: false });
   const guardMoneyModal = (name: string) => () => {
     // Wait for /auth/me before treating KYB as pending — otherwise approved
     // businesses get bounced to verification while the profile is still loading.
@@ -1520,7 +1546,8 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const setTxFilter = (f) => () => setState({ txFilter: f });
+  const setTxFilter = (filter: PrimaryTransactionFilter) => () =>
+    setState({ txFilter: filter });
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
   const closeAddAccountMenu = () => setState({ addAccountMenu: false });
@@ -1855,17 +1882,6 @@ export default function DashboardApp(props: Props = {}) {
     const boostDark = props.boostDarkContrast ?? true;
     const vars = s.theme === "dark" ? (boostDark ? { ...DARK, ...DARK_HC_OVERRIDES } : DARK) : LIGHT;
 
-    const navMap = [
-      { key: "home", label: "Home", group: "Overview" },
-      { key: "wallets", label: "Accounts", group: null },
-      { key: "cards", label: "Cards", group: null },
-      { key: "transactions", label: "Transactions", group: "Money" },
-      { key: "invoices", label: "Invoices", group: null },
-      { key: "reports", label: "Reports", group: null },
-      { key: "verification", label: "Verification", group: "Account" },
-      { key: "team", label: "Team", group: null },
-      { key: "developer", label: "Developer", group: null },
-    ];
     const titles: Record<string, [string, string]> = {
       home: ["Home", "Your balances, actions, and activity at a glance"],
       wallets: ["Accounts", "One main stablecoin wallet, currency accounts around it"],
@@ -1969,38 +1985,28 @@ export default function DashboardApp(props: Props = {}) {
       bulkBorder: s.bulkSelected.includes(i) ? "var(--indigo)" : "transparent",
     }));
 
-    // Real transactions from the backend (thin read-view over merchant_orders).
-    // TransactionOut has no counterparty name/country — those fields are
-    // display-only stand-ins, not fabricated financial data.
-    const TX_STATUS_DISPLAY: Record<string, [string, string, string]> = {
-      processing: ["Pending", "var(--amber)", "var(--amber-tint)"],
-      completed: ["Settled", "var(--indigo-text)", "var(--indigo-tint)"],
-      failed: ["Failed", "var(--red)", "var(--red-tint)"],
-      refunded: ["Refunded", "var(--amber)", "var(--amber-tint)"],
-      canceled: ["Canceled", "var(--muted)", "var(--surface2)"],
-      frozen: ["Frozen", "var(--red)", "var(--red-tint)"],
-    };
     const decorateTx = (t: Transaction) => {
-      const [label, color, soft] = TX_STATUS_DISPLAY[t.status] || ["Unknown", "var(--muted)", "var(--surface2)"];
-      const sign = t.direction === "out" ? "-" : t.direction === "in" ? "+" : "";
-      const clientLabel = t.external_order_id || t.aggregator_order_id || `Order #${t.id}`;
-      const typeLabel = t.direction === "in" ? "Deposit" : t.direction === "out" ? "Payout" : "Transaction";
       return {
-        ...t,
-        flagUrl: null,
-        client: clientLabel,
-        type: typeLabel,
-        amount: `${sign}${t.currency} ${t.amount_fiat}`,
-        ref: t.aggregator_order_id || t.external_order_id || `EP-${t.id}`,
-        statusLabel: label,
-        statusColor: color,
-        statusSoft: soft,
-        amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
+        ...presentTransaction(t),
         openDetail: openTxDetail(t.id),
       };
     };
     const decoratedAll = (transactionsQuery.data?.items ?? []).map(decorateTx);
-    const filteredTransactions = transactionsPageQuery.items.map(decorateTx);
+    const txUsesLatestFifty =
+      s.txFilter === "incoming" ||
+      s.txFilter === "outgoing" ||
+      Boolean(s.txSearch.trim()) ||
+      s.txCurrency !== "all" ||
+      s.txDateRange !== "all";
+    const latestFiftyMatches = searchTransactions(transactionsQuery.data?.items ?? [], {
+      primary: s.txFilter,
+      query: s.txSearch,
+      currency: s.txCurrency,
+      dateRange: s.txDateRange,
+    }).map(decorateTx);
+    const filteredTransactions = txUsesLatestFifty
+      ? latestFiftyMatches
+      : transactionsPageQuery.items.map(decorateTx);
     // Fetched by id (txDetailQuery), independent of the list above — see
     // openTxDetail. Falls back to the list's cached copy while the detail
     // fetch is in flight so the modal isn't blank on first open.
@@ -2130,13 +2136,6 @@ export default function DashboardApp(props: Props = {}) {
         : "—";
   const rootStyle: React.CSSProperties = { minHeight: "100vh", position: "relative", background: "var(--bg)", color: "var(--ink)", fontFamily: "'DM Sans',sans-serif", ...vars };
   const themeIcon = s.theme === "dark" ? "☀" : "☾";
-  const mainNavItems = navMap.map(n => {
-        const active =
-          n.key === "wallets"
-            ? s.screen === "wallets" || s.screen === "accountDetail"
-            : s.screen === n.key;
-        return { label: n.label, groupLabel: n.group, select: setScreen(n.key), bg: active ? "var(--indigo)" : "transparent", color: active ? "var(--indigo-on)" : "var(--muted)", weight: active ? 700 : 600, shadow: active ? "0 8px 18px -8px rgba(59,46,211,0.5)" : "none" };
-      });
   const isHome = s.screen === "home";
   const isWallets = s.screen === "wallets";
   const isAccountDetail = s.screen === "accountDetail";
@@ -2147,24 +2146,6 @@ export default function DashboardApp(props: Props = {}) {
   const isVerification = s.screen === "verification";
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
-  const bottomNavItems = [
-        { key: "home", label: "Home", icon: "⌂", elevated: false },
-        { key: "wallets", label: "Accounts", icon: "▦", elevated: false },
-        { key: "__pay", label: "Send", icon: "⇄", elevated: true },
-        { key: "transactions", label: "Activity", icon: "≣", elevated: false },
-        { key: "__more", label: "More", icon: "⋯", elevated: false },
-      ].map(n => {
-        const active =
-          n.key === "__pay"
-            ? s.screen === "send"
-            : n.key === "__more"
-              ? s.sidebarOpen
-              : n.key === "wallets"
-                ? s.screen === "wallets" || s.screen === "accountDetail"
-                : s.screen === n.key;
-        const select = n.key === "__pay" ? guardMoneyModal("send") : n.key === "__more" ? toggleSidebar : setScreen(n.key);
-        return { key: n.key, label: n.label, icon: n.icon, elevated: n.elevated, select, active, color: active ? "var(--indigo-text)" : "var(--muted2)", weight: active ? 700 : 600 };
-      });
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
   // Total balance hero: one figure in the user's default display currency,
   // converted via Mboka indicative FX only (never invent rates).
@@ -2181,22 +2162,51 @@ export default function DashboardApp(props: Props = {}) {
     currency: a.currency,
     balance: a.balance,
   }));
-  const homeTotalLedgerItems =
+  const homeAvailableLedgerItems =
     s.balanceView === "stablecoin"
       ? stableLedgerItems.filter((a) => (a.currency || "").toUpperCase() === "USDC")
       : s.balanceView === "fiat"
         ? fiatLedgerItems
         : [...fiatLedgerItems, ...stableLedgerItems];
+  const homeCurrentLedgerItems = homeAvailableLedgerItems
+    .map((item) => ({
+      currency: item.currency,
+      balance: currentBalanceFromAccount(item.balance),
+    }))
+    .filter((item) => item.balance !== null);
   const homeFxRates = mergeExchangeRates(
     summaryQuery.data?.fx_rates,
     exchangeRatesQuery.data,
   );
   const homeDisplayTotal = totalBalanceInDisplayCurrency(
-    homeTotalLedgerItems,
+    homeCurrentLedgerItems,
     displayCurrency,
     homeFxRates,
     { maximumFractionDigits: 2 },
   );
+  const homeAvailableTotal = totalBalanceInDisplayCurrency(
+    homeAvailableLedgerItems,
+    displayCurrency,
+    homeFxRates,
+    { maximumFractionDigits: 2 },
+  );
+  const pendingLedgerItems = homeAvailableLedgerItems
+    .map((item) => ({
+      currency: item.currency,
+      balance: pendingBalanceFromAccount(item.balance),
+    }))
+    .filter((item) => item.balance !== null);
+  const homePendingTotal = totalBalanceInDisplayCurrency(
+    pendingLedgerItems,
+    displayCurrency,
+    homeFxRates,
+    { maximumFractionDigits: 2 },
+  );
+  const homePendingAmountComplete =
+    homeAvailableLedgerItems.length > 0 &&
+    pendingLedgerItems.length === homeAvailableLedgerItems.length &&
+    homePendingTotal.total !== null &&
+    homePendingTotal.excluded.length === 0;
   const balanceViewSub = describeDisplayTotalSub(homeDisplayTotal, {
     balanceView: (s.balanceView === "fiat" || s.balanceView === "stablecoin"
       ? s.balanceView
@@ -2227,19 +2237,22 @@ export default function DashboardApp(props: Props = {}) {
     : ((meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending");
   const kybApproved = isKybApproved(kybStatus);
   const quickActionTiles = [
-        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Send money", icon: "↗", desc: "Pay a supplier by bank, mobile money, or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
+        { label: "Receive", icon: "↙", desc: "Share account details and collect a payment.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
       ];
   const totals = summaryQuery.data?.totals;
   const liveRates = liveRateRowsFromSummary(homeFxRates);
   const fmtUsd = (v: string | number | undefined) =>
     v == null ? "—" : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
   const homeStats = [
-        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
-        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface2)", iconColor: "var(--muted)" },
-        { label: "Awaiting settlement", value: totals ? String(totals.pending_count) : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+        { label: "Available", value: homeAvailableTotal.label, icon: "✓", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Pending", value: homePendingAmountComplete ? homePendingTotal.label : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+      ];
+  const homeFlowStats = [
+        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑" },
+        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓" },
       ];
   const homeRecent = decoratedAll.slice(0, 4);
   const mainWalletBalance =
@@ -2363,7 +2376,15 @@ export default function DashboardApp(props: Props = {}) {
         ? "Open an active USD deposit account to issue cards."
         : "";
   const cardsFundingHint = describeUsdFunding(usdFunding);
-  const txFilters = TX_FILTERS.map((f) => ({ label: f.label, select: setTxFilter(f.key), bg: s.txFilter === f.key ? "var(--indigo)" : "var(--surface2)", color: s.txFilter === f.key ? "var(--indigo-on)" : "var(--muted)" }));
+  const txFilters = PRIMARY_TX_FILTERS.map((filter) => ({
+    key: filter.key,
+    label: filter.label,
+    select: setTxFilter(filter.key),
+    active: s.txFilter === filter.key,
+  }));
+  const txCurrencyOptions = Array.from(
+    new Set((transactionsQuery.data?.items ?? []).map((transaction) => transaction.currency.toUpperCase())),
+  ).sort();
   const invoices = (invoicesQuery.data?.items ?? []).map((inv) => {
     const [l, c, soft] = STATUS_MAP[inv.status] || ["Draft", "var(--muted)", "var(--surface2)"];
     const clientName = inv.payload?.client_name || "—";
@@ -2609,11 +2630,11 @@ export default function DashboardApp(props: Props = {}) {
   // accept (first poll hasn't landed yet) — fall back to the accept
   // response's own "processing" status rather than showing nothing.
   const sendLiveOrderStatus = s.sendAccept ? sendStatusQuery.data?.status ?? "processing" : null;
-  const [sendLiveLabel, sendLiveColor, sendLiveSoft] = sendLiveOrderStatus
-    ? TX_STATUS_DISPLAY[sendLiveOrderStatus] || ["Unknown", "var(--muted)", "var(--surface2)"]
-    : [null, null, null];
+  const sendLiveDescriptor = sendLiveOrderStatus
+    ? describeTransactionStatus(sendLiveOrderStatus)
+    : null;
   const sendLiveStatus = sendLiveOrderStatus
-    ? { label: sendLiveLabel as string, color: sendLiveColor as string, soft: sendLiveSoft as string, isSettling: !sendStatusQuery.isTerminal }
+    ? { label: sendLiveDescriptor!.label, color: sendLiveDescriptor!.color, soft: sendLiveDescriptor!.soft, isSettling: !sendStatusQuery.isTerminal }
     : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder =
@@ -2787,11 +2808,11 @@ export default function DashboardApp(props: Props = {}) {
     ? `Order #${s.depositAccept.merchant_order_id} · ${s.depositAccept.status}`
     : null;
   const depositLiveOrderStatus = s.depositAccept ? depositStatusQuery.data?.status ?? "processing" : null;
-  const [depositLiveLabel, depositLiveColor, depositLiveSoft] = depositLiveOrderStatus
-    ? TX_STATUS_DISPLAY[depositLiveOrderStatus] || ["Unknown", "var(--muted)", "var(--surface2)"]
-    : [null, null, null];
+  const depositLiveDescriptor = depositLiveOrderStatus
+    ? describeTransactionStatus(depositLiveOrderStatus)
+    : null;
   const depositLiveStatus = depositLiveOrderStatus
-    ? { label: depositLiveLabel as string, color: depositLiveColor as string, soft: depositLiveSoft as string, isSettling: !depositStatusQuery.isTerminal }
+    ? { label: depositLiveDescriptor!.label, color: depositLiveDescriptor!.color, soft: depositLiveDescriptor!.soft, isSettling: !depositStatusQuery.isTerminal }
     : null;
   const receiveGroups = ["fiat","crypto"].map(g => ({ key: g, label: g === "fiat" ? "Fiat account" : "Stablecoin", select: setReceiveGroup(g), bg: s.receiveGroup === g ? "var(--ink)" : "var(--surface2)", color: s.receiveGroup === g ? "var(--bg)" : "var(--muted)" }));
   const receiveIsFiat = s.receiveGroup === "fiat";
@@ -2926,72 +2947,34 @@ export default function DashboardApp(props: Props = {}) {
     <div ref={rootRef} style={rootStyle}>
 <div data-screen-label="App" className={`ep-shell${s.sidebarOpen ? " ep-shell--drawer-open" : ""}`}>
 
-<div className="ep-shell__overlay" onClick={closeSidebar} aria-hidden={!s.sidebarOpen} />
-<aside className="ep-sidebar" aria-label="Main navigation">
-<button onClick={exitApp} className="ep-sidebar__brand" aria-label="Mboka home">
-<MbokaLogo size={32} sub="Business" />
-</button>
-
-<nav className="ep-sidebar__nav">
-{(mainNavItems || []).map((item: any, __i1: number) => (
-<React.Fragment key={__i1}>
-{(item.groupLabel) ? (<>
-<div className="ep-sidebar__group">{item.groupLabel}</div>
-</>) : null}
-<button onClick={item.select} className="ep-sidebar__nav-btn" style={{background: (item.bg), color: (item.color), boxShadow: (item.shadow)}}>
-<span style={{fontSize: "13px", fontWeight: (item.weight)}}>{item.label}</span>
-</button>
-</React.Fragment>
-))}
-</nav>
-
-<div className="ep-sidebar__rates">
-<div style={{display: "flex", alignItems: "center", gap: "6px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: "700", fontSize: "9.5px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted3)", marginBottom: "6px"}}><span style={{width: "6px", height: "6px", borderRadius: "50%", background: "var(--indigo-bright)"}} />Live rates</div>
-{(liveRates || []).map((row: { pair: string; value: string }, __iLive: number) => (
-<div key={__iLive} style={{display: "flex", justifyContent: "space-between", padding: "1px 0"}}><span>{row.pair}</span><b style={{color: "#fff", fontWeight: "500"}}>{row.value}</b></div>
-))}
-</div>
-
-<div className="ep-sidebar__profile">
-<span style={{width: "30px", height: "30px", borderRadius: "50%", background: "var(--indigo)", color: "var(--indigo-on)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Mono',monospace", fontSize: "11px", fontWeight: "700", flexShrink: "0"}}>{(meQuery.data?.business?.name || "?").slice(0,2).toUpperCase()}</span>
-<div style={{minWidth: "0", flex: 1}}><div style={{fontSize: "11.5px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>{meQuery.data?.business?.name || "Loading…"}</div><div style={{fontSize: "10px", color: "var(--indigo-text)", fontWeight: "700"}}>{meQuery.data?.role || ""}</div></div>
-<button onClick={toggleTheme} aria-label="Toggle theme" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "13px", flexShrink: "0"}}>{themeIcon}</button>
-<button onClick={logout} title="Log out" aria-label="Log out" style={{width: isCompact ? "44px" : "34px", height: isCompact ? "44px" : "34px", borderRadius: "50%", border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--ink)", cursor: "pointer", fontSize: "12px", flexShrink: "0"}}>⏻</button>
-</div>
-</aside>
+{!isCompact ? (
+<DesktopSidebar
+  screen={s.screen}
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  themeIcon={themeIcon}
+  onHome={() => navigateToScreen("home")}
+  onNavigate={navigateToScreen}
+  onToggleTheme={toggleTheme}
+  onLogout={logout}
+/>
+) : null}
 
 <main className="ep-main">
 <header className="ep-header">
 <div className="ep-header__lead">
 {isMoneyFlow ? (
 <button type="button" className="ep-header__back" onClick={exitMoneyFlow} aria-label="Back">←</button>
-) : (
-<button type="button" className="ep-header__menu" onClick={toggleSidebar} aria-label="Open navigation">☰</button>
-)}
+) : isCompact ? (
+<span className="ep-header__brand-mark"><MbokaMark size={28} title="Mboka" /></span>
+) : null}
 <div className="ep-header__titles">
 <h1>{currentTitle}</h1>
 <p>{currentSubtitle}</p>
 </div>
 </div>
 <div className="ep-header__actions">
-<button
-  type="button"
-  className="ep-header__icon-btn"
-  onClick={toggleTheme}
-  aria-label="Toggle theme"
-  title="Toggle theme"
->
-  {themeIcon}
-</button>
-<button
-  type="button"
-  className="ep-header__signout"
-  onClick={logout}
-  aria-label="Sign out"
-  title="Sign out"
->
-  Sign out
-</button>
+{!isCompact ? <HeaderRates rates={liveRates} /> : null}
 {!isCompact ? (
 <button type="button" onClick={guardMoneyModal("send")} className="ep-btn-primary ep-header__cta">
 Create payment
@@ -3005,9 +2988,16 @@ Create payment
 {(isHome) ? (<>
 <div data-screen-label="Home" className="ep-home">
 
+<HomeIdentity
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  kybApproved={kybApproved}
+  kybLabel={describeKybStatus(kybStatus)}
+  kybLoading={kybStatusLoading}
+/>
+
 {/* Hero balance — leads the screen, per the design's Home. The identity
-    strip and rates marquee sit below the quick actions; on desktop they
-    are suppressed entirely, where the sidebar already carries both. */}
+    strip is compact-only; desktop carries the same identity in the sidebar. */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
@@ -3064,6 +3054,18 @@ Create payment
 ))}
 </div>
 
+<div className="ep-home__flow-stats" aria-label="30-day cash flow">
+{homeFlowStats.map((stat) => (
+<div key={stat.label} className="ep-home__flow-stat">
+<span className="ep-home__flow-icon" aria-hidden>{stat.icon}</span>
+<span className="ep-home__flow-copy">
+<span className="ep-home__flow-label">{stat.label}</span>
+<strong>{stat.value}</strong>
+</span>
+</div>
+))}
+</div>
+
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
@@ -3081,13 +3083,6 @@ Create payment
 ))}
 </div>
 
-<HomeIdentity
-  businessName={meQuery.data?.business?.name || "Loading…"}
-  role={meQuery.data?.role}
-  kybApproved={kybApproved}
-  kybLabel={describeKybStatus(kybStatus)}
-  kybLoading={kybStatusLoading}
-/>
 <RatesMarquee rates={liveRates} />
 
 {(homeCurrencyChips?.length) ? (
@@ -3241,20 +3236,28 @@ Create payment
   txFilters={txFilters}
   filteredTransactions={filteredTransactions}
   emptyLabel={
-    transactionsPageQuery.isLoading
+    (txUsesLatestFifty ? transactionsQuery.isLoading : transactionsPageQuery.isLoading)
       ? "Loading…"
-      : transactionsPageQuery.isError
+      : (txUsesLatestFifty ? transactionsQuery.isError : transactionsPageQuery.isError)
         ? "Couldn't load transactions"
         : "No transactions match this filter"
   }
-  pageNumber={transactionsPageQuery.pageNumber}
-  pageCount={transactionsPageQuery.pageCount}
-  total={transactionsPageQuery.total}
-  hasNext={transactionsPageQuery.hasNext}
-  hasPrev={transactionsPageQuery.hasPrev}
+  pageNumber={txUsesLatestFifty ? 1 : transactionsPageQuery.pageNumber}
+  pageCount={txUsesLatestFifty ? 1 : transactionsPageQuery.pageCount}
+  total={txUsesLatestFifty ? filteredTransactions.length : transactionsPageQuery.total}
+  hasNext={!txUsesLatestFifty && transactionsPageQuery.hasNext}
+  hasPrev={!txUsesLatestFifty && transactionsPageQuery.hasPrev}
   onNextPage={transactionsPageQuery.nextPage}
   onPrevPage={transactionsPageQuery.prevPage}
-  isFetching={transactionsPageQuery.isFetching}
+  isFetching={txUsesLatestFifty ? transactionsQuery.isFetching : transactionsPageQuery.isFetching}
+  search={s.txSearch}
+  onSearchChange={(value) => setState({ txSearch: value })}
+  currency={s.txCurrency}
+  currencyOptions={txCurrencyOptions}
+  onCurrencyChange={(value) => setState({ txCurrency: value })}
+  dateRange={s.txDateRange}
+  onDateRangeChange={(value) => setState({ txDateRange: value })}
+  usesLatestFifty={txUsesLatestFifty}
 />
 </>) : null}
 
@@ -3679,25 +3682,32 @@ Create payment
 
 </div>
 
-{(isCompact) ? (<>
-<nav className="ep-bottom-nav" aria-label="Primary mobile">
-{(bottomNavItems || []).map((bn: any, __i1: number) => (
-bn.elevated ? (
-<button key={bn.key || __i1} type="button" className="ep-bottom-nav__pay" data-active={bn.active ? "true" : "false"} onClick={bn.select} aria-label={bn.label}>
-<span className="ep-bottom-nav__pay-orb" aria-hidden>{bn.icon}</span>
-<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
-</button>
-) : (
-<button key={bn.key || __i1} type="button" data-active={bn.active ? "true" : "false"} onClick={bn.select} style={{color: bn.color}}>
-<span className="ep-bottom-nav__icon" aria-hidden>{bn.icon}</span>
-<span className="ep-bottom-nav__label" style={{fontWeight: bn.weight}}>{bn.label}</span>
-</button>
-)
-))}
-</nav>
-</>) : null}
+{isCompact ? (
+<MobileBottomNav
+  screen={s.screen}
+  moreOpen={s.moreOpen}
+  onNavigate={navigateToScreen}
+  onOpenMore={() => setState({ moreOpen: true })}
+/>
+) : null}
 </main>
 </div>
+
+{isCompact ? (
+<MoreSheet
+  open={s.moreOpen}
+  screen={s.screen}
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  themeIcon={themeIcon}
+  onClose={closeMore}
+  onNavigate={navigateToScreen}
+  onOpenBulk={guardMoneyModal("bulk")}
+  onOpenTopUp={guardMoneyModal("deposit")}
+  onToggleTheme={toggleTheme}
+  onLogout={logout}
+/>
+) : null}
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
