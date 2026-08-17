@@ -55,6 +55,7 @@ export function formatTransactionDate(value: string, now = new Date()): string {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);

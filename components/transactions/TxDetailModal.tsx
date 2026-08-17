@@ -122,15 +122,13 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   const rows: { label: string; value: React.ReactNode; mono?: boolean }[] = [
     { label: "Reference", value: txDetail.ref, mono: true },
     { label: "Type", value: txDetail.type },
-    { label: "Provider", value: txDetail.provider },
-    {
-      label: "Settlement asset",
-      value:
-        txDetail.crypto_currency && txDetail.crypto_network
-          ? `${txDetail.crypto_currency} · ${txDetail.crypto_network}`
-          : txDetail.crypto_currency || txDetail.crypto_network,
-    },
   ];
+  if (txDetail.provider) rows.push({ label: "Provider", value: txDetail.provider });
+  const settlementAsset =
+    txDetail.crypto_currency && txDetail.crypto_network
+      ? `${txDetail.crypto_currency} · ${txDetail.crypto_network}`
+      : txDetail.crypto_currency || txDetail.crypto_network;
+  if (settlementAsset) rows.push({ label: "Settlement asset", value: settlementAsset });
   if (txDetail.wallet_address) {
     rows.push({
       label: "Wallet",

@@ -31,13 +31,23 @@ describe("TransactionsScreen", () => {
   it("opens compact advanced filters as a dismissible dialog", () => {
     render(<TransactionsScreen {...baseProps} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const trigger = screen.getByRole("button", { name: "Filters" });
+    trigger.focus();
+    fireEvent.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "Filter activity" });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("combobox", { name: "Currency" })).toBeInTheDocument();
+    const close = within(dialog).getByRole("button", { name: "Close filters" });
+    const date = within(dialog).getByRole("combobox", { name: "Date" });
+    expect(close).toHaveFocus();
+
+    date.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(close).toHaveFocus();
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Filter activity" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("discloses the latest-50 scope when local filters are active", () => {

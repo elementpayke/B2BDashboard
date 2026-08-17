@@ -66,4 +66,11 @@ describe("formatTransactionDate", () => {
   it("handles invalid timestamps without fabricating a date", () => {
     expect(formatTransactionDate("not-a-date")).toBe("Date unavailable");
   });
+
+  it("includes the year for transactions outside the current year", () => {
+    const now = new Date(2026, 7, 14, 16, 0);
+    expect(formatTransactionDate(new Date(2025, 0, 5, 9, 15).toISOString(), now)).toContain(
+      "2025",
+    );
+  });
 });

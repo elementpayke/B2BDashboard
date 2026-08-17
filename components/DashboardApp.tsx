@@ -2281,8 +2281,13 @@ export default function DashboardApp(props: Props = {}) {
       ];
   const totals = summaryQuery.data?.totals;
   const liveRates = liveRateRowsFromSummary(homeFxRates);
-  const fmtUsd = (v: string | number | undefined) =>
-    v == null ? "—" : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const fmtUsd = (v: string | number | undefined) => {
+    if (v == null) return "—";
+    const amount = Number(v);
+    return Number.isFinite(amount)
+      ? `$${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+      : "—";
+  };
   const homeStats = [
         { label: "Available", value: homeAvailableTotal.label, icon: "✓", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
         { label: "Pending", value: homePendingAmountComplete ? homePendingTotal.label : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
@@ -2670,8 +2675,8 @@ export default function DashboardApp(props: Props = {}) {
   const sendLiveDescriptor = sendLiveOrderStatus
     ? describeTransactionStatus(sendLiveOrderStatus)
     : null;
-  const sendLiveStatus = sendLiveOrderStatus
-    ? { label: sendLiveDescriptor!.label, color: sendLiveDescriptor!.color, soft: sendLiveDescriptor!.soft, isSettling: !sendStatusQuery.isTerminal }
+  const sendLiveStatus = sendLiveDescriptor
+    ? { label: sendLiveDescriptor.label, color: sendLiveDescriptor.color, soft: sendLiveDescriptor.soft, isSettling: !sendStatusQuery.isTerminal }
     : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder =
@@ -2848,8 +2853,8 @@ export default function DashboardApp(props: Props = {}) {
   const depositLiveDescriptor = depositLiveOrderStatus
     ? describeTransactionStatus(depositLiveOrderStatus)
     : null;
-  const depositLiveStatus = depositLiveOrderStatus
-    ? { label: depositLiveDescriptor!.label, color: depositLiveDescriptor!.color, soft: depositLiveDescriptor!.soft, isSettling: !depositStatusQuery.isTerminal }
+  const depositLiveStatus = depositLiveDescriptor
+    ? { label: depositLiveDescriptor.label, color: depositLiveDescriptor.color, soft: depositLiveDescriptor.soft, isSettling: !depositStatusQuery.isTerminal }
     : null;
   const receiveGroups = ["fiat","crypto"].map(g => ({ key: g, label: g === "fiat" ? "Fiat account" : "Stablecoin", select: setReceiveGroup(g), bg: s.receiveGroup === g ? "var(--ink)" : "var(--surface2)", color: s.receiveGroup === g ? "var(--bg)" : "var(--muted)" }));
   const receiveIsFiat = s.receiveGroup === "fiat";

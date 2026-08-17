@@ -57,15 +57,44 @@ export default function TransactionsScreen({
   usesLatestFifty = false,
 }: TransactionsScreenProps) {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const filterSheetRef = React.useRef<HTMLDivElement>(null);
+  const filterTriggerRef = React.useRef<HTMLButtonElement>(null);
   const showPagination = !usesLatestFifty && (total > 0 || hasPrev);
 
   React.useEffect(() => {
     if (!filtersOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFiltersOpen(false);
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const sheet = filterSheetRef.current;
+    sheet?.querySelector<HTMLElement>("button, select, input, [tabindex]:not([tabindex='-1'])")?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFiltersOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !sheet) return;
+      const focusable = Array.from(
+        sheet.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), select:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+        ),
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      (previousFocus?.isConnected ? previousFocus : filterTriggerRef.current)?.focus();
+    };
   }, [filtersOpen]);
 
   const advancedFilters = (
@@ -110,6 +139,7 @@ export default function TransactionsScreen({
         </label>
         <div className="ep-txn-advanced-desktop">{advancedFilters}</div>
         <button
+          ref={filterTriggerRef}
           type="button"
           className="ep-txn-advanced-mobile ep-txn-filter-trigger"
           onClick={() => setFiltersOpen(true)}
@@ -150,6 +180,7 @@ export default function TransactionsScreen({
       {filtersOpen ? (
         <div className="ep-txn-filter-overlay" onMouseDown={() => setFiltersOpen(false)}>
           <div
+            ref={filterSheetRef}
             id="transaction-filter-sheet"
             className="ep-txn-filter-sheet"
             role="dialog"
