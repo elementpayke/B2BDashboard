@@ -95,13 +95,14 @@ export function isStablecoinSupported(code: string): boolean {
 }
 
 export const NETWORK_OPTIONS: NetworkOption[] = [
+  { code: "STELLAR", label: "Stellar" },
   { code: "POLYGON", label: "Polygon" },
   { code: "BASE", label: "Base" },
   { code: "ETHEREUM", label: "Ethereum" },
 ];
 
-/** Phase 4 create/send only support Base + Polygon. */
-export const SUPPORTED_STABLECOIN_NETWORKS = ["BASE", "POLYGON"] as const;
+/** Networks currently available for custodial USDC account creation. */
+export const SUPPORTED_STABLECOIN_NETWORKS = ["BASE", "POLYGON", "STELLAR"] as const;
 
 export function isStablecoinNetworkSupported(code: string): boolean {
   return (SUPPORTED_STABLECOIN_NETWORKS as readonly string[]).includes(

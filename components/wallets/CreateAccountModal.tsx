@@ -75,7 +75,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
       {slotsFull ? (
         <div className="ep-wallets-create__error" role="status">
           {isStablecoin
-            ? "You already have USDC accounts on Base and Polygon — those are the only networks available right now."
+            ? "You already have a USDC account on every available network."
             : "You already have fiat accounts for every supported currency (USD and EUR)."}
         </div>
       ) : null}
@@ -161,7 +161,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               })}
             </select>
             <div className="ep-wallets-create__hint">
-              One USDC account per network (Base and Polygon). Re-opening an existing
+              One USDC account per network (Base, Polygon, and Stellar). Re-opening an existing
               slot refreshes it instead of creating another.
             </div>
           </div>

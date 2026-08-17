@@ -182,7 +182,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                       disabled={p.canCreateStablecoin === false}
                       title={
                         p.canCreateStablecoin === false
-                          ? "USDC accounts already open on Base and Polygon"
+                          ? "USDC accounts already open on every available network"
                           : undefined
                       }
                       className="ep-wallets__menu-item"
@@ -197,7 +197,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                         <span className="ep-wallets__menu-label">Stablecoin account</span>
                         <span className="ep-wallets__menu-hint">
                           {p.canCreateStablecoin === false
-                            ? "Base and Polygon already open"
+                            ? "Base, Polygon, and Stellar already open"
                             : "On-chain deposit · network specific"}
                         </span>
                       </span>

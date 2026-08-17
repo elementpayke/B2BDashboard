@@ -33,6 +33,7 @@ import {
   currencyLabel,
   occupiedFiatCurrencyCodes,
   SUPPORTED_IBAN_CURRENCIES,
+  SUPPORTED_STABLECOIN_NETWORKS,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -144,7 +145,6 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
 import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
-import StellarUsdcSection from "@/components/stellar/StellarUsdcSection";
 import MbokaMark from "@/components/brand/MbokaMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
 import HeaderRates from "@/components/navigation/HeaderRates";
@@ -757,7 +757,14 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
-        const refundAddress = summaryQuery.data?.totals.wallet_address;
+        const rampAccount = accountForNetwork(
+          stablecoinAccountsQuery.data ?? [],
+          state.sendChain,
+        );
+        const refundAddress =
+          (rampAccount && isReadyStatus(rampAccount.status)
+            ? rampAccount.walletAddress
+            : null) || summaryQuery.data?.totals.wallet_address;
         if (!refundAddress) {
           throw new Error("No treasury wallet is provisioned for this business yet.");
         }
@@ -807,6 +814,10 @@ export default function DashboardApp(props: Props = {}) {
           recipientName: state.sendRecipientName.trim(),
           amount: usdAmount,
           refundAddress,
+          asset:
+            rampAccount?.walletAddress === refundAddress
+              ? { currency: rampAccount.currency, network: rampAccount.network }
+              : undefined,
           // Mobile rails need E.164; the field's placeholder is local format.
           dialCode: country.dialCode,
           networkId,
@@ -899,11 +910,16 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
       try {
-        const walletAddress =
+        const rampAccount =
+          accountForNetwork(stablecoinAccountsQuery.data ?? [], state.depositNetwork) ||
           (state.fundAfricanTargetCurrency
             ? (stablecoinAccountsQuery.data ?? []).find(
                 (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
-              )?.walletAddress
+              )
+            : undefined);
+        const walletAddress =
+          (rampAccount && isReadyStatus(rampAccount.status)
+            ? rampAccount.walletAddress
             : null) || summaryQuery.data?.totals.wallet_address;
         if (!walletAddress) {
           throw new Error(
@@ -943,6 +959,10 @@ export default function DashboardApp(props: Props = {}) {
           payerName,
           amount: state.depositAmount.trim(),
           walletAddress,
+          asset:
+            rampAccount?.walletAddress === walletAddress
+              ? { currency: rampAccount.currency, network: rampAccount.network }
+              : undefined,
           dialCode: country.dialCode,
           networkId,
         });
@@ -1079,6 +1099,22 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
     openModal(name)();
+  };
+  const openSelectedAccountSend = () => {
+    guardMoneyModal("send")();
+    if (
+      state.selectedAcctKind === "stablecoin" &&
+      state.selectedAcctKey.startsWith("stablecoin:")
+    ) {
+      const accountId = state.selectedAcctKey.slice("stablecoin:".length);
+      const account = (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
+      if (account) {
+        setState({
+          sendChain: account.network.trim().toLowerCase(),
+          sendAccountId: account.id,
+        });
+      }
+    }
   };
 
   /** Changing country keeps the rail the chosen method implies, so a "Mobile
@@ -1560,7 +1596,7 @@ export default function DashboardApp(props: Props = {}) {
       depositAccountsQuery.data?.accounts ?? [],
     );
     if (kind === "stablecoin") {
-      const available = (["BASE", "POLYGON"] as const).filter(
+      const available = SUPPORTED_STABLECOIN_NETWORKS.filter(
         (code) => !stableOccupied.has(code),
       );
       setState({
@@ -1573,7 +1609,7 @@ export default function DashboardApp(props: Props = {}) {
         createAccountNetwork: available.length === 1 ? available[0] : "",
         createAccountError:
           available.length === 0
-            ? "You already have USDC accounts on Base and Polygon."
+            ? "You already have a USDC account on every available network."
             : "",
       });
       return;
@@ -1766,7 +1802,7 @@ export default function DashboardApp(props: Props = {}) {
       if (occupied.has(state.createAccountNetwork.trim().toUpperCase())) {
         return setState({
           createAccountError:
-            "You already have a USDC account on this network — one per Base/Polygon.",
+            "You already have a USDC account on this network.",
         });
       }
       setState({ createAccountSaving: true, createAccountError: "" });
@@ -3115,7 +3151,6 @@ Create payment
 
 {(isWallets) ? (<>
 <WalletsScreen
-  managedSection={<StellarUsdcSection isMobile={isMobile} />}
   isMobile={isMobile}
   mainWalletBalance={mainWalletBalance}
   mainWalletSub={mainWalletSub}
@@ -3126,7 +3161,8 @@ Create payment
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
   canCreateStablecoin={
-    occupiedStablecoinNetworkCodes(stablecoinAccountsList).size < 2
+    occupiedStablecoinNetworkCodes(stablecoinAccountsList).size <
+    SUPPORTED_STABLECOIN_NETWORKS.length
   }
   canCreateBank={
     occupiedFiatCurrencyCodes(depositAccountsList).size <
@@ -3170,7 +3206,7 @@ Create payment
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
   onFund={openAcctFundChooser}
-  onSend={guardMoneyModal("send")}
+  onSend={openSelectedAccountSend}
   onConvert={openConvert}
   onViewAllTx={goTransactions}
 />
