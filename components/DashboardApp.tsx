@@ -197,6 +197,8 @@ export default function DashboardApp(props: Props = {}) {
   const isMobile = viewport.isMobile;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const lastModalFocusRef = useRef<HTMLElement | null>(null);
 
   const [state, setStateRaw] = useState<any>(() => ({
     theme: props.startTheme || "light", screen: props.startScreen || "home",
@@ -498,7 +500,7 @@ export default function DashboardApp(props: Props = {}) {
 
   // Prefill convert accounts once lists load so the form isn't empty.
   useEffect(() => {
-    if (state.screen !== "convert") return;
+    if (state.screen !== "convert" && state.modal !== "convert") return;
     const fiat = (depositAccountsQuery.data?.accounts ?? [])
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
@@ -522,6 +524,7 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [
     state.screen,
+    state.modal,
     state.convertMode,
     state.convertHop,
     state.convertSourceAccountId,
@@ -1004,6 +1007,56 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertError: "",
     });
   };
+  const closeModalRef = useRef(closeModal);
+  closeModalRef.current = closeModal;
+
+  useEffect(() => {
+    if (!state.modal) return;
+    const node = modalRef.current;
+    if (!node) return;
+
+    lastModalFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const pickerOpen = () =>
+      Boolean(document.querySelector(".ep-choice-overlay, .ep-choice-popover"));
+    const focusables = () =>
+      [
+        ...node.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => !el.closest(".ep-choice-overlay, .ep-choice-popover"));
+
+    focusables()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (pickerOpen()) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeModalRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      lastModalFocusRef.current?.focus();
+    };
+  }, [state.modal]);
+
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
@@ -3522,7 +3575,7 @@ export default function DashboardApp(props: Props = {}) {
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+<div ref={modalRef} onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
 <div className="ep-modal__grabber" aria-hidden="true">
 <span className="ep-modal__grabber-bar" />

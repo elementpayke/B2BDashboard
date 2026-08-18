@@ -224,6 +224,42 @@ function SavedRecipientPicker({
   );
 }
 
+function SendProviderPicker({
+  id,
+  label,
+  title,
+  catalogBusy,
+  sendProviderIdx,
+  sendProviderOptions,
+  selectSendProvider,
+}: {
+  id: string;
+  label: string;
+  title: string;
+  catalogBusy: boolean;
+  sendProviderIdx: number;
+  sendProviderOptions: string[];
+  selectSendProvider: (index: number) => void;
+}) {
+  return (
+    <ChoicePicker
+      id={id}
+      label={label}
+      title={title}
+      value={String(sendProviderIdx)}
+      options={(sendProviderOptions || []).map((name, i) => ({
+        value: String(i),
+        label: name,
+      }))}
+      onChange={(value) => selectSendProvider(Number(value))}
+      disabled={catalogBusy || (sendProviderOptions || []).length === 0}
+      loading={catalogBusy && (sendProviderOptions || []).length === 0}
+      loadingLabel="Loading providers…"
+      searchable
+    />
+  );
+}
+
 export default function SendModal(p: SendModalProps) {
   const catalogBusy = p.sendIsCountry && p.sendCatalogLoading;
   const canSaveDetails =
@@ -358,20 +394,14 @@ export default function SendModal(p: SendModalProps) {
                   ) : null}
 
                   {catalogBusy || (p.sendProviderOptions || []).length > 0 ? (
-                    <ChoicePicker
+                    <SendProviderPicker
                       id="send-provider-1"
                       label={p.sendProviderLabel}
                       title={`Choose ${p.sendProviderLabel.toLowerCase()}`}
-                      value={String(p.sendProviderIdx)}
-                      options={(p.sendProviderOptions || []).map((name, i) => ({
-                        value: String(i),
-                        label: name,
-                      }))}
-                      onChange={(value) => p.selectSendProvider(Number(value))}
-                      disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
-                      loading={catalogBusy && (p.sendProviderOptions || []).length === 0}
-                      loadingLabel="Loading providers…"
-                      searchable
+                      catalogBusy={catalogBusy}
+                      sendProviderIdx={p.sendProviderIdx}
+                      sendProviderOptions={p.sendProviderOptions || []}
+                      selectSendProvider={p.selectSendProvider}
                     />
                   ) : null}
 
@@ -503,20 +533,14 @@ export default function SendModal(p: SendModalProps) {
                     the same provider index — the aggregator takes one id. */}
                 {p.sendIsBankRail &&
                 (catalogBusy || (p.sendProviderOptions || []).length > 0) ? (
-                  <ChoicePicker
+                  <SendProviderPicker
                     id="send-provider"
                     label="Bank"
                     title="Choose bank"
-                    value={String(p.sendProviderIdx)}
-                    options={(p.sendProviderOptions || []).map((name, i) => ({
-                      value: String(i),
-                      label: name,
-                    }))}
-                    onChange={(value) => p.selectSendProvider(Number(value))}
-                    disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
-                    loading={catalogBusy && (p.sendProviderOptions || []).length === 0}
-                    loadingLabel="Loading providers…"
-                    searchable
+                    catalogBusy={catalogBusy}
+                    sendProviderIdx={p.sendProviderIdx}
+                    sendProviderOptions={p.sendProviderOptions || []}
+                    selectSendProvider={p.selectSendProvider}
                   />
                 ) : null}
 

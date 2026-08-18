@@ -107,11 +107,17 @@ export default function DepositModal(p: DepositModalProps) {
           <StepProgress dots={p.depositStepDots || []} label="Deposit progress" />
 
           {p.fundTargetCurrency ? (
-            <div className="ep-money-banner ep-money-banner--info" role="note">
-              Paying African fiat → USDC, then we try USDC → {p.fundTargetCurrency} (best effort).
-              {p.fundConvertStatus ? ` ${p.fundConvertStatus}` : ""}
-              {p.fundConvertError ? ` ${p.fundConvertError}` : ""}
-            </div>
+            <>
+              <div className="ep-money-banner ep-money-banner--info" role="note">
+                Paying African fiat → USDC, then we try USDC → {p.fundTargetCurrency} (best effort).
+                {p.fundConvertStatus ? ` ${p.fundConvertStatus}` : ""}
+              </div>
+              {p.fundConvertError ? (
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                  {p.fundConvertError}
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           {p.depositStepIs1 ? (
@@ -516,7 +522,9 @@ export default function DepositModal(p: DepositModalProps) {
                 <span className="ep-fund-orch-note__status">{p.fundConvertStatus}</span>
               ) : null}
               {p.fundConvertError ? (
-                <span className="ep-fund-orch-note__err">{p.fundConvertError}</span>
+                <span className="ep-fund-orch-note__err" role="alert">
+                  {p.fundConvertError}
+                </span>
               ) : null}
             </div>
           ) : null}

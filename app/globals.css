@@ -1847,7 +1847,7 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(19, 17, 38, 0.38);
+  background: var(--overlay-bg);
 }
 
 .ep-choice-overlay--ghost {
@@ -2976,7 +2976,7 @@ body {
 }
 
 .ep-modal:has(.ep-flow--sheet) {
-  max-width: 520px;
+  max-width: none;
 }
 
 .ep-modal__grabber {
@@ -3009,6 +3009,10 @@ body {
 
   .ep-modal__grabber {
     display: none;
+  }
+
+  .ep-modal:has(.ep-flow--sheet) {
+    max-width: 520px;
   }
 }
 

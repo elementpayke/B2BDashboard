@@ -89,12 +89,11 @@ export default function FundChooserModal({
         <strong>{accountName}</strong> · {currency}
       </p>
 
-      <div className="ep-money-stack" role="list">
+      <div className="ep-money-stack">
         {options.map((m) => (
           <button
             key={m.key}
             type="button"
-            role="listitem"
             className="ep-send-method"
             disabled={m.disabled}
             title={m.disabled ? m.disabledReason : undefined}
