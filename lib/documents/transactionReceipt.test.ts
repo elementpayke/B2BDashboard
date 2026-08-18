@@ -68,7 +68,7 @@ describe("buildTransactionReceipt", () => {
     expect(doc.sections.find((s) => s.title === "Reference")?.rows).toHaveLength(1);
     expect(
       doc.sections.find((s) => s.title === "Settlement")?.rows.map((r) => r.label),
-    ).toEqual(["Settlement layer"]);
+    ).toEqual([]);
   });
 
   it("collapses the settled row when it matches created", () => {

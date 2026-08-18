@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import StatusBadge from "@/components/ui/StatusBadge";
 
@@ -26,11 +26,19 @@ export type AccountDetailScreenProps = {
   recent: ActivityItem[];
   /** Show Convert in the action row (fiat accounts). */
   canConvert?: boolean;
+  /** Fund is blocked once the wallet is closed. */
+  canFund?: boolean;
+  /** Send is blocked once the wallet is closed. */
+  canSend?: boolean;
+  /** Close is offered for stablecoin wallets (block or delete). */
+  canClose?: boolean;
+  closeDisabledReason?: string;
   onBack: () => void;
   onOpenDetails: () => void;
   onFund: () => void;
   onSend: () => void;
   onConvert?: () => void;
+  onCloseAccount?: () => void;
   onViewAllTx: () => void;
 };
 
@@ -47,15 +55,33 @@ export default function AccountDetailScreen({
   summaryLines,
   recent,
   canConvert = false,
+  canFund = true,
+  canSend = true,
+  canClose = false,
+  closeDisabledReason,
   onBack,
   onOpenDetails,
   onFund,
   onSend,
   onConvert,
+  onCloseAccount,
   onViewAllTx,
 }: AccountDetailScreenProps) {
   // Visual shell only — range selection does not invent a history series.
   const [range, setRange] = useState<BalanceRange>("30 Days");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  const closedHint = "This account is closed";
 
   return (
     <div data-screen-label="Account detail" className="ep-acct-detail">
@@ -113,6 +139,8 @@ export default function AccountDetailScreen({
               type="button"
               onClick={onFund}
               className="ep-acct-detail__action"
+              disabled={!canFund}
+              title={!canFund ? closedHint : undefined}
             >
               Fund <span aria-hidden>＋</span>
             </button>
@@ -129,6 +157,8 @@ export default function AccountDetailScreen({
               type="button"
               onClick={onSend}
               className="ep-acct-detail__action ep-acct-detail__action--primary"
+              disabled={!canSend}
+              title={!canSend ? closedHint : undefined}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
@@ -148,6 +178,49 @@ export default function AccountDetailScreen({
               </svg>
               Send
             </button>
+            <div className="ep-acct-detail__more-wrap">
+              <button
+                type="button"
+                className="ep-acct-detail__action ep-acct-detail__action--more"
+                aria-label="More account actions"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                ⋯
+              </button>
+              {menuOpen ? (
+                <>
+                  <div
+                    className="ep-acct-detail__menu-backdrop"
+                    onClick={() => setMenuOpen(false)}
+                    aria-hidden
+                  />
+                  <div className="ep-acct-detail__menu" role="menu" aria-label="Account actions">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ep-acct-detail__menu-item ep-acct-detail__menu-item--danger"
+                      disabled={!canClose || !onCloseAccount}
+                      title={!canClose ? closeDisabledReason : undefined}
+                      onClick={() => {
+                        if (!canClose || !onCloseAccount) return;
+                        setMenuOpen(false);
+                        onCloseAccount();
+                      }}
+                    >
+                      <span className="ep-acct-detail__menu-copy">
+                        <span className="ep-acct-detail__menu-label">Close account</span>
+                        <span className="ep-acct-detail__menu-hint">
+                          {closeDisabledReason ||
+                            "Block this wallet or delete it from your accounts"}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
 

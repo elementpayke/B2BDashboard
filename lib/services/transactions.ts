@@ -17,6 +17,12 @@ export type Transaction = {
   aggregator_order_id: string | null;
   external_order_id: string | null;
   wallet_address: string | null;
+  provider?: string | null;
+  order_type?: Order["order_type"] | null;
+  crypto_currency?: string | null;
+  crypto_network?: string | null;
+  exchange_rate?: string | null;
+  psp_transaction_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -77,6 +83,12 @@ export function mapOrderToTransaction(order: Order): Transaction {
     aggregator_order_id: order.aggregator_order_id,
     external_order_id: order.external_order_id,
     wallet_address: order.wallet_address,
+    provider: order.provider,
+    order_type: order.order_type,
+    crypto_currency: order.crypto_currency,
+    crypto_network: order.crypto_network,
+    exchange_rate: order.exchange_rate,
+    psp_transaction_id: order.psp_transaction_id,
     created_at: order.created_at,
     updated_at: order.updated_at,
   };

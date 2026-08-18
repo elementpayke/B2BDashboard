@@ -1,8 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   buildStablecoinOpenPayload,
+  describeStablecoinAccountStatus,
+  isClosedStatus,
+  isCloseableStablecoinAccount,
   isListedStablecoinAccount,
   isSendableStablecoinAccount,
+  occupiedStablecoinNetworkCodes,
   normalizeFinancialAccount,
   resolvePrimaryEntityId,
   toPartnerNetwork,
@@ -10,7 +14,7 @@ import {
 } from "./entities";
 
 describe("buildStablecoinOpenPayload", () => {
-  it("maps UI network codes to partner Base/Polygon", () => {
+  it("maps UI network codes to partner network names", () => {
     expect(
       buildStablecoinOpenPayload({
         currency: "usdc",
@@ -24,6 +28,7 @@ describe("buildStablecoinOpenPayload", () => {
       display_name: "Treasury USDC",
     });
     expect(toPartnerNetwork("polygon")).toBe("Polygon");
+    expect(toPartnerNetwork("stellar")).toBe("Stellar");
   });
 
   it("rejects unsupported asset / network", () => {
@@ -40,7 +45,7 @@ describe("buildStablecoinOpenPayload", () => {
         network: "ETHEREUM",
         displayName: "x",
       }),
-    ).toThrow(/Base or Polygon/);
+    ).toThrow(/Base, Polygon, or Stellar/);
   });
 });
 
@@ -81,7 +86,7 @@ describe("listed vs sendable stablecoin accounts", () => {
 });
 
 describe("occupiedStablecoinNetworkCodes", () => {
-  it("marks Base/Polygon once when a USDC account exists there", async () => {
+  it("marks supported USDC network slots once when accounts exist", async () => {
     const { occupiedStablecoinNetworkCodes, isStablecoinNetworkOccupied } =
       await import("./entities");
     const base = normalizeFinancialAccount(
@@ -97,6 +102,41 @@ describe("occupiedStablecoinNetworkCodes", () => {
     expect([...occupiedStablecoinNetworkCodes([base])]).toEqual(["BASE"]);
     expect(isStablecoinNetworkOccupied([base], "BASE")).toBe(true);
     expect(isStablecoinNetworkOccupied([base], "POLYGON")).toBe(false);
+
+    const stellar = normalizeFinancialAccount(
+      {
+        id: "a2",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "active",
+      },
+      "ent_1",
+    )!;
+    expect([...occupiedStablecoinNetworkCodes([base, stellar])]).toEqual([
+      "BASE",
+      "STELLAR",
+    ]);
+  });
+});
+
+describe("closed stablecoin accounts", () => {
+  it("labels closed wallets and keeps the rail occupied", () => {
+    const closed = normalizeFinancialAccount(
+      {
+        id: "67",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "closed",
+      },
+      "ent_1",
+    )!;
+    expect(isClosedStatus(closed.status)).toBe(true);
+    expect(isCloseableStablecoinAccount(closed)).toBe(true);
+    expect(isSendableStablecoinAccount(closed)).toBe(false);
+    expect(describeStablecoinAccountStatus(closed.status)).toBe("Closed");
+    expect([...occupiedStablecoinNetworkCodes([closed])]).toEqual(["STELLAR"]);
   });
 });
 

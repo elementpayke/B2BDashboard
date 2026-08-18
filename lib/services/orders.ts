@@ -8,6 +8,12 @@ export type AccountBlock = {
   countryCode?: string;
 };
 
+export type RampAsset = {
+  currency: string;
+  network: string;
+  token?: string;
+};
+
 export type OffRampQuoteIn = {
   order_type: "OffRamp";
   currency: string;
@@ -15,6 +21,7 @@ export type OffRampQuoteIn = {
   crypto_amount: string;
   refund_address: string;
   destination: AccountBlock;
+  asset?: RampAsset;
   token?: string;
   external_order_id?: string;
 };
@@ -33,6 +40,7 @@ export type OnRampQuoteIn = {
   local_amount: string;
   wallet_address: string;
   source: AccountBlock;
+  asset?: RampAsset;
   token?: string;
   external_order_id?: string;
 };
@@ -85,6 +93,8 @@ export type PaymentInstructions = {
   amount?: string | null;
   currency?: string | null;
   network?: string | null;
+  memo?: string | null;
+  memo_type?: string | null;
   expires_at?: string | null;
 };
 
@@ -272,6 +282,7 @@ export function buildSendQuotePayload(params: {
    * own default provider for the rail, same as before this was wired up.
    */
   networkId?: string;
+  asset?: RampAsset;
 }): OffRampQuoteIn {
   const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
   if (!accountType) {
@@ -287,6 +298,7 @@ export function buildSendQuotePayload(params: {
     country: params.countryIso.toUpperCase(),
     crypto_amount: params.amount,
     refund_address: params.refundAddress,
+    ...(params.asset ? { asset: params.asset } : {}),
     destination: {
       accountType,
       accountNumber,
@@ -318,6 +330,7 @@ export function buildDepositQuotePayload(params: {
   dialCode?: string;
   /** Aggregator provider/institution id, see `buildSendQuotePayload`. */
   networkId?: string;
+  asset?: RampAsset;
 }): OnRampQuoteIn {
   const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
   if (!accountType) {
@@ -333,6 +346,7 @@ export function buildDepositQuotePayload(params: {
     country: params.countryIso.toUpperCase(),
     local_amount: params.amount,
     wallet_address: params.walletAddress,
+    ...(params.asset ? { asset: params.asset } : {}),
     source: {
       accountType,
       accountNumber,
@@ -378,6 +392,8 @@ export function buildPaymentInstructionRows(
     if (instructions.amount) rows.push({ k: "Amount", v: String(instructions.amount) });
     if (instructions.currency) rows.push({ k: "Asset", v: instructions.currency });
     if (instructions.network) rows.push({ k: "Network", v: instructions.network });
+    if (instructions.memo) rows.push({ k: "Memo", v: instructions.memo });
+    if (instructions.memo_type) rows.push({ k: "Memo type", v: instructions.memo_type });
   }
 
   if (instructions.expires_at) {

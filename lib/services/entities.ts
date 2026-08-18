@@ -56,6 +56,12 @@ export const entitiesApi = {
       `/v1/entities/${encodeURIComponent(entityId)}/accounts`,
       payload,
     ),
+  closeAccount: (entityId: string, accountId: string, action: "block" | "delete" = "block") =>
+    apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/close`,
+      { action },
+    ),
 };
 
 /** First linked partner entity, or a clear error when KYB/entity onboarding is incomplete. */
@@ -87,7 +93,7 @@ export function buildStablecoinOpenPayload(input: {
   }
   const network = toPartnerNetwork(input.network);
   if (!network) {
-    throw new Error("Choose Base or Polygon — other networks aren't supported yet.");
+    throw new Error("Choose Base, Polygon, or Stellar.");
   }
   return {
     asset_type: "stablecoin",
@@ -144,10 +150,13 @@ export function normalizeNetworkKey(network: string | null | undefined): string 
 }
 
 /** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
-export function toPartnerNetwork(network: string): "Base" | "Polygon" | null {
+export function toPartnerNetwork(network: string): "Base" | "Polygon" | "Stellar" | null {
   const key = normalizeNetworkKey(network);
   if (key === "base") return "Base";
   if (key === "polygon") return "Polygon";
+  if (key === "stellar" || key === "stellar_testnet" || key === "stellar_public") {
+    return "Stellar";
+  }
   return null;
 }
 
@@ -171,8 +180,7 @@ export function occupiedStablecoinNetworkCodes(
     if (account.assetType.toLowerCase() !== "stablecoin") continue;
     if (account.currency !== "USDC") continue;
     const partner = toPartnerNetwork(account.network);
-    if (partner === "Base") occupied.add("BASE");
-    if (partner === "Polygon") occupied.add("POLYGON");
+    if (partner) occupied.add(partner.toUpperCase());
   }
   return occupied;
 }
@@ -188,6 +196,22 @@ export function isStablecoinNetworkOccupied(
 
 export function isReadyStatus(status: string | null | undefined): boolean {
   return READY.has((status || "").trim().toLowerCase());
+}
+
+export function isClosedStatus(status: string | null | undefined): boolean {
+  const key = (status || "").trim().toLowerCase();
+  return key === "closed" || key === "blocked";
+}
+
+/** Status pill tone for wallet cards / account detail. */
+export function stablecoinStatusTone(
+  status: string | null | undefined,
+): "active" | "pending" | "unavailable" {
+  if (isReadyStatus(status)) return "active";
+  if (isClosedStatus(status)) return "unavailable";
+  const key = (status || "").trim().toLowerCase();
+  if (key.includes("fail") || key === "unavailable") return "unavailable";
+  return "pending";
 }
 
 /** Accept only http(s) checkout links — reject javascript:/data:/etc. */
@@ -250,6 +274,10 @@ export function normalizeFinancialAccount(
 /** Any stablecoin rail returned by the API (for wallets list / fund UX). */
 export function isListedStablecoinAccount(account: FinancialAccount): boolean {
   return account.assetType.toLowerCase() === "stablecoin" && Boolean(account.currency);
+}
+
+export function isCloseableStablecoinAccount(account: FinancialAccount): boolean {
+  return isListedStablecoinAccount(account);
 }
 
 /** Ready stablecoin rails with a deposit address — fundable via on-chain transfer. */
@@ -317,7 +345,8 @@ export function describeStablecoinAccountStatus(status: string | null | undefine
   const key = status.trim().toLowerCase();
   if (READY.has(key)) return "Active";
   if (key === "pending" || key === "processing" || key === "opening") return "Pending";
-  if (key === "failed" || key === "closed" || key === "unavailable") return "Unavailable";
+  if (key === "closed" || key === "blocked") return "Closed";
+  if (key === "failed" || key === "unavailable") return "Unavailable";
   return status;
 }
 
@@ -389,11 +418,18 @@ export type FundStablecoinRail = {
   checkoutUrl: string | null;
 };
 
-/** Pick the account matching the UI chain key (`base` / `polygon`). */
+/** Pick the account matching the UI chain key (`base` / `polygon` / `stellar`). */
 export function accountForNetwork(
   accounts: FinancialAccount[],
   networkKey: string,
 ): FinancialAccount | undefined {
-  const want = normalizeNetworkKey(networkKey);
-  return accounts.find((a) => normalizeNetworkKey(a.network) === want);
+  const want = toPartnerNetwork(networkKey) ?? normalizeNetworkKey(networkKey);
+  if (!want) return undefined;
+  return accounts.find((a) => (toPartnerNetwork(a.network) ?? normalizeNetworkKey(a.network)) === want);
+}
+
+/** UI deposit-network key from a partner/API network spelling. */
+export function toUiNetworkKey(network: string | null | undefined): string {
+  const partner = toPartnerNetwork(network || "");
+  return partner ? partner.toLowerCase() : normalizeNetworkKey(network);
 }

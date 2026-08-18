@@ -70,6 +70,16 @@ describe("buildSendQuotePayload", () => {
     const payload = buildSendQuotePayload({ ...baseParams, railType: "mobile" });
     expect(payload.destination).not.toHaveProperty("networkId");
   });
+
+  it("forwards an explicit Stellar USDC asset", () => {
+    const payload = buildSendQuotePayload({
+      ...baseParams,
+      railType: "mobile",
+      refundAddress: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      asset: { currency: "USDC", network: "Stellar" },
+    });
+    expect(payload.asset).toEqual({ currency: "USDC", network: "Stellar" });
+  });
 });
 
 describe("isQuoteExpiredError", () => {
@@ -273,6 +283,16 @@ describe("buildDepositQuotePayload", () => {
     const payload = buildDepositQuotePayload({ ...depositParams, railType: "mobile" });
     expect(payload.source).not.toHaveProperty("networkId");
   });
+
+  it("forwards an explicit Stellar USDC asset", () => {
+    const payload = buildDepositQuotePayload({
+      ...depositParams,
+      railType: "mobile",
+      walletAddress: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      asset: { currency: "USDC", network: "Stellar" },
+    });
+    expect(payload.asset).toEqual({ currency: "USDC", network: "Stellar" });
+  });
 });
 
 describe("buildPaymentInstructionRows", () => {
@@ -333,6 +353,22 @@ describe("buildPaymentInstructionRows", () => {
       { k: "Asset", v: "USDC" },
       { k: "Network", v: "BASE" },
     ]);
+  });
+
+  it("renders the Stellar memo required for an off-ramp deposit", () => {
+    const instructions: PaymentInstructions = {
+      type: "crypto_deposit",
+      wallet_address: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      amount: "20",
+      currency: "USDC",
+      network: "STELLAR",
+      memo: "MBOKA-4821",
+      memo_type: "text",
+    };
+    expect(buildPaymentInstructionRows(instructions)).toContainEqual({
+      k: "Memo",
+      v: "MBOKA-4821",
+    });
   });
 
   it("appends an expiry row when present, regardless of type", () => {
