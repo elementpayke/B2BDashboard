@@ -1,4 +1,6 @@
 import type { BrandedDocument } from "@/lib/documents/brandedDocument";
+import type { TransactionStatus } from "@/lib/services/transactions";
+import { TRANSACTION_STATUS } from "@/lib/services/transactionStatus";
 
 /**
  * Payment receipt for a settled transaction.
@@ -17,13 +19,17 @@ export type ReceiptTransaction = {
   aggregator_order_id?: string | null;
   external_order_id?: string | null;
   wallet_address?: string | null;
+  provider?: string | null;
+  crypto_currency?: string | null;
+  crypto_network?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
 
 /** Terminal-and-successful — the only states a receipt should exist for. */
 export function isReceiptable(status: string | null | undefined): boolean {
-  return (status || "").toLowerCase() === "completed";
+  const normalized = (status || "").toLowerCase() as TransactionStatus;
+  return TRANSACTION_STATUS[normalized]?.receiptEligible ?? false;
 }
 
 function formatTimestamp(iso?: string | null): string | null {
@@ -57,9 +63,16 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
     reference.push({ label: "Your reference", value: tx.external_order_id, mono: true });
   }
 
-  const settlement: { label: string; value: string; mono?: boolean }[] = [
-    { label: "Settlement layer", value: "USDC · Base" },
-  ];
+  const settlement: { label: string; value: string; mono?: boolean }[] = [];
+  if (tx.provider) {
+    settlement.push({ label: "Provider", value: tx.provider });
+  }
+  if (tx.crypto_currency || tx.crypto_network) {
+    settlement.push({
+      label: "Settlement asset",
+      value: [tx.crypto_currency, tx.crypto_network].filter(Boolean).join(" · "),
+    });
+  }
   if (tx.wallet_address) {
     settlement.push({ label: "Wallet", value: tx.wallet_address, mono: true });
   }

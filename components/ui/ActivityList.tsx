@@ -10,8 +10,10 @@ export type ActivityItem = {
   amount: string;
   amountColor?: string;
   statusLabel: string;
+  statusIcon?: string;
   statusColor: string;
   statusSoft: string;
+  dateLabel?: string;
   flagUrl?: string | null;
   openDetail?: () => void;
   /** Optional secondary line for mobile cards (e.g. date/ref) */
@@ -66,10 +68,11 @@ export default function ActivityList({
         <>
           {!forceCards && columns === "transactions" ? (
             <div className="ep-activity__table-head" aria-hidden>
-              <span>Counterparty</span>
-              <span>Rail</span>
-              <span>Status</span>
+              <span>Payment</span>
+              <span>Type</span>
               <span className="ep-align-end">Amount</span>
+              <span>Status</span>
+              <span>Date</span>
             </div>
           ) : null}
 
@@ -113,6 +116,7 @@ export default function ActivityList({
                         <span className="ep-activity__type">{tx.type}</span>
                         <StatusBadge
                           label={tx.statusLabel}
+                          icon={tx.statusIcon}
                           color={tx.statusColor}
                           soft={tx.statusSoft}
                         />
@@ -136,17 +140,19 @@ export default function ActivityList({
                         </div>
                       </div>
                       <span className="ep-activity__type">{tx.type}</span>
-                      <StatusBadge
-                        label={tx.statusLabel}
-                        color={tx.statusColor}
-                        soft={tx.statusSoft}
-                      />
                       <span
                         className="ep-mono ep-activity__amount ep-align-end"
                         style={{ color: tx.amountColor || "var(--ink)" }}
                       >
                         {tx.amount}
                       </span>
+                      <StatusBadge
+                        label={tx.statusLabel}
+                        icon={tx.statusIcon}
+                        color={tx.statusColor}
+                        soft={tx.statusSoft}
+                      />
+                      <span className="ep-activity__date">{tx.dateLabel || "—"}</span>
                     </div>
                   </button>
                 </li>

@@ -43,6 +43,12 @@ describe("mapOrderToTransaction", () => {
     expect(tx.currency).toBe("KES");
     expect(tx.status).toBe("completed");
     expect(tx.id).toBe(42);
+    expect(tx).toMatchObject({
+      provider: "yellowcard",
+      crypto_currency: "USDC",
+      crypto_network: "base",
+      exchange_rate: "100.00",
+    });
   });
 
   it("maps OnRamp to direction in", () => {

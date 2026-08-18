@@ -121,9 +121,14 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   const showUpdated = Boolean(updated && updated !== created);
   const rows: { label: string; value: React.ReactNode; mono?: boolean }[] = [
     { label: "Reference", value: txDetail.ref, mono: true },
-    { label: "Rail", value: txDetail.type },
-    { label: "Settlement layer", value: "USDC · Base" },
+    { label: "Type", value: txDetail.type },
   ];
+  if (txDetail.provider) rows.push({ label: "Provider", value: txDetail.provider });
+  const settlementAsset =
+    txDetail.crypto_currency && txDetail.crypto_network
+      ? `${txDetail.crypto_currency} · ${txDetail.crypto_network}`
+      : txDetail.crypto_currency || txDetail.crypto_network;
+  if (settlementAsset) rows.push({ label: "Settlement asset", value: settlementAsset });
   if (txDetail.wallet_address) {
     rows.push({
       label: "Wallet",
@@ -159,6 +164,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         <div className="ep-txn-detail__status">
           <StatusBadge
             label={txDetail.statusLabel}
+            icon={txDetail.statusIcon}
             color={txDetail.statusColor}
             soft={txDetail.statusSoft}
             size="md"

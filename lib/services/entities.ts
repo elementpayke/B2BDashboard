@@ -87,7 +87,7 @@ export function buildStablecoinOpenPayload(input: {
   }
   const network = toPartnerNetwork(input.network);
   if (!network) {
-    throw new Error("Choose Base or Polygon — other networks aren't supported yet.");
+    throw new Error("Choose Base, Polygon, or Stellar.");
   }
   return {
     asset_type: "stablecoin",
@@ -144,10 +144,13 @@ export function normalizeNetworkKey(network: string | null | undefined): string 
 }
 
 /** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
-export function toPartnerNetwork(network: string): "Base" | "Polygon" | null {
+export function toPartnerNetwork(network: string): "Base" | "Polygon" | "Stellar" | null {
   const key = normalizeNetworkKey(network);
   if (key === "base") return "Base";
   if (key === "polygon") return "Polygon";
+  if (key === "stellar" || key === "stellar_testnet" || key === "stellar_public") {
+    return "Stellar";
+  }
   return null;
 }
 
@@ -171,8 +174,7 @@ export function occupiedStablecoinNetworkCodes(
     if (account.assetType.toLowerCase() !== "stablecoin") continue;
     if (account.currency !== "USDC") continue;
     const partner = toPartnerNetwork(account.network);
-    if (partner === "Base") occupied.add("BASE");
-    if (partner === "Polygon") occupied.add("POLYGON");
+    if (partner) occupied.add(partner.toUpperCase());
   }
   return occupied;
 }

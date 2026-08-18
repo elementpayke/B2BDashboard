@@ -16,6 +16,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { ordersApi, type Order, type OrderStatus } from "@/lib/services/orders";
+import { isTerminalTransactionStatus } from "@/lib/services/transactionStatus";
 
 // Mirrors Mboka's TERMINAL_STATUSES (app/services/orders/status.py).
 export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
@@ -28,7 +29,10 @@ export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
 /** True for the 4 statuses the backend will never transition out of. */
 export function isTerminalOrderStatus(status: string | null | undefined): status is OrderStatus {
   if (!status) return false;
-  return (TERMINAL_ORDER_STATUSES as readonly string[]).includes(status);
+  return (
+    (TERMINAL_ORDER_STATUSES as readonly string[]).includes(status) &&
+    isTerminalTransactionStatus(status as OrderStatus)
+  );
 }
 
 /**
