@@ -1,8 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   buildStablecoinOpenPayload,
+  describeStablecoinAccountStatus,
+  isClosedStatus,
+  isCloseableStablecoinAccount,
   isListedStablecoinAccount,
   isSendableStablecoinAccount,
+  occupiedStablecoinNetworkCodes,
   normalizeFinancialAccount,
   resolvePrimaryEntityId,
   toPartnerNetwork,
@@ -113,6 +117,26 @@ describe("occupiedStablecoinNetworkCodes", () => {
       "BASE",
       "STELLAR",
     ]);
+  });
+});
+
+describe("closed stablecoin accounts", () => {
+  it("labels closed wallets and keeps the rail occupied", () => {
+    const closed = normalizeFinancialAccount(
+      {
+        id: "67",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "closed",
+      },
+      "ent_1",
+    )!;
+    expect(isClosedStatus(closed.status)).toBe(true);
+    expect(isCloseableStablecoinAccount(closed)).toBe(true);
+    expect(isSendableStablecoinAccount(closed)).toBe(false);
+    expect(describeStablecoinAccountStatus(closed.status)).toBe("Closed");
+    expect([...occupiedStablecoinNetworkCodes([closed])]).toEqual(["STELLAR"]);
   });
 });
 
