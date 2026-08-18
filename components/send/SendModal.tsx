@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useId, useRef, useState } from "react";
 import MbokaMark from "@/components/brand/MbokaMark";
+import ChoicePicker from "@/components/ui/ChoicePicker";
 import {
   formatSavedRecipientSubtitle,
   type SavedRecipient,
@@ -287,32 +288,24 @@ export default function SendModal(p: SendModalProps) {
               {p.sendIsCountry ? (
                 <>
                   <div className="ep-send-recipient__card" role="group" aria-label="Destination">
-                    <div className="ep-money-field">
-                      <label className="ep-money-label" htmlFor="send-country">
-                        Destination country
-                      </label>
-                      <div className="ep-send-recipient__select-wrap ep-send-recipient__select-wrap--leading">
-                        {p.sendCountryFlagUrl ? (
+                    <ChoicePicker
+                      id="send-country"
+                      label="Destination country"
+                      title="Choose country"
+                      value={String(p.sendCountryIdx)}
+                      options={(p.sendCountryChips || []).map((c: any) => ({
+                        value: String(c.idx),
+                        label: c.name,
+                        leading: c.flagUrl ? (
                           <span
-                            className="ep-money-flag ep-send-recipient__select-flag"
-                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
+                            className="ep-money-flag"
+                            style={{ backgroundImage: `url(${c.flagUrl})` }}
                             aria-hidden
                           />
-                        ) : null}
-                        <select
-                          id="send-country"
-                          className="ep-money-input ep-send-recipient__select"
-                          value={String(p.sendCountryIdx)}
-                          onChange={(e) => p.selectSendCountry(Number(e.target.value))}
-                        >
-                          {(p.sendCountryChips || []).map((c: any) => (
-                            <option key={c.idx} value={c.idx}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                        ) : undefined,
+                      }))}
+                      onChange={(value) => p.selectSendCountry(Number(value))}
+                    />
                     <div className="ep-money-field">
                       <span className="ep-money-label" id="send-currency-label">
                         Currency
@@ -365,30 +358,21 @@ export default function SendModal(p: SendModalProps) {
                   ) : null}
 
                   {catalogBusy || (p.sendProviderOptions || []).length > 0 ? (
-                    <div className="ep-money-field">
-                      <label className="ep-money-label" htmlFor="send-provider-1">
-                        {p.sendProviderLabel}
-                      </label>
-                      <div className="ep-send-recipient__select-wrap">
-                        <select
-                          id="send-provider-1"
-                          className="ep-money-input ep-send-recipient__select"
-                          value={String(p.sendProviderIdx)}
-                          onChange={(e) => p.selectSendProvider(Number(e.target.value))}
-                          disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
-                        >
-                          {catalogBusy && (p.sendProviderOptions || []).length === 0 ? (
-                            <option value={0}>Loading providers…</option>
-                          ) : (
-                            (p.sendProviderOptions || []).map((name, i) => (
-                              <option key={`${name}-${i}`} value={i}>
-                                {name}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-                    </div>
+                    <ChoicePicker
+                      id="send-provider-1"
+                      label={p.sendProviderLabel}
+                      title={`Choose ${p.sendProviderLabel.toLowerCase()}`}
+                      value={String(p.sendProviderIdx)}
+                      options={(p.sendProviderOptions || []).map((name, i) => ({
+                        value: String(i),
+                        label: name,
+                      }))}
+                      onChange={(value) => p.selectSendProvider(Number(value))}
+                      disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
+                      loading={catalogBusy && (p.sendProviderOptions || []).length === 0}
+                      loadingLabel="Loading providers…"
+                      searchable
+                    />
                   ) : null}
 
                   {/* 5c · Routing — the block holds while providers rotate
@@ -497,93 +481,6 @@ export default function SendModal(p: SendModalProps) {
                 onSelect={p.onSelectSavedRecipient}
               />
 
-              {/* Destination is chosen on step 1 — echoed read-only here. */}
-              <div className="ep-send-recipient__card" role="group" aria-label="Destination">
-                {p.sendIsCountry ? (
-                  <>
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-dest-country">
-                        Destination country
-                      </span>
-                      <div
-                        className="ep-send-recipient__readonly"
-                        role="status"
-                        aria-labelledby="send-dest-country"
-                      >
-                        {p.sendCountryFlagUrl ? (
-                          <span
-                            className="ep-money-flag ep-send-recipient__select-flag"
-                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
-                            aria-hidden
-                          />
-                        ) : null}
-                        <span className="ep-send-recipient__readonly-text">
-                          <strong>{p.sendCountryName}</strong>
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-dest-currency">
-                        Currency
-                      </span>
-                      <div
-                        className="ep-send-recipient__readonly"
-                        role="status"
-                        aria-labelledby="send-dest-currency"
-                      >
-                        {p.sendCountryFlagUrl ? (
-                          <span
-                            className="ep-money-flag ep-send-recipient__select-flag"
-                            style={{ backgroundImage: `url(${p.sendCountryFlagUrl})` }}
-                            aria-hidden
-                          />
-                        ) : null}
-                        <span className="ep-send-recipient__readonly-text">
-                          <strong>{p.sendCurrencyCode}</strong>
-                          {p.sendCurrencyName ? (
-                            <span className="ep-send-recipient__readonly-muted">
-                              {" "}
-                              {p.sendCurrencyName}
-                            </span>
-                          ) : null}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-asset-label-r">
-                        Asset
-                      </span>
-                      <div
-                        className="ep-send-recipient__readonly"
-                        role="status"
-                        aria-labelledby="send-asset-label-r"
-                      >
-                        <span className="ep-send-recipient__readonly-text">
-                          <strong>{p.sendAssetCode}</strong>
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="send-chain-label-r">
-                        Network
-                      </span>
-                      <div
-                        className="ep-send-recipient__readonly"
-                        role="status"
-                        aria-labelledby="send-chain-label-r"
-                      >
-                        <span className="ep-send-recipient__readonly-text">
-                          <strong>{p.sendChainLabel}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
               <div className="ep-send-recipient__card" role="group" aria-label="Recipient">
                 {p.sendIsCountry ? (
                   <div className="ep-money-field">
@@ -606,30 +503,21 @@ export default function SendModal(p: SendModalProps) {
                     the same provider index — the aggregator takes one id. */}
                 {p.sendIsBankRail &&
                 (catalogBusy || (p.sendProviderOptions || []).length > 0) ? (
-                  <div className="ep-money-field">
-                    <label className="ep-money-label" htmlFor="send-provider">
-                      Bank
-                    </label>
-                    <div className="ep-send-recipient__select-wrap">
-                      <select
-                        id="send-provider"
-                        className="ep-money-input ep-send-recipient__select"
-                        value={String(p.sendProviderIdx)}
-                        onChange={(e) => p.selectSendProvider(Number(e.target.value))}
-                        disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
-                      >
-                        {catalogBusy && (p.sendProviderOptions || []).length === 0 ? (
-                          <option value={0}>Loading providers…</option>
-                        ) : (
-                          (p.sendProviderOptions || []).map((name, i) => (
-                            <option key={`${name}-${i}`} value={i}>
-                              {name}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-                  </div>
+                  <ChoicePicker
+                    id="send-provider"
+                    label="Bank"
+                    title="Choose bank"
+                    value={String(p.sendProviderIdx)}
+                    options={(p.sendProviderOptions || []).map((name, i) => ({
+                      value: String(i),
+                      label: name,
+                    }))}
+                    onChange={(value) => p.selectSendProvider(Number(value))}
+                    disabled={catalogBusy || (p.sendProviderOptions || []).length === 0}
+                    loading={catalogBusy && (p.sendProviderOptions || []).length === 0}
+                    loadingLabel="Loading providers…"
+                    searchable
+                  />
                 ) : null}
 
                 <div className="ep-money-field">
