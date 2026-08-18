@@ -10,6 +10,14 @@
 /** Fiat deposit currencies the African auto-fund path may target. */
 export const AFRICAN_FUND_FIAT_CURRENCIES = ["EUR", "USD", "GBP"] as const;
 
+function isUsdcTarget(currency: string): boolean {
+  return currency.trim().toUpperCase() === "USDC";
+}
+
+function isAfricanFundFiat(fiat: string): boolean {
+  return (AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(fiat);
+}
+
 export type LedgerConvertQuoteIn = {
   order_type: "OffRamp";
   currency: string;
@@ -55,18 +63,15 @@ export function resolveOnRampWalletAddress(input: {
   return { address: null, source: null };
 }
 
-function isAfricanFundFiat(fiat: string): boolean {
-  return (AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(fiat);
-}
-
 export function planAfricanFundOrchestration(
   input: FundOrchestrationInputs,
 ): FundOrchestrationPlan {
   const blockers: string[] = [];
   const fiat = input.fiatCurrency.trim().toUpperCase();
-  if (!isAfricanFundFiat(fiat)) {
+  const usdcTarget = isUsdcTarget(fiat);
+  if (!usdcTarget && !isAfricanFundFiat(fiat)) {
     blockers.push(
-      `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts (got ${fiat || "—"}).`,
+      `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts or USDC (got ${fiat || "—"}).`,
     );
   }
 
@@ -82,19 +87,22 @@ export function planAfricanFundOrchestration(
     );
   }
 
-  const canRunAfricanOnRamp = Boolean(wallet.address) && isAfricanFundFiat(fiat);
+  const canRunAfricanOnRamp = Boolean(wallet.address) && (usdcTarget || isAfricanFundFiat(fiat));
 
   const missingConvert: string[] = [];
-  if (!input.entityId) missingConvert.push("entity");
-  if (!input.usdcAccountId) missingConvert.push("USDC account");
-  if (!input.fiatAccountId) missingConvert.push(`${fiat} account`);
-  if (!input.convertNetworkId?.trim()) missingConvert.push("ledger FX network_id");
-  if (missingConvert.length) {
-    blockers.push(`Auto-convert needs: ${missingConvert.join(", ")}.`);
+  if (!usdcTarget) {
+    if (!input.entityId) missingConvert.push("entity");
+    if (!input.usdcAccountId) missingConvert.push("USDC account");
+    if (!input.fiatAccountId) missingConvert.push(`${fiat} account`);
+    if (!input.convertNetworkId?.trim()) missingConvert.push("ledger FX network_id");
+    if (missingConvert.length) {
+      blockers.push(`Auto-convert needs: ${missingConvert.join(", ")}.`);
+    }
   }
 
   const canAttemptAutoConvert =
     canRunAfricanOnRamp &&
+    !usdcTarget &&
     Boolean(input.entityId && input.usdcAccountId && input.fiatAccountId && input.convertNetworkId?.trim()) &&
     wallet.source === "usdc_deposit";
 

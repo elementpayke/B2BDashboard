@@ -70,6 +70,11 @@ import {
   isReadyStatus,
   isFundableStablecoinAccount,
   occupiedStablecoinNetworkCodes,
+  isClosedStatus,
+  isCloseableStablecoinAccount,
+  stablecoinStatusTone,
+  toPartnerNetwork,
+  toUiNetworkKey,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import {
@@ -167,6 +172,7 @@ function fiatRailForCurrency(code: string): string {
 }
 
 import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
+import CloseAccountModal, { type CloseAccountAction } from "@/components/wallets/CloseAccountModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import {
   africanFundDisabledReason,
@@ -1027,6 +1033,8 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertError: "",
       fundAfricanTargetCurrency: null,
     });
+  const openCloseAccountChooser = () =>
+    setState({ modal: "closeAccount" });
   const openAfricanFundOnRamp = () => {
     const fiatList = depositAccountsQuery.data?.accounts ?? [];
     const currencyKey =
@@ -2116,11 +2124,7 @@ export default function DashboardApp(props: Props = {}) {
       : selectedStablecoinAccount
         ? (() => {
             const networkLabel = formatNetworkLabel(selectedStablecoinAccount.network);
-            const statusKey = isReadyStatus(selectedStablecoinAccount.status)
-              ? "active"
-              : selectedStablecoinAccount.status?.toLowerCase().includes("fail")
-                ? "unavailable"
-                : "pending";
+            const statusKey = stablecoinStatusTone(selectedStablecoinAccount.status);
             const [statusColor, statusSoft] = depositStatusColors(statusKey);
             const rows = buildStablecoinAccountDetailRows(selectedStablecoinAccount);
             return {
@@ -2324,11 +2328,7 @@ export default function DashboardApp(props: Props = {}) {
   });
   const stablecoinAccountCards = stablecoinAccountsList.map((a) => {
     const networkLabel = formatNetworkLabel(a.network);
-    const statusKey = isReadyStatus(a.status)
-      ? "active"
-      : a.status?.toLowerCase().includes("fail")
-        ? "unavailable"
-        : "pending";
+    const statusKey = stablecoinStatusTone(a.status);
     const [statusColor, statusSoft] = depositStatusColors(statusKey);
     const key = `stablecoin:${a.id}`;
     const balance = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
@@ -2598,7 +2598,7 @@ export default function DashboardApp(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency} via African rails` : "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency} via African rails` : "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isSendFlow = s.screen === "send";
@@ -2611,6 +2611,7 @@ export default function DashboardApp(props: Props = {}) {
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
   const isModalFundStablecoin = s.modal === "fundStablecoin";
+  const isModalCloseAccount = s.modal === "closeAccount";
   const isModalCardDetail = s.modal === "cardDetail";
   const isModalNewCard = s.modal === "newCard";
   const isModalInvoice = s.modal === "invoice";
@@ -3208,11 +3209,24 @@ Create payment
   summaryLines={acctDetailLines}
   recent={walletsRecent}
   canConvert={Boolean(acctDetail.showConvert)}
+  canFund={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
+  canSend={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
+  canClose={
+    selectedStablecoinAccount
+      ? isCloseableStablecoinAccount(selectedStablecoinAccount)
+      : false
+  }
+  closeDisabledReason={
+    selectedDepositAccount
+      ? "Bank accounts can't be closed from the dashboard yet."
+      : undefined
+  }
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
   onFund={openAcctFundChooser}
   onSend={openSelectedAccountSend}
   onConvert={openConvert}
+  onCloseAccount={selectedStablecoinAccount ? openCloseAccountChooser : undefined}
   onViewAllTx={goTransactions}
 />
 </>) : null}
@@ -3855,6 +3869,29 @@ Create payment
   targetName={acctDetail.name}
   rails={fundStablecoinRails}
   onBack={() => setState({ modal: "fundChooser" })}
+/>
+</>) : null}
+
+{(isModalCloseAccount && acctDetail && selectedStablecoinAccount) ? (<>
+<CloseAccountModal
+  accountName={acctDetail.name}
+  currency={acctDetail.currency}
+  networkLabel={formatNetworkLabel(selectedStablecoinAccount.network)}
+  alreadyClosed={isClosedStatus(selectedStablecoinAccount.status)}
+  onCancel={closeModal}
+  onContinue={async (action: CloseAccountAction) => {
+    await entitiesApi.closeAccount(
+      selectedStablecoinAccount.entityId,
+      selectedStablecoinAccount.id,
+      action,
+    );
+    await queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    if (action === "delete") {
+      backToWallets();
+      return;
+    }
+    closeModal();
+  }}
 />
 </>) : null}
 

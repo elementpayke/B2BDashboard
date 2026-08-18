@@ -94,12 +94,10 @@ export default function FundStablecoinModal({
         )}
 
         <div className="ep-fund-sc__amount-block">
-          <div className="ep-fund-sc__currency-row">
-            <span className="ep-fund-sc__currency-code">{selected?.currency ?? "—"}</span>
-            <span className="ep-fund-sc__currency-sub">
-              on {selected?.networkLabel ?? "—"} → {targetName} ({targetCurrency})
-            </span>
-          </div>
+          <p className="ep-fund-sc__currency-row">
+            To {targetName}
+            {selected ? ` via ${selected.currency} on ${selected.networkLabel}` : ""}
+          </p>
           <label className="ep-fund-sc__amount-label" htmlFor="fund-sc-amount">
             Amount (optional)
           </label>
@@ -114,6 +112,7 @@ export default function FundStablecoinModal({
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
               className="ep-fund-sc__amount-input"
+              aria-label={`${selected?.currency ?? "Amount"} amount`}
             />
           </div>
           <p className="ep-fund-sc__hint">

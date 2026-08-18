@@ -12,6 +12,9 @@ export type FundChooserModalProps = {
   africanDisabledReason?: string;
   stablecoinDisabled?: boolean;
   stablecoinDisabledReason?: string;
+  /** When true, bank/mobile options top up this USDC wallet instead of an IBAN. */
+  isStablecoinAccount?: boolean;
+  networkLabel?: string;
 };
 
 function firstEnabledOption(stablecoinDisabled: boolean): FundChooserOption {
@@ -34,6 +37,8 @@ export default function FundChooserModal({
   africanDisabledReason,
   stablecoinDisabled = false,
   stablecoinDisabledReason,
+  isStablecoinAccount = false,
+  networkLabel,
 }: FundChooserModalProps) {
   const [selected, setSelected] = useState<FundChooserOption>(() =>
     firstEnabledOption(stablecoinDisabled),
@@ -88,7 +93,9 @@ export default function FundChooserModal({
         >
           <span className="ep-fund-chooser__option-title">Bank transfer</span>
           <span className="ep-fund-chooser__option-body">
-            Send {currency} to this account&apos;s IBAN / bank details
+            {isStablecoinAccount
+              ? `Pay from a local bank. Credits ${currency}${networkLabel ? ` on ${networkLabel}` : ""}.`
+              : `Send ${currency} to this account's IBAN / bank details`}
           </span>
         </button>
 
@@ -107,7 +114,9 @@ export default function FundChooserModal({
             <span className="ep-fund-chooser__badge">Best effort</span>
           </span>
           <span className="ep-fund-chooser__option-body">
-            Local fiat → USDC, then try auto-convert to {currency}
+            {isStablecoinAccount
+              ? `Pay with mobile money or bank. Credits ${currency}${networkLabel ? ` on ${networkLabel}` : ""}.`
+              : `Local fiat → USDC, then try auto-convert to ${currency}`}
           </span>
           {africanDisabled && africanDisabledReason ? (
             <span className="ep-fund-chooser__option-warn">{africanDisabledReason}</span>

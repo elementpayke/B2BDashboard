@@ -4559,28 +4559,18 @@ body {
 .ep-fund-sc__amount-block {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0 4px;
-  text-align: center;
+  align-items: stretch;
+  gap: 8px;
+  padding: 2px 0 0;
+  text-align: left;
 }
 
 .ep-fund-sc__currency-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
-}
-
-.ep-fund-sc__currency-code {
-  color: var(--ink);
-}
-
-.ep-fund-sc__currency-sub {
-  color: var(--muted2);
-  font-weight: 500;
+  line-height: 1.4;
 }
 
 .ep-fund-sc__amount-label {
@@ -4593,38 +4583,54 @@ body {
 
 .ep-fund-sc__amount-input-wrap {
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.ep-fund-sc__amount-prefix,
+.ep-fund-sc__amount-input {
+  font-family: "DM Mono", monospace;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
 }
 
 .ep-fund-sc__amount-prefix {
-  font-family: 'DM Sans', sans-serif;
-  font-size: 34px;
-  font-weight: 700;
-  color: var(--ink);
+  flex-shrink: 0;
 }
 
 .ep-fund-sc__amount-input {
-  width: min(220px, 60vw);
+  flex: 1;
+  min-width: 0;
+  width: 100%;
   border: none;
   background: transparent;
   outline: none;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 34px;
-  font-weight: 700;
-  color: var(--ink);
   text-align: left;
 }
 
-.ep-fund-sc__hint,
+.ep-fund-sc__hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  text-align: left;
+}
+
 .ep-fund-sc__body,
 .ep-fund-sc__disclaimer {
   margin: 0;
   font-size: 12.5px;
   color: var(--muted);
   line-height: 1.45;
-  text-align: center;
+  text-align: left;
 }
 
 .ep-fund-sc__warn {
@@ -4637,28 +4643,28 @@ body {
 }
 
 .ep-fund-sc__success-icon {
-  width: 48px;
-  height: 48px;
-  margin: 4px auto 0;
+  width: 40px;
+  height: 40px;
+  margin: 0;
   border-radius: 50%;
   background: color-mix(in srgb, var(--success, #16a34a) 18%, var(--surface2));
   color: var(--success, #16a34a);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
 }
 
 .ep-fund-sc__title {
-  text-align: center;
+  text-align: left;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
   font-weight: 700;
 }
 
 .ep-fund-sc__meta {
-  text-align: center;
+  text-align: left;
   font-size: 12px;
   color: var(--muted2);
 }
@@ -4967,6 +4973,96 @@ body {
   opacity: 0.92;
 }
 
+.ep-acct-detail__action:disabled,
+.ep-acct-detail__action--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ep-acct-detail__action--more {
+  flex: 0 0 auto;
+  width: 40px;
+  padding-inline: 0;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.ep-acct-detail__more-wrap {
+  position: relative;
+}
+
+.ep-acct-detail__menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.ep-acct-detail__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 41;
+  min-width: 248px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 18px 40px rgba(19, 17, 38, 0.16);
+}
+
+.ep-acct-detail__menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: "Space Grotesk", sans-serif;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ep-acct-detail__menu-item:hover,
+.ep-acct-detail__menu-item:focus-visible {
+  background: var(--surface2);
+}
+
+.ep-acct-detail__menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ep-acct-detail__menu-item:disabled:hover,
+.ep-acct-detail__menu-item:disabled:focus-visible {
+  background: none;
+}
+
+.ep-acct-detail__menu-item--danger .ep-acct-detail__menu-label {
+  color: var(--red);
+}
+
+.ep-acct-detail__menu-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ep-acct-detail__menu-label {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.ep-acct-detail__menu-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .ep-acct-detail__ranges {
   display: flex;
   gap: 4px;
@@ -5074,6 +5170,12 @@ body {
     flex: 1 1 0;
     min-width: 0;
     padding-inline: 10px;
+  }
+
+  .ep-acct-detail__action--more {
+    flex: 0 0 40px;
+    width: 40px;
+    padding-inline: 0;
   }
 
   .ep-acct-detail__balance {

@@ -84,6 +84,21 @@ describe("planAfricanFundOrchestration", () => {
     expect(plan.canRunAfricanOnRamp).toBe(false);
     expect(plan.blockers.some((b) => /KES/.test(b))).toBe(true);
   });
+
+  it("allows African OnRamp when the target is a USDC wallet", () => {
+    const plan = planAfricanFundOrchestration({
+      fiatCurrency: "USDC",
+      fiatAccountId: null,
+      entityId: "3",
+      usdcAccountId: "67",
+      usdcWalletAddress: "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE",
+      treasuryWalletAddress: null,
+      convertNetworkId: null,
+    });
+    expect(plan.canRunAfricanOnRamp).toBe(true);
+    expect(plan.canAttemptAutoConvert).toBe(false);
+    expect(africanFundDisabledReason(plan)).toBeUndefined();
+  });
 });
 
 describe("buildLedgerConvertQuotePayload", () => {
