@@ -61,7 +61,7 @@ export default function FundStablecoinModal({
 
   if (step === "amount") {
     return (
-      <div className="ep-fund-sc">
+      <div className="ep-fund-sc ep-money-flow">
         <button type="button" className="ep-fund-sc__back" onClick={onBack}>
           ← Back
         </button>
@@ -140,7 +140,7 @@ export default function FundStablecoinModal({
 
   if (!selected) {
     return (
-      <div className="ep-fund-sc">
+      <div className="ep-fund-sc ep-money-flow">
         <button type="button" className="ep-fund-sc__back" onClick={onBack}>
           ← Back
         </button>
@@ -152,7 +152,7 @@ export default function FundStablecoinModal({
   const hasCheckout = Boolean(selected.checkoutUrl);
 
   return (
-    <div className="ep-fund-sc">
+    <div className="ep-fund-sc ep-money-flow">
       <button type="button" className="ep-fund-sc__back" onClick={() => setStep("amount")}>
         ← Back
       </button>

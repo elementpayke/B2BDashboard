@@ -125,8 +125,8 @@ export const LIGHT = {
   "--ink-panel-text": "#8B89A6",
   "--input-bg": "rgba(255,255,255,0.6)",
   "--input-border": "rgba(19,17,38,0.11)",
-  "--modal-bg": "rgba(251,250,247,0.85)",
-  "--overlay-bg": "rgba(19,17,38,0.32)",
+  "--modal-bg": "#FFFFFF",
+  "--overlay-bg": "rgba(19,17,38,0.38)",
   "--panel": "#FFFFFF",
   "--success": "#1A8A4A",
   "--success-tint": "rgba(26,138,74,0.12)",
@@ -156,7 +156,7 @@ export const DARK = {
   "--ink-panel-text": "#8B89A6",
   "--input-bg": "rgba(255,255,255,0.05)",
   "--input-border": "rgba(255,255,255,0.14)",
-  "--modal-bg": "rgba(14,13,22,0.82)",
+  "--modal-bg": "#121116",
   "--overlay-bg": "rgba(0,0,0,0.6)",
   "--panel": "#121116",
   "--success": "#4ADE80",
@@ -170,7 +170,7 @@ export const DARK_HC_OVERRIDES = {
   "--muted2": "#9E9BC0",
   "--input-bg": "rgba(255,255,255,0.09)",
   "--input-border": "rgba(255,255,255,0.28)",
-  "--modal-bg": "rgba(10,9,17,0.97)",
+  "--modal-bg": "#17161d",
   "--panel": "#17161d",
 };
 

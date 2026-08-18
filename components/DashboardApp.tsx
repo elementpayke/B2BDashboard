@@ -109,18 +109,11 @@ import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hook
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
-  currentBalanceFromAccount,
-  DEFAULT_DISPLAY_CURRENCY,
-  DISPLAY_CURRENCY_OPTIONS,
-  describeDisplayTotalSub,
   formatAccountBalance,
+  formatHomeTotalBalance,
   formatSummedBalance,
   parseBalanceNumber,
   pendingBalanceFromAccount,
-  readStoredDisplayCurrency,
-  totalBalanceInDisplayCurrency,
-  writeStoredDisplayCurrency,
-  type DisplayCurrency,
 } from "@/lib/services/balances";
 import {
   conversionsApi,
@@ -204,6 +197,8 @@ export default function DashboardApp(props: Props = {}) {
   const isMobile = viewport.isMobile;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const lastModalFocusRef = useRef<HTMLElement | null>(null);
 
   const [state, setStateRaw] = useState<any>(() => ({
     theme: props.startTheme || "light", screen: props.startScreen || "home",
@@ -313,19 +308,6 @@ export default function DashboardApp(props: Props = {}) {
   const queryClient = useQueryClient();
   const [saveRecipientBusy, setSaveRecipientBusy] = useState(false);
   const [saveRecipientMessage, setSaveRecipientMessage] = useState("");
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>(
-    DEFAULT_DISPLAY_CURRENCY,
-  );
-  useEffect(() => {
-    setDisplayCurrency(readStoredDisplayCurrency());
-  }, []);
-  const selectDisplayCurrency = (code: string) => {
-    const next = code.trim().toUpperCase();
-    if (!(DISPLAY_CURRENCY_OPTIONS as readonly string[]).includes(next)) return;
-    const typed = next as DisplayCurrency;
-    setDisplayCurrency(typed);
-    writeStoredDisplayCurrency(typed);
-  };
   useEffect(() => {
     setSessionLostHandler(() => {
       queryClient.clear();
@@ -381,11 +363,11 @@ export default function DashboardApp(props: Props = {}) {
     enabled: state.modal === "txDetail" && state.selectedTxId != null,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
-    enabled: state.screen === "send" && state.sendDone && !!state.sendAccept,
+    enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
     enabled:
-      (state.screen === "deposit" || !!state.fundAfricanTargetCurrency) &&
+      (state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
       state.depositDone &&
       !!state.depositAccept,
   });
@@ -518,7 +500,7 @@ export default function DashboardApp(props: Props = {}) {
 
   // Prefill convert accounts once lists load so the form isn't empty.
   useEffect(() => {
-    if (state.screen !== "convert") return;
+    if (state.screen !== "convert" && state.modal !== "convert") return;
     const fiat = (depositAccountsQuery.data?.accounts ?? [])
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
@@ -542,6 +524,7 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [
     state.screen,
+    state.modal,
     state.convertMode,
     state.convertHop,
     state.convertSourceAccountId,
@@ -649,21 +632,17 @@ export default function DashboardApp(props: Props = {}) {
   });
   const isMoneyFlowScreen = (screen: string) =>
     screen === "send" || screen === "deposit" || screen === "receive" || screen === "convert";
-  /** In-shell money UX: Send / Top up / Receive / Convert as full pages. */
+  /** Money moves open as bottom sheets (compact) / centered dialogs (desktop). */
   const openMoneyFlow = (name: "send" | "deposit" | "receive" | "convert") => () =>
-    setState((prev: any) => ({
-      screen: name,
-      modal: null,
-      sidebarOpen: false,
+    setState({
+      modal: name,
       moreOpen: false,
-      moneyFlowReturn: isMoneyFlowScreen(prev.screen)
-        ? (prev.moneyFlowReturn || "home")
-        : prev.screen || "home",
+      sidebarOpen: false,
       ...moneyFlowReset,
       ...(name === "convert"
         ? { swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87 }
         : {}),
-    }));
+    });
   const exitMoneyFlow = () =>
     setState((prev: any) => ({
       screen: prev.moneyFlowReturn || "home",
@@ -678,14 +657,14 @@ export default function DashboardApp(props: Props = {}) {
   const sendableAccountsQuery = useQuery({
     queryKey: ["sendable-stablecoin-accounts"],
     queryFn: listSendableStablecoinAccounts,
-    enabled: state.screen === "send",
+    enabled: state.modal === "send",
     retry: false,
     staleTime: 30_000,
   });
   const savedRecipientsQuery = useQuery({
     queryKey: ["saved-recipients"],
     queryFn: listSavedRecipients,
-    enabled: state.screen === "send",
+    enabled: state.modal === "send",
     retry: false,
     staleTime: 30_000,
   });
@@ -1028,6 +1007,56 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertError: "",
     });
   };
+  const closeModalRef = useRef(closeModal);
+  closeModalRef.current = closeModal;
+
+  useEffect(() => {
+    if (!state.modal) return;
+    const node = modalRef.current;
+    if (!node) return;
+
+    lastModalFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const pickerOpen = () =>
+      Boolean(document.querySelector(".ep-choice-overlay, .ep-choice-popover"));
+    const focusables = () =>
+      [
+        ...node.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => !el.closest(".ep-choice-overlay, .ep-choice-popover"));
+
+    focusables()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (pickerOpen()) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeModalRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      lastModalFocusRef.current?.focus();
+    };
+  }, [state.modal]);
+
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
@@ -1065,13 +1094,11 @@ export default function DashboardApp(props: Props = {}) {
           currencyKey ||
           "EUR"
         : "EUR";
-    setState((prev: any) => ({
-      screen: "deposit",
-      modal: null,
+    setState({
+      ...moneyFlowReset,
+      modal: "deposit",
+      moreOpen: false,
       sidebarOpen: false,
-      moneyFlowReturn: isMoneyFlowScreen(prev.screen)
-        ? (prev.moneyFlowReturn || "accountDetail")
-        : prev.screen || "accountDetail",
       depositStep: 1,
       depositGroup: "country",
       depositDone: false,
@@ -1082,7 +1109,7 @@ export default function DashboardApp(props: Props = {}) {
       fundAfricanTargetCurrency: String(currency).toUpperCase(),
       fundConvertStatus: "",
       fundConvertError: "",
-    }));
+    });
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
   const openCardDetail = (cardId: string) => () =>
@@ -2206,8 +2233,7 @@ export default function DashboardApp(props: Props = {}) {
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
-  // Total balance hero: one figure in the user's default display currency,
-  // converted via Mboka indicative FX only (never invent rates).
+  // Total / available / pending: native per-account amounts — never FX-converted.
   const usdcBalances = stablecoinAccountsList
     .filter((a) => a.currency === "USDC")
     .map((a) => a.balance);
@@ -2227,51 +2253,25 @@ export default function DashboardApp(props: Props = {}) {
       : s.balanceView === "fiat"
         ? fiatLedgerItems
         : [...fiatLedgerItems, ...stableLedgerItems];
-  const homeCurrentLedgerItems = homeAvailableLedgerItems
-    .map((item) => ({
-      currency: item.currency,
-      balance: currentBalanceFromAccount(item.balance),
-    }))
-    .filter((item) => item.balance !== null);
-  const homeFxRates = mergeExchangeRates(
-    summaryQuery.data?.fx_rates,
-    exchangeRatesQuery.data,
-  );
-  const homeDisplayTotal = totalBalanceInDisplayCurrency(
-    homeCurrentLedgerItems,
-    displayCurrency,
-    homeFxRates,
-    { maximumFractionDigits: 2 },
-  );
-  const homeAvailableTotal = totalBalanceInDisplayCurrency(
-    homeAvailableLedgerItems,
-    displayCurrency,
-    homeFxRates,
-    { maximumFractionDigits: 2 },
-  );
   const pendingLedgerItems = homeAvailableLedgerItems
     .map((item) => ({
       currency: item.currency,
       balance: pendingBalanceFromAccount(item.balance),
     }))
     .filter((item) => item.balance !== null);
-  const homePendingTotal = totalBalanceInDisplayCurrency(
-    pendingLedgerItems,
-    displayCurrency,
-    homeFxRates,
-    { maximumFractionDigits: 2 },
+  const homeFxRates = mergeExchangeRates(
+    summaryQuery.data?.fx_rates,
+    exchangeRatesQuery.data,
   );
+  const homeAvailableLabel = formatHomeTotalBalance(homeAvailableLedgerItems, {
+    maximumFractionDigits: 2,
+  });
   const homePendingAmountComplete =
     homeAvailableLedgerItems.length > 0 &&
-    pendingLedgerItems.length === homeAvailableLedgerItems.length &&
-    homePendingTotal.total !== null &&
-    homePendingTotal.excluded.length === 0;
-  const balanceViewSub = describeDisplayTotalSub(homeDisplayTotal, {
-    balanceView: (s.balanceView === "fiat" || s.balanceView === "stablecoin"
-      ? s.balanceView
-      : "all") as "all" | "fiat" | "stablecoin",
-    displayCurrency,
-  });
+    pendingLedgerItems.length === homeAvailableLedgerItems.length;
+  const homePendingLabel = homePendingAmountComplete
+    ? formatHomeTotalBalance(pendingLedgerItems, { maximumFractionDigits: 2 })
+    : "—";
   // Fiat IBAN chips + partner USDC Base/Polygon chips.
   const fiatBalanceRows = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
@@ -2311,8 +2311,8 @@ export default function DashboardApp(props: Props = {}) {
       : "—";
   };
   const homeStats = [
-        { label: "Available", value: homeAvailableTotal.label, icon: "✓", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
-        { label: "Pending", value: homePendingAmountComplete ? homePendingTotal.label : "—", icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+        { label: "Available", value: homeAvailableLabel, icon: "✓", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Pending", value: homePendingLabel, icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
   const homeFlowStats = [
         { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑" },
@@ -2619,14 +2619,13 @@ export default function DashboardApp(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency} via African rails` : "Top up balance", receive: "Receive globally", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
-  const isSendFlow = s.screen === "send";
-  const isDepositFlow = s.screen === "deposit";
-  const isReceiveFlow = s.screen === "receive";
-  const isConvertFlow = s.screen === "convert";
-  const isMoneyFlow = isSendFlow || isDepositFlow || isReceiveFlow || isConvertFlow;
+  const isSendFlow = s.modal === "send";
+  const isDepositFlow = s.modal === "deposit";
+  const isReceiveFlow = s.modal === "receive";
+  const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
@@ -3030,7 +3029,7 @@ export default function DashboardApp(props: Props = {}) {
 <main className="ep-main">
 <header className="ep-header">
 <div className="ep-header__lead">
-{isMoneyFlow ? (
+{isMoneyFlowScreen(s.screen) ? (
 <button type="button" className="ep-header__back" onClick={exitMoneyFlow} aria-label="Back">←</button>
 ) : isCompact ? (
 <span className="ep-header__brand-mark"><MbokaMark size={28} title="Mboka" /></span>
@@ -3042,11 +3041,6 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 <div className="ep-header__actions">
 {!isCompact ? <HeaderRates rates={liveRates} /> : null}
-{!isCompact ? (
-<button type="button" onClick={guardMoneyModal("send")} className="ep-btn-primary ep-header__cta">
-Create payment
-</button>
-) : null}
 </div>
 </header>
 
@@ -3068,21 +3062,8 @@ Create payment
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
-<span className="ep-home__balance-label">Total balance</span>
+<span className="ep-home__balance-label">Balances</span>
 <div className="ep-home__balance-controls">
-<label className="ep-home__display-currency">
-  <span className="ep-home__display-currency-label">Show in</span>
-  <select
-    className="ep-home__display-currency-select"
-    value={displayCurrency}
-    aria-label="Default display currency"
-    onChange={(e) => selectDisplayCurrency(e.target.value)}
-  >
-    {DISPLAY_CURRENCY_OPTIONS.map((code) => (
-      <option key={code} value={code}>{code}</option>
-    ))}
-  </select>
-</label>
 <div className="ep-home__balance-tabs">
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (
 <React.Fragment key={__i1}>
@@ -3092,10 +3073,18 @@ Create payment
 </div>
 </div>
 </div>
-<div className="ep-home__balance-value">
-{homeDisplayTotal.label}
+{homeCurrencyChips.length ? (
+<div className="ep-home__balance-value ep-home__balance-value--multi">
+{(homeCurrencyChips || []).map((hc: any) => (
+<div key={hc.code} className="ep-home__balance-line">{hc.balance} {hc.code}</div>
+))}
 </div>
-<div className="ep-home__balance-sub">{balanceViewSub}</div>
+) : (
+<div className="ep-home__balance-value">—</div>
+)}
+<div className="ep-home__balance-sub">
+{homeCurrencyChips.length ? "Each account in its own currency" : "Balance not yet available"}
+</div>
 </div>
 
 <div className="ep-home__stats-desktop">
@@ -3555,7 +3544,49 @@ Create payment
 </>) : null}
 
 
-{(isSendFlow) ? (<section className="ep-flow" data-screen-label="Send">
+</div>
+
+{isCompact ? (
+<MobileBottomNav
+  screen={s.screen}
+  moreOpen={s.moreOpen}
+  onNavigate={navigateToScreen}
+  onOpenMore={() => setState({ moreOpen: true })}
+/>
+) : null}
+</main>
+</div>
+
+{isCompact ? (
+<MoreSheet
+  open={s.moreOpen}
+  screen={s.screen}
+  businessName={meQuery.data?.business?.name || "Loading…"}
+  role={meQuery.data?.role}
+  themeIcon={themeIcon}
+  onClose={closeMore}
+  onNavigate={navigateToScreen}
+  onOpenBulk={guardMoneyModal("bulk")}
+  onOpenTopUp={guardMoneyModal("deposit")}
+  onToggleTheme={toggleTheme}
+  onLogout={logout}
+/>
+) : null}
+
+{modalOpen ? (<>
+<div onClick={closeModal} className="ep-modal-overlay" role="presentation">
+<div ref={modalRef} onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+
+<div className="ep-modal__grabber" aria-hidden="true">
+<span className="ep-modal__grabber-bar" />
+</div>
+
+<div className="ep-modal__header">
+<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
+<button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
+</div>
+
+{(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
 <SendModal
   sendNotDone={sendNotDone}
   sendDone={sendDone}
@@ -3636,7 +3667,7 @@ Create payment
 />
 </section>) : null}
 
-{(isDepositFlow) ? (<section className="ep-flow" data-screen-label="Top up">
+{(isDepositFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Top up">
 <DepositModal
   depositNotDone={depositNotDone}
   depositDone={depositDone}
@@ -3692,7 +3723,7 @@ Create payment
 />
 </section>) : null}
 
-{(isReceiveFlow) ? (<section className="ep-flow" data-screen-label="Receive">
+{(isReceiveFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Receive">
 <ReceiveModal
   receiveGroups={receiveGroups}
   receiveIsFiat={receiveIsFiat}
@@ -3710,7 +3741,7 @@ Create payment
 />
 </section>) : null}
 
-{(isConvertFlow) ? (<section className="ep-flow" data-screen-label="Convert">
+{(isConvertFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Convert">
 <ConvertFlow
   mode={convertMode}
   onMode={(mode) => {
@@ -3756,52 +3787,10 @@ Create payment
   }
   onRefreshQuote={() => void refreshConvertQuote()}
   onAccept={() => void acceptConvertQuote()}
-  onDone={exitMoneyFlow}
+  onDone={closeModal}
 />
 </section>) : null}
 
-
-</div>
-
-{isCompact ? (
-<MobileBottomNav
-  screen={s.screen}
-  moreOpen={s.moreOpen}
-  onNavigate={navigateToScreen}
-  onOpenMore={() => setState({ moreOpen: true })}
-/>
-) : null}
-</main>
-</div>
-
-{isCompact ? (
-<MoreSheet
-  open={s.moreOpen}
-  screen={s.screen}
-  businessName={meQuery.data?.business?.name || "Loading…"}
-  role={meQuery.data?.role}
-  themeIcon={themeIcon}
-  onClose={closeMore}
-  onNavigate={navigateToScreen}
-  onOpenBulk={guardMoneyModal("bulk")}
-  onOpenTopUp={guardMoneyModal("deposit")}
-  onToggleTheme={toggleTheme}
-  onLogout={logout}
-/>
-) : null}
-
-{modalOpen ? (<>
-<div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
-
-<div className="ep-modal__grabber" aria-hidden="true">
-<span className="ep-modal__grabber-bar" />
-</div>
-
-<div className="ep-modal__header">
-<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
-<button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
-</div>
 
 {(isModalBulk) ? (<>
 {(bulkNotDone) ? (<>

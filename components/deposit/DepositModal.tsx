@@ -107,24 +107,27 @@ export default function DepositModal(p: DepositModalProps) {
           <StepProgress dots={p.depositStepDots || []} label="Deposit progress" />
 
           {p.fundTargetCurrency ? (
-            <div className="ep-fund-orch-note" role="note">
-              <strong>Funding {p.fundTargetCurrency}</strong>
-              <span>
-                Pay African fiat → USDC. After settlement we attempt an automatic USDC →{" "}
-                {p.fundTargetCurrency} convert (best effort — not a single partner API).
-              </span>
-              {p.fundConvertStatus ? (
-                <span className="ep-fund-orch-note__status">{p.fundConvertStatus}</span>
-              ) : null}
+            <>
+              <div className="ep-money-banner ep-money-banner--info" role="note">
+                Paying African fiat → USDC, then we try USDC → {p.fundTargetCurrency} (best effort).
+                {p.fundConvertStatus ? ` ${p.fundConvertStatus}` : ""}
+              </div>
               {p.fundConvertError ? (
-                <span className="ep-fund-orch-note__err">{p.fundConvertError}</span>
+                <div className="ep-money-banner ep-money-banner--danger" role="alert">
+                  {p.fundConvertError}
+                </div>
               ) : null}
-            </div>
+            </>
           ) : null}
 
           {p.depositStepIs1 ? (
             <div className="ep-money-stack">
-              <span className="ep-money-step-label">Step 1 · How are you topping up?</span>
+              <span className="ep-money-step-label">
+                {p.fundTargetCurrency
+                  ? "Step 1 · Where is this coming from?"
+                  : "Step 1 · How are you topping up?"}
+              </span>
+              {p.fundTargetCurrency ? null : (
               <div className="ep-money-tabs" role="group" aria-label="Deposit method">
                 {(p.depositMethods || []).map((dm: any, i: number) => (
                   <button
@@ -138,6 +141,7 @@ export default function DepositModal(p: DepositModalProps) {
                   </button>
                 ))}
               </div>
+              )}
 
               {p.depositIsCountry ? (
                 <>
@@ -518,7 +522,9 @@ export default function DepositModal(p: DepositModalProps) {
                 <span className="ep-fund-orch-note__status">{p.fundConvertStatus}</span>
               ) : null}
               {p.fundConvertError ? (
-                <span className="ep-fund-orch-note__err">{p.fundConvertError}</span>
+                <span className="ep-fund-orch-note__err" role="alert">
+                  {p.fundConvertError}
+                </span>
               ) : null}
             </div>
           ) : null}
