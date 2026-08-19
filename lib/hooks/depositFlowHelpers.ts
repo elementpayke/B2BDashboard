@@ -99,3 +99,22 @@ export function filterProvidersWithPinnedSelection(
 
   return [{ name: selectedName, index: selectedIdx, pinned: true }, ...rest];
 }
+
+export function indexOfProviderName(options: string[], selectedName: string): number {
+  const needle = selectedName.trim().toLowerCase();
+  if (!needle) return -1;
+  return options.findIndex((name) => name.trim().toLowerCase() === needle);
+}
+
+/** Keep a selected provider in the list when catalog data replaces/reorders names. */
+export function ensureSelectedProvider(options: string[], selectedName: string): string[] {
+  if (indexOfProviderName(options, selectedName) >= 0 || !selectedName.trim()) return options;
+  return [selectedName, ...options];
+}
+
+/** Quote the provider the user picked, not whichever name now sits at that index. */
+export function resolveQuotedProviderName(options: string[], selectedName: string): string {
+  const idx = indexOfProviderName(options, selectedName);
+  if (idx >= 0) return options[idx];
+  return selectedName.trim() || options[0] || "";
+}

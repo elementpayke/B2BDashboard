@@ -89,7 +89,7 @@ export default function FundChooserModal({
         <strong>{accountName}</strong> · {currency}
       </p>
 
-      <div className="ep-pick-stack" role="list">
+      <div className="ep-pick-stack">
         {options.map((m) => (
           <button
             key={m.key}

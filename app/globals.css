@@ -6513,6 +6513,11 @@ select.ep-wallets-create__control {
   flex-shrink: 0;
 }
 
+.ep-pick-search:focus-within {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
 .ep-pick-search__input {
   flex: 1;
   min-width: 0;

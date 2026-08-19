@@ -104,7 +104,7 @@ import {
   sendRailBlockedByMissingNetworkId,
   sendRailHasChoice as railHasChoice,
 } from "@/lib/hooks/sendFlowHelpers";
-import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack } from "@/lib/hooks/depositFlowHelpers";
+import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
@@ -215,7 +215,7 @@ export default function DashboardApp(props: Props = {}) {
     sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
-    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
@@ -425,7 +425,7 @@ export default function DashboardApp(props: Props = {}) {
   useEffect(() => {
     const country = COUNTRIES[state.depositCountryIdx];
     if (!country) return;
-    if (state.depositRailIdx < 0 || state.depositProviderIdx < 0) return;
+    if (state.depositRailIdx < 0 || !state.depositProviderName) return;
     const rail = country.rails[state.depositRailIdx] || country.rails[0];
     if (!rail) return;
     const catalogProviders = onRampProvidersForRail(
@@ -439,11 +439,12 @@ export default function DashboardApp(props: Props = {}) {
         ? catalogProviders.map((p) => p.name)
         : rail.options;
     if (!options.length) return;
+    const resolvedIdx = indexOfProviderName(options, state.depositProviderName);
     setState((s: any) => {
-      if (s.depositProviderIdx < options.length) return {};
-      return { depositProviderIdx: options.length - 1 };
+      if (s.depositProviderIdx === resolvedIdx) return {};
+      return { depositProviderIdx: resolvedIdx };
     });
-  }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, setState]);
+  }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, state.depositProviderName, setState]);
 
   // Listing/creating deposit accounts requires KYB approval — check eligibility
   // first so an unverified business sees a clear gate instead of a raw 400
@@ -614,7 +615,7 @@ export default function DashboardApp(props: Props = {}) {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
-    bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositGroup: "country", depositSub: "country",
+    bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
@@ -914,7 +915,7 @@ export default function DashboardApp(props: Props = {}) {
     }
     if (
       state.depositStep === 1 &&
-      (state.depositSub !== "method" || state.depositRailIdx < 0 || state.depositProviderIdx < 0)
+      (state.depositSub !== "method" || state.depositRailIdx < 0 || !state.depositProviderName)
     ) {
       return;
     }
@@ -951,11 +952,10 @@ export default function DashboardApp(props: Props = {}) {
           catalogProviders && catalogProviders.length > 0
             ? catalogProviders.map((p) => p.name)
             : rail.options;
-        const providerIdx =
-          providerOptions.length === 0
-            ? 0
-            : Math.min(state.depositProviderIdx, providerOptions.length - 1);
-        const providerName = providerOptions[providerIdx] || providerOptions[0];
+        const providerName = resolveQuotedProviderName(
+          providerOptions,
+          state.depositProviderName,
+        );
         const networkId = networkIdForProvider(catalogProviders, providerName);
         const payerName =
           meQuery.data?.business?.legal_name ||
@@ -1428,10 +1428,10 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
 
-  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositPromptSent: false, depositStep: 1, depositQuote: null, depositQuoteError: "", depositAccept: null, depositAcceptError: "", depositDone: false });
-  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositSub: "method", depositRailIdx: -1, depositProviderIdx: -1, depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
-  const selectDepositMethod = (railIdx: number, providerIdx: number) => () =>
-    setState({ depositRailIdx: railIdx, depositProviderIdx: providerIdx, depositQuote: null, depositQuoteError: "" });
+  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPromptSent: false, depositStep: 1, depositQuote: null, depositQuoteError: "", depositAccept: null, depositAcceptError: "", depositDone: false });
+  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositSub: "method", depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
+  const selectDepositMethod = (railIdx: number, providerIdx: number, providerName: string) => () =>
+    setState({ depositRailIdx: railIdx, depositProviderIdx: providerIdx, depositProviderName: providerName, depositQuote: null, depositQuoteError: "" });
   const setDepositPhone = (e) => setState({ depositPhone: e.target.value });
   const setDepositAmount = (e) => setState({ depositAmount: e.target.value });
   const submitDeposit = async () => {
@@ -2087,15 +2087,11 @@ export default function DashboardApp(props: Props = {}) {
       depositCatalogProviders && depositCatalogProviders.length > 0
         ? depositCatalogProviders.map((p) => p.name)
         : depositRail.options;
-    const depositProviderIdx =
-      s.depositProviderIdx < 0
-        ? -1
-        : depositProviderOptions.length === 0
-          ? 0
-          : Math.min(s.depositProviderIdx, depositProviderOptions.length - 1);
-    const depositProvider = depositProviderIdx >= 0
-      ? depositProviderOptions[depositProviderIdx] || depositProviderOptions[0]
-      : "";
+    const depositProvider = resolveQuotedProviderName(
+      depositProviderOptions,
+      s.depositProviderName,
+    );
+    const depositProviderIdx = indexOfProviderName(depositProviderOptions, s.depositProviderName);
     const depositCountryRows = COUNTRIES.map((c, i) => {
       const extraNames = c.rails.flatMap((rail) => {
         const catalog = onRampProvidersForRail(
@@ -2124,18 +2120,22 @@ export default function DashboardApp(props: Props = {}) {
             rail.type,
             depositCountry.code,
           );
-          const options =
+          const options = ensureSelectedProvider(
             catalogProviders && catalogProviders.length > 0
               ? catalogProviders.map((p) => p.name)
-              : rail.options;
+              : rail.options,
+            s.depositRailIdx === railIdx ? s.depositProviderName : "",
+          );
           return {
             railIdx,
             type: rail.type,
             label: rail.label,
             providers: options.map((name, providerIdx) => ({
               name,
-              selected: s.depositRailIdx === railIdx && s.depositProviderIdx === providerIdx,
-              select: selectDepositMethod(railIdx, providerIdx),
+              selected:
+                s.depositRailIdx === railIdx &&
+                indexOfProviderName([name], s.depositProviderName) === 0,
+              select: selectDepositMethod(railIdx, providerIdx, name),
             })),
           };
         })
@@ -2828,7 +2828,7 @@ export default function DashboardApp(props: Props = {}) {
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
   const depositSub = s.depositSub === "method" ? "method" : "country";
-  const depositMethodChosen = s.depositRailIdx >= 0 && s.depositProviderIdx >= 0;
+  const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = depositRail.type === "mobile";
   const depositIsBankRail = depositRail.type === "bank";
   const depositOperator = depositProvider;

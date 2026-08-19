@@ -8,6 +8,9 @@ import {
   countryRailsLabel,
   countrySearchHaystack,
   filterProvidersWithPinnedSelection,
+  ensureSelectedProvider,
+  indexOfProviderName,
+  resolveQuotedProviderName,
 } from "./depositFlowHelpers";
 
 describe("buildDepositDestinationSummary", () => {
@@ -81,5 +84,23 @@ describe("filterProvidersWithPinnedSelection", () => {
     const filtered = filterProvidersWithPinnedSelection(kenyaBanks, "equ", primeIdx);
     expect(filtered[0]).toEqual({ name: "Prime Bank", index: primeIdx, pinned: true });
     expect(filtered.some((item) => item.name === "Equity Bank")).toBe(true);
+  });
+});
+
+describe("provider identity across catalog updates", () => {
+  it("keeps the selected name when the catalog reorders the list", () => {
+    const before = ["KCB Bank", "Equity Bank", "Prime Bank"];
+    const selected = resolveQuotedProviderName(before, "Prime Bank");
+    const after = ["Prime Bank", "Equity Bank"];
+    expect(indexOfProviderName(before, selected)).toBe(2);
+    expect(indexOfProviderName(after, selected)).toBe(0);
+    expect(resolveQuotedProviderName(after, selected)).toBe("Prime Bank");
+    expect(after[Math.min(2, after.length - 1)]).toBe("Equity Bank");
+  });
+
+  it("keeps a selected provider that the catalog dropped", () => {
+    const after = ["Equity Bank", "NCBA Bank"];
+    expect(ensureSelectedProvider(after, "Prime Bank")[0]).toBe("Prime Bank");
+    expect(resolveQuotedProviderName(after, "Prime Bank")).toBe("Prime Bank");
   });
 });
