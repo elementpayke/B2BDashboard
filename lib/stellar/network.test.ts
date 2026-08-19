@@ -22,16 +22,21 @@ describe("stellar network helpers", () => {
     expect(isStellarUsdcRail({ network: "Base", currency: "USDC" })).toBe(false);
   });
 
-  it("pins Circle issuers and Horizon by network", () => {
+  it("pins Circle testnet USDC unless the rail is explicitly public", () => {
     expect(resolveStellarNetwork("Stellar")).toMatchObject({
-      isTestnet: false,
-      usdcIssuer: STELLAR_USDC_ISSUER_PUBLIC,
-      horizonUrl: "https://horizon.stellar.org",
+      isTestnet: true,
+      usdcIssuer: STELLAR_USDC_ISSUER_TESTNET,
+      horizonUrl: "https://horizon-testnet.stellar.org",
     });
     expect(resolveStellarNetwork("stellar_testnet")).toMatchObject({
       isTestnet: true,
       usdcIssuer: STELLAR_USDC_ISSUER_TESTNET,
       horizonUrl: "https://horizon-testnet.stellar.org",
+    });
+    expect(resolveStellarNetwork("stellar_public")).toMatchObject({
+      isTestnet: false,
+      usdcIssuer: STELLAR_USDC_ISSUER_PUBLIC,
+      horizonUrl: "https://horizon.stellar.org",
     });
   });
 

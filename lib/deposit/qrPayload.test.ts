@@ -16,8 +16,19 @@ describe("buildDepositQrValue", () => {
     const query = new URLSearchParams(value.slice("web+stellar:pay?".length));
     expect(query.get("destination")).toBe(STELLAR_ADDR);
     expect(query.get("asset_code")).toBe("USDC");
-    expect(query.get("asset_issuer")).toBe(STELLAR_USDC_ISSUER_PUBLIC);
+    expect(query.get("asset_issuer")).toBe(STELLAR_USDC_ISSUER_TESTNET);
     expect(query.get("amount")).toBe("10");
+    expect(query.get("network_passphrase")).toBe(STELLAR_TESTNET_PASSPHRASE);
+  });
+
+  it("omits network_passphrase on an explicit public rail", () => {
+    const value = buildDepositQrValue({
+      address: STELLAR_ADDR,
+      currency: "USDC",
+      network: "stellar_public",
+    });
+    const query = new URLSearchParams(value.slice("web+stellar:pay?".length));
+    expect(query.get("asset_issuer")).toBe(STELLAR_USDC_ISSUER_PUBLIC);
     expect(query.get("network_passphrase")).toBeNull();
   });
 
