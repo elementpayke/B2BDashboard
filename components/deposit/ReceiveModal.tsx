@@ -15,6 +15,7 @@ export type ReceiveModalProps = {
   receiveAddress: string;
   copyReceiveAddress: () => void;
   receiveAddressCopied: boolean;
+  receiveAddressEmptyMessage?: string;
 };
 
 export default function ReceiveModal(p: ReceiveModalProps) {
@@ -174,7 +175,8 @@ export default function ReceiveModal(p: ReceiveModalProps) {
             </div>
           ) : (
             <div className="ep-money-empty" role="status">
-              Receive address unavailable. Connect a treasury wallet or try again later.
+              {p.receiveAddressEmptyMessage ||
+                "Receive address unavailable. Open a ready wallet on this network or try again later."}
             </div>
           )}
         </div>

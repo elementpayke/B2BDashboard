@@ -23,7 +23,7 @@ export type SavedRecipient = {
   currency?: string | null;
   /** Momo/bank provider id or label from the catalog/send form. */
   provider?: string | null;
-  /** Crypto rail only — e.g. Base, Polygon. */
+  /** Crypto rail only — e.g. Base, Polygon, Stellar. */
   network?: string | null;
   createdAt: string;
   updatedAt: string;

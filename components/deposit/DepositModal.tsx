@@ -78,6 +78,7 @@ export type DepositModalProps = {
   depositAssetCode: string;
   depositNetworkLabel: string;
   depositAddress: string;
+  depositAddressEmptyMessage?: string;
   closeModal: () => void;
   /** When funding a fiat account via African OnRamp → USDC (best-effort convert). */
   fundTargetCurrency?: string | null;
@@ -530,7 +531,8 @@ export default function DepositModal(p: DepositModalProps) {
                 </div>
               ) : (
                 <div className="ep-money-empty" role="status">
-                  Deposit address unavailable. Connect a treasury wallet or try again later.
+                  {p.depositAddressEmptyMessage ||
+                    "Deposit address unavailable. Open a ready wallet on this network or try again later."}
                 </div>
               )}
 

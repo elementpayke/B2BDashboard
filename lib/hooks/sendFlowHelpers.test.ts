@@ -21,16 +21,16 @@ describe("buildSendDestinationSummary", () => {
     ).toBe("Kenya · M-Pesa");
   });
 
-  it("formats a stablecoin destination", () => {
+  it("formats a Stellar stablecoin destination", () => {
     expect(
       buildSendDestinationSummary({
         sendGroup: "crypto",
         sendAsset: "usdc",
-        sendChainLabel: "Base",
+        sendChainLabel: "Stellar",
         countryName: "Kenya",
         providerName: "M-Pesa",
       }),
-    ).toBe("USDC · Base");
+    ).toBe("USDC · Stellar");
   });
 });
 

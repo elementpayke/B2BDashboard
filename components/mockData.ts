@@ -41,14 +41,20 @@ export const COUNTRIES = [
 export const CURRENCIES = COUNTRIES;
 export const MOBILE_CURRENCIES = COUNTRIES.filter(c=>c.rails.some(r=>r.type==="mobile"));
 export const BANK_CURRENCIES = COUNTRIES;
-export const DEPOSIT_NETWORKS = [{key:"base",label:"Base"},{key:"ethereum",label:"Ethereum"},{key:"polygon",label:"Polygon"},{key:"solana",label:"Solana"}];
+export const DEPOSIT_NETWORKS = [
+  {key:"base",label:"Base"},
+  {key:"ethereum",label:"Ethereum"},
+  {key:"polygon",label:"Polygon"},
+  {key:"solana",label:"Solana"},
+  {key:"stellar",label:"Stellar"},
+];
 export const DEPOSIT_ADDRESSES = {base:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",ethereum:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",polygon:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",solana:"8f6QeR3v2N4pXo1WkYtLc9Zb5jHs7DrMnA2VuT3xPqK"};
 export const ACCOUNTS = [
   {code:"KES",iso:"ke",name:"Kenyan Shilling",balance:"2,481,300.00",rail:"Mobile money",detail:"Paybill 400200",receiveLines:[["Paybill number","400200"],["Account name","Mboka Business Ltd"]]},
   {code:"USD",iso:"us",name:"US Dollar",balance:"184,220.55",rail:"IBAN · SWIFT",detail:"DE89 3704 ·· 4210",receiveLines:[["Routing number","026073150"],["Account number","8811226789"],["SWIFT","CRESUSXX"]]},
   {code:"EUR",iso:"de",name:"Euro",balance:"92,014.30",rail:"IBAN · SEPA",detail:"FR76 3000 ·· 0189",receiveLines:[["IBAN","FR76 3000 6000 0112 3456 7890 189"],["BIC","MODRFR21"]]},
   {code:"GBP",iso:"gb",name:"British Pound",balance:"40,880.00",rail:"IBAN · Faster Pay",detail:"GB29 NWBK ·· 1608",receiveLines:[["Sort code","04-00-04"],["Account number","22148890"]]},
-  {code:"USDC",iso:null,name:"USD Coin",balance:"180,860.00",rail:"Stablecoin · multi-chain",detail:"Base, Ethereum, Solana"},
+  {code:"USDC",iso:null,name:"USD Coin",balance:"180,860.00",rail:"Stablecoin · multi-chain",detail:"Base, Ethereum, Solana, Stellar"},
   {code:"USDT",iso:null,name:"Tether",balance:"12,900.00",rail:"Stablecoin · multi-chain",detail:"Polygon, Ethereum"},
 ];
 export const ROLES = [  {key:"admin", label:"Admin", desc:"Full access, including team and API keys"},

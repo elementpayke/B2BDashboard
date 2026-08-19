@@ -12,7 +12,7 @@ export type ProviderEntity = {
 /**
  * Partner account shape is forward-compatible — ids and fields arrive under
  * several spellings depending on the aggregator version. Normalize to what
- * Phase 4 sends need: a ready USDC stablecoin account on Base or Polygon.
+ * Phase 4 sends need: a ready USDC stablecoin account on Base, Polygon, or Stellar.
  */
 export type FinancialAccount = {
   id: string;
@@ -36,7 +36,7 @@ export type FinancialAccount = {
 };
 
 const READY = new Set(["active", "ready", "open", "opened"]);
-const SEND_NETWORKS = new Set(["base", "polygon"]);
+const SEND_PARTNER_NETWORKS = new Set(["Base", "Polygon", "Stellar"]);
 
 /** Body for `POST /v1/entities/{id}/accounts` (`AccountOpenIn`). */
 export type AccountOpenPayload = {
@@ -158,6 +158,39 @@ export function toPartnerNetwork(network: string): "Base" | "Polygon" | "Stellar
     return "Stellar";
   }
   return null;
+}
+
+/** Testnet vs public when known; `null` for a generic `stellar` UI key. */
+export function stellarEnvironment(network: string): "testnet" | "public" | null {
+  if (toPartnerNetwork(network) !== "Stellar") return null;
+  const key = normalizeNetworkKey(network);
+  if (key.includes("testnet")) return "testnet";
+  if (key.includes("public") || key.includes("mainnet") || key.includes("pubnet")) {
+    return "public";
+  }
+  return null;
+}
+
+/**
+ * Network string to send on quotes / account-sends — keeps stellar_testnet
+ * vs stellar_public instead of collapsing both to `"Stellar"`.
+ */
+export function toAssetNetwork(network: string): string {
+  const key = normalizeNetworkKey(network);
+  if (key === "stellar_testnet") return "stellar_testnet";
+  if (key === "stellar_public") return "stellar_public";
+  return toPartnerNetwork(network) ?? network.trim();
+}
+
+/** UI chip vs account rail. Generic `stellar` matches any Stellar env. */
+export function networksCompatible(accountNetwork: string, selectorKey: string): boolean {
+  const want = toPartnerNetwork(selectorKey) ?? normalizeNetworkKey(selectorKey);
+  const got = toPartnerNetwork(accountNetwork) ?? normalizeNetworkKey(accountNetwork);
+  if (!want || got !== want) return false;
+  const wantEnv = stellarEnvironment(selectorKey);
+  const gotEnv = stellarEnvironment(accountNetwork);
+  if (wantEnv && gotEnv && wantEnv !== gotEnv) return false;
+  return true;
 }
 
 /** Dynamic network label for UX — never hardcode a chain the backend didn't return. */
@@ -289,11 +322,12 @@ export function isFundableStablecoinAccount(account: FinancialAccount): boolean 
   );
 }
 
-/** Phase 4 sendable: ready USDC on Base/Polygon only. */
+/** Phase 4 sendable: ready USDC on Base, Polygon, or Stellar. */
 export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
   if (!isListedStablecoinAccount(account)) return false;
   if (account.currency !== "USDC") return false;
-  if (!SEND_NETWORKS.has(normalizeNetworkKey(account.network))) return false;
+  const partner = toPartnerNetwork(account.network);
+  if (!partner || !SEND_PARTNER_NETWORKS.has(partner)) return false;
   return isReadyStatus(account.status);
 }
 
@@ -423,9 +457,7 @@ export function accountForNetwork(
   accounts: FinancialAccount[],
   networkKey: string,
 ): FinancialAccount | undefined {
-  const want = toPartnerNetwork(networkKey) ?? normalizeNetworkKey(networkKey);
-  if (!want) return undefined;
-  return accounts.find((a) => (toPartnerNetwork(a.network) ?? normalizeNetworkKey(a.network)) === want);
+  return accounts.find((a) => networksCompatible(a.network, networkKey));
 }
 
 /** UI deposit-network key from a partner/API network spelling. */

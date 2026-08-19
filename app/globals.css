@@ -2200,10 +2200,6 @@ body {
   .ep-home__qa-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .ep-home__qa:nth-child(n + 3) {
-    display: none;
-  }
 }
 
 .ep-home__qa {
@@ -2235,12 +2231,11 @@ body {
 .ep-home__qa-icon {
   width: 40px;
   height: 40px;
-  border-radius: 13px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 17px;
-  border: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -2355,21 +2350,29 @@ body {
   background: var(--indigo);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   position: relative;
   overflow: hidden;
   box-shadow: 0 22px 48px -20px rgba(59, 46, 211, 0.4);
-  min-height: 0;
-  gap: 10px;
+  min-height: 176px;
+  gap: 16px;
 }
 
 .ep-home__balance-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
   position: relative;
+}
+
+.ep-home__balance-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
 }
 
 .ep-home__balance-label {
@@ -2447,11 +2450,12 @@ body {
 }
 
 .ep-home__balance-value {
-  font-family: "DM Mono", monospace;
-  font-size: clamp(28px, 4vw, 36px);
-  font-weight: 500;
-  margin: 4px 0 0;
-  letter-spacing: -0.02em;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(32px, 5vw, 44px);
+  font-weight: 700;
+  margin: auto 0 0;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   position: relative;
 }
 
@@ -2467,6 +2471,16 @@ body {
   display: block;
 }
 
+.ep-home__balance-usd {
+  font-family: "DM Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.88;
+  letter-spacing: -0.01em;
+  position: relative;
+  margin-top: -2px;
+}
+
 .ep-home__balance-sub {
   font-family: "DM Mono", monospace;
   font-size: 11.5px;
@@ -2476,7 +2490,9 @@ body {
 
 
 .ep-home__stats-desktop {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ep-home__stat {
@@ -2637,7 +2653,7 @@ body {
 }
 
 .ep-home__chips {
-  display: none;
+  display: flex;
   gap: 8px;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -2649,13 +2665,24 @@ body {
 .ep-home__chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 11px;
+  gap: 8px;
+  padding: 8px 14px;
   border-radius: 999px;
   background: var(--surface2);
   border: 1px solid var(--glass-border);
   flex: 0 0 auto;
   white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  min-height: 44px;
+}
+
+.ep-home__chip-copy {
+  font-family: "DM Mono", monospace;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 @media (min-width: 640px) {
@@ -2695,8 +2722,8 @@ body {
   }
 
   .ep-home__balance-value {
-    font-size: clamp(28px, 2.6vw, 36px);
-    margin: 6px 0 0;
+    font-size: clamp(36px, 3.2vw, 48px);
+    margin: auto 0 0;
   }
 
   .ep-home__balance-value--multi {
@@ -2749,8 +2776,8 @@ body {
   }
 
   .ep-home__balance-value {
-    font-size: clamp(32px, 2.8vw, 40px);
-    margin: 8px 0 2px;
+    font-size: clamp(38px, 3vw, 48px);
+    margin: auto 0 0;
   }
 
   .ep-home__stat {

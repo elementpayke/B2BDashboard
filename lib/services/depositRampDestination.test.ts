@@ -5,6 +5,8 @@ import {
   describeMissingOnRampDestination,
   resolveAfricanFundOpenIntent,
   resolveOnRampDestination,
+  resolveStablecoinPickerDestination,
+  stablecoinNetworksForAsset,
 } from "./depositRampDestination";
 
 const STELLAR_ADDR = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
@@ -158,6 +160,32 @@ describe("resolveOnRampDestination", () => {
     ).toBeNull();
   });
 
+  it("does not fall back to Base USDC when Stellar is selected but not ready", () => {
+    expect(
+      resolveOnRampDestination({
+        accounts: [baseUsdc, polygonUsdt],
+        depositNetworkKey: "stellar",
+        depositAsset: "usdc",
+        summaryWallet: TREASURY_EVM,
+      }),
+    ).toBeNull();
+  });
+
+  it("preserves stellar_testnet on the OnRamp asset instead of collapsing to Stellar", () => {
+    const dest = resolveOnRampDestination({
+      accounts: [
+        acct({
+          id: "tn",
+          network: "stellar_testnet",
+          walletAddress: STELLAR_ADDR,
+        }),
+      ],
+      selectedAccountId: "tn",
+      depositNetworkKey: "stellar",
+    });
+    expect(dest?.asset).toEqual({ currency: "USDC", network: "stellar_testnet" });
+  });
+
   it("puts Stellar USDC on the OnRamp quote, not Polygon USDT", () => {
     const dest = resolveOnRampDestination({
       accounts: [polygonUsdt, stellarUsdc],
@@ -231,5 +259,96 @@ describe("resolveAfricanFundOpenIntent", () => {
         selectedStablecoin: { id: "1", currency: "USDC", network: "stellar_testnet" },
       }).depositNetwork,
     ).toBe("stellar");
+  });
+});
+
+describe("stablecoinNetworksForAsset", () => {
+  const networks = [
+    { key: "base", label: "Base" },
+    { key: "stellar", label: "Stellar" },
+    { key: "polygon", label: "Polygon" },
+  ];
+
+  it("includes Stellar for USDC", () => {
+    expect(stablecoinNetworksForAsset(networks, "usdc").map((n) => n.key)).toEqual([
+      "base",
+      "stellar",
+      "polygon",
+    ]);
+  });
+
+  it("hides Stellar for USDT", () => {
+    expect(stablecoinNetworksForAsset(networks, "usdt").map((n) => n.key)).toEqual([
+      "base",
+      "polygon",
+    ]);
+  });
+});
+
+describe("resolveStablecoinPickerDestination", () => {
+  it("returns the ready Stellar G-address, not the EVM treasury", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [baseUsdc, stellarUsdc],
+      asset: "usdc",
+      networkKey: "stellar",
+      treasuryWallet: TREASURY_EVM,
+    });
+    expect(dest.address).toBe(STELLAR_ADDR);
+    expect(dest.address?.startsWith("G")).toBe(true);
+  });
+
+  it("does not show a testnet wallet when the selector is stellar_public", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [
+        acct({
+          id: "tn",
+          network: "stellar_testnet",
+          walletAddress: STELLAR_ADDR,
+        }),
+      ],
+      asset: "usdc",
+      networkKey: "stellar_public",
+    });
+    expect(dest.address).toBeNull();
+  });
+
+  it("fails closed when Stellar USDC is not ready", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [baseUsdc],
+      asset: "usdc",
+      networkKey: "stellar",
+      treasuryWallet: TREASURY_EVM,
+    });
+    expect(dest.address).toBeNull();
+    expect(dest.emptyMessage).toMatch(/No ready Stellar USDC wallet/i);
+  });
+
+  it("does not invent a Stellar address from a pending account", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [acct({ ...stellarUsdc, status: "pending" })],
+      asset: "usdc",
+      networkKey: "stellar",
+    });
+    expect(dest.address).toBeNull();
+  });
+
+  it("uses the matching Base account before the treasury", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [baseUsdc],
+      asset: "usdc",
+      networkKey: "base",
+      treasuryWallet: TREASURY_EVM,
+    });
+    expect(dest.address).toBe(BASE_USDC);
+  });
+
+  it("falls back to the EVM treasury on Base when no matching account exists", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [stellarUsdc],
+      asset: "usdc",
+      networkKey: "base",
+      treasuryWallet: TREASURY_EVM,
+    });
+    expect(dest.address).toBe(TREASURY_EVM);
   });
 });

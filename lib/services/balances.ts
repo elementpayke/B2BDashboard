@@ -16,7 +16,8 @@ export type AccountBalance = {
  * Currencies offered in the Home "default display currency" control.
  * Conversion only works when Mboka FX covers the pair (or source === display).
  * Indicative rates today are USD-base YC corridors (KES, NGN, GHS, UGX, TZS,
- * ZAR, MWK) plus whatever `dashboard/summary` embeds — not EUR/GBP/CAD/USDC.
+ * ZAR, MWK) plus whatever `dashboard/summary` embeds. USDC/USDT peg to USD
+ * when no quote is present. EUR/GBP/CAD still need a live rate.
  */
 export const DISPLAY_CURRENCY_OPTIONS = [
   "USD",
@@ -205,9 +206,11 @@ function formatBalanceAmount(
   total: number,
   opts?: { maximumFractionDigits?: number },
 ): string {
+  const maximumFractionDigits = opts?.maximumFractionDigits ?? 2;
+  const minimumFractionDigits = Math.min(2, maximumFractionDigits);
   return total.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: opts?.maximumFractionDigits ?? 2,
+    minimumFractionDigits,
+    maximumFractionDigits,
   });
 }
 
@@ -269,6 +272,26 @@ export function formatHomeTotalBalance(
   return lines.join(opts?.joiner ?? " · ");
 }
 
+/** Dollar-pegged stables: treat as USD when Mboka has no explicit quote. */
+const USD_PEGGED_STABLECOINS = new Set(["USDC", "USDT"]);
+
+/**
+ * Map a ledger currency onto the FX book. USDC/USDT use an explicit quote
+ * when present; otherwise they alias to USD so every wallet can roll into
+ * one indicative total.
+ */
+export function resolveFxCurrency(
+  currency: string,
+  fx: ExchangeRates | null | undefined,
+): string {
+  const code = currency.trim().toUpperCase();
+  if (!code) return code;
+  if (!USD_PEGGED_STABLECOINS.has(code)) return code;
+  const normalized = normalizeExchangeRates(fx);
+  if (normalized?.rates[code]) return code;
+  return "USD";
+}
+
 /**
  * Convert `amount` from `fromCurrency` into units of the FX `base`
  * (typically USD). Returns null when no rate exists — never invents.
@@ -281,10 +304,14 @@ export function amountToFxBase(
   fx: ExchangeRates | null | undefined,
 ): number | null {
   if (!Number.isFinite(amount)) return null;
+  const from = resolveFxCurrency(fromCurrency, fx);
+  if (!from) return null;
+  if (from === "USD") {
+    const normalized = normalizeExchangeRates(fx);
+    if (!normalized || normalized.base === "USD") return amount;
+  }
   const normalized = normalizeExchangeRates(fx);
   if (!normalized) return null;
-  const from = fromCurrency.trim().toUpperCase();
-  if (!from) return null;
   if (from === normalized.base) return amount;
   const rate = normalized.rates[from];
   if (typeof rate !== "number" || !(rate > 0)) return null;
@@ -300,10 +327,14 @@ export function amountFromFxBase(
   fx: ExchangeRates | null | undefined,
 ): number | null {
   if (!Number.isFinite(amountInBase)) return null;
+  const to = resolveFxCurrency(toCurrency, fx);
+  if (!to) return null;
+  if (to === "USD") {
+    const normalized = normalizeExchangeRates(fx);
+    if (!normalized || normalized.base === "USD") return amountInBase;
+  }
   const normalized = normalizeExchangeRates(fx);
   if (!normalized) return null;
-  const to = toCurrency.trim().toUpperCase();
-  if (!to) return null;
   if (to === normalized.base) return amountInBase;
   const rate = normalized.rates[to];
   if (typeof rate !== "number" || !(rate > 0)) return null;
@@ -321,13 +352,37 @@ export function convertAmountWithRates(
   fx: ExchangeRates | null | undefined,
 ): number | null {
   if (!Number.isFinite(amount)) return null;
-  const from = fromCurrency.trim().toUpperCase();
-  const to = toCurrency.trim().toUpperCase();
+  const from = resolveFxCurrency(fromCurrency, fx);
+  const to = resolveFxCurrency(toCurrency, fx);
   if (!from || !to) return null;
   if (from === to) return amount;
   const inBase = amountToFxBase(amount, from, fx);
   if (inBase == null) return null;
   return amountFromFxBase(inBase, to, fx);
+}
+
+/** Compact USD equivalent under the Home hero, e.g. `"≈ $20.00 USD"`. */
+export function formatUsdEquivalentSub(
+  totalUsd: number | null,
+  opts?: { maximumFractionDigits?: number },
+): string | null {
+  if (totalUsd == null || !Number.isFinite(totalUsd)) return null;
+  return `≈ $${formatBalanceAmount(totalUsd, opts)} USD`;
+}
+
+/**
+ * Design hero figure: `≈ $548,830.55` for USD, `≈ KES 45,984.47` otherwise.
+ */
+export function formatHeroTotalLabel(
+  total: number | null,
+  currency: string,
+  opts?: { maximumFractionDigits?: number },
+): string {
+  if (total == null || !Number.isFinite(total)) return "—";
+  const amount = formatBalanceAmount(total, opts);
+  const code = currency.trim().toUpperCase() || DEFAULT_DISPLAY_CURRENCY;
+  if (code === "USD") return `≈ $${amount}`;
+  return `≈ ${code} ${amount}`;
 }
 
 export type DisplayTotalResult = {
