@@ -128,7 +128,6 @@ export default function StellarWalletDeposit({
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
               className="ep-fund-sc__amount-input"
-              aria-label="USDC amount to send"
             />
           </div>
           <button
@@ -144,8 +143,21 @@ export default function StellarWalletDeposit({
 
       {hash ? (
         <div className="ep-fund-sc__wallet-ok" role="status">
-          Payment submitted. It should credit shortly.
-          <span className="ep-mono"> {truncateStellarAddress(hash)}</span>
+          Payment submitted. It should credit shortly.{" "}
+          <a
+            href={
+              config.isTestnet
+                ? `https://stellar.expert/explorer/testnet/tx/${hash}`
+                : `https://stellar.expert/explorer/public/tx/${hash}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on explorer
+          </a>
+          <button type="button" className="ep-fund-sc__btn-secondary" onClick={() => setHash(null)}>
+            Send another
+          </button>
         </div>
       ) : null}
 

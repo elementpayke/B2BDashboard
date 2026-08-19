@@ -19,7 +19,7 @@ export default function DepositAddressQr({
   networkLabel,
   amount,
 }: DepositAddressQrProps) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [qr, setQr] = useState<{ payload: string; url: string } | null>(null);
   const [failed, setFailed] = useState(false);
   const payload = buildDepositQrValue({ address, currency, network, amount });
 
@@ -28,16 +28,16 @@ export default function DepositAddressQr({
     setFailed(false);
     QRCode.toDataURL(payload, {
       width: 176,
-      margin: 1,
+      margin: 4,
       errorCorrectionLevel: "M",
       color: { dark: "#131126", light: "#ffffff" },
     })
       .then((url) => {
-        if (!cancelled) setDataUrl(url);
+        if (!cancelled) setQr({ payload, url });
       })
       .catch(() => {
         if (!cancelled) {
-          setDataUrl(null);
+          setQr(null);
           setFailed(true);
         }
       });
@@ -46,7 +46,17 @@ export default function DepositAddressQr({
     };
   }, [payload]);
 
-  if (failed) return null;
+  if (failed) {
+    return (
+      <figure className="ep-fund-sc__qr">
+        <figcaption className="ep-fund-sc__qr-caption">
+          Couldn't generate a QR code. Copy the address instead.
+        </figcaption>
+      </figure>
+    );
+  }
+
+  const dataUrl = qr && qr.payload === payload ? qr.url : null;
   if (!dataUrl) {
     return <div className="ep-fund-sc__qr" aria-hidden />;
   }

@@ -1,5 +1,6 @@
 import { Asset, Horizon, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { parseStellarAmount } from "@/lib/stellar/amount";
+import { isHorizonNotFound } from "@/lib/stellar/errors";
 import type { StellarNetworkConfig } from "@/lib/stellar/network";
 
 type HorizonBalance = {
@@ -49,8 +50,8 @@ export async function sendStellarUsdc(opts: {
   let source: Awaited<ReturnType<Horizon.Server["loadAccount"]>>;
   try {
     source = await server.loadAccount(opts.fromAddress);
-  } catch {
-    throw new Error("The connected wallet is not funded on Stellar yet (needs a little XLM).");
+  } catch (err) {
+    remapUnfundedSourceError(err);
   }
 
   const sourceView = source as unknown as HorizonAccount;
@@ -91,4 +92,11 @@ export async function sendStellarUsdc(opts: {
   const signed = TransactionBuilder.fromXDR(signedXdr, opts.config.networkPassphrase);
   const result = await server.submitTransaction(signed);
   return { hash: result.hash };
+}
+
+export function remapUnfundedSourceError(err: unknown): never {
+  if (isHorizonNotFound(err)) {
+    throw new Error("The connected wallet is not funded on Stellar yet (needs a little XLM).");
+  }
+  throw err;
 }

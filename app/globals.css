@@ -4906,7 +4906,6 @@ body {
   display: block;
   width: 176px;
   height: 176px;
-  border-radius: 8px;
   background: #fff;
 }
 
@@ -5040,9 +5039,19 @@ body {
   padding: 10px 12px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--success, #16a34a) 14%, var(--surface2));
-  color: var(--success, #16a34a);
+  color: color-mix(in srgb, var(--success, #16a34a) 70%, #0b2e18);
   font-size: 12.5px;
   font-weight: 600;
+}
+
+.ep-fund-sc__wallet-ok a {
+  color: inherit;
+  font-weight: 700;
+}
+
+.ep-fund-sc__wallet-ok .ep-fund-sc__btn-secondary {
+  margin-top: 8px;
+  width: 100%;
 }
 
 .ep-fund-orch-note {

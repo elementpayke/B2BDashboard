@@ -7,6 +7,22 @@ describe("stellar wallet errors", () => {
     expect(formatStellarWalletError({ message: "The user closed the modal." })).toBe("");
   });
 
+  it("does not treat Horizon transaction rejected as a cancel", () => {
+    expect(isWalletModalClosed({ message: "transaction rejected" })).toBe(false);
+    expect(isWalletModalClosed({ message: "User rejected the request" })).toBe(true);
+  });
+
+  it("keeps formatting when getResultCodes throws", () => {
+    expect(
+      formatStellarWalletError({
+        message: "Horizon timeout",
+        getResultCodes: () => {
+          throw new Error("decode failed");
+        },
+      }),
+    ).toBe("Horizon timeout");
+  });
+
   it("maps underfunded Horizon codes", () => {
     expect(
       formatStellarWalletError({

@@ -12,15 +12,30 @@ function readMessage(err: unknown): string {
 function readOpCodes(err: unknown): string[] {
   if (!err || typeof err !== "object") return [];
   const withCodes = err as { getResultCodes?: () => { operations?: string[] } };
-  if (typeof withCodes.getResultCodes === "function") {
-    return withCodes.getResultCodes().operations ?? [];
+  if (typeof withCodes.getResultCodes !== "function") return [];
+  try {
+    return withCodes.getResultCodes()?.operations ?? [];
+  } catch {
+    return [];
   }
-  return [];
 }
 
 export function isWalletModalClosed(err: unknown): boolean {
   const message = readMessage(err).toLowerCase();
-  return message.includes("closed the modal") || message.includes("user declined") || message.includes("rejected");
+  return (
+    message.includes("closed the modal") ||
+    message.includes("user declined") ||
+    message.includes("user rejected") ||
+    message.includes("request rejected by user") ||
+    message.includes("user cancelled") ||
+    message.includes("user canceled")
+  );
+}
+
+export function isHorizonNotFound(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const rec = err as { name?: string; response?: { status?: number } };
+  return rec.name === "NotFoundError" || rec.response?.status === 404;
 }
 
 export function formatStellarWalletError(err: unknown): string {

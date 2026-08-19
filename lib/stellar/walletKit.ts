@@ -1,6 +1,6 @@
 import type { StellarNetworkConfig } from "@/lib/stellar/network";
 
-let initialized = false;
+let initPromise: Promise<void> | null = null;
 
 async function loadKit() {
   const [{ StellarWalletsKit }, { defaultModules }, { Networks, SwkAppLightTheme }] = await Promise.all([
@@ -14,22 +14,23 @@ async function loadKit() {
 export async function ensureStellarWalletsKit(config: StellarNetworkConfig) {
   const { StellarWalletsKit, defaultModules, Networks, SwkAppLightTheme } = await loadKit();
   const network = config.isTestnet ? Networks.TESTNET : Networks.PUBLIC;
-  if (!initialized) {
-    StellarWalletsKit.init({
-      modules: defaultModules(),
-      network,
-      theme: {
-        ...SwkAppLightTheme,
-        primary: "#3B2ED3",
-        "primary-foreground": "#ffffff",
-        "font-family": "DM Sans, system-ui, sans-serif",
-        "border-radius": "16px",
-      },
+  if (!initPromise) {
+    initPromise = Promise.resolve().then(() => {
+      StellarWalletsKit.init({
+        modules: defaultModules(),
+        network,
+        theme: {
+          ...SwkAppLightTheme,
+          primary: "#3B2ED3",
+          "primary-foreground": "#ffffff",
+          "font-family": "DM Sans, system-ui, sans-serif",
+          "border-radius": "16px",
+        },
+      });
     });
-    initialized = true;
-  } else {
-    StellarWalletsKit.setNetwork(network);
   }
+  await initPromise;
+  StellarWalletsKit.setNetwork(network);
   return StellarWalletsKit;
 }
 
@@ -40,7 +41,8 @@ export async function connectStellarWallet(config: StellarNetworkConfig): Promis
 }
 
 export async function disconnectStellarWallet(): Promise<void> {
-  if (!initialized) return;
+  if (!initPromise) return;
+  await initPromise;
   const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit/sdk");
   await StellarWalletsKit.disconnect();
 }

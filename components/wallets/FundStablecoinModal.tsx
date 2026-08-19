@@ -231,7 +231,7 @@ export default function FundStablecoinModal({
         </div>
       ) : null}
 
-      {isStellarUsdcRail(selected) ? (
+      {selected.walletAddress && isStellarUsdcRail(selected) ? (
         <StellarWalletDeposit
           destination={selected.walletAddress}
           network={selected.network}

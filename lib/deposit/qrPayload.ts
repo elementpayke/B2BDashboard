@@ -20,6 +20,9 @@ export function buildDepositQrValue(opts: {
   params.set("destination", address);
   params.set("asset_code", "USDC");
   params.set("asset_issuer", config.usdcIssuer);
+  if (config.isTestnet) {
+    params.set("network_passphrase", config.networkPassphrase);
+  }
   const parsed = parseStellarAmount(opts.amount ?? "");
   if (parsed.ok) params.set("amount", parsed.amount);
   return `web+stellar:pay?${params.toString()}`;
