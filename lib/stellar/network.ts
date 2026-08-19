@@ -4,7 +4,7 @@ import { toPartnerNetwork } from "@/lib/services/entities";
 export const STELLAR_USDC_ISSUER_PUBLIC =
   "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
-/** Centre/Circle USDC on Stellar testnet. */
+/** Circle USDC on Stellar testnet (Centre/Circle). */
 export const STELLAR_USDC_ISSUER_TESTNET =
   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
@@ -33,20 +33,20 @@ export function isStellarUsdcRail(opts: {
 
 export function resolveStellarNetwork(network: string | null | undefined): StellarNetworkConfig {
   const key = (network || "").trim().toLowerCase();
-  const isTestnet = key.includes("testnet");
-  if (isTestnet) {
+  const isPublic = key.includes("public") || key.includes("mainnet") || key.includes("pubnet");
+  if (isPublic) {
     return {
-      isTestnet: true,
-      networkPassphrase: STELLAR_TESTNET_PASSPHRASE,
-      horizonUrl: "https://horizon-testnet.stellar.org",
-      usdcIssuer: STELLAR_USDC_ISSUER_TESTNET,
+      isTestnet: false,
+      networkPassphrase: STELLAR_PUBLIC_PASSPHRASE,
+      horizonUrl: "https://horizon.stellar.org",
+      usdcIssuer: STELLAR_USDC_ISSUER_PUBLIC,
     };
   }
   return {
-    isTestnet: false,
-    networkPassphrase: STELLAR_PUBLIC_PASSPHRASE,
-    horizonUrl: "https://horizon.stellar.org",
-    usdcIssuer: STELLAR_USDC_ISSUER_PUBLIC,
+    isTestnet: true,
+    networkPassphrase: STELLAR_TESTNET_PASSPHRASE,
+    horizonUrl: "https://horizon-testnet.stellar.org",
+    usdcIssuer: STELLAR_USDC_ISSUER_TESTNET,
   };
 }
 
