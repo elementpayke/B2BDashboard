@@ -48,6 +48,7 @@ describe("stablecoin account predicates", () => {
     expect(isSendableStablecoinAccount(acct({ network: "Base" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "Stellar" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_testnet" }))).toBe(true);
+    expect(isSendableStablecoinAccount(acct({ network: "stellar_public" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Base" }))).toBe(false);
     expect(isSendableStablecoinAccount(acct({ network: "Ethereum" }))).toBe(false);
   });

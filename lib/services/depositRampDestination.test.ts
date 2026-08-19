@@ -171,6 +171,21 @@ describe("resolveOnRampDestination", () => {
     ).toBeNull();
   });
 
+  it("preserves stellar_testnet on the OnRamp asset instead of collapsing to Stellar", () => {
+    const dest = resolveOnRampDestination({
+      accounts: [
+        acct({
+          id: "tn",
+          network: "stellar_testnet",
+          walletAddress: STELLAR_ADDR,
+        }),
+      ],
+      selectedAccountId: "tn",
+      depositNetworkKey: "stellar",
+    });
+    expect(dest?.asset).toEqual({ currency: "USDC", network: "stellar_testnet" });
+  });
+
   it("puts Stellar USDC on the OnRamp quote, not Polygon USDT", () => {
     const dest = resolveOnRampDestination({
       accounts: [polygonUsdt, stellarUsdc],
@@ -280,6 +295,21 @@ describe("resolveStablecoinPickerDestination", () => {
     });
     expect(dest.address).toBe(STELLAR_ADDR);
     expect(dest.address?.startsWith("G")).toBe(true);
+  });
+
+  it("does not show a testnet wallet when the selector is stellar_public", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [
+        acct({
+          id: "tn",
+          network: "stellar_testnet",
+          walletAddress: STELLAR_ADDR,
+        }),
+      ],
+      asset: "usdc",
+      networkKey: "stellar_public",
+    });
+    expect(dest.address).toBeNull();
   });
 
   it("fails closed when Stellar USDC is not ready", () => {

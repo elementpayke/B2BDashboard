@@ -160,6 +160,39 @@ export function toPartnerNetwork(network: string): "Base" | "Polygon" | "Stellar
   return null;
 }
 
+/** Testnet vs public when known; `null` for a generic `stellar` UI key. */
+export function stellarEnvironment(network: string): "testnet" | "public" | null {
+  if (toPartnerNetwork(network) !== "Stellar") return null;
+  const key = normalizeNetworkKey(network);
+  if (key.includes("testnet")) return "testnet";
+  if (key.includes("public") || key.includes("mainnet") || key.includes("pubnet")) {
+    return "public";
+  }
+  return null;
+}
+
+/**
+ * Network string to send on quotes / account-sends — keeps stellar_testnet
+ * vs stellar_public instead of collapsing both to `"Stellar"`.
+ */
+export function toAssetNetwork(network: string): string {
+  const key = normalizeNetworkKey(network);
+  if (key === "stellar_testnet") return "stellar_testnet";
+  if (key === "stellar_public") return "stellar_public";
+  return toPartnerNetwork(network) ?? network.trim();
+}
+
+/** UI chip vs account rail. Generic `stellar` matches any Stellar env. */
+export function networksCompatible(accountNetwork: string, selectorKey: string): boolean {
+  const want = toPartnerNetwork(selectorKey) ?? normalizeNetworkKey(selectorKey);
+  const got = toPartnerNetwork(accountNetwork) ?? normalizeNetworkKey(accountNetwork);
+  if (!want || got !== want) return false;
+  const wantEnv = stellarEnvironment(selectorKey);
+  const gotEnv = stellarEnvironment(accountNetwork);
+  if (wantEnv && gotEnv && wantEnv !== gotEnv) return false;
+  return true;
+}
+
 /** Dynamic network label for UX — never hardcode a chain the backend didn't return. */
 export function formatNetworkLabel(network: string | null | undefined): string {
   const raw = (network || "").trim();
@@ -424,9 +457,7 @@ export function accountForNetwork(
   accounts: FinancialAccount[],
   networkKey: string,
 ): FinancialAccount | undefined {
-  const want = toPartnerNetwork(networkKey) ?? normalizeNetworkKey(networkKey);
-  if (!want) return undefined;
-  return accounts.find((a) => (toPartnerNetwork(a.network) ?? normalizeNetworkKey(a.network)) === want);
+  return accounts.find((a) => networksCompatible(a.network, networkKey));
 }
 
 /** UI deposit-network key from a partner/API network spelling. */

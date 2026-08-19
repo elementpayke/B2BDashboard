@@ -226,12 +226,12 @@ list, that transaction's own detail query, and the dashboard summary.
 > create flow is fully wired end to end (create → list invalidation), gated on
 > eligibility. Pure display mappers (masking, status labels, detail-row
 > selection) live in `lib/services/depositAccounts.ts` with Vitest coverage.
-> Home "Balances" reads partner balances from those same lists and
-> shows each account in its own currency (no FX-converted total).
-> Currency rows under Balances stay per-account.
-> `components/deposit/ReceiveModal.tsx`
-> still uses the `ACCOUNTS` mock for fiat receive coordinates — out of this
-> track's scope (see OnRamp deposit-quote track).
+> Home hero aggregates those partner balances into one display-currency total
+> (indicative FX, with a USD subtitle). Currency chips under the hero stay
+> per-account in their native amounts.
+> `components/deposit/ReceiveModal.tsx` shows real fiat IBAN coordinates from
+> `GET /v1/iban/accounts` and stablecoin G… / 0x addresses from ready entity
+> wallets (Stellar USDC never falls back to the EVM treasury).
 
 1. **Team backend**: add `GET/POST /api/businesses/{id}/members`,
    `POST .../members/invite`, `PATCH .../members/{user_id}`,

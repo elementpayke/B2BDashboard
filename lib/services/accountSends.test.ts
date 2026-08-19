@@ -69,15 +69,27 @@ describe("account send validation", () => {
       amount: "5",
       network: "Stellar",
     });
+    expect(
+      buildSendPreviewPayload({
+        toAddress: stellar,
+        amount: "5",
+        networkKey: "stellar",
+        accountNetwork: "stellar_testnet",
+      }).network,
+    ).toBe("stellar_testnet");
     expect(sendCryptoRecipientPlaceholder("stellar")).toMatch(/Stellar/);
     expect(sendCryptoRecipientPlaceholder("base")).toMatch(/EVM/);
   });
 
-  it("rejects short or malformed Stellar keys", () => {
+  it("rejects short or checksum-invalid Stellar keys", () => {
     expect(() => validateStellarAddress("GABC")).toThrow(/Stellar public key/);
     expect(() => validateStellarAddress("0x1111111111111111111111111111111111111111")).toThrow(
       /Stellar public key/,
     );
+    const valid = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
+    const swapped = `${valid.slice(0, -1)}F`;
+    expect(swapped).toHaveLength(56);
+    expect(() => validateStellarAddress(swapped)).toThrow(/Stellar public key/);
   });
 
   it("explains Mboka EVM-only send errors only on the Stellar rail", () => {
@@ -144,5 +156,6 @@ describe("sendable account discovery helpers", () => {
     expect(isSendableStablecoinAccount(stellar)).toBe(true);
     expect(accountForNetwork([ready], "base")?.id).toBe("acct_base");
     expect(accountForNetwork([stellar], "stellar")?.id).toBe("acct_xlm");
+    expect(accountForNetwork([stellar], "stellar_public")).toBeUndefined();
   });
 });

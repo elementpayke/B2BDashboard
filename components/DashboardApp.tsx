@@ -873,6 +873,7 @@ export default function DashboardApp(props: Props = {}) {
           toAddress: state.sendRecipient.trim(),
           amount: state.sendAmount.trim(),
           networkKey: state.sendChain,
+          accountNetwork: account.network,
         });
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({

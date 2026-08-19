@@ -1,5 +1,7 @@
 import {
   isFundableStablecoinAccount,
+  networksCompatible,
+  toAssetNetwork,
   toPartnerNetwork,
   toUiNetworkKey,
   type FinancialAccount,
@@ -42,9 +44,7 @@ function assetCurrency(depositAsset: string | null | undefined): string {
 }
 
 function networksEqual(accountNetwork: string, networkKey: string): boolean {
-  const want = toPartnerNetwork(networkKey) ?? networkKey.trim().toLowerCase();
-  const got = toPartnerNetwork(accountNetwork) ?? accountNetwork.trim().toLowerCase();
-  return Boolean(want) && got === want;
+  return networksCompatible(accountNetwork, networkKey);
 }
 
 function isStellarNetworkKey(networkKey: string): boolean {
@@ -127,7 +127,7 @@ export function resolveStablecoinPickerDestination(input: {
 function destinationFrom(account: FinancialAccount): OnRampDestination | null {
   const walletAddress = clean(account.walletAddress);
   if (!walletAddress) return null;
-  const network = (toPartnerNetwork(account.network) ?? account.network.trim()) || "";
+  const network = toAssetNetwork(account.network);
   if (!network) return null;
   return {
     accountId: account.id,

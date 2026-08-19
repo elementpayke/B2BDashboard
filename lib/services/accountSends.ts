@@ -1,6 +1,7 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 import { newIdempotencyKey } from "@/lib/services/orders";
-import { toPartnerNetwork } from "@/lib/services/entities";
+import { toAssetNetwork, toPartnerNetwork } from "@/lib/services/entities";
+import { StrKey } from "@stellar/stellar-sdk";
 
 /**
  * Phase 4 stablecoin sends — partner-aligned preview → confirm.
@@ -70,7 +71,7 @@ export function validateEvmAddress(address: string): string {
 
 export function validateStellarAddress(address: string): string {
   const value = address.trim().toUpperCase();
-  if (!STELLAR_ADDRESS_RE.test(value)) {
+  if (!STELLAR_ADDRESS_RE.test(value) || !StrKey.isValidEd25519PublicKey(value)) {
     throw new Error("Enter a valid Stellar public key (G followed by 55 characters).");
   }
   return value;
@@ -98,9 +99,11 @@ export function buildSendPreviewPayload(params: {
   toAddress: string;
   amount: string;
   networkKey: string;
+  /** Account's API network so stellar_testnet is not rewritten as Stellar. */
+  accountNetwork?: string;
 }): AccountSendPreviewIn {
-  const network = toPartnerNetwork(params.networkKey);
-  if (!network) {
+  const network = toAssetNetwork(params.accountNetwork || params.networkKey);
+  if (!toPartnerNetwork(network)) {
     throw new Error("Sends support Base, Polygon, and Stellar only.");
   }
   return {
