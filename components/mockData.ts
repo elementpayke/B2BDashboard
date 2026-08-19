@@ -4,7 +4,7 @@ export const flagUrl = (iso) => iso ? `https://flagcdn.com/w40/${iso}.png` : nul
 export const COUNTRIES = [
   {code:"KES",name:"Kenya",iso:"ke",dialCode:"254",rails:[
     {type:"mobile",label:"Mobile money",options:["M-Pesa (Safaricom)","Airtel Money"],field:"Recipient phone number",placeholder:"0712 345 678",arrival:"Arrives in seconds"},
-    {type:"bank",label:"Bank transfer",options:["KCB Bank","Equity Bank","Co-operative Bank"],field:"Recipient account number",placeholder:"0100234567",arrival:"Arrives within minutes"},
+    {type:"bank",label:"Bank transfer",options:["KCB Bank","Equity Bank","Co-operative Bank","NCBA Bank","Stanbic Bank Kenya","Absa Bank Kenya","Standard Chartered","I&M Bank","Family Bank","Prime Bank","Diamond Trust Bank","National Bank of Kenya"],field:"Recipient account number",placeholder:"0100234567",arrival:"Arrives within minutes"},
   ]},
   {code:"NGN",name:"Nigeria",iso:"ng",dialCode:"234",rails:[
     {type:"mobile",label:"Mobile money",options:["OPay","PalmPay"],field:"Recipient phone number",placeholder:"0803 123 4567",arrival:"Arrives in seconds"},

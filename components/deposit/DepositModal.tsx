@@ -1,6 +1,34 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  BANK_SEARCH_THRESHOLD,
+  countryMatchesQuery,
+  filterProvidersWithPinnedSelection,
+} from "@/lib/hooks/depositFlowHelpers";
+
+export type DepositCountryRow = {
+  idx: number;
+  name: string;
+  code: string;
+  flagUrl: string | null;
+  railsLabel: string;
+  searchText: string;
+  select: () => void;
+};
+
+export type DepositMethodOption = {
+  name: string;
+  selected: boolean;
+  select: () => void;
+};
+
+export type DepositMethodGroup = {
+  railIdx: number;
+  type: string;
+  label: string;
+  providers: DepositMethodOption[];
+};
 
 export type DepositModalProps = {
   depositNotDone: boolean;
@@ -12,11 +40,11 @@ export type DepositModalProps = {
   depositMethods: any[];
   depositIsCountry: boolean;
   depositIsCrypto: boolean;
-  depositCountryChips: any[];
-  depositRailHasChoice: boolean;
-  depositRailChips: any[];
-  depositProviderHasChoice: boolean;
-  depositProviderChips: any[];
+  depositSub: "country" | "method";
+  depositCountryRows: DepositCountryRow[];
+  depositMethodGroups: DepositMethodGroup[];
+  depositSelectedCountryName: string;
+  depositMethodChosen: boolean;
   depositAssets: any[];
   depositNetworks: any[];
   depositNext: () => void;
@@ -57,6 +85,56 @@ export type DepositModalProps = {
   fundConvertError?: string;
 };
 
+function SearchField({
+  id,
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  label: string;
+}) {
+  return (
+    <label className="ep-pick-search" htmlFor={id}>
+      <span className="ep-pick-search__icon" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.2-3.2" />
+        </svg>
+      </span>
+      <span className="ep-sr-only">{label}</span>
+      <input
+        id={id}
+        className="ep-pick-search__input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+    </label>
+  );
+}
+
+function MethodIcon({ type }: { type: string }) {
+  if (type === "mobile") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <rect x="7" y="2" width="10" height="20" rx="2.5" />
+        <path d="M11 18h2" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M3 21h18M4 10h16M5 10l7-6 7 6M6 10v11M18 10v11M10 10v11M14 10v11" />
+    </svg>
+  );
+}
+
 function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
   const firstOff = dots.findIndex((d) => !d.on);
   const step = dots.every((d) => d.on) ? dots.length : Math.max(1, firstOff);
@@ -82,7 +160,21 @@ function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string 
 export default function DepositModal(p: DepositModalProps) {
   const [addressCopied, setAddressCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [countrySearch, setCountrySearch] = useState("");
+  const [bankSearch, setBankSearch] = useState("");
   const hasAddress = Boolean(p.depositAddress && p.depositAddress !== "—");
+
+  useEffect(() => {
+    setBankSearch("");
+  }, [p.depositSelectedCountryName, p.depositSub]);
+
+  const filteredCountries = useMemo(
+    () => (p.depositCountryRows || []).filter((row) => countryMatchesQuery(row.searchText, countrySearch)),
+    [p.depositCountryRows, countrySearch],
+  );
+
+  const showContinue =
+    p.depositIsCrypto || (p.depositIsCountry && p.depositSub === "method" && p.depositMethodChosen);
 
   const copyDepositAddress = async () => {
     if (!hasAddress) return;
@@ -125,7 +217,9 @@ export default function DepositModal(p: DepositModalProps) {
               <span className="ep-money-step-label">
                 {p.fundTargetCurrency
                   ? "Step 1 · Where is this coming from?"
-                  : "Step 1 · How are you topping up?"}
+                  : p.depositIsCountry && p.depositSub === "method"
+                    ? "Step 1 · How will you pay?"
+                    : "Step 1 · How are you topping up?"}
               </span>
               {p.fundTargetCurrency ? null : (
               <div className="ep-money-tabs" role="group" aria-label="Deposit method">
@@ -143,92 +237,116 @@ export default function DepositModal(p: DepositModalProps) {
               </div>
               )}
 
-              {p.depositIsCountry ? (
+              {p.depositIsCountry && p.depositSub === "country" ? (
                 <>
-                  <div className="ep-money-field">
-                    <span className="ep-money-label" id="deposit-country-label">
-                      Source country
-                    </span>
-                    <div
-                      className="ep-money-tabs ep-money-tabs--wrap"
-                      role="group"
-                      aria-labelledby="deposit-country-label"
-                    >
-                      {(p.depositCountryChips || []).map((c: any, i: number) => (
+                  <SearchField
+                    id="deposit-country-search"
+                    value={countrySearch}
+                    onChange={setCountrySearch}
+                    placeholder="Search country, currency or provider"
+                    label="Search country, currency or provider"
+                  />
+                  <div className="ep-pick-list" role="listbox" aria-label="Source country">
+                    {filteredCountries.length === 0 ? (
+                      <p className="ep-money-empty">No countries match that search.</p>
+                    ) : (
+                      filteredCountries.map((c) => (
                         <button
-                          key={i}
+                          key={c.idx}
                           type="button"
-                          onClick={c.selectDeposit}
-                          className="ep-money-chip"
-                          style={{
-                            borderColor: c.depositBorder,
-                            background: c.depositBg,
-                          }}
+                          role="option"
+                          className="ep-pick-row"
+                          onClick={c.select}
                         >
                           <span
-                            className="ep-money-flag"
-                            style={{ backgroundImage: `url(${c.flagUrl})` }}
+                            className="ep-pick-row__flag"
+                            style={c.flagUrl ? { backgroundImage: `url(${c.flagUrl})` } : undefined}
                             aria-hidden
                           />
-                          <span className="ep-money-chip__code">{c.name}</span>
+                          <span className="ep-pick-row__text">
+                            <span className="ep-pick-row__title">{c.name}</span>
+                            <span className="ep-pick-row__meta">{c.railsLabel}</span>
+                          </span>
+                          <span className="ep-pick-row__code">{c.code}</span>
+                          <span className="ep-pick-row__chev" aria-hidden>
+                            ›
+                          </span>
                         </button>
-                      ))}
-                    </div>
+                      ))
+                    )}
                   </div>
+                </>
+              ) : null}
 
-                  {p.depositRailHasChoice ? (
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="deposit-rail-label">
-                        Funding rail
-                      </span>
-                      <div
-                        className="ep-money-tabs"
-                        role="group"
-                        aria-labelledby="deposit-rail-label"
-                      >
-                        {(p.depositRailChips || []).map((r: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={r.select}
-                            className="ep-money-rail"
-                            style={{ background: r.bg, color: r.color }}
-                          >
-                            {r.label}
-                          </button>
-                        ))}
+              {p.depositIsCountry && p.depositSub === "method" ? (
+                <>
+                  <button type="button" className="ep-money-back-link" onClick={p.depositBack}>
+                    ← {p.depositSelectedCountryName || "Countries"}
+                  </button>
+                  {(p.depositMethodGroups || []).map((group) => {
+                    const isBank = group.type === "bank";
+                    const names = group.providers.map((pr) => pr.name);
+                    const selectedIdx = group.providers.findIndex((pr) => pr.selected);
+                    const showBankSearch = isBank && names.length > BANK_SEARCH_THRESHOLD;
+                    const visible = isBank
+                      ? filterProvidersWithPinnedSelection(names, bankSearch, selectedIdx)
+                      : names.map((name, index) => ({ name, index, pinned: false }));
+                    return (
+                      <div key={group.railIdx} className="ep-pick-group">
+                        <div className="ep-pick-group__label">
+                          <span className="ep-pick-group__icon" aria-hidden>
+                            <MethodIcon type={group.type} />
+                          </span>
+                          <span>{group.label}</span>
+                        </div>
+                        {showBankSearch ? (
+                          <SearchField
+                            id="deposit-bank-search"
+                            value={bankSearch}
+                            onChange={setBankSearch}
+                            placeholder="Search banks"
+                            label="Search banks"
+                          />
+                        ) : null}
+                        <div
+                          className={showBankSearch ? "ep-pick-list ep-pick-list--banks" : "ep-pick-stack"}
+                          role="listbox"
+                          aria-label={group.label}
+                        >
+                          {visible.map((item) => {
+                            const provider = group.providers[item.index];
+                            if (!provider) return null;
+                            return (
+                              <button
+                                key={`${group.railIdx}-${item.index}`}
+                                type="button"
+                                role="option"
+                                aria-selected={provider.selected}
+                                className={`ep-pick-row${provider.selected ? " ep-pick-row--selected" : ""}`}
+                                onClick={provider.select}
+                              >
+                                <span className="ep-pick-row__text">
+                                  <span className="ep-pick-row__title">{provider.name}</span>
+                                  {item.pinned ? (
+                                    <span className="ep-pick-row__meta">Currently selected</span>
+                                  ) : null}
+                                </span>
+                                {provider.selected ? (
+                                  <span className="ep-pick-row__check" aria-hidden>
+                                    ✓
+                                  </span>
+                                ) : (
+                                  <span className="ep-pick-row__chev" aria-hidden>
+                                    ›
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
-
-                  {p.depositProviderHasChoice ? (
-                    <div className="ep-money-field">
-                      <span className="ep-money-label" id="deposit-provider-label">
-                        Choose provider
-                      </span>
-                      <div
-                        className="ep-money-scroll"
-                        role="group"
-                        aria-labelledby="deposit-provider-label"
-                      >
-                        {(p.depositProviderChips || []).map((pr: any, i: number) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={pr.select}
-                            className="ep-money-provider"
-                            style={{
-                              borderColor: pr.border,
-                              background: pr.bg,
-                              color: "var(--ink)",
-                            }}
-                          >
-                            {pr.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                    );
+                  })}
                 </>
               ) : null}
 
@@ -285,9 +403,11 @@ export default function DepositModal(p: DepositModalProps) {
                 </>
               ) : null}
 
+              {showContinue ? (
               <button type="button" className="ep-btn-primary" onClick={p.depositNext}>
                 Continue
               </button>
+              ) : null}
             </div>
           ) : null}
 
