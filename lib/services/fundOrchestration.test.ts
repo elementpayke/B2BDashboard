@@ -85,6 +85,20 @@ describe("planAfricanFundOrchestration", () => {
     expect(plan.blockers.some((b) => /KES/.test(b))).toBe(true);
   });
 
+  it("allows African OnRamp when the target is a USDT wallet", () => {
+    const plan = planAfricanFundOrchestration({
+      fiatCurrency: "USDT",
+      fiatAccountId: null,
+      entityId: "3",
+      usdcAccountId: "67",
+      usdcWalletAddress: "0xusdt",
+      treasuryWalletAddress: null,
+      convertNetworkId: null,
+    });
+    expect(plan.canRunAfricanOnRamp).toBe(true);
+    expect(plan.canAttemptAutoConvert).toBe(false);
+  });
+
   it("allows African OnRamp when the target is a USDC wallet", () => {
     const plan = planAfricanFundOrchestration({
       fiatCurrency: "USDC",

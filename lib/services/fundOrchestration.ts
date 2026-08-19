@@ -10,8 +10,9 @@
 /** Fiat deposit currencies the African auto-fund path may target. */
 export const AFRICAN_FUND_FIAT_CURRENCIES = ["EUR", "USD", "GBP"] as const;
 
-function isUsdcTarget(currency: string): boolean {
-  return currency.trim().toUpperCase() === "USDC";
+function isStablecoinOnRampTarget(currency: string): boolean {
+  const code = currency.trim().toUpperCase();
+  return code === "USDC" || code === "USDT";
 }
 
 function isAfricanFundFiat(fiat: string): boolean {
@@ -68,7 +69,7 @@ export function planAfricanFundOrchestration(
 ): FundOrchestrationPlan {
   const blockers: string[] = [];
   const fiat = input.fiatCurrency.trim().toUpperCase();
-  const usdcTarget = isUsdcTarget(fiat);
+  const usdcTarget = isStablecoinOnRampTarget(fiat);
   if (!usdcTarget && !isAfricanFundFiat(fiat)) {
     blockers.push(
       `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts or USDC (got ${fiat || "—"}).`,

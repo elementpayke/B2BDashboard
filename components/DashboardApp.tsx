@@ -85,7 +85,6 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import {
-  describeMissingTreasuryWallet,
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
 import {
@@ -175,6 +174,11 @@ import {
   africanFundDisabledReason,
   planAfricanFundOrchestration,
 } from "@/lib/services/fundOrchestration";
+import {
+  describeMissingOnRampDestination,
+  resolveAfricanFundOpenIntent,
+  resolveOnRampDestination,
+} from "@/lib/services/depositRampDestination";
 import DepositModal from "@/components/deposit/DepositModal";
 import ReceiveModal from "@/components/deposit/ReceiveModal";
 import VerificationScreen from "@/components/verification/VerificationScreen";
@@ -239,8 +243,10 @@ export default function DashboardApp(props: Props = {}) {
     selectedCardId: "" as string,
     /** "details" | "fund" — same coords modal, fund reframes copy for bank transfer. */
     acctDetailIntent: "details" as "details" | "fund",
-    /** When set, Deposit OnRamp is funding this fiat account (African auto path). */
+    /** When set, Deposit OnRamp is funding this fiat or stablecoin account (African path). */
     fundAfricanTargetCurrency: null as string | null,
+    /** Stablecoin account to credit; pins asset/network so quotes are not Polygon USDT. */
+    fundTargetAccountId: null as string | null,
     fundConvertStatus: "" as string,
     fundConvertError: "" as string,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
@@ -621,7 +627,8 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
+    depositAsset: "usdc", depositNetwork: "base",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
   const openModal = (name) => () => setState({
@@ -648,6 +655,7 @@ export default function DashboardApp(props: Props = {}) {
       screen: prev.moneyFlowReturn || "home",
       moneyFlowReturn: null,
       fundAfricanTargetCurrency: null,
+      fundTargetAccountId: null,
       fundConvertStatus: "",
       fundConvertError: "",
     }));
@@ -752,21 +760,22 @@ export default function DashboardApp(props: Props = {}) {
         // Prefer the selected chain's ready USDC account so the quote can
         // tag asset/network; fall back to summary or any ready USDC wallet
         // so a 500 from /dashboard/summary is not reported as unprovisioned.
-        const rampAccount = accountForNetwork(
-          stablecoinAccountsQuery.data ?? [],
-          state.sendChain,
-        );
-        const refundAddress =
-          (rampAccount && isReadyStatus(rampAccount.status)
-            ? rampAccount.walletAddress
-            : null) ||
-          resolveTreasuryWalletAddress({
-            summaryWallet: summaryQuery.data?.totals.wallet_address,
-            stablecoinAccounts: stablecoinAccountsQuery.data,
-          });
-        if (!refundAddress) {
-          throw new Error(describeMissingTreasuryWallet(summaryQuery.isError));
+        const rampDest = resolveOnRampDestination({
+          accounts: stablecoinAccountsQuery.data ?? [],
+          selectedAccountId: state.sendAccountId || undefined,
+          depositNetworkKey: state.sendChain,
+          depositAsset: state.sendAsset,
+          summaryWallet: summaryQuery.data?.totals.wallet_address,
+        });
+        if (!rampDest) {
+          throw new Error(
+            describeMissingOnRampDestination({
+              selectedAccountId: state.sendAccountId || undefined,
+              summaryFailed: summaryQuery.isError,
+            }),
+          );
         }
+        const refundAddress = rampDest.walletAddress;
         const country = COUNTRIES[state.sendCountryIdx];
         const rail = country.rails[state.sendRailIdx] || country.rails[0];
         // Real catalog providers for this corridor, when available, carry
@@ -813,10 +822,7 @@ export default function DashboardApp(props: Props = {}) {
           recipientName: state.sendRecipientName.trim(),
           amount: usdAmount,
           refundAddress,
-          asset:
-            rampAccount?.walletAddress === refundAddress
-              ? { currency: rampAccount.currency, network: rampAccount.network }
-              : undefined,
+          asset: rampDest.asset,
           // Mobile rails need E.164; the field's placeholder is local format.
           dialCode: country.dialCode,
           networkId,
@@ -909,28 +915,23 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
       try {
-        const rampAccount =
-          accountForNetwork(stablecoinAccountsQuery.data ?? [], state.depositNetwork) ||
-          (state.fundAfricanTargetCurrency
-            ? (stablecoinAccountsQuery.data ?? []).find(
-                (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
-              )
-            : undefined);
-        const walletAddress =
-          (rampAccount && isReadyStatus(rampAccount.status)
-            ? rampAccount.walletAddress
-            : null) ||
-          resolveTreasuryWalletAddress({
-            summaryWallet: summaryQuery.data?.totals.wallet_address,
-            stablecoinAccounts: stablecoinAccountsQuery.data,
-          });
-        if (!walletAddress) {
+        const rampDest = resolveOnRampDestination({
+          accounts: stablecoinAccountsQuery.data ?? [],
+          selectedAccountId: state.fundTargetAccountId,
+          depositNetworkKey: state.depositNetwork,
+          depositAsset: state.depositAsset,
+          fundAfricanTargetCurrency: state.fundAfricanTargetCurrency,
+          summaryWallet: summaryQuery.data?.totals.wallet_address,
+        });
+        if (!rampDest) {
           throw new Error(
-            state.fundAfricanTargetCurrency
-              ? "No USDC deposit wallet or treasury wallet is available to receive this OnRamp."
-              : describeMissingTreasuryWallet(summaryQuery.isError),
+            describeMissingOnRampDestination({
+              selectedAccountId: state.fundTargetAccountId,
+              summaryFailed: summaryQuery.isError,
+            }),
           );
         }
+        const walletAddress = rampDest.walletAddress;
         const country = COUNTRIES[state.depositCountryIdx];
         const rail = country.rails[state.depositRailIdx] || country.rails[0];
         const catalogProviders = onRampProvidersForRail(
@@ -962,10 +963,7 @@ export default function DashboardApp(props: Props = {}) {
           payerName,
           amount: state.depositAmount.trim(),
           walletAddress,
-          asset:
-            rampAccount?.walletAddress === walletAddress
-              ? { currency: rampAccount.currency, network: rampAccount.network }
-              : undefined,
+          asset: rampDest.asset,
           dialCode: country.dialCode,
           networkId,
         });
@@ -1003,6 +1001,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({
       modal: null,
       fundAfricanTargetCurrency: null,
+      fundTargetAccountId: null,
       fundConvertStatus: "",
       fundConvertError: "",
     });
@@ -1079,6 +1078,7 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertStatus: "",
       fundConvertError: "",
       fundAfricanTargetCurrency: null,
+      fundTargetAccountId: null,
     });
   const openCloseAccountChooser = () =>
     setState({ modal: "closeAccount" });
@@ -1088,12 +1088,28 @@ export default function DashboardApp(props: Props = {}) {
       state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
         ? state.selectedAcctKey.slice("fiat:".length)
         : "";
-    const currency =
-      state.selectedAcctKind === "fiat"
-        ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey)?.currency ||
-          currencyKey ||
-          "EUR"
-        : "EUR";
+    const selectedStablecoin =
+      state.selectedAcctKind === "stablecoin" && state.selectedAcctKey.startsWith("stablecoin:")
+        ? (stablecoinAccountsQuery.data ?? []).find(
+            (a) => a.id === state.selectedAcctKey.slice("stablecoin:".length),
+          ) ?? null
+        : null;
+    const intent = resolveAfricanFundOpenIntent({
+      selectedKind: state.selectedAcctKind,
+      selectedFiatCurrency:
+        state.selectedAcctKind === "fiat"
+          ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey)?.currency ||
+            currencyKey ||
+            "EUR"
+          : null,
+      selectedStablecoin: selectedStablecoin
+        ? {
+            id: selectedStablecoin.id,
+            currency: selectedStablecoin.currency,
+            network: selectedStablecoin.network,
+          }
+        : null,
+    });
     setState({
       ...moneyFlowReset,
       modal: "deposit",
@@ -1106,7 +1122,10 @@ export default function DashboardApp(props: Props = {}) {
       depositAccept: null,
       depositQuoteError: "",
       depositAcceptError: "",
-      fundAfricanTargetCurrency: String(currency).toUpperCase(),
+      fundAfricanTargetCurrency: intent.fundAfricanTargetCurrency,
+      fundTargetAccountId: intent.fundTargetAccountId,
+      depositNetwork: intent.depositNetwork,
+      depositAsset: intent.depositAsset,
       fundConvertStatus: "",
       fundConvertError: "",
     });
@@ -2388,14 +2407,19 @@ export default function DashboardApp(props: Props = {}) {
     ) ??
     stablecoinAccountsList.find((a) => isFundableStablecoinAccount(a)) ??
     null;
+  const fundingOnRampAccount =
+    (selectedStablecoinAccount && isFundableStablecoinAccount(selectedStablecoinAccount)
+      ? selectedStablecoinAccount
+      : null) ??
+    fundingUsdcAccount;
   const fundStablecoinRails = buildFundStablecoinRails(stablecoinAccountsList);
   const africanFundPlan = acctDetail
     ? planAfricanFundOrchestration({
         fiatCurrency: acctDetail.currency,
         fiatAccountId: null,
-        entityId: fundingUsdcAccount?.entityId ?? null,
-        usdcAccountId: fundingUsdcAccount?.id ?? null,
-        usdcWalletAddress: fundingUsdcAccount?.walletAddress ?? null,
+        entityId: fundingOnRampAccount?.entityId ?? null,
+        usdcAccountId: fundingOnRampAccount?.id ?? null,
+        usdcWalletAddress: fundingOnRampAccount?.walletAddress ?? null,
         treasuryWalletAddress: resolveTreasuryWalletAddress({
           summaryWallet: summaryQuery.data?.totals.wallet_address,
           stablecoinAccounts: stablecoinAccountsQuery.data,
@@ -2779,7 +2803,15 @@ export default function DashboardApp(props: Props = {}) {
     stablecoinAccounts: stablecoinAccountsQuery.data,
   });
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const depositAssetCode = s.depositAsset.toUpperCase();
+  const pinnedOnRampDest = resolveOnRampDestination({
+    accounts: stablecoinAccountsQuery.data ?? [],
+    selectedAccountId: s.fundTargetAccountId,
+    depositNetworkKey: s.depositNetwork,
+    depositAsset: s.depositAsset,
+    fundAfricanTargetCurrency: s.fundAfricanTargetCurrency,
+    summaryWallet: summaryQuery.data?.totals.wallet_address,
+  });
+  const depositAssetCode = (pinnedOnRampDest?.asset.currency || s.depositAsset).toUpperCase();
   const sendStep = s.sendStep;
   const sendStepDots = buildSendStepDots(s.sendStep, 3);
   const sendStepIs1 = s.sendStep === 1;
@@ -2844,11 +2876,18 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
-  const depositNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.depositNetwork).label;
-  const depositAddress = treasuryWalletAddress || DEPOSIT_ADDRESSES[s.depositNetwork] || "—";
+  const depositNetworkLabel =
+    DEPOSIT_NETWORKS.find((n) => n.key === s.depositNetwork)?.label ||
+    pinnedOnRampDest?.asset.network ||
+    formatNetworkLabel(s.depositNetwork);
+  const depositAddress =
+    pinnedOnRampDest?.walletAddress ||
+    treasuryWalletAddress ||
+    DEPOSIT_ADDRESSES[s.depositNetwork] ||
+    "—";
   const depositDestinationSummary = buildDepositDestinationSummary({
     depositGroup: s.depositGroup,
-    depositAsset: s.depositAsset,
+    depositAsset: (pinnedOnRampDest?.asset.currency || s.depositAsset).toLowerCase(),
     depositNetworkLabel,
     countryName: depositCountry.name,
     providerName: depositProvider,
@@ -3843,6 +3882,12 @@ export default function DashboardApp(props: Props = {}) {
 <FundChooserModal
   currency={acctDetail.currency}
   accountName={acctDetail.name}
+  isStablecoinAccount={Boolean(selectedStablecoinAccount)}
+  networkLabel={
+    selectedStablecoinAccount
+      ? formatNetworkLabel(selectedStablecoinAccount.network)
+      : undefined
+  }
   onCancel={closeModal}
   onContinue={(option: FundChooserOption) => {
     if (option === "bank") {
