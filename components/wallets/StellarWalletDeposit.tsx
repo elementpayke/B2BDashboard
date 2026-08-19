@@ -35,6 +35,7 @@ export default function StellarWalletDeposit({
 
   const parsed = parseStellarAmount(amount);
   const canSend = Boolean(address) && parsed.ok && !busy && !hash;
+  const amountHint = parsed.error;
 
   const connect = async () => {
     setError(null);
@@ -167,8 +168,8 @@ export default function StellarWalletDeposit({
         </div>
       ) : null}
 
-      {!parsed.ok && amount.trim() && address && !hash ? (
-        <p className="ep-fund-sc__hint">{parsed.error}</p>
+      {amountHint && amount.trim() && address && !hash ? (
+        <p className="ep-fund-sc__hint">{amountHint}</p>
       ) : null}
     </div>
   );

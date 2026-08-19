@@ -24,6 +24,6 @@ export function buildDepositQrValue(opts: {
     params.set("network_passphrase", config.networkPassphrase);
   }
   const parsed = parseStellarAmount(opts.amount ?? "");
-  if (parsed.ok) params.set("amount", parsed.amount);
+  if (parsed.ok && parsed.amount) params.set("amount", parsed.amount);
   return `web+stellar:pay?${params.toString()}`;
 }
