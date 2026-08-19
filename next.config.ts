@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@creit.tech/stellar-wallets-kit"],
   // ngrok (and similar tunnels) load the app from a non-localhost Host.
   // Next 16 blocks cross-origin access to /_next/* in development unless
   // the tunnel hostname is listed here — without this, login can look broken
