@@ -4889,6 +4889,35 @@ body {
   cursor: pointer;
 }
 
+.ep-fund-sc__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 12px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  min-height: 176px;
+}
+
+.ep-fund-sc__qr-img {
+  display: block;
+  width: 176px;
+  height: 176px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ep-fund-sc__qr-caption {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
 .ep-fund-sc__footer {
   display: flex;
   justify-content: flex-end;
@@ -4970,6 +4999,50 @@ body {
 .ep-fund-sc__btn-primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.ep-fund-sc__wallet {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.ep-fund-sc__wallet .ep-fund-sc__btn-primary {
+  width: 100%;
+}
+
+.ep-fund-sc__wallet-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-fund-sc__wallet-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ep-fund-sc__wallet-addr {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-fund-sc__wallet-ok {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--success, #16a34a) 14%, var(--surface2));
+  color: var(--success, #16a34a);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .ep-fund-orch-note {

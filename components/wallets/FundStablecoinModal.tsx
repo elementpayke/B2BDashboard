@@ -1,6 +1,13 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import type { FundStablecoinRail } from "@/lib/services/entities";
+import { isStellarUsdcRail } from "@/lib/stellar/network";
+import DepositAddressQr from "@/components/wallets/DepositAddressQr";
+
+const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
+  ssr: false,
+});
 
 export type FundStablecoinModalProps = {
   /** Fiat account being funded (context label). */
@@ -194,25 +201,42 @@ export default function FundStablecoinModal({
       ) : null}
 
       {selected.walletAddress ? (
-        <div className="ep-fund-sc__url-row">
-          <code className="ep-fund-sc__url ep-mono" title={selected.walletAddress}>
-            {selected.walletAddress}
-          </code>
-          <button
-            type="button"
-            className="ep-fund-sc__copy"
-            onClick={() => copyText(selected.walletAddress, "address")}
-            aria-label={copied ? "Address copied" : "Copy deposit address"}
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
+        <>
+          <div className="ep-fund-sc__url-row">
+            <code className="ep-fund-sc__url ep-mono" title={selected.walletAddress}>
+              {selected.walletAddress}
+            </code>
+            <button
+              type="button"
+              className="ep-fund-sc__copy"
+              onClick={() => copyText(selected.walletAddress, "address")}
+              aria-label={copied ? "Address copied" : "Copy deposit address"}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <DepositAddressQr
+            address={selected.walletAddress}
+            currency={selected.currency}
+            network={selected.network}
+            networkLabel={selected.networkLabel}
+            amount={amount}
+          />
+        </>
       ) : null}
 
       {copyError ? (
         <div className="ep-fund-sc__warn" role="alert">
           {copyError}
         </div>
+      ) : null}
+
+      {isStellarUsdcRail(selected) ? (
+        <StellarWalletDeposit
+          destination={selected.walletAddress}
+          network={selected.network}
+          suggestedAmount={amount}
+        />
       ) : null}
 
       <p className="ep-fund-sc__disclaimer">{selected.chainDisclaimer}</p>
