@@ -39,8 +39,8 @@ export async function sendStellarUsdc(opts: {
   signXdr: (xdr: string) => Promise<string>;
 }): Promise<{ hash: string }> {
   const parsed = parseStellarAmount(opts.amountRaw);
-  if (!parsed.ok) {
-    throw new Error(parsed.error);
+  if (!parsed.ok || !parsed.amount) {
+    throw new Error(parsed.error || "Enter an amount to send from your wallet.");
   }
   if (opts.fromAddress === opts.toAddress) {
     throw new Error("Connect the wallet that holds USDC, not the ElementPay deposit address.");

@@ -3,9 +3,9 @@ import { parseStellarAmount } from "./amount";
 
 describe("parseStellarAmount", () => {
   it("normalizes whole amounts and trailing dots", () => {
-    expect(parseStellarAmount("100")).toEqual({ ok: true, amount: "100" });
-    expect(parseStellarAmount("100.")).toEqual({ ok: true, amount: "100" });
-    expect(parseStellarAmount("01.2500")).toEqual({ ok: true, amount: "1.25" });
+    expect(parseStellarAmount("100")).toEqual({ ok: true, amount: "100", error: null });
+    expect(parseStellarAmount("100.")).toEqual({ ok: true, amount: "100", error: null });
+    expect(parseStellarAmount("01.2500")).toEqual({ ok: true, amount: "1.25", error: null });
   });
 
   it("rejects empty, zero, and too many decimals", () => {
