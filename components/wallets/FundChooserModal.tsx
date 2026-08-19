@@ -89,12 +89,12 @@ export default function FundChooserModal({
         <strong>{accountName}</strong> · {currency}
       </p>
 
-      <div className="ep-money-stack">
+      <div className="ep-pick-stack">
         {options.map((m) => (
           <button
             key={m.key}
             type="button"
-            className="ep-send-method"
+            className="ep-pick-row"
             disabled={m.disabled}
             title={m.disabled ? m.disabledReason : undefined}
             onClick={() => {
@@ -102,7 +102,7 @@ export default function FundChooserModal({
               onContinue(m.key);
             }}
           >
-            <span className="ep-send-method__icon" aria-hidden>
+            <span className="ep-pick-group__icon" aria-hidden>
               <svg
                 width="18"
                 height="18"
@@ -116,19 +116,19 @@ export default function FundChooserModal({
                 {METHOD_ICONS[m.key]}
               </svg>
             </span>
-            <span className="ep-send-method__text">
-              <span className="ep-send-method__label">
+            <span className="ep-pick-row__text">
+              <span className="ep-pick-row__title">
                 {m.label}
                 {m.key === "african" ? (
                   <span className="ep-fund-chooser__badge">Best effort</span>
                 ) : null}
               </span>
-              <span className="ep-send-method__desc">
+              <span className="ep-pick-row__meta">
                 {m.disabled && m.disabledReason ? m.disabledReason : m.desc}
               </span>
             </span>
             {!m.disabled ? (
-              <span className="ep-send-method__chevron" aria-hidden>
+              <span className="ep-pick-row__chev" aria-hidden>
                 ›
               </span>
             ) : null}

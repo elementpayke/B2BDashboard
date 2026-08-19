@@ -104,7 +104,7 @@ import {
   sendRailBlockedByMissingNetworkId,
   sendRailHasChoice as railHasChoice,
 } from "@/lib/hooks/sendFlowHelpers";
-import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hooks/depositFlowHelpers";
+import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
@@ -215,7 +215,7 @@ export default function DashboardApp(props: Props = {}) {
     sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
-    depositStep: 1, depositGroup: "country", depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
@@ -425,6 +425,7 @@ export default function DashboardApp(props: Props = {}) {
   useEffect(() => {
     const country = COUNTRIES[state.depositCountryIdx];
     if (!country) return;
+    if (state.depositRailIdx < 0 || !state.depositProviderName) return;
     const rail = country.rails[state.depositRailIdx] || country.rails[0];
     if (!rail) return;
     const catalogProviders = onRampProvidersForRail(
@@ -438,11 +439,12 @@ export default function DashboardApp(props: Props = {}) {
         ? catalogProviders.map((p) => p.name)
         : rail.options;
     if (!options.length) return;
+    const resolvedIdx = indexOfProviderName(options, state.depositProviderName);
     setState((s: any) => {
-      if (s.depositProviderIdx < options.length) return {};
-      return { depositProviderIdx: options.length - 1 };
+      if (s.depositProviderIdx === resolvedIdx) return {};
+      return { depositProviderIdx: resolvedIdx };
     });
-  }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, setState]);
+  }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, state.depositProviderName, setState]);
 
   // Listing/creating deposit accounts requires KYB approval — check eligibility
   // first so an unverified business sees a clear gate instead of a raw 400
@@ -613,7 +615,7 @@ export default function DashboardApp(props: Props = {}) {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
-    bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositGroup: "country",
+    bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
@@ -911,6 +913,12 @@ export default function DashboardApp(props: Props = {}) {
       setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1) }));
       return;
     }
+    if (
+      state.depositStep === 1 &&
+      (state.depositSub !== "method" || state.depositRailIdx < 0 || !state.depositProviderName)
+    ) {
+      return;
+    }
     if (state.depositStep === 2) {
       if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
@@ -944,11 +952,10 @@ export default function DashboardApp(props: Props = {}) {
           catalogProviders && catalogProviders.length > 0
             ? catalogProviders.map((p) => p.name)
             : rail.options;
-        const providerIdx =
-          providerOptions.length === 0
-            ? 0
-            : Math.min(state.depositProviderIdx, providerOptions.length - 1);
-        const providerName = providerOptions[providerIdx] || providerOptions[0];
+        const providerName = resolveQuotedProviderName(
+          providerOptions,
+          state.depositProviderName,
+        );
         const networkId = networkIdForProvider(catalogProviders, providerName);
         const payerName =
           meQuery.data?.business?.legal_name ||
@@ -988,11 +995,20 @@ export default function DashboardApp(props: Props = {}) {
     setState((s: any) => ({ depositStep: Math.min(3, s.depositStep + 1) }));
   };
   const depositBack = () =>
-    setState((s: any) => ({
-      depositStep: Math.max(1, s.depositStep - 1),
-      depositQuoteError: "",
-      depositAcceptError: "",
-    }));
+    setState((s: any) => {
+      if (s.depositStep === 1 && s.depositGroup === "country" && s.depositSub === "method") {
+        return {
+          depositSub: "country",
+          depositQuoteError: "",
+          depositAcceptError: "",
+        };
+      }
+      return {
+        depositStep: Math.max(1, s.depositStep - 1),
+        depositQuoteError: "",
+        depositAcceptError: "",
+      };
+    });
   const closeModal = () => {
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
@@ -1412,10 +1428,10 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
 
-  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositCountryIdx: 0, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false, depositStep: 1, depositQuote: null, depositQuoteError: "", depositAccept: null, depositAcceptError: "", depositDone: false });
-  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositRailIdx: 0, depositProviderIdx: 0, depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
-  const selectDepositRail = (i) => () => setState({ depositRailIdx: i, depositProviderIdx: 0, depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
-  const selectDepositProvider = (i) => () => setState({ depositProviderIdx: i, depositQuote: null, depositQuoteError: "" });
+  const setDepositGroup = (g) => () => setState({ depositGroup: g, depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPromptSent: false, depositStep: 1, depositQuote: null, depositQuoteError: "", depositAccept: null, depositAcceptError: "", depositDone: false });
+  const selectDepositCountry = (i) => () => setState({ depositCountryIdx: i, depositSub: "method", depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPromptSent: false, depositQuote: null, depositQuoteError: "" });
+  const selectDepositMethod = (railIdx: number, providerIdx: number, providerName: string) => () =>
+    setState({ depositRailIdx: railIdx, depositProviderIdx: providerIdx, depositProviderName: providerName, depositQuote: null, depositQuoteError: "" });
   const setDepositPhone = (e) => setState({ depositPhone: e.target.value });
   const setDepositAmount = (e) => setState({ depositAmount: e.target.value });
   const submitDeposit = async () => {
@@ -2027,10 +2043,6 @@ export default function DashboardApp(props: Props = {}) {
       if (s.sendMethod === "bank") return c._rails.some((r) => r.type === "bank");
       return true;
     });
-    const allCountryChips = (selIdx, selectFn) => COUNTRIES.map((c, i) => ({
-      flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectFn(i),
-      bg: i === selIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === selIdx ? "var(--indigo)" : "transparent",
-    }));
     const sendCountry = COUNTRIES[s.sendCountryIdx];
     const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), selected: i === s.sendRailIdx, bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
     const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
@@ -2062,9 +2074,8 @@ export default function DashboardApp(props: Props = {}) {
       border: i === sendProviderIdx ? "var(--indigo)" : "transparent",
     }));
 
-    const depositCountryChips = allCountryChips(s.depositCountryIdx, selectDepositCountry).map(c => ({ ...c, selectDeposit: c.select, depositBg: c.bg, depositBorder: c.border }));
-    const depositCountry = COUNTRIES[s.depositCountryIdx];
-    const depositRailChips = depositCountry.rails.map((r, i) => ({ label: r.label, select: selectDepositRail(i), bg: i === s.depositRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.depositRailIdx ? "var(--bg)" : "var(--ink)" }));
+    const depositCountryPicked = s.depositCountryIdx >= 0 && Boolean(COUNTRIES[s.depositCountryIdx]);
+    const depositCountry = COUNTRIES[s.depositCountryIdx] || COUNTRIES[0];
     const depositRail = depositCountry.rails[s.depositRailIdx] || depositCountry.rails[0];
     const depositCatalogProviders = onRampProvidersForRail(
       sendCatalogQuery.data,
@@ -2076,17 +2087,59 @@ export default function DashboardApp(props: Props = {}) {
       depositCatalogProviders && depositCatalogProviders.length > 0
         ? depositCatalogProviders.map((p) => p.name)
         : depositRail.options;
-    const depositProviderIdx =
-      depositProviderOptions.length === 0
-        ? 0
-        : Math.min(s.depositProviderIdx, depositProviderOptions.length - 1);
-    const depositProvider = depositProviderOptions[depositProviderIdx] || depositProviderOptions[0];
-    const depositProviderChips = depositProviderOptions.map((name, i) => ({
-      name,
-      select: selectDepositProvider(i),
-      bg: i === depositProviderIdx ? "var(--indigo-tint)" : "var(--surface2)",
-      border: i === depositProviderIdx ? "var(--indigo)" : "transparent",
-    }));
+    const depositProvider = resolveQuotedProviderName(
+      depositProviderOptions,
+      s.depositProviderName,
+    );
+    const depositProviderIdx = indexOfProviderName(depositProviderOptions, s.depositProviderName);
+    const depositCountryRows = COUNTRIES.map((c, i) => {
+      const extraNames = c.rails.flatMap((rail) => {
+        const catalog = onRampProvidersForRail(
+          sendCatalogQuery.data,
+          c.iso,
+          rail.type,
+          c.code,
+        );
+        return catalog ? catalog.map((p) => p.name) : [];
+      });
+      return {
+        idx: i,
+        flagUrl: flagUrl(c.iso),
+        name: c.name,
+        code: c.code,
+        railsLabel: countryRailsLabel(c),
+        searchText: countrySearchHaystack(c, extraNames),
+        select: selectDepositCountry(i),
+      };
+    });
+    const depositMethodGroups = depositCountryPicked
+      ? depositCountry.rails.map((rail, railIdx) => {
+          const catalogProviders = onRampProvidersForRail(
+            sendCatalogQuery.data,
+            depositCountry.iso,
+            rail.type,
+            depositCountry.code,
+          );
+          const options = ensureSelectedProvider(
+            catalogProviders && catalogProviders.length > 0
+              ? catalogProviders.map((p) => p.name)
+              : rail.options,
+            s.depositRailIdx === railIdx ? s.depositProviderName : "",
+          );
+          return {
+            railIdx,
+            type: rail.type,
+            label: rail.label,
+            providers: options.map((name, providerIdx) => ({
+              name,
+              selected:
+                s.depositRailIdx === railIdx &&
+                indexOfProviderName([name], s.depositProviderName) === 0,
+              select: selectDepositMethod(railIdx, providerIdx, name),
+            })),
+          };
+        })
+      : [];
 
     const bulkCountryChips = COUNTRIES.slice(0, 10).map((c, i) => ({
       flagUrl: flagUrl(c.iso), code: c.code, toggleBulk: toggleBulkCountry(i),
@@ -2774,12 +2827,12 @@ export default function DashboardApp(props: Props = {}) {
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
-  const depositRailHasChoice = depositCountry.rails.length > 1;
+  const depositSub = s.depositSub === "method" ? "method" : "country";
+  const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = depositRail.type === "mobile";
   const depositIsBankRail = depositRail.type === "bank";
   const depositOperator = depositProvider;
   const depositMobileCode = depositCountry.code;
-  const depositProviderHasChoice = depositProviderOptions.length > 1;
   const depositPhone = s.depositPhone;
   const depositAmount = s.depositAmount;
   const depositPromptSent = s.depositPromptSent;
@@ -3717,11 +3770,11 @@ export default function DashboardApp(props: Props = {}) {
   depositMethods={depositMethods}
   depositIsCountry={depositIsCountry}
   depositIsCrypto={depositIsCrypto}
-  depositCountryChips={depositCountryChips}
-  depositRailHasChoice={depositRailHasChoice}
-  depositRailChips={depositRailChips}
-  depositProviderHasChoice={depositProviderHasChoice}
-  depositProviderChips={depositProviderChips}
+  depositSub={depositSub}
+  depositCountryRows={depositCountryRows}
+  depositMethodGroups={depositMethodGroups}
+  depositSelectedCountryName={depositCountryPicked ? depositCountry.name : ""}
+  depositMethodChosen={depositMethodChosen}
   depositAssets={depositAssets}
   depositNetworks={depositNetworks}
   depositNext={depositNext}

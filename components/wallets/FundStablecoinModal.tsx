@@ -85,11 +85,18 @@ export default function FundStablecoinModal({
                 data-selected={selected?.id === rail.id ? "true" : "false"}
                 onClick={() => setSelectedId(rail.id)}
               >
-                <span className="ep-fund-sc__rail-asset">{rail.currency}</span>
-                <span className="ep-fund-sc__rail-net">{rail.networkLabel}</span>
+                <span className="ep-pick-row__text">
+                  <span className="ep-pick-row__title">{rail.currency}</span>
+                  <span className="ep-pick-row__meta">{rail.networkLabel}</span>
+                </span>
                 {rail.checkoutUrl ? (
                   <span className="ep-fund-sc__rail-tag">Checkout</span>
                 ) : null}
+                {selected?.id === rail.id ? (
+                  <span className="ep-pick-row__check" aria-hidden>✓</span>
+                ) : (
+                  <span className="ep-pick-row__chev" aria-hidden>›</span>
+                )}
               </button>
             ))}
           </div>
