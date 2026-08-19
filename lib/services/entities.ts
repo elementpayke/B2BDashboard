@@ -12,7 +12,7 @@ export type ProviderEntity = {
 /**
  * Partner account shape is forward-compatible — ids and fields arrive under
  * several spellings depending on the aggregator version. Normalize to what
- * Phase 4 sends need: a ready USDC stablecoin account on Base or Polygon.
+ * Phase 4 sends need: a ready USDC stablecoin account on Base, Polygon, or Stellar.
  */
 export type FinancialAccount = {
   id: string;
@@ -36,7 +36,7 @@ export type FinancialAccount = {
 };
 
 const READY = new Set(["active", "ready", "open", "opened"]);
-const SEND_NETWORKS = new Set(["base", "polygon"]);
+const SEND_PARTNER_NETWORKS = new Set(["Base", "Polygon", "Stellar"]);
 
 /** Body for `POST /v1/entities/{id}/accounts` (`AccountOpenIn`). */
 export type AccountOpenPayload = {
@@ -289,11 +289,12 @@ export function isFundableStablecoinAccount(account: FinancialAccount): boolean 
   );
 }
 
-/** Phase 4 sendable: ready USDC on Base/Polygon only. */
+/** Phase 4 sendable: ready USDC on Base, Polygon, or Stellar. */
 export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
   if (!isListedStablecoinAccount(account)) return false;
   if (account.currency !== "USDC") return false;
-  if (!SEND_NETWORKS.has(normalizeNetworkKey(account.network))) return false;
+  const partner = toPartnerNetwork(account.network);
+  if (!partner || !SEND_PARTNER_NETWORKS.has(partner)) return false;
   return isReadyStatus(account.status);
 }
 

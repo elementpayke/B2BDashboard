@@ -47,6 +47,83 @@ function networksEqual(accountNetwork: string, networkKey: string): boolean {
   return Boolean(want) && got === want;
 }
 
+function isStellarNetworkKey(networkKey: string): boolean {
+  return toPartnerNetwork(networkKey) === "Stellar";
+}
+
+/** Stellar USDC is live; Stellar USDT is not offered. Ethereum/Solana stay listed for receive/top-up. */
+export function stablecoinNetworksForAsset<T extends { key: string }>(
+  networks: readonly T[],
+  asset: string | null | undefined,
+): T[] {
+  const currency = assetCurrency(asset);
+  if (currency === "USDT") {
+    return networks.filter((n) => !isStellarNetworkKey(n.key));
+  }
+  return [...networks];
+}
+
+export type StablecoinPickerDestination = {
+  address: string | null;
+  emptyMessage: string;
+};
+
+/**
+ * Address shown on Receive / Top-up stablecoin pickers.
+ * Stellar always uses a ready entity USDC wallet (G…) — never the EVM treasury.
+ */
+export function resolveStablecoinPickerDestination(input: {
+  accounts: FinancialAccount[];
+  asset: string | null | undefined;
+  networkKey: string;
+  treasuryWallet?: string | null;
+}): StablecoinPickerDestination {
+  const currency = assetCurrency(input.asset);
+  const stellar = isStellarNetworkKey(input.networkKey);
+
+  if (stellar && currency !== "USDC") {
+    return {
+      address: null,
+      emptyMessage: "USDT is not available on Stellar. Choose USDC or another network.",
+    };
+  }
+
+  const match = (input.accounts ?? []).find(
+    (a) =>
+      isFundableStablecoinAccount(a) &&
+      a.currency.trim().toUpperCase() === currency &&
+      networksEqual(a.network, input.networkKey),
+  );
+  const matchedAddress = clean(match?.walletAddress);
+
+  if (stellar) {
+    if (!matchedAddress) {
+      return {
+        address: null,
+        emptyMessage:
+          "No ready Stellar USDC wallet. Open a Stellar USDC account and wait until it is active with a deposit address.",
+      };
+    }
+    return { address: matchedAddress, emptyMessage: "" };
+  }
+
+  if (matchedAddress) {
+    return { address: matchedAddress, emptyMessage: "" };
+  }
+
+  const treasury = clean(input.treasuryWallet);
+  // Summary treasury is the EVM deposit address — never treat a G… key as Base/Polygon.
+  if (treasury && !treasury.startsWith("G")) {
+    return { address: treasury, emptyMessage: "" };
+  }
+
+  return {
+    address: null,
+    emptyMessage:
+      "Receive address unavailable. Open a ready wallet on this network or try again later.",
+  };
+}
+
 function destinationFrom(account: FinancialAccount): OnRampDestination | null {
   const walletAddress = clean(account.walletAddress);
   if (!walletAddress) return null;
@@ -93,6 +170,11 @@ export function resolveOnRampDestination(
   );
   const exact = onNetwork.find((a) => a.currency.trim().toUpperCase() === wantCurrency);
   if (exact) return destinationFrom(exact);
+
+  // Stellar has no shared EVM treasury — do not fall through to Base/Polygon USDC.
+  if (isStellarNetworkKey(input.depositNetworkKey)) {
+    return null;
+  }
 
   if (isAfricanFiat(input.fundAfricanTargetCurrency)) {
     const usdc =

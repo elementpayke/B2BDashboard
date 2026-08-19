@@ -26,6 +26,7 @@ describe("formatNetworkLabel", () => {
   it("canonicalizes known rails and keeps API labels otherwise", () => {
     expect(formatNetworkLabel("base")).toBe("Base");
     expect(formatNetworkLabel("POLYGON")).toBe("Polygon");
+    expect(formatNetworkLabel("stellar")).toBe("Stellar");
     expect(formatNetworkLabel("Ethereum")).toBe("Ethereum");
     expect(formatNetworkLabel("")).toBe("—");
   });
@@ -43,8 +44,10 @@ describe("stablecoin account predicates", () => {
     expect(isFundableStablecoinAccount(acct({ walletAddress: null }))).toBe(false);
   });
 
-  it("keeps Phase 4 sendable limited to USDC Base/Polygon", () => {
+  it("keeps Phase 4 sendable limited to USDC Base/Polygon/Stellar", () => {
     expect(isSendableStablecoinAccount(acct({ network: "Base" }))).toBe(true);
+    expect(isSendableStablecoinAccount(acct({ network: "Stellar" }))).toBe(true);
+    expect(isSendableStablecoinAccount(acct({ network: "stellar_testnet" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Base" }))).toBe(false);
     expect(isSendableStablecoinAccount(acct({ network: "Ethereum" }))).toBe(false);
   });

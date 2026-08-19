@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   flagUrl, COUNTRIES, CURRENCIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
-  DEPOSIT_NETWORKS, DEPOSIT_ADDRESSES, ACCOUNTS, ROLES, TEAM_MEMBERS,
+  DEPOSIT_NETWORKS, ACCOUNTS, ROLES, TEAM_MEMBERS,
   CORRIDORS, BULK_ROWS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
@@ -49,6 +49,9 @@ import {
 import {
   accountSendsApi,
   buildSendPreviewPayload,
+  explainAccountSendError,
+  sendCryptoRecipientPlaceholder,
+  SEND_STABLECOIN_NETWORKS,
 } from "@/lib/services/accountSends";
 import {
   createSavedRecipient,
@@ -108,11 +111,19 @@ import { buildDepositDestinationSummary, buildDepositStepDots } from "@/lib/hook
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
+  DEFAULT_DISPLAY_CURRENCY,
+  DISPLAY_CURRENCY_OPTIONS,
   formatAccountBalance,
-  formatHomeTotalBalance,
   formatSummedBalance,
+  formatHeroTotalLabel,
+  formatUsdEquivalentSub,
+  isDisplayCurrency,
   parseBalanceNumber,
   pendingBalanceFromAccount,
+  readStoredDisplayCurrency,
+  totalBalanceInDisplayCurrency,
+  writeStoredDisplayCurrency,
+  type DisplayCurrency,
 } from "@/lib/services/balances";
 import {
   conversionsApi,
@@ -135,16 +146,11 @@ import {
   type UsdFundingAccount,
 } from "@/lib/services/cards";
 
-/** Phase 4 account-sends support Base + Polygon USDC only. */
-const SEND_STABLECOIN_NETWORKS = DEPOSIT_NETWORKS.filter(
-  (n) => n.key === "base" || n.key === "polygon",
-);
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
-import RatesMarquee from "@/components/home/RatesMarquee";
 import SendModal from "@/components/send/SendModal";
 import MbokaMark from "@/components/brand/MbokaMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
@@ -178,6 +184,8 @@ import {
   describeMissingOnRampDestination,
   resolveAfricanFundOpenIntent,
   resolveOnRampDestination,
+  resolveStablecoinPickerDestination,
+  stablecoinNetworksForAsset,
 } from "@/lib/services/depositRampDestination";
 import DepositModal from "@/components/deposit/DepositModal";
 import ReceiveModal from "@/components/deposit/ReceiveModal";
@@ -269,6 +277,7 @@ export default function DashboardApp(props: Props = {}) {
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
+    displayCurrency: DEFAULT_DISPLAY_CURRENCY as DisplayCurrency,
   }));
   const setState = useCallback((update: any) => {
     setStateRaw((prev: any) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
@@ -284,6 +293,10 @@ export default function DashboardApp(props: Props = {}) {
       });
     }, 1000);
     return () => clearInterval(timer);
+  }, [setState]);
+
+  useEffect(() => {
+    setState({ displayCurrency: readStoredDisplayCurrency() });
   }, [setState]);
 
   // Deep-link query params (screen/modal/theme) — applied after mount so SSR
@@ -718,7 +731,7 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteError: sendableAccountsQuery.isLoading
             ? "Loading your USDC accounts…"
-            : `No ready USDC account on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label || state.sendChain}. Open a Base or Polygon USDC account first.`,
+            : `No ready USDC account on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label || state.sendChain}. Open a Base, Polygon, or Stellar USDC account first.`,
         });
         return;
       }
@@ -873,7 +886,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuoteLoading: false,
           sendQuoteError:
             err instanceof ApiRequestError || err instanceof Error
-              ? friendlySendQuoteError(err.message)
+              ? friendlySendQuoteError(explainAccountSendError(err.message, state.sendChain))
               : "Couldn't preview this send. Try again.",
         });
       }
@@ -1182,7 +1195,7 @@ export default function DashboardApp(props: Props = {}) {
       const account = (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
       if (account) {
         setState({
-          sendChain: account.network.trim().toLowerCase(),
+          sendChain: toUiNetworkKey(account.network),
           sendAccountId: account.id,
         });
       }
@@ -1470,12 +1483,23 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setSendAsset = (k) => () => setState({ sendAsset: k, sendPreview: null, sendQuoteError: "" });
   const setSendChain = (k) => () => setState({ sendChain: k, sendPreview: null, sendAccountId: "", sendQuoteError: "" });
-  const setDepositAsset = (k) => () => setState({ depositAsset: k });
+  const setDepositAsset = (k) => () =>
+    setState({
+      depositAsset: k,
+      depositNetwork:
+        k === "usdt" && state.depositNetwork === "stellar" ? "base" : state.depositNetwork,
+    });
   const setDepositNetwork = (k) => () => setState({ depositNetwork: k });
 
   const setReceiveGroup = (g) => () => setState({ receiveGroup: g, copiedKey: "" });
   const selectReceiveAcct = (i) => () => setState({ receiveAcctIdx: i, copiedKey: "" });
-  const setReceiveAsset = (k) => () => setState({ receiveAsset: k, copiedKey: "" });
+  const setReceiveAsset = (k) => () =>
+    setState({
+      receiveAsset: k,
+      receiveNetwork:
+        k === "usdt" && state.receiveNetwork === "stellar" ? "base" : state.receiveNetwork,
+      copiedKey: "",
+    });
   const setReceiveNetwork = (k) => () => setState({ receiveNetwork: k, copiedKey: "" });
   const copyReceiveField = (key, val) => async () => {
     try {
@@ -1530,7 +1554,7 @@ export default function DashboardApp(props: Props = {}) {
     if (twoHopHop1 && !bridgeId) {
       setState({
         convertError:
-          "Open a ready USDC account (Base or Polygon) first — fiat↔fiat converts via USDC.",
+          "Open a ready USDC account first — fiat↔fiat converts via USDC.",
       });
       return;
     }
@@ -1952,6 +1976,12 @@ export default function DashboardApp(props: Props = {}) {
   const uploadTierDoc = () => {};
   const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
+  const setDisplayCurrency = (currency: string) => {
+    const code = currency.trim().toUpperCase();
+    if (!isDisplayCurrency(code)) return;
+    writeStoredDisplayCurrency(code);
+    setState({ displayCurrency: code });
+  };
   /** Send opens on a method chooser. Bank/mobile preselect that rail, then the
    *  flow runs the design's three steps: destination → recipient → review. */
   const chooseSendMethod = (m) => () => {
@@ -2282,16 +2312,43 @@ export default function DashboardApp(props: Props = {}) {
     summaryQuery.data?.fx_rates,
     exchangeRatesQuery.data,
   );
-  const homeAvailableLabel = formatHomeTotalBalance(homeAvailableLedgerItems, {
+  const displayCurrency: DisplayCurrency = isDisplayCurrency(s.displayCurrency)
+    ? s.displayCurrency
+    : DEFAULT_DISPLAY_CURRENCY;
+  const homeDisplayTotal = totalBalanceInDisplayCurrency(
+    homeAvailableLedgerItems,
+    displayCurrency,
+    homeFxRates,
+    { maximumFractionDigits: 2 },
+  );
+  const homeUsdTotal = totalBalanceInDisplayCurrency(
+    homeAvailableLedgerItems,
+    "USD",
+    homeFxRates,
+    { maximumFractionDigits: 2 },
+  );
+  const homeHeroLabel = formatHeroTotalLabel(homeDisplayTotal.total, displayCurrency, {
     maximumFractionDigits: 2,
   });
+  const homeUsdSub =
+    displayCurrency === "USD"
+      ? null
+      : formatUsdEquivalentSub(homeUsdTotal.total);
+  const homePendingUsd = totalBalanceInDisplayCurrency(
+    pendingLedgerItems,
+    "USD",
+    homeFxRates,
+    { maximumFractionDigits: 0 },
+  );
   const homePendingAmountComplete =
     homeAvailableLedgerItems.length > 0 &&
     pendingLedgerItems.length === homeAvailableLedgerItems.length;
-  const homePendingLabel = homePendingAmountComplete
-    ? formatHomeTotalBalance(pendingLedgerItems, { maximumFractionDigits: 2 })
+  const awaitingSettlementLabel = homePendingAmountComplete
+    ? (homePendingUsd.total == null
+        ? "—"
+        : `$${homePendingUsd.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`)
     : "—";
-  // Fiat IBAN chips + partner USDC Base/Polygon chips.
+  // Fiat IBAN chips + partner stablecoin account chips.
   const fiatBalanceRows = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     return { flagUrl: view.iso ? flagUrl(view.iso) : null, code: view.currency, balance: view.balance };
@@ -2315,10 +2372,10 @@ export default function DashboardApp(props: Props = {}) {
     : ((meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending");
   const kybApproved = isKybApproved(kybStatus);
   const quickActionTiles = [
-        { label: "Send money", icon: "↗", desc: "Pay a supplier by bank, mobile money, or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Receive", icon: "↙", desc: "Share account details and collect a payment.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
-        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const totals = summaryQuery.data?.totals;
   const liveRates = liveRateRowsFromSummary(homeFxRates);
@@ -2330,13 +2387,15 @@ export default function DashboardApp(props: Props = {}) {
       : "—";
   };
   const homeStats = [
-        { label: "Available", value: homeAvailableLabel, icon: "✓", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
-        { label: "Pending", value: homePendingLabel, icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface3)", iconColor: "var(--muted)" },
+        { label: "Awaiting settlement", value: awaitingSettlementLabel, icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
       ];
-  const homeFlowStats = [
-        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑" },
-        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓" },
-      ];
+  const homeBalanceSub = !homeCurrencyChips.length
+    ? "Balance not yet available"
+    : homeDisplayTotal.excluded.length
+      ? `Across all wallets and accounts · excludes ${homeDisplayTotal.excluded.join(", ")}`
+      : "Across all wallets and accounts";
   const homeRecent = decoratedAll.slice(0, 4);
   const mainWalletBalance =
     usdcTotalLabel === "—" ? "—" : `${usdcTotalLabel} USDC`;
@@ -2726,12 +2785,12 @@ export default function DashboardApp(props: Props = {}) {
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder =
     s.sendGroup === "crypto"
-      ? "0x… (EVM address)"
+      ? sendCryptoRecipientPlaceholder(s.sendChain)
       : sendRail.type === "mobile" && sendCountry.dialCode
         ? `+${sendCountry.dialCode}712345678`
         : sendRail.placeholder;
   const sendCorridorText = s.sendGroup === "crypto"
-    ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base/Polygon"} via account send — min 1.00 USDC.`
+    ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base, Polygon, or Stellar"} via account send — min 1.00 USDC.`
     : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   // Field label for the provider select — the aggregator's institution list
@@ -2797,7 +2856,8 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Bank", v: depositProvider }]
         : depositPaymentInstructionRows;
-  const depositNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const depositNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.depositAsset);
+  const depositNetworks = depositNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const treasuryWalletAddress = resolveTreasuryWalletAddress({
     summaryWallet: summaryQuery.data?.totals.wallet_address,
     stablecoinAccounts: stablecoinAccountsQuery.data,
@@ -2877,14 +2937,24 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
   const depositNetworkLabel =
-    DEPOSIT_NETWORKS.find((n) => n.key === s.depositNetwork)?.label ||
+    depositNetworkOptions.find((n) => n.key === s.depositNetwork)?.label ||
     pinnedOnRampDest?.asset.network ||
     formatNetworkLabel(s.depositNetwork);
-  const depositAddress =
-    pinnedOnRampDest?.walletAddress ||
-    treasuryWalletAddress ||
-    DEPOSIT_ADDRESSES[s.depositNetwork] ||
-    "—";
+  const depositPickerDest = resolveStablecoinPickerDestination({
+    accounts: stablecoinAccountsQuery.data ?? [],
+    asset: s.depositAsset,
+    networkKey: s.depositNetwork,
+    treasuryWallet: treasuryWalletAddress,
+  });
+  const depositAddress = s.fundTargetAccountId
+    ? pinnedOnRampDest?.walletAddress || "—"
+    : depositPickerDest.address || "—";
+  const depositAddressEmptyMessage = s.fundTargetAccountId
+    ? describeMissingOnRampDestination({
+        selectedAccountId: s.fundTargetAccountId,
+        summaryFailed: summaryQuery.isError,
+      })
+    : depositPickerDest.emptyMessage;
   const depositDestinationSummary = buildDepositDestinationSummary({
     depositGroup: s.depositGroup,
     depositAsset: (pinnedOnRampDest?.asset.currency || s.depositAsset).toLowerCase(),
@@ -2945,12 +3015,22 @@ export default function DashboardApp(props: Props = {}) {
       ? "Issue a currency account from Accounts to receive bank transfers."
       : "—";
   const receiveAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setReceiveAsset(k), bg: s.receiveAsset === k ? "var(--ink)" : "var(--surface2)", color: s.receiveAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const receiveNetworks = DEPOSIT_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
-  const receiveNetworkLabel = DEPOSIT_NETWORKS.find(n => n.key === s.receiveNetwork).label;
+  const receiveNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.receiveAsset);
+  const receiveNetworks = receiveNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const receiveNetworkLabel =
+    receiveNetworkOptions.find((n) => n.key === s.receiveNetwork)?.label ||
+    formatNetworkLabel(s.receiveNetwork);
   const receiveAssetCode = s.receiveAsset.toUpperCase();
-  const receiveAddress = treasuryWalletAddress || "—";
-  const copyReceiveAddress = treasuryWalletAddress
-    ? copyReceiveField("addr", treasuryWalletAddress)
+  const receivePickerDest = resolveStablecoinPickerDestination({
+    accounts: stablecoinAccountsQuery.data ?? [],
+    asset: s.receiveAsset,
+    networkKey: s.receiveNetwork,
+    treasuryWallet: treasuryWalletAddress,
+  });
+  const receiveAddress = receivePickerDest.address || "—";
+  const receiveAddressEmptyMessage = receivePickerDest.emptyMessage;
+  const copyReceiveAddress = receivePickerDest.address
+    ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
   const bulkRows = BULK_ROWS.map(r => ({ ...r, flagUrl: flagUrl(r.iso) }));
@@ -3096,13 +3176,27 @@ export default function DashboardApp(props: Props = {}) {
   kybLoading={kybStatusLoading}
 />
 
-{/* Hero balance — leads the screen, per the design's Home. The identity
+{/* Hero: design total-balance card + three summary stats. Identity
     strip is compact-only; desktop carries the same identity in the sidebar. */}
 <div className="ep-grid-home-balance">
 <div className="ep-home__balance">
 <div className="ep-home__balance-top">
-<span className="ep-home__balance-label">Balances</span>
-<div className="ep-home__balance-controls">
+<div className="ep-home__balance-heading">
+<span className="ep-home__balance-label">Total balance</span>
+<label className="ep-home__display-currency">
+<span className="ep-home__display-currency-label">Show in</span>
+<select
+  className="ep-home__display-currency-select"
+  aria-label="Display currency"
+  value={displayCurrency}
+  onChange={(e) => setDisplayCurrency(e.target.value)}
+>
+  {DISPLAY_CURRENCY_OPTIONS.map((code) => (
+    <option key={code} value={code}>{code}</option>
+  ))}
+</select>
+</label>
+</div>
 <div className="ep-home__balance-tabs">
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (
 <React.Fragment key={__i1}>
@@ -3111,22 +3205,14 @@ export default function DashboardApp(props: Props = {}) {
 ))}
 </div>
 </div>
-</div>
-{homeCurrencyChips.length ? (
-<div className="ep-home__balance-value ep-home__balance-value--multi">
-{(homeCurrencyChips || []).map((hc: any) => (
-<div key={hc.code} className="ep-home__balance-line">{hc.balance} {hc.code}</div>
-))}
-</div>
-) : (
-<div className="ep-home__balance-value">—</div>
-)}
-<div className="ep-home__balance-sub">
-{homeCurrencyChips.length ? "Each account in its own currency" : "Balance not yet available"}
-</div>
+<div className="ep-home__balance-value">{homeHeroLabel}</div>
+{homeUsdSub ? (
+<div className="ep-home__balance-usd">{homeUsdSub}</div>
+) : null}
+<div className="ep-home__balance-sub">{homeBalanceSub}</div>
 </div>
 
-<div className="ep-home__stats-desktop">
+<div className="ep-home__stats-desktop" aria-label="Cash flow">
 {(homeStats || []).map((hs: any, __i1: number) => (
 <div key={__i1} className="ep-home__stat">
 <span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
@@ -3134,38 +3220,12 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 ))}
 </div>
-</div>
-
-{/* Same three money stats, stacked below the hero on phones. The desktop
-    copy above sits beside the hero inside the balance grid, so the two
-    containers differ in position, not content — only one is ever rendered
-    (the other is display:none, which also drops it from the a11y tree). */}
-<div className="ep-home__stats-mobile">
-{(homeStats || []).map((hs: any, __i1: number) => (
-<div key={__i1} className="ep-home__stat">
-<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
-<div><div className="ep-home__stat-label">{hs.label}</div><div className="ep-home__stat-value">{hs.value}</div></div>
-</div>
-))}
-</div>
-
-<div className="ep-home__flow-stats" aria-label="30-day cash flow">
-{homeFlowStats.map((stat) => (
-<div key={stat.label} className="ep-home__flow-stat">
-<span className="ep-home__flow-icon" aria-hidden>{stat.icon}</span>
-<span className="ep-home__flow-copy">
-<span className="ep-home__flow-label">{stat.label}</span>
-<strong>{stat.value}</strong>
-</span>
-</div>
-))}
 </div>
 
 {!kybStatusLoading && !kybApproved ? (
 <KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
-<SectionHeader title="Quick Actions" />
 <div className="ep-home__qa-row" aria-label="Quick actions">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
 <button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
@@ -3178,27 +3238,19 @@ export default function DashboardApp(props: Props = {}) {
 ))}
 </div>
 
-<RatesMarquee rates={liveRates} />
-
 {(homeCurrencyChips?.length) ? (
-<>
-<SectionHeader title="Balances" actionLabel="See All" onAction={setScreen("wallets")} />
-<div className="ep-home__balance-rows" aria-label="Currency balances">
+<div className="ep-home__chips" aria-label="Currency balances">
 {(homeCurrencyChips || []).map((hc: any, __i1: number) => (
-<button key={__i1} type="button" className="ep-home__balance-row" onClick={setScreen("wallets")}>
-<span className="ep-home__balance-row-left">
+<button key={__i1} type="button" className="ep-home__chip" onClick={setScreen("wallets")}>
 {hc.flagUrl ? (
   <span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
 ) : (
   <span className="ep-home__balance-row-avatar" aria-hidden>{String(hc.code).slice(0, 2)}</span>
 )}
-<span className="ep-home__balance-row-code">{hc.code}</span>
-</span>
-<span className="ep-home__balance-row-amt">{hc.balance}</span>
+<span className="ep-home__chip-copy">{hc.code} {hc.balance}</span>
 </button>
 ))}
 </div>
-</>
 ) : null}
 
 <SectionHeader title="Recent Activity" actionLabel="See All" onAction={goTransactions} />
@@ -3755,6 +3807,7 @@ export default function DashboardApp(props: Props = {}) {
   depositAssetCode={depositAssetCode}
   depositNetworkLabel={depositNetworkLabel}
   depositAddress={depositAddress}
+  depositAddressEmptyMessage={depositAddressEmptyMessage}
   closeModal={closeModal}
   fundTargetCurrency={s.fundAfricanTargetCurrency}
   fundConvertStatus={s.fundConvertStatus}
@@ -3777,6 +3830,7 @@ export default function DashboardApp(props: Props = {}) {
   receiveAddress={receiveAddress}
   copyReceiveAddress={copyReceiveAddress}
   receiveAddressCopied={receiveAddressCopied}
+  receiveAddressEmptyMessage={receiveAddressEmptyMessage}
 />
 </section>) : null}
 

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSendPreviewPayload,
+  explainAccountSendError,
+  sendCryptoRecipientPlaceholder,
   validateEvmAddress,
+  validateSendAddress,
   validateSendAmount,
+  validateStellarAddress,
 } from "./accountSends";
 import {
   accountForNetwork,
@@ -45,6 +49,45 @@ describe("account send validation", () => {
     expect(toPartnerNetwork("POLYGON")).toBe("Polygon");
     expect(toPartnerNetwork("ethereum")).toBeNull();
   });
+
+  it("accepts a Stellar public key and pins network Stellar", () => {
+    const stellar = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
+    expect(validateStellarAddress(stellar.toLowerCase())).toBe(stellar);
+    expect(validateSendAddress(stellar, "stellar")).toBe(stellar);
+    expect(() => validateSendAddress("0x1111111111111111111111111111111111111111", "stellar")).toThrow(
+      /Stellar public key/,
+    );
+    expect(() => validateSendAddress(stellar, "base")).toThrow(/0x EVM/);
+    expect(
+      buildSendPreviewPayload({
+        toAddress: stellar,
+        amount: "5",
+        networkKey: "stellar",
+      }),
+    ).toEqual({
+      to_address: stellar,
+      amount: "5",
+      network: "Stellar",
+    });
+    expect(sendCryptoRecipientPlaceholder("stellar")).toMatch(/Stellar/);
+    expect(sendCryptoRecipientPlaceholder("base")).toMatch(/EVM/);
+  });
+
+  it("rejects short or malformed Stellar keys", () => {
+    expect(() => validateStellarAddress("GABC")).toThrow(/Stellar public key/);
+    expect(() => validateStellarAddress("0x1111111111111111111111111111111111111111")).toThrow(
+      /Stellar public key/,
+    );
+  });
+
+  it("explains Mboka EVM-only send errors only on the Stellar rail", () => {
+    expect(explainAccountSendError("to_address must be a valid 20-byte EVM address.", "stellar")).toMatch(
+      /not accepted by the send API yet/i,
+    );
+    expect(explainAccountSendError("to_address must be a valid 20-byte EVM address.", "base")).toBe(
+      "to_address must be a valid 20-byte EVM address.",
+    );
+  });
 });
 
 describe("sendable account discovery helpers", () => {
@@ -54,7 +97,7 @@ describe("sendable account discovery helpers", () => {
     expect(extractAccountRows([{ id: "a3" }])).toHaveLength(1);
   });
 
-  it("keeps only ready USDC Base/Polygon accounts", () => {
+  it("keeps ready USDC Base, Polygon, and Stellar accounts", () => {
     const ready = normalizeFinancialAccount(
       {
         id: "acct_base",
@@ -85,9 +128,21 @@ describe("sendable account discovery helpers", () => {
       },
       "ent_1",
     )!;
+    const stellar = normalizeFinancialAccount(
+      {
+        id: "acct_xlm",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "stellar_testnet",
+        status: "ready",
+      },
+      "ent_1",
+    )!;
     expect(isSendableStablecoinAccount(ready)).toBe(true);
     expect(isSendableStablecoinAccount(eth)).toBe(false);
     expect(isSendableStablecoinAccount(pending)).toBe(false);
+    expect(isSendableStablecoinAccount(stellar)).toBe(true);
     expect(accountForNetwork([ready], "base")?.id).toBe("acct_base");
+    expect(accountForNetwork([stellar], "stellar")?.id).toBe("acct_xlm");
   });
 });

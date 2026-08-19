@@ -62,6 +62,14 @@ describe("parseCreateSavedRecipientInput", () => {
       network: "Base",
     });
     expect(ok.ok).toBe(true);
+
+    const stellar = parseCreateSavedRecipientInput({
+      label: "Stellar desk",
+      accountNumber: "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE",
+      railType: "crypto",
+      network: "stellar",
+    });
+    expect(stellar.ok).toBe(true);
   });
 
   it("rejects empty label / accountNumber / bad railType", () => {

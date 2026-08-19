@@ -7,7 +7,9 @@ import {
   formatAccountBalance,
   formatCurrencyBalanceLines,
   formatHomeTotalBalance,
+  formatHeroTotalLabel,
   formatSummedBalance,
+  formatUsdEquivalentSub,
   parseBalanceNumber,
   pendingBalanceFromAccount,
   sumAvailableBalances,
@@ -167,7 +169,9 @@ describe("convertAmountWithRates / totalBalanceInDisplayCurrency", () => {
     expect(convertAmountWithRates(260, "KES", "USD", fx)).toBeCloseTo(2);
     expect(convertAmountWithRates(100, "EUR", "EUR", null)).toBe(100);
     expect(convertAmountWithRates(100, "EUR", "USD", fx)).toBeNull();
-    expect(convertAmountWithRates(100, "USDC", "USD", fx)).toBeNull();
+    expect(convertAmountWithRates(100, "USDC", "USD", fx)).toBe(100);
+    expect(convertAmountWithRates(100, "USDC", "KES", fx)).toBeCloseTo(13000);
+    expect(convertAmountWithRates(50, "USDT", "USD", null)).toBe(50);
   });
 
   it("sums convertible balances into one display currency and lists gaps", () => {
@@ -178,23 +182,24 @@ describe("convertAmountWithRates / totalBalanceInDisplayCurrency", () => {
       { currency: "USDC", balance: { available: "338.79" } },
     ];
     const usd = totalBalanceInDisplayCurrency(items, "USD", fx);
-    expect(usd.total).toBeCloseTo(20);
-    expect(usd.label).toBe("20.00 USD");
-    expect(usd.included).toEqual(["KES", "USD"]);
-    expect(usd.excluded).toEqual(["EUR", "USDC"]);
+    expect(usd.total).toBeCloseTo(358.79);
+    expect(usd.label).toBe("358.79 USD");
+    expect(usd.included).toEqual(["KES", "USDC", "USD"]);
+    expect(usd.excluded).toEqual(["EUR"]);
+    expect(formatUsdEquivalentSub(usd.total)).toBe("≈ $358.79 USD");
+    expect(formatHeroTotalLabel(usd.total, "USD")).toBe("≈ $358.79");
 
     const kes = totalBalanceInDisplayCurrency(items, "KES", fx);
-    expect(kes.total).toBeCloseTo(2600);
-    expect(kes.label).toBe("2,600.00 KES");
-    expect(kes.excluded).toEqual(["EUR", "USDC"]);
+    expect(kes.total).toBeCloseTo(46642.7);
+    expect(kes.label).toBe("46,642.70 KES");
+    expect(kes.excluded).toEqual(["EUR"]);
+    expect(formatHeroTotalLabel(kes.total, "KES")).toBe("≈ KES 46,642.70");
+    expect(formatHeroTotalLabel(null, "KES")).toBe("—");
   });
 
   it("returns em dash when nothing converts", () => {
     const result = totalBalanceInDisplayCurrency(
-      [
-        { currency: "EUR", balance: { available: "10" } },
-        { currency: "USDC", balance: { available: "5" } },
-      ],
+      [{ currency: "EUR", balance: { available: "10" } }],
       "USD",
       fx,
     );
@@ -202,14 +207,15 @@ describe("convertAmountWithRates / totalBalanceInDisplayCurrency", () => {
       total: null,
       label: "—",
       included: [],
-      excluded: ["EUR", "USDC"],
+      excluded: ["EUR"],
     });
     expect(
       describeDisplayTotalSub(result, {
         balanceView: "all",
         displayCurrency: "USD",
       }),
-    ).toBe("No FX rate for EUR, USDC → USD");
+    ).toBe("No FX rate for EUR → USD");
+    expect(formatUsdEquivalentSub(null)).toBeNull();
   });
 
   it("describes indicative conversion when all included", () => {
