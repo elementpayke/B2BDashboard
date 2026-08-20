@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
-  flagUrl, COUNTRIES, CURRENCIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
+  flagUrl, COUNTRIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
   DEPOSIT_NETWORKS, ACCOUNTS, ROLES, TEAM_MEMBERS,
-  CORRIDORS, BULK_ROWS, STATUS_MAP,
+  CORRIDORS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
 import {
@@ -108,6 +108,7 @@ import {
   sendRailHasChoice as railHasChoice,
 } from "@/lib/hooks/sendFlowHelpers";
 import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
+import { channelLabelForRail } from "@/lib/services/channelLabels";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
@@ -148,6 +149,7 @@ import {
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import InvoiceList from "@/components/ui/InvoiceList";
+import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -1530,8 +1532,7 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  const simulateBulkUpload = () => setState({ bulkLoaded: true });
-  const runBulkPayout = () => setState({ bulkDone: true });
+  // Bulk payouts UI is waitlisted.
 
   const setStable = (k) => () => setState({ stableSel: k });
   const setConvertMode = (mode: ConvertMode) =>
@@ -2427,7 +2428,7 @@ export default function DashboardApp(props: Props = {}) {
   const kybApproved = isKybApproved(kybStatus);
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: "Pay up to 1,000 recipients from a CSV.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Bulk payouts", icon: "⇉", desc: "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -2595,60 +2596,8 @@ export default function DashboardApp(props: Props = {}) {
     return { id: inv.invoice_number, client: clientName, amount, statusLabel: l, statusColor: c, statusSoft: soft };
   });
 
-  // Reports: computed from real transactions rather than fabricated numbers.
-  // "Avg settlement time" derives from updated_at - created_at on completed
-  // orders (a genuine proxy for settlement duration); anything we can't
-  // honestly compute from what the backend returns (e.g. real per-day
-  // volume beyond what's in the fetched page) is shown as "—" rather than
-  // invented.
-  const allTx = transactionsQuery.data?.items ?? [];
-  const completedTx = allTx.filter((t) => t.status === "completed");
-  const totalVolume30d = totals ? Number(totals.money_in_30d) + Number(totals.money_out_30d) : null;
-  const successRate = allTx.length ? Math.round((completedTx.length / allTx.length) * 100) : null;
-  const avgSettlementMs = completedTx.length
-    ? completedTx.reduce((sum, t) => sum + (new Date(t.updated_at).getTime() - new Date(t.created_at).getTime()), 0) /
-      completedTx.length
-    : null;
-  const fmtDuration = (ms: number | null) => {
-    if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
-    const totalSeconds = Math.round(ms / 1000);
-    const m = Math.floor(totalSeconds / 60);
-    const sec = totalSeconds % 60;
-    return `${m}m ${sec}s`;
-  };
-  const reportStats = [
-        { label: "Total volume · 30d", value: totalVolume30d == null ? "—" : fmtUsd(totalVolume30d), color: "var(--ink)" },
-        { label: "Avg settlement time", value: fmtDuration(avgSettlementMs), color: "var(--ink)" },
-        { label: "Success rate", value: successRate == null ? "—" : `${successRate}%`, color: "var(--indigo-text)" },
-      ];
-  const reportBars = (() => {
-    const days: { key: string; total: number }[] = [];
-    for (let i = 9; i >= 0; i--) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - i);
-      days.push({ key: d.toISOString().slice(0, 10), total: 0 });
-    }
-    for (const t of allTx) {
-      const key = new Date(t.created_at).toISOString().slice(0, 10);
-      const bucket = days.find((d) => d.key === key);
-      if (bucket) bucket.total += Number(t.amount_fiat) || 0;
-    }
-    const max = Math.max(1, ...days.map((d) => d.total));
-    const hasVolume = days.some((d) => d.total > 0);
-    return days.map((d) => {
-      const date = new Date(d.key + "T12:00:00");
-      const dayLabel = date.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2);
-      return {
-        h: hasVolume ? Math.round((d.total / max) * 100) : 0,
-        dayLabel,
-        amountLabel: d.total > 0 ? fmtUsd(d.total) : "—",
-        title: `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${d.total > 0 ? fmtUsd(d.total) : "No volume"}`,
-      };
-    });
-  })();
-  const reportBarsEmpty = reportBars.every((b) => b.h === 0);
-  const coverageChips = CURRENCIES.map(c => ({ flagUrl: flagUrl(c.iso), code: c.code }));
+  // Reports screen is waitlisted — keep nav entry, skip derived report metrics.
+
   // Tier 1 reflects real account/email verification. Tier 2 is the real Mboka
   // KYB wizard (`/api/businesses/{id}/kyb/*`). Tier 3 has no backend yet.
   const emailVerified = !!meQuery.data?.user.email_verified;
@@ -2845,11 +2794,9 @@ export default function DashboardApp(props: Props = {}) {
         : sendRail.placeholder;
   const sendCorridorText = s.sendGroup === "crypto"
     ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base, Polygon, or Stellar"} via account send — min 1.00 USDC.`
-    : `${sendCountry.name} via ${sendProvider} · ${sendRail.arrival}`;
+    : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
-  // Field label for the provider select — the aggregator's institution list
-  // is the mobile-money operator on mobile rails and the bank on bank rails.
-  const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money provider" : "Bank";
+  const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money network" : "Bank account";
   // The catalog settled with no live provider for this corridor, so the chips
   // came from the hardcoded standby list (see providerNamesFromCatalog). The
   // corridor still works — traffic is just not on a live-listed provider —
@@ -2891,7 +2838,8 @@ export default function DashboardApp(props: Props = {}) {
   const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = depositRail.type === "mobile";
   const depositIsBankRail = depositRail.type === "bank";
-  const depositOperator = depositProvider;
+  const depositChannelLabel = channelLabelForRail(depositRail.type);
+  const depositOperator = depositChannelLabel;
   const depositMobileCode = depositCountry.code;
   const depositPhone = s.depositPhone;
   const depositAmount = s.depositAmount;
@@ -2908,7 +2856,7 @@ export default function DashboardApp(props: Props = {}) {
     s.depositAccept?.payment_instructions?.type === "bank"
       ? depositPaymentInstructionRows
       : depositRail.type === "bank" && !s.depositAccept
-        ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Bank", v: depositProvider }]
+        ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
   const depositNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.depositAsset);
   const depositNetworks = depositNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
@@ -2941,7 +2889,7 @@ export default function DashboardApp(props: Props = {}) {
     sendAsset: s.sendAsset,
     sendChainLabel,
     countryName: sendCountry.name,
-    providerName: sendProvider,
+    channelLabel: channelLabelForRail(sendRail.type),
   });
   // OffRamp quote (by country) or account-send preview (stablecoin).
   const sendQuote = s.sendQuote;
@@ -3014,7 +2962,7 @@ export default function DashboardApp(props: Props = {}) {
     depositAsset: (pinnedOnRampDest?.asset.currency || s.depositAsset).toLowerCase(),
     depositNetworkLabel,
     countryName: depositCountry.name,
-    providerName: depositProvider,
+    channelLabel: depositChannelLabel,
   });
   const depositNotDone = !s.depositDone;
   const depositDone = s.depositDone;
@@ -3087,12 +3035,6 @@ export default function DashboardApp(props: Props = {}) {
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
-  const bulkRows = BULK_ROWS.map(r => ({ ...r, flagUrl: flagUrl(r.iso) }));
-  const bulkCountryLabel = "KE, GH, NG, DE, RW";
-  const bulkNotLoaded = !s.bulkLoaded;
-  const bulkLoaded = s.bulkLoaded;
-  const bulkNotDone = !s.bulkDone;
-  const bulkDone = s.bulkDone;
   const fiatConvertAccounts = depositAccountsList
     .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
     .map((a) => {
@@ -3478,6 +3420,10 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
+<div className="ep-team__preview" role="note">
+<span className="ep-team__preview-badge">Early access</span>
+<span className="ep-team__preview-text">Invoicing is live for drafts and issue — richer workflows are on the way.</span>
+</div>
 <div style={{display: "flex", justifyContent: "flex-end"}}>
 <button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
 </div>
@@ -3487,48 +3433,11 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isReports) ? (<>
 <div data-screen-label="Reports" className="ep-reports">
-<div className="ep-reports__stats">
-{(reportStats || []).map((rs: any, __i1: number) => (
-<div key={__i1} className="ep-reports__stat">
-<div className="ep-reports__stat-label">{rs.label}</div>
-<div className="ep-reports__stat-value" style={{color: rs.color}}>{rs.value}</div>
-</div>
-))}
-</div>
-<section className="ep-reports__panel">
-<div className="ep-reports__panel-head">
-<h2 className="ep-reports__panel-title">Daily volume · last 10 days</h2>
-<span className="ep-reports__panel-meta">From loaded activity</span>
-</div>
-{reportBarsEmpty ? (
-<div className="ep-reports__empty" role="status">No volume in the last 10 days yet.</div>
-) : (
-<div className="ep-reports__chart" role="img" aria-label="Daily volume chart for the last 10 days">
-{(reportBars || []).map((b: any, __i1: number) => (
-<div key={__i1} className="ep-reports__bar-col" title={b.title}>
-<div className="ep-reports__bar-track">
-<div className="ep-reports__bar-fill" style={{height: `${Math.max(b.h, b.h > 0 ? 8 : 0)}%`}} />
-</div>
-<span className="ep-reports__bar-day">{b.dayLabel}</span>
-</div>
-))}
-</div>
-)}
-</section>
-<section className="ep-reports__panel">
-<div className="ep-reports__panel-head">
-<h2 className="ep-reports__panel-title">Payout coverage</h2>
-<span className="ep-reports__panel-meta">{coverageChips.length} corridors</span>
-</div>
-<div className="ep-reports__coverage">
-{(coverageChips || []).map((cc: any, __i1: number) => (
-<div key={__i1} className="ep-reports__chip">
-<span className="ep-flag" style={{backgroundImage: `url(${cc.flagUrl})`}} aria-hidden />
-<span className="ep-reports__chip-code">{cc.code}</span>
-</div>
-))}
-</div>
-</section>
+<ComingSoonPanel
+  featureKey="reports"
+  title="Reports"
+  description="Volume, corridor, and settlement reports are coming soon. Join the waitlist and we’ll notify you when they’re ready."
+/>
 </div>
 </>) : null}
 
@@ -3940,46 +3849,12 @@ export default function DashboardApp(props: Props = {}) {
 
 
 {(isModalBulk) ? (<>
-{(bulkNotDone) ? (<>
-{(bulkNotLoaded) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 1 · Upload recipients</span>
-<p style={{margin: "0", fontSize: "12.5px", color: "var(--muted)"}}>Upload a CSV with recipient name, country, phone/account and amount. We detect the country and rail per row automatically.</p>
-<button onClick={simulateBulkUpload} style={{padding: "14px 20px", borderRadius: "14px", border: "1.5px dashed var(--border)", background: "var(--surface2)", color: "var(--ink)", fontSize: "13px", fontWeight: "700", cursor: "pointer"}}>⬆ Simulate CSV upload</button>
-</div>
-</>) : null}
-{(bulkLoaded) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<span style={{fontSize: "12.5px", fontWeight: "700", color: "var(--muted)"}}>Step 2 · Review & confirm</span>
-<div style={{display: "flex", flexDirection: "column", gap: "6px"}}>
-{(bulkRows || []).map((row: any, __i1: number) => (
-<React.Fragment key={__i1}>
-<div style={{display: "flex", alignItems: "center", gap: "10px", padding: "9px 12px", borderRadius: "12px", background: "var(--surface2)", fontSize: "12px"}}>
-<div style={{width: "18px", height: "13px", borderRadius: "2px", backgroundImage: `url(${(row.flagUrl)})`, backgroundSize: "cover", backgroundPosition: "center", flexShrink: "0"}} />
-<span style={{flex: "1", fontWeight: "600"}}>{row.name}</span>
-<span style={{color: "var(--muted)"}}>{row.rail}</span>
-<span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>{row.amount}</span>
-</div>
-</React.Fragment>
-))}
-</div>
-<div style={{display: "flex", flexDirection: "column", gap: "8px", padding: "14px", borderRadius: "14px", background: "var(--surface2)"}}>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Recipients</span><span style={{fontWeight: "700"}}>143</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Countries detected</span><span style={{fontWeight: "700"}}>{bulkCountryLabel}</span></div>
-<div style={{display: "flex", justifyContent: "space-between", fontSize: "12.5px"}}><span style={{color: "var(--muted)"}}>Total value</span><span style={{fontFamily: "'DM Mono',monospace", fontWeight: "700"}}>≈ $84,210</span></div>
-</div>
-<button onClick={runBulkPayout} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: "pointer"}}>Confirm & run bulk payout ↗</button>
-</div>
-</>) : null}
-</>) : null}
-{(bulkDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>143 payouts queued</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>Routing across live corridors now.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
-</div>
-</>) : null}
+<ComingSoonPanel
+  compact
+  featureKey="bulk-payouts"
+  title="Bulk payouts"
+  description="CSV bulk payouts aren’t live yet. Join the waitlist and we’ll email you when you can pay many recipients in one go."
+/>
 </>) : null}
 
 {(isModalTxDetail) ? (<>

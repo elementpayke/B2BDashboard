@@ -134,7 +134,7 @@ export default function TransactionsScreen({
             type="search"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search ID, provider, amount, currency…"
+            placeholder="Search ID, amount, currency…"
           />
         </label>
         <div className="ep-txn-advanced-desktop">{advancedFilters}</div>

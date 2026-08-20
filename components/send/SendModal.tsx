@@ -692,10 +692,8 @@ export default function SendModal(p: SendModalProps) {
                 ) : null}
                 {p.sendIsBankRail ? (
                   <div className="ep-money-review__row">
-                    <span className="ep-money-review__k">Bank</span>
-                    <span className="ep-money-review__v">
-                      {p.sendProviderOptions?.[p.sendProviderIdx] ?? ""}
-                    </span>
+                    <span className="ep-money-review__k">Method</span>
+                    <span className="ep-money-review__v">Bank transfer</span>
                   </div>
                 ) : null}
                 <div className="ep-money-review__row">

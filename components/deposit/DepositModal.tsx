@@ -1,10 +1,8 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  BANK_SEARCH_THRESHOLD,
   countryMatchesQuery,
-  filterProvidersWithPinnedSelection,
 } from "@/lib/hooks/depositFlowHelpers";
 
 export type DepositCountryRow = {
@@ -162,12 +160,7 @@ export default function DepositModal(p: DepositModalProps) {
   const [addressCopied, setAddressCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [countrySearch, setCountrySearch] = useState("");
-  const [bankSearch, setBankSearch] = useState("");
   const hasAddress = Boolean(p.depositAddress && p.depositAddress !== "—");
-
-  useEffect(() => {
-    setBankSearch("");
-  }, [p.depositSelectedCountryName, p.depositSub]);
 
   const filteredCountries = useMemo(
     () => (p.depositCountryRows || []).filter((row) => countryMatchesQuery(row.searchText, countrySearch)),
@@ -244,8 +237,8 @@ export default function DepositModal(p: DepositModalProps) {
                     id="deposit-country-search"
                     value={countrySearch}
                     onChange={setCountrySearch}
-                    placeholder="Search country, currency or provider"
-                    label="Search country, currency or provider"
+                    placeholder="Search country or currency"
+                    label="Search country or currency"
                   />
                   <div className="ep-pick-list" role="listbox" aria-label="Source country">
                     {filteredCountries.length === 0 ? (
@@ -284,70 +277,39 @@ export default function DepositModal(p: DepositModalProps) {
                   <button type="button" className="ep-money-back-link" onClick={p.depositBack}>
                     ← {p.depositSelectedCountryName || "Countries"}
                   </button>
-                  {(p.depositMethodGroups || []).map((group) => {
-                    const isBank = group.type === "bank";
-                    const names = group.providers.map((pr) => pr.name);
-                    const selectedIdx = group.providers.findIndex((pr) => pr.selected);
-                    const showBankSearch = isBank && names.length > BANK_SEARCH_THRESHOLD;
-                    const visible = isBank
-                      ? filterProvidersWithPinnedSelection(names, bankSearch, selectedIdx)
-                      : names.map((name, index) => ({ name, index, pinned: false }));
-                    return (
-                      <div key={group.railIdx} className="ep-pick-group">
-                        <div className="ep-pick-group__label">
+                  <div className="ep-pick-list" role="listbox" aria-label="Funding method">
+                    {(p.depositMethodGroups || []).map((group) => {
+                      const first = group.providers[0];
+                      const selected = group.providers.some((pr) => pr.selected);
+                      return (
+                        <button
+                          key={group.railIdx}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          disabled={!first}
+                          className={`ep-pick-row${selected ? " ep-pick-row--selected" : ""}`}
+                          onClick={first?.select}
+                        >
                           <span className="ep-pick-group__icon" aria-hidden>
                             <MethodIcon type={group.type} />
                           </span>
-                          <span>{group.label}</span>
-                        </div>
-                        {showBankSearch ? (
-                          <SearchField
-                            id="deposit-bank-search"
-                            value={bankSearch}
-                            onChange={setBankSearch}
-                            placeholder="Search banks"
-                            label="Search banks"
-                          />
-                        ) : null}
-                        <div
-                          className={showBankSearch ? "ep-pick-list ep-pick-list--banks" : "ep-pick-stack"}
-                          role="listbox"
-                          aria-label={group.label}
-                        >
-                          {visible.map((item) => {
-                            const provider = group.providers[item.index];
-                            if (!provider) return null;
-                            return (
-                              <button
-                                key={`${group.railIdx}-${item.index}`}
-                                type="button"
-                                role="option"
-                                aria-selected={provider.selected}
-                                className={`ep-pick-row${provider.selected ? " ep-pick-row--selected" : ""}`}
-                                onClick={provider.select}
-                              >
-                                <span className="ep-pick-row__text">
-                                  <span className="ep-pick-row__title">{provider.name}</span>
-                                  {item.pinned ? (
-                                    <span className="ep-pick-row__meta">Currently selected</span>
-                                  ) : null}
-                                </span>
-                                {provider.selected ? (
-                                  <span className="ep-pick-row__check" aria-hidden>
-                                    ✓
-                                  </span>
-                                ) : (
-                                  <span className="ep-pick-row__chev" aria-hidden>
-                                    ›
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          <span className="ep-pick-row__text">
+                            <span className="ep-pick-row__title">{group.label}</span>
+                          </span>
+                          {selected ? (
+                            <span className="ep-pick-row__check" aria-hidden>
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="ep-pick-row__chev" aria-hidden>
+                              ›
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </>
               ) : null}
 
@@ -658,7 +620,7 @@ export default function DepositModal(p: DepositModalProps) {
                 <span>Check your phone</span>
               </div>
               <p className="ep-money-hint">
-                Enter your PIN to approve the {p.depositOperator} prompt sent to{" "}
+                Enter your PIN to approve the mobile money prompt sent to{" "}
                 {p.depositMobileCode} {p.depositPhone}.
               </p>
             </div>
@@ -667,7 +629,7 @@ export default function DepositModal(p: DepositModalProps) {
           {p.depositIsBankRail && p.depositBankLines.length > 0 ? (
             <div className="ep-money-done-panel">
               <p className="ep-money-hint">
-                {p.depositBankLabel} via {p.depositOperator} · {p.depositBankArrival}
+                {p.depositBankLabel} · {p.depositBankArrival}
               </p>
               <div className="ep-money-kv" role="group" aria-label="Bank transfer details">
                 {(p.depositBankLines || []).map((ln: any, i: number) => (

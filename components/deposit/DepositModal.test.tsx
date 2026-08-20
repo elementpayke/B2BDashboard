@@ -4,7 +4,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { COUNTRIES, flagUrl } from "@/components/mockData";
 import {
-  BANK_SEARCH_THRESHOLD,
   countryRailsLabel,
   countrySearchHaystack,
 } from "@/lib/hooks/depositFlowHelpers";
@@ -22,14 +21,14 @@ function countryRows(onSelect: (idx: number) => void): DepositCountryRow[] {
   }));
 }
 
-function methodGroupsFor(idx: number, selected?: { rail: number; provider: number }): DepositMethodGroup[] {
+function methodGroupsFor(idx: number, selectedRail?: number): DepositMethodGroup[] {
   return COUNTRIES[idx].rails.map((rail, railIdx) => ({
     railIdx,
     type: rail.type,
     label: rail.label,
     providers: rail.options.map((name, providerIdx) => ({
       name,
-      selected: selected?.rail === railIdx && selected?.provider === providerIdx,
+      selected: selectedRail === railIdx && providerIdx === 0,
       select: vi.fn(),
     })),
   }));
@@ -85,7 +84,7 @@ const baseProps = {
 };
 
 describe("DepositModal country-first step", () => {
-  it("searches by provider name and hides Continue until a method is chosen", () => {
+  it("searches by country or currency and hides Continue until a method is chosen", () => {
     const onSelect = vi.fn();
     render(
       <DepositModal
@@ -99,18 +98,15 @@ describe("DepositModal country-first step", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText("Search country, currency or provider"), {
-      target: { value: "mtn" },
+    fireEvent.change(screen.getByPlaceholderText("Search country or currency"), {
+      target: { value: "kenya" },
     });
-    expect(screen.getByText("Uganda")).toBeInTheDocument();
-    expect(screen.getByText("Ghana")).toBeInTheDocument();
-    expect(screen.queryByText("Kenya")).not.toBeInTheDocument();
+    expect(screen.getByText("Kenya")).toBeInTheDocument();
+    expect(screen.queryByText("Uganda")).not.toBeInTheDocument();
   });
 
-  it("groups methods and shows bank search when Kenya has more than six banks", () => {
+  it("lists rails without partner or bank institution names", () => {
     const kenyaIdx = COUNTRIES.findIndex((c) => c.code === "KES");
-    const banks = COUNTRIES[kenyaIdx].rails.find((r) => r.type === "bank")!.options;
-    expect(banks.length).toBeGreaterThan(BANK_SEARCH_THRESHOLD);
 
     render(
       <DepositModal
@@ -123,33 +119,27 @@ describe("DepositModal country-first step", () => {
       />,
     );
 
-    expect(screen.getByText("M-Pesa (Safaricom)")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Search banks")).toBeInTheDocument();
+    expect(screen.getByText("Mobile money")).toBeInTheDocument();
+    expect(screen.getByText("Bank transfer")).toBeInTheDocument();
+    expect(screen.queryByText("M-Pesa (Safaricom)")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search banks")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
   });
 
-  it("keeps a selected bank pinned when it does not match the bank search", () => {
+  it("shows Continue once a rail is selected", () => {
     const kenyaIdx = COUNTRIES.findIndex((c) => c.code === "KES");
-    const banks = COUNTRIES[kenyaIdx].rails.find((r) => r.type === "bank")!.options;
-    const primeIdx = banks.findIndex((name) => name === "Prime Bank");
 
     render(
       <DepositModal
         {...baseProps}
         depositSub="method"
         depositCountryRows={countryRows(vi.fn())}
-        depositMethodGroups={methodGroupsFor(kenyaIdx, { rail: 1, provider: primeIdx })}
+        depositMethodGroups={methodGroupsFor(kenyaIdx, 0)}
         depositSelectedCountryName="Kenya"
         depositMethodChosen
       />,
     );
 
-    fireEvent.change(screen.getByPlaceholderText("Search banks"), {
-      target: { value: "equ" },
-    });
-    expect(screen.getByText("Prime Bank")).toBeInTheDocument();
-    expect(screen.getByText("Currently selected")).toBeInTheDocument();
-    expect(screen.getByText("Equity Bank")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
   });
 });

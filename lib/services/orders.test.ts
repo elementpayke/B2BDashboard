@@ -335,7 +335,7 @@ describe("buildPaymentInstructionRows", () => {
     };
     expect(buildPaymentInstructionRows(instructions)).toEqual([
       { k: "Phone", v: "+254711111111" },
-      { k: "Network", v: "Mobile Wallet" },
+      { k: "Method", v: "Mobile money" },
     ]);
   });
 

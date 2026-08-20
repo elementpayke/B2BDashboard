@@ -16,9 +16,9 @@ describe("buildSendDestinationSummary", () => {
         sendAsset: "usdc",
         sendChainLabel: "Base",
         countryName: "Kenya",
-        providerName: "M-Pesa",
+        channelLabel: "Mobile money",
       }),
-    ).toBe("Kenya · M-Pesa");
+    ).toBe("Kenya · Mobile money");
   });
 
   it("formats a Stellar stablecoin destination", () => {
@@ -28,7 +28,7 @@ describe("buildSendDestinationSummary", () => {
         sendAsset: "usdc",
         sendChainLabel: "Stellar",
         countryName: "Kenya",
-        providerName: "M-Pesa",
+        channelLabel: "Mobile money",
       }),
     ).toBe("USDC · Stellar");
   });

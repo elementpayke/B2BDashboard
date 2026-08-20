@@ -23,14 +23,21 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
 }
 
 describe("presentTransaction", () => {
-  it("leads with a provider and keeps technical IDs secondary", () => {
-    const view = presentTransaction(transaction({ provider: "Acme Payments" }));
+  it("keeps technical IDs secondary and never surfaces partner brands", () => {
+    const view = presentTransaction(transaction({ provider: "yellowcard" }));
 
-    expect(view.client).toBe("Acme Payments");
+    expect(view.client).toBe("Payout · KES");
+    expect(view.client).not.toContain("yellowcard");
     expect(view.client).not.toContain("YC-");
     expect(view.meta).toContain("Ref YC-90de94");
     expect(view.amount).toBe("−128,040.00 KES");
     expect(view.statusLabel).toBe("Pending");
+  });
+
+  it("uses workflow + currency even when a counterparty string is present", () => {
+    expect(presentTransaction(transaction({ provider: "Acme Payments" })).client).toBe(
+      "Payout · KES",
+    );
   });
 
   it("uses a human workflow fallback when no counterparty is returned", () => {
