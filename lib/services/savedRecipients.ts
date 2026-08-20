@@ -206,12 +206,16 @@ export function toSendFormFields(recipient: SavedRecipient): SendFormRecipientFi
   };
 }
 
-/** Short one-line summary for picker rows (e.g. "Jane · M-Pesa · •••5678"). */
+/** Short one-line summary for picker rows (e.g. "Jane · Mobile money · •••5678"). */
 export function formatSavedRecipientSummary(recipient: SavedRecipient): string {
   const via =
     recipient.railType === "crypto"
       ? recipient.network ?? "crypto"
-      : recipient.provider ?? recipient.railType;
+      : recipient.railType === "mobile"
+        ? "Mobile money"
+        : recipient.railType === "bank"
+          ? "Bank transfer"
+          : "Local transfer";
   const acct = recipient.accountNumber.trim();
   const masked =
     acct.length <= 4 ? acct : `•••${acct.slice(-4)}`;

@@ -123,7 +123,6 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     { label: "Reference", value: txDetail.ref, mono: true },
     { label: "Type", value: txDetail.type },
   ];
-  if (txDetail.provider) rows.push({ label: "Provider", value: txDetail.provider });
   const settlementAsset =
     txDetail.crypto_currency && txDetail.crypto_network
       ? `${txDetail.crypto_currency} · ${txDetail.crypto_network}`

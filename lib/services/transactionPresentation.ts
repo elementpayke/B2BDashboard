@@ -1,3 +1,4 @@
+import { transactionPartyLabel } from "./channelLabels";
 import type { Transaction } from "./transactions";
 import { describeTransactionStatus } from "./transactionStatus";
 
@@ -75,11 +76,14 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     : transaction.amount_fiat;
   const ref = transactionReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
-  const provider = transaction.provider?.trim();
 
   return {
     ...transaction,
-    client: provider || `${kind} · ${currency}`,
+    client: transactionPartyLabel({
+      direction: transaction.direction,
+      currency: transaction.currency,
+      provider: transaction.provider,
+    }),
     type: kind,
     amount: `${sign}${formattedAmount} ${currency}`,
     amountColor: sign === "+" ? "var(--success)" : "var(--ink)",

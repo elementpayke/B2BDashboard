@@ -386,7 +386,8 @@ export function buildPaymentInstructionRows(
   } else if (instructions.type === "momo") {
     const source = (instructions.source ?? {}) as Record<string, unknown>;
     if (source.accountNumber) rows.push({ k: "Phone", v: String(source.accountNumber) });
-    if (source.networkName) rows.push({ k: "Network", v: String(source.networkName) });
+    // Hide partner network brands (M-Pesa, etc.) — routing already used networkId.
+    if (source.networkName) rows.push({ k: "Method", v: "Mobile money" });
   } else if (instructions.type === "crypto_deposit") {
     if (instructions.wallet_address) rows.push({ k: "Address", v: instructions.wallet_address });
     if (instructions.amount) rows.push({ k: "Amount", v: String(instructions.amount) });

@@ -7,7 +7,8 @@ export type DepositDestinationInput = {
   depositAsset: string;
   depositNetworkLabel: string;
   countryName: string;
-  providerName: string;
+  /** Brand-neutral channel label (e.g. "Mobile money"), never a partner name. */
+  channelLabel: string;
 };
 
 export type CorridorRail = {
@@ -36,7 +37,7 @@ export function buildDepositDestinationSummary(input: DepositDestinationInput): 
   if (input.depositGroup === "crypto") {
     return `${input.depositAsset.toUpperCase()} · ${input.depositNetworkLabel}`;
   }
-  return `${input.countryName} · ${input.providerName}`;
+  return `${input.countryName} · ${input.channelLabel}`;
 }
 
 export function buildDepositStepDots(depositStep: number, total = 3): { on: boolean }[] {

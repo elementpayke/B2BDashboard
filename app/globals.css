@@ -1108,6 +1108,19 @@ body {
   transition: background 140ms ease, color 140ms ease;
 }
 
+.ep-sidebar__soon {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--amber-tint);
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--border));
+}
+
 .ep-sidebar__nav-btn:hover {
   color: var(--ink);
   background: var(--surface2);
@@ -1786,6 +1799,118 @@ body {
 
 .ep-more-sheet__item--active {
   color: var(--indigo-text);
+}
+
+.ep-more-sheet__soon {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--amber-tint);
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--border));
+}
+
+.ep-coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 18px;
+  border-radius: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.ep-coming-soon--compact {
+  padding: 8px 2px 4px;
+  border: 0;
+  background: transparent;
+}
+
+.ep-coming-soon__badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #fff;
+}
+
+.ep-coming-soon__title {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.ep-coming-soon--compact .ep-coming-soon__title {
+  font-size: 18px;
+}
+
+.ep-coming-soon__body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 36rem;
+}
+
+.ep-coming-soon__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  max-width: 28rem;
+  margin-top: 4px;
+}
+
+.ep-coming-soon__label {
+  flex: 1 1 180px;
+}
+
+.ep-coming-soon__label input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.ep-coming-soon__cta {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--indigo);
+  color: var(--indigo-on);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-coming-soon__error {
+  width: 100%;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.ep-coming-soon__joined {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--success);
 }
 
 .ep-more-sheet__profile {

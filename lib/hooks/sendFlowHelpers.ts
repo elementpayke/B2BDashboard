@@ -8,7 +8,8 @@ export type SendDestinationInput = {
   sendAsset: string;
   sendChainLabel: string;
   countryName: string;
-  providerName: string;
+  /** Brand-neutral channel label (e.g. "Mobile money"), never a partner name. */
+  channelLabel: string;
 };
 
 /** Summary line shown on send steps 2–3 for the chosen destination. */
@@ -16,7 +17,7 @@ export function buildSendDestinationSummary(input: SendDestinationInput): string
   if (input.sendGroup === "crypto") {
     return `${input.sendAsset.toUpperCase()} · ${input.sendChainLabel}`;
   }
-  return `${input.countryName} · ${input.providerName}`;
+  return `${input.countryName} · ${input.channelLabel}`;
 }
 
 export function buildSendStepDots(sendStep: number, total = 3): { on: boolean }[] {

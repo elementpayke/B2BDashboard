@@ -149,6 +149,6 @@ describe("toSendFormFields / formatSavedRecipientSummary", () => {
   });
 
   it("builds a short picker summary with masked account", () => {
-    expect(formatSavedRecipientSummary(sample)).toBe("Jane Mukami · M-Pesa · •••5678");
+    expect(formatSavedRecipientSummary(sample)).toBe("Jane Mukami · Mobile money · •••5678");
   });
 });

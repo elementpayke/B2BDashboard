@@ -21,7 +21,7 @@ describe("buildDepositDestinationSummary", () => {
         depositAsset: "usdc",
         depositNetworkLabel: "Base",
         countryName: "Kenya",
-        providerName: "M-Pesa",
+        channelLabel: "Mobile money",
       }),
     ).toBe("USDC · Base");
   });
@@ -33,9 +33,9 @@ describe("buildDepositDestinationSummary", () => {
         depositAsset: "usdc",
         depositNetworkLabel: "Base",
         countryName: "Kenya",
-        providerName: "M-Pesa",
+        channelLabel: "Mobile money",
       }),
-    ).toBe("Kenya · M-Pesa");
+    ).toBe("Kenya · Mobile money");
   });
 });
 
