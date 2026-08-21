@@ -22,6 +22,14 @@ export type ChoicePickerProps = {
   searchable?: boolean;
   placeholder?: string;
   title?: string;
+  /** Extra class on the root `.ep-choice` wrapper. */
+  className?: string;
+  /** Extra class on the trigger button (merged after `ep-money-input ep-choice__trigger`). */
+  triggerClassName?: string;
+  /** Hide the visible field label; `label` still feeds aria / sheet title. */
+  hideLabel?: boolean;
+  /** Shorter mobile bottom sheet (currency / small lists). */
+  compactSheet?: boolean;
 };
 
 const POPOVER_MIN = 160;
@@ -80,6 +88,10 @@ export default function ChoicePicker({
   searchable,
   placeholder = "Search…",
   title,
+  className,
+  triggerClassName,
+  hideLabel = false,
+  compactSheet = false,
 }: ChoicePickerProps) {
   const compact = useCompactPicker();
   const listId = useId();
@@ -239,7 +251,7 @@ export default function ChoicePicker({
           <div className="ep-choice-overlay" onMouseDown={() => setOpen(false)}>
             <div
               ref={panelRef}
-              className="ep-choice-sheet"
+              className={`ep-choice-sheet${compactSheet ? " ep-choice-sheet--compact" : ""}`}
               role="dialog"
               tabIndex={showSearch ? -1 : 0}
               aria-labelledby={`${id}-sheet-title`}
@@ -284,16 +296,23 @@ export default function ChoicePicker({
       )
     : null;
 
+  const rootClass = className ? `ep-choice ${className}` : "ep-choice";
+  const triggerClass = triggerClassName
+    ? `ep-money-input ep-choice__trigger ${triggerClassName}`
+    : "ep-money-input ep-choice__trigger";
+
   return (
-    <div className="ep-choice">
-      <label className="ep-money-label" htmlFor={id}>
-        {label}
-      </label>
+    <div className={rootClass}>
+      {hideLabel ? null : (
+        <label className="ep-money-label" htmlFor={id}>
+          {label}
+        </label>
+      )}
       <button
         ref={triggerRef}
         id={id}
         type="button"
-        className="ep-money-input ep-choice__trigger"
+        className={triggerClass}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}

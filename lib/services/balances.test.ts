@@ -4,6 +4,7 @@ import {
   convertAmountWithRates,
   currentBalanceFromAccount,
   describeDisplayTotalSub,
+  displayCurrencyOptionsFromCatalog,
   formatAccountBalance,
   formatCurrencyBalanceLines,
   formatHomeTotalBalance,
@@ -12,10 +13,12 @@ import {
   formatUsdEquivalentSub,
   parseBalanceNumber,
   pendingBalanceFromAccount,
+  resolveDisplayCurrency,
   sumAvailableBalances,
   sumBalancesByCurrency,
   totalBalanceInDisplayCurrency,
 } from "@/lib/services/balances";
+import type { SupportedCatalogData } from "@/lib/services/catalog";
 
 describe("formatAccountBalance", () => {
   it("prefers available and formats", () => {
@@ -155,6 +158,113 @@ describe("sumBalancesByCurrency / formatHomeTotalBalance", () => {
         { currency: "USDC", balance: { available: "37.5" } },
       ]),
     ).toBe("137.50 USDC");
+  });
+});
+
+describe("displayCurrencyOptionsFromCatalog / resolveDisplayCurrency", () => {
+  const catalog: SupportedCatalogData = {
+    onramp: {
+      countries: {
+        KE: {
+          country_code: "KE",
+          country_name: "Kenya",
+          currency: "KES",
+          enabled: true,
+          payment_methods: {},
+        },
+        GH: {
+          country_code: "GH",
+          country_name: "Ghana",
+          currency: "GHS",
+          enabled: true,
+          payment_methods: {},
+        },
+      },
+    },
+    offramp: {
+      countries: {
+        NG: {
+          country_code: "NG",
+          country_name: "Nigeria",
+          currency: "NGN",
+          enabled: true,
+          payment_methods: {},
+        },
+        TZ: {
+          country_code: "TZ",
+          country_name: "Tanzania",
+          currency: "TZS",
+          enabled: false,
+          payment_methods: {},
+        },
+      },
+    },
+    international_bank: {
+      currencies: {
+        USD: {
+          currency: "USD",
+          label: "US Dollar",
+          onramp: true,
+          offramp: false,
+          payment_methods: {},
+        },
+        EUR: {
+          currency: "EUR",
+          label: "Euro",
+          onramp: true,
+          offramp: true,
+          payment_methods: {},
+        },
+        GBP: {
+          currency: "GBP",
+          label: "Pound Sterling",
+          onramp: false,
+          offramp: false,
+          payment_methods: {},
+        },
+      },
+    },
+  };
+
+  const fx = {
+    base: "USD",
+    rates: { KES: 131.81, NGN: 1347.92, GHS: 12.93, MWK: 1737 },
+  };
+
+  it("lists enabled catalog countries and intl bank currencies, not rate-only dummies", () => {
+    expect(displayCurrencyOptionsFromCatalog(catalog, fx)).toEqual([
+      "USD",
+      "KES",
+      "NGN",
+      "GHS",
+      "USDC",
+    ]);
+  });
+
+  it("drops catalog codes that have no FX quote yet", () => {
+    const options = displayCurrencyOptionsFromCatalog(catalog, fx);
+    expect(options).not.toContain("EUR");
+    expect(options).not.toContain("GBP");
+    expect(options).not.toContain("TZS");
+    expect(options).not.toContain("MWK");
+  });
+
+  it("falls back to USD/USDC when the catalog is missing", () => {
+    expect(displayCurrencyOptionsFromCatalog(null, fx)).toEqual(["USD", "USDC"]);
+  });
+
+  it("includes EUR when both the catalog and FX quote it", () => {
+    expect(
+      displayCurrencyOptionsFromCatalog(catalog, {
+        base: "USD",
+        rates: { KES: 130, EUR: 0.92 },
+      }),
+    ).toEqual(["USD", "EUR", "KES", "USDC"]);
+  });
+
+  it("clamps an unsupported stored preference to USD", () => {
+    expect(resolveDisplayCurrency("EUR", ["USD", "KES", "USDC"])).toBe("USD");
+    expect(resolveDisplayCurrency("KES", ["USD", "KES", "USDC"])).toBe("KES");
   });
 });
 

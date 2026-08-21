@@ -113,7 +113,7 @@ import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
   DEFAULT_DISPLAY_CURRENCY,
-  DISPLAY_CURRENCY_OPTIONS,
+  displayCurrencyOptionsFromCatalog,
   formatAccountBalance,
   formatSummedBalance,
   formatHeroTotalLabel,
@@ -122,6 +122,7 @@ import {
   parseBalanceNumber,
   pendingBalanceFromAccount,
   readStoredDisplayCurrency,
+  resolveDisplayCurrency,
   totalBalanceInDisplayCurrency,
   writeStoredDisplayCurrency,
   type DisplayCurrency,
@@ -148,6 +149,7 @@ import {
 } from "@/lib/services/cards";
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
+import ChoicePicker from "@/components/ui/ChoicePicker";
 import InvoiceList from "@/components/ui/InvoiceList";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -1997,6 +1999,11 @@ export default function DashboardApp(props: Props = {}) {
   const setDisplayCurrency = (currency: string) => {
     const code = currency.trim().toUpperCase();
     if (!isDisplayCurrency(code)) return;
+    const options = displayCurrencyOptionsFromCatalog(
+      sendCatalogQuery.data,
+      mergeExchangeRates(summaryQuery.data?.fx_rates, exchangeRatesQuery.data),
+    );
+    if (!options.includes(code)) return;
     writeStoredDisplayCurrency(code);
     setState({ displayCurrency: code });
   };
@@ -2367,9 +2374,14 @@ export default function DashboardApp(props: Props = {}) {
     summaryQuery.data?.fx_rates,
     exchangeRatesQuery.data,
   );
-  const displayCurrency: DisplayCurrency = isDisplayCurrency(s.displayCurrency)
-    ? s.displayCurrency
-    : DEFAULT_DISPLAY_CURRENCY;
+  const displayCurrencyOptions = displayCurrencyOptionsFromCatalog(
+    sendCatalogQuery.data,
+    homeFxRates,
+  );
+  const displayCurrency: DisplayCurrency = resolveDisplayCurrency(
+    s.displayCurrency,
+    displayCurrencyOptions,
+  );
   const homeDisplayTotal = totalBalanceInDisplayCurrency(
     homeAvailableLedgerItems,
     displayCurrency,
@@ -3179,19 +3191,24 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-home__balance-top">
 <div className="ep-home__balance-heading">
 <span className="ep-home__balance-label">Total balance</span>
-<label className="ep-home__display-currency">
+<div className="ep-home__display-currency">
 <span className="ep-home__display-currency-label">Show in</span>
-<select
-  className="ep-home__display-currency-select"
-  aria-label="Display currency"
+<ChoicePicker
+  id="home-display-currency"
+  className="ep-home__display-currency-picker"
+  triggerClassName="ep-home__display-currency-select"
+  hideLabel
+  label="Display currency"
+  title="Show balance in"
   value={displayCurrency}
-  onChange={(e) => setDisplayCurrency(e.target.value)}
->
-  {DISPLAY_CURRENCY_OPTIONS.map((code) => (
-    <option key={code} value={code}>{code}</option>
-  ))}
-</select>
-</label>
+  options={displayCurrencyOptions.map((code) => ({ value: code, label: code }))}
+  onChange={setDisplayCurrency}
+  loading={sendCatalogQuery.isLoading && !sendCatalogQuery.data}
+  loadingLabel="…"
+  searchable={displayCurrencyOptions.length > 8}
+  compactSheet
+/>
+</div>
 </div>
 <div className="ep-home__balance-tabs">
 {(balanceViewTabs || []).map((bv: any, __i1: number) => (

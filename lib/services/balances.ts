@@ -3,6 +3,8 @@
  * both expose `{ available, current, currency }` when the aggregator knows it.
  */
 
+import type { SupportedCatalogData } from "@/lib/services/catalog";
+import { supportedCurrenciesFromCatalog } from "@/lib/services/catalog";
 import type { ExchangeRates } from "@/lib/services/dashboard";
 import { normalizeExchangeRates } from "@/lib/services/dashboard";
 
@@ -13,13 +15,29 @@ export type AccountBalance = {
 };
 
 /**
- * Currencies offered in the Home "default display currency" control.
- * Conversion only works when Mboka FX covers the pair (or source === display).
- * Indicative rates today are USD-base YC corridors (KES, NGN, GHS, UGX, TZS,
- * ZAR, MWK) plus whatever `dashboard/summary` embeds. USDC/USDT peg to USD
- * when no quote is present. EUR/GBP/CAD still need a live rate.
+ * Home "Show in" currencies come from `GET /v1/supported/catalog` (enabled
+ * corridor countries + international_bank). When FX is available, the list is
+ * intersected with convertible quotes so the hero total never invents a rate.
+ * USDC is always offered (pegs to USD when no explicit quote).
  */
-export const DISPLAY_CURRENCY_OPTIONS = [
+export const DEFAULT_DISPLAY_CURRENCY = "USD";
+
+/** While the catalog is loading / empty — never invent unsupported fiats. */
+export const DISPLAY_CURRENCY_FALLBACK = ["USD", "USDC"] as const;
+
+/**
+ * @deprecated Prefer {@link displayCurrencyOptionsFromCatalog}. Kept as the
+ * loading fallback so older imports still resolve to supported-only codes.
+ */
+export const DISPLAY_CURRENCY_OPTIONS = DISPLAY_CURRENCY_FALLBACK;
+
+export type DisplayCurrency = string;
+
+const DISPLAY_CURRENCY_STORAGE_KEY = "ep.displayCurrency.v1";
+const CURRENCY_CODE_RE = /^[A-Z]{3,5}$/;
+
+/** Preferred order for codes present in the supported catalog. */
+const DISPLAY_CURRENCY_SORT_ORDER = [
   "USD",
   "EUR",
   "GBP",
@@ -32,16 +50,86 @@ export const DISPLAY_CURRENCY_OPTIONS = [
   "ZAR",
   "MWK",
   "USDC",
+  "USDT",
 ] as const;
 
-export type DisplayCurrency = (typeof DISPLAY_CURRENCY_OPTIONS)[number];
+function sortDisplayCurrencies(codes: Iterable<string>): string[] {
+  return Array.from(codes).sort((a, b) => {
+    const order = DISPLAY_CURRENCY_SORT_ORDER as readonly string[];
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.localeCompare(b);
+  });
+}
 
-export const DEFAULT_DISPLAY_CURRENCY: DisplayCurrency = "USD";
+function isConvertibleDisplayCode(
+  code: string,
+  fx: ExchangeRates,
+): boolean {
+  if (code === fx.base || code === "USDC" || code === "USDT") return true;
+  return typeof fx.rates[code] === "number" && fx.rates[code] > 0;
+}
 
-const DISPLAY_CURRENCY_STORAGE_KEY = "ep.displayCurrency.v1";
+export function isCurrencyCode(value: string): boolean {
+  return CURRENCY_CODE_RE.test(value.trim().toUpperCase());
+}
 
+/** True when `value` is a plausible currency code (storage / UI guard). */
 export function isDisplayCurrency(value: string): value is DisplayCurrency {
-  return (DISPLAY_CURRENCY_OPTIONS as readonly string[]).includes(value);
+  return isCurrencyCode(value);
+}
+
+/**
+ * Build the Home display-currency list from the supported catalog.
+ * Optional FX intersection drops catalog codes we cannot convert yet.
+ */
+export function displayCurrencyOptionsFromCatalog(
+  catalog: SupportedCatalogData | null | undefined,
+  fx?: ExchangeRates | null,
+): string[] {
+  const supported = supportedCurrenciesFromCatalog(catalog);
+  if (!supported.length) return [...DISPLAY_CURRENCY_FALLBACK];
+
+  const codes = new Set(supported);
+  codes.add("USDC");
+
+  const normalized = normalizeExchangeRates(fx);
+  const list = normalized
+    ? Array.from(codes).filter((code) => isConvertibleDisplayCode(code, normalized))
+    : Array.from(codes);
+
+  return list.length ? sortDisplayCurrencies(list) : [...DISPLAY_CURRENCY_FALLBACK];
+}
+
+/**
+ * @deprecated Prefer {@link displayCurrencyOptionsFromCatalog}. Rates alone are
+ * not the source of supported corridors.
+ */
+export function displayCurrencyOptionsFromRates(
+  fx: ExchangeRates | null | undefined,
+): string[] {
+  const normalized = normalizeExchangeRates(fx);
+  if (!normalized) return [...DISPLAY_CURRENCY_FALLBACK];
+
+  return sortDisplayCurrencies([
+    normalized.base,
+    ...Object.keys(normalized.rates),
+    "USDC",
+  ]);
+}
+
+/** Pick a selectable code: prefer stored choice, else USD, else first option. */
+export function resolveDisplayCurrency(
+  preferred: string | null | undefined,
+  options: readonly string[],
+): string {
+  const code = (preferred || "").trim().toUpperCase();
+  if (code && options.includes(code)) return code;
+  if (options.includes(DEFAULT_DISPLAY_CURRENCY)) return DEFAULT_DISPLAY_CURRENCY;
+  return options[0] || DEFAULT_DISPLAY_CURRENCY;
 }
 
 /** Read persisted default display currency (browser only). */
