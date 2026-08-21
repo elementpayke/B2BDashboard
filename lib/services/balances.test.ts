@@ -4,6 +4,7 @@ import {
   convertAmountWithRates,
   currentBalanceFromAccount,
   describeDisplayTotalSub,
+  displayCurrencyOptionsFromRates,
   formatAccountBalance,
   formatCurrencyBalanceLines,
   formatHomeTotalBalance,
@@ -12,6 +13,7 @@ import {
   formatUsdEquivalentSub,
   parseBalanceNumber,
   pendingBalanceFromAccount,
+  resolveDisplayCurrency,
   sumAvailableBalances,
   sumBalancesByCurrency,
   totalBalanceInDisplayCurrency,
@@ -155,6 +157,54 @@ describe("sumBalancesByCurrency / formatHomeTotalBalance", () => {
         { currency: "USDC", balance: { available: "37.5" } },
       ]),
     ).toBe("137.50 USDC");
+  });
+});
+
+describe("displayCurrencyOptionsFromRates / resolveDisplayCurrency", () => {
+  it("lists only the FX base, quoted codes, and USDC", () => {
+    expect(
+      displayCurrencyOptionsFromRates({
+        base: "USD",
+        rates: {
+          KES: 131.81,
+          NGN: 1347.92,
+          GHS: 12.93,
+          UGX: 3759.36,
+          TZS: 2645.5,
+          ZAR: 16.61,
+          MWK: 1737,
+        },
+      }),
+    ).toEqual(["USD", "KES", "TZS", "NGN", "GHS", "UGX", "ZAR", "MWK", "USDC"]);
+  });
+
+  it("does not invent EUR/GBP/CAD when rates omit them", () => {
+    const options = displayCurrencyOptionsFromRates({
+      base: "USD",
+      rates: { KES: 130 },
+    });
+    expect(options).toEqual(["USD", "KES", "USDC"]);
+    expect(options).not.toContain("EUR");
+    expect(options).not.toContain("GBP");
+    expect(options).not.toContain("CAD");
+  });
+
+  it("falls back to USD/USDC when FX is missing", () => {
+    expect(displayCurrencyOptionsFromRates(null)).toEqual(["USD", "USDC"]);
+  });
+
+  it("includes EUR only when the rate book quotes it", () => {
+    expect(
+      displayCurrencyOptionsFromRates({
+        base: "USD",
+        rates: { KES: 130, EUR: 0.92 },
+      }),
+    ).toEqual(["USD", "EUR", "KES", "USDC"]);
+  });
+
+  it("clamps an unsupported stored preference to USD", () => {
+    expect(resolveDisplayCurrency("EUR", ["USD", "KES", "USDC"])).toBe("USD");
+    expect(resolveDisplayCurrency("KES", ["USD", "KES", "USDC"])).toBe("KES");
   });
 });
 

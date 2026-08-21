@@ -13,13 +13,30 @@ export type AccountBalance = {
 };
 
 /**
- * Currencies offered in the Home "default display currency" control.
- * Conversion only works when Mboka FX covers the pair (or source === display).
- * Indicative rates today are USD-base YC corridors (KES, NGN, GHS, UGX, TZS,
- * ZAR, MWK) plus whatever `dashboard/summary` embeds. USDC/USDT peg to USD
- * when no quote is present. EUR/GBP/CAD still need a live rate.
+ * Home "Show in" display currencies come from live Mboka FX
+ * (`GET /v1/exchange-rates` ∪ summary `fx_rates`), not a hardcoded catalog.
+ * YC African corridors today: KES, NGN, GHS, UGX, TZS, ZAR, MWK. USDC always
+ * offered (pegs to USD when no explicit quote). EUR/GBP/CAD only appear when
+ * the rates payload includes them.
  */
-export const DISPLAY_CURRENCY_OPTIONS = [
+export const DEFAULT_DISPLAY_CURRENCY = "USD";
+
+/** While FX is loading / missing — never invent unsupported fiats. */
+export const DISPLAY_CURRENCY_FALLBACK = ["USD", "USDC"] as const;
+
+/**
+ * @deprecated Prefer {@link displayCurrencyOptionsFromRates}. Kept as the
+ * loading fallback so older imports still resolve to supported-only codes.
+ */
+export const DISPLAY_CURRENCY_OPTIONS = DISPLAY_CURRENCY_FALLBACK;
+
+export type DisplayCurrency = string;
+
+const DISPLAY_CURRENCY_STORAGE_KEY = "ep.displayCurrency.v1";
+const CURRENCY_CODE_RE = /^[A-Z]{3,5}$/;
+
+/** Preferred order for codes present in the live rate book. */
+const DISPLAY_CURRENCY_SORT_ORDER = [
   "USD",
   "EUR",
   "GBP",
@@ -32,16 +49,54 @@ export const DISPLAY_CURRENCY_OPTIONS = [
   "ZAR",
   "MWK",
   "USDC",
+  "USDT",
 ] as const;
 
-export type DisplayCurrency = (typeof DISPLAY_CURRENCY_OPTIONS)[number];
+export function isCurrencyCode(value: string): boolean {
+  return CURRENCY_CODE_RE.test(value.trim().toUpperCase());
+}
 
-export const DEFAULT_DISPLAY_CURRENCY: DisplayCurrency = "USD";
-
-const DISPLAY_CURRENCY_STORAGE_KEY = "ep.displayCurrency.v1";
-
+/** True when `value` is a plausible currency code (storage / UI guard). */
 export function isDisplayCurrency(value: string): value is DisplayCurrency {
-  return (DISPLAY_CURRENCY_OPTIONS as readonly string[]).includes(value);
+  return isCurrencyCode(value);
+}
+
+/**
+ * Build the Home display-currency list from a live FX snapshot.
+ * Always includes the FX base and USDC; quote codes come from `rates` only.
+ */
+export function displayCurrencyOptionsFromRates(
+  fx: ExchangeRates | null | undefined,
+): string[] {
+  const normalized = normalizeExchangeRates(fx);
+  if (!normalized) return [...DISPLAY_CURRENCY_FALLBACK];
+
+  const codes = new Set<string>([
+    normalized.base,
+    ...Object.keys(normalized.rates),
+    "USDC",
+  ]);
+
+  return Array.from(codes).sort((a, b) => {
+    const order = DISPLAY_CURRENCY_SORT_ORDER as readonly string[];
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+/** Pick a selectable code: prefer stored choice, else USD, else first option. */
+export function resolveDisplayCurrency(
+  preferred: string | null | undefined,
+  options: readonly string[],
+): string {
+  const code = (preferred || "").trim().toUpperCase();
+  if (code && options.includes(code)) return code;
+  if (options.includes(DEFAULT_DISPLAY_CURRENCY)) return DEFAULT_DISPLAY_CURRENCY;
+  return options[0] || DEFAULT_DISPLAY_CURRENCY;
 }
 
 /** Read persisted default display currency (browser only). */
