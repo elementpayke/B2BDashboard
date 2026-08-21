@@ -4,6 +4,7 @@ import {
   onRampProvidersForRail,
   networkIdForProvider,
   providerNamesFromCatalog,
+  supportedCurrenciesFromCatalog,
   type SupportedCatalogData,
 } from "./catalog";
 
@@ -117,6 +118,24 @@ const CATALOG: SupportedCatalogData = {
     },
   },
 };
+
+describe("supportedCurrenciesFromCatalog", () => {
+  it("collects currencies from enabled onramp/offramp countries and intl bank", () => {
+    expect(supportedCurrenciesFromCatalog(CATALOG).sort()).toEqual(
+      ["EUR", "GBP", "KES", "USD"].sort(),
+    );
+  });
+
+  it("skips disabled countries and intl currencies with neither ramp", () => {
+    const codes = supportedCurrenciesFromCatalog(CATALOG);
+    expect(codes).not.toContain("NGN");
+  });
+
+  it("returns empty when the catalog is missing", () => {
+    expect(supportedCurrenciesFromCatalog(null)).toEqual([]);
+    expect(supportedCurrenciesFromCatalog(undefined)).toEqual([]);
+  });
+});
 
 describe("offRampProvidersForRail", () => {
   it("returns enabled providers for a known country + rail", () => {

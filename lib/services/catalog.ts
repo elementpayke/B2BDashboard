@@ -68,6 +68,37 @@ export const catalogApi = {
 };
 
 /**
+ * Fiat codes from enabled catalog corridors — onramp/offramp countries plus
+ * international_bank currencies that support onramp or offramp. No invented
+ * codes: only what `GET /v1/supported/catalog` actually returns.
+ */
+export function supportedCurrenciesFromCatalog(
+  data: SupportedCatalogData | null | undefined,
+): string[] {
+  if (!data) return [];
+  const codes = new Set<string>();
+
+  const addCountries = (countries: Record<string, CatalogCountry> | undefined) => {
+    for (const country of Object.values(countries ?? {})) {
+      if (!country?.enabled) continue;
+      const code = country.currency?.trim().toUpperCase();
+      if (code) codes.add(code);
+    }
+  };
+
+  addCountries(data.onramp?.countries);
+  addCountries(data.offramp?.countries);
+
+  for (const intl of Object.values(data.international_bank?.currencies ?? {})) {
+    if (!intl || (!intl.onramp && !intl.offramp)) continue;
+    const code = (intl.currency || "").trim().toUpperCase();
+    if (code) codes.add(code);
+  }
+
+  return Array.from(codes);
+}
+
+/**
  * Send-modal rail `type` ("mobile" | "bank") -> the aggregator catalog's
  * `payment_methods[key].quote_type`. Mirrors mobile app's
  * `accountTypeForQuoteType` (inverted) so a "mobile" rail always resolves

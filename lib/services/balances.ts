@@ -3,6 +3,8 @@
  * both expose `{ available, current, currency }` when the aggregator knows it.
  */
 
+import type { SupportedCatalogData } from "@/lib/services/catalog";
+import { supportedCurrenciesFromCatalog } from "@/lib/services/catalog";
 import type { ExchangeRates } from "@/lib/services/dashboard";
 import { normalizeExchangeRates } from "@/lib/services/dashboard";
 
@@ -13,19 +15,18 @@ export type AccountBalance = {
 };
 
 /**
- * Home "Show in" display currencies come from live Mboka FX
- * (`GET /v1/exchange-rates` ∪ summary `fx_rates`), not a hardcoded catalog.
- * YC African corridors today: KES, NGN, GHS, UGX, TZS, ZAR, MWK. USDC always
- * offered (pegs to USD when no explicit quote). EUR/GBP/CAD only appear when
- * the rates payload includes them.
+ * Home "Show in" currencies come from `GET /v1/supported/catalog` (enabled
+ * corridor countries + international_bank). When FX is available, the list is
+ * intersected with convertible quotes so the hero total never invents a rate.
+ * USDC is always offered (pegs to USD when no explicit quote).
  */
 export const DEFAULT_DISPLAY_CURRENCY = "USD";
 
-/** While FX is loading / missing — never invent unsupported fiats. */
+/** While the catalog is loading / empty — never invent unsupported fiats. */
 export const DISPLAY_CURRENCY_FALLBACK = ["USD", "USDC"] as const;
 
 /**
- * @deprecated Prefer {@link displayCurrencyOptionsFromRates}. Kept as the
+ * @deprecated Prefer {@link displayCurrencyOptionsFromCatalog}. Kept as the
  * loading fallback so older imports still resolve to supported-only codes.
  */
 export const DISPLAY_CURRENCY_OPTIONS = DISPLAY_CURRENCY_FALLBACK;
@@ -35,7 +36,7 @@ export type DisplayCurrency = string;
 const DISPLAY_CURRENCY_STORAGE_KEY = "ep.displayCurrency.v1";
 const CURRENCY_CODE_RE = /^[A-Z]{3,5}$/;
 
-/** Preferred order for codes present in the live rate book. */
+/** Preferred order for codes present in the supported catalog. */
 const DISPLAY_CURRENCY_SORT_ORDER = [
   "USD",
   "EUR",
@@ -52,6 +53,26 @@ const DISPLAY_CURRENCY_SORT_ORDER = [
   "USDT",
 ] as const;
 
+function sortDisplayCurrencies(codes: Iterable<string>): string[] {
+  return Array.from(codes).sort((a, b) => {
+    const order = DISPLAY_CURRENCY_SORT_ORDER as readonly string[];
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+function isConvertibleDisplayCode(
+  code: string,
+  fx: ExchangeRates,
+): boolean {
+  if (code === fx.base || code === "USDC" || code === "USDT") return true;
+  return typeof fx.rates[code] === "number" && fx.rates[code] > 0;
+}
+
 export function isCurrencyCode(value: string): boolean {
   return CURRENCY_CODE_RE.test(value.trim().toUpperCase());
 }
@@ -62,8 +83,30 @@ export function isDisplayCurrency(value: string): value is DisplayCurrency {
 }
 
 /**
- * Build the Home display-currency list from a live FX snapshot.
- * Always includes the FX base and USDC; quote codes come from `rates` only.
+ * Build the Home display-currency list from the supported catalog.
+ * Optional FX intersection drops catalog codes we cannot convert yet.
+ */
+export function displayCurrencyOptionsFromCatalog(
+  catalog: SupportedCatalogData | null | undefined,
+  fx?: ExchangeRates | null,
+): string[] {
+  const supported = supportedCurrenciesFromCatalog(catalog);
+  if (!supported.length) return [...DISPLAY_CURRENCY_FALLBACK];
+
+  const codes = new Set(supported);
+  codes.add("USDC");
+
+  const normalized = normalizeExchangeRates(fx);
+  const list = normalized
+    ? Array.from(codes).filter((code) => isConvertibleDisplayCode(code, normalized))
+    : Array.from(codes);
+
+  return list.length ? sortDisplayCurrencies(list) : [...DISPLAY_CURRENCY_FALLBACK];
+}
+
+/**
+ * @deprecated Prefer {@link displayCurrencyOptionsFromCatalog}. Rates alone are
+ * not the source of supported corridors.
  */
 export function displayCurrencyOptionsFromRates(
   fx: ExchangeRates | null | undefined,
@@ -71,21 +114,11 @@ export function displayCurrencyOptionsFromRates(
   const normalized = normalizeExchangeRates(fx);
   if (!normalized) return [...DISPLAY_CURRENCY_FALLBACK];
 
-  const codes = new Set<string>([
+  return sortDisplayCurrencies([
     normalized.base,
     ...Object.keys(normalized.rates),
     "USDC",
   ]);
-
-  return Array.from(codes).sort((a, b) => {
-    const order = DISPLAY_CURRENCY_SORT_ORDER as readonly string[];
-    const ia = order.indexOf(a);
-    const ib = order.indexOf(b);
-    if (ia >= 0 && ib >= 0) return ia - ib;
-    if (ia >= 0) return -1;
-    if (ib >= 0) return 1;
-    return a.localeCompare(b);
-  });
 }
 
 /** Pick a selectable code: prefer stored choice, else USD, else first option. */

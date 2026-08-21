@@ -113,7 +113,7 @@ import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
   DEFAULT_DISPLAY_CURRENCY,
-  displayCurrencyOptionsFromRates,
+  displayCurrencyOptionsFromCatalog,
   formatAccountBalance,
   formatSummedBalance,
   formatHeroTotalLabel,
@@ -1999,7 +1999,8 @@ export default function DashboardApp(props: Props = {}) {
   const setDisplayCurrency = (currency: string) => {
     const code = currency.trim().toUpperCase();
     if (!isDisplayCurrency(code)) return;
-    const options = displayCurrencyOptionsFromRates(
+    const options = displayCurrencyOptionsFromCatalog(
+      sendCatalogQuery.data,
       mergeExchangeRates(summaryQuery.data?.fx_rates, exchangeRatesQuery.data),
     );
     if (!options.includes(code)) return;
@@ -2373,7 +2374,10 @@ export default function DashboardApp(props: Props = {}) {
     summaryQuery.data?.fx_rates,
     exchangeRatesQuery.data,
   );
-  const displayCurrencyOptions = displayCurrencyOptionsFromRates(homeFxRates);
+  const displayCurrencyOptions = displayCurrencyOptionsFromCatalog(
+    sendCatalogQuery.data,
+    homeFxRates,
+  );
   const displayCurrency: DisplayCurrency = resolveDisplayCurrency(
     s.displayCurrency,
     displayCurrencyOptions,
@@ -3199,7 +3203,7 @@ export default function DashboardApp(props: Props = {}) {
   value={displayCurrency}
   options={displayCurrencyOptions.map((code) => ({ value: code, label: code }))}
   onChange={setDisplayCurrency}
-  loading={exchangeRatesQuery.isLoading && !homeFxRates}
+  loading={sendCatalogQuery.isLoading && !sendCatalogQuery.data}
   loadingLabel="…"
   searchable={displayCurrencyOptions.length > 8}
   compactSheet
