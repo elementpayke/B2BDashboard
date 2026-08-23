@@ -11,9 +11,9 @@ import { StrKey } from "@stellar/stellar-sdk";
  * - `POST /v1/accounts/{account_id}/sends` (Idempotency-Key REQUIRED, 8–64 chars)
  * - `GET /v1/accounts/{account_id}/sends/{send_id}`
  *
- * Partner aggregator already prices Stellar USDC sends (`G…` + `network: Stellar`).
- * Mboka's public send controller historically validated EVM `0x` + Base/Polygon
- * only — we still submit the Stellar payload rather than rewriting it as EVM.
+ * Stellar USDC: any funded `G…` with a Circle USDC trustline. Mboka validates
+ * StrKey destinations; the aggregator submits a Horizon payment from the
+ * Element-custodial account secret.
  *
  * See `Mboka-Backend/docs/implementation/PHASE_4.md` and `app/schema/sends.py`.
  */
@@ -119,11 +119,11 @@ export function sendCryptoRecipientPlaceholder(networkKey: string): string {
     : "0x… (EVM address)";
 }
 
-/** Clarify Mboka's historic EVM-only send validation when the user chose Stellar. */
+/** Keep legacy EVM-only rejection copy readable if an older API is still live. */
 export function explainAccountSendError(message: string, networkKey: string): string {
   if (toPartnerNetwork(networkKey) !== "Stellar") return message;
-  if (/20-byte EVM|0x EVM|must be Base or Polygon/i.test(message)) {
-    return "Stellar USDC sends are not accepted by the send API yet. The address looks valid — this rail is waiting on backend support.";
+  if (/20-byte EVM|0x EVM|must be Base or Polygon$/i.test(message)) {
+    return "Stellar USDC sends need a backend that accepts G… destinations. Retry after the send API is updated, or contact support.";
   }
   return message;
 }
