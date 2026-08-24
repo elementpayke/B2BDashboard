@@ -341,6 +341,20 @@ export default function DashboardApp(props: Props = {}) {
 
   const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
   const businessId = meQuery.data?.business?.id ?? null;
+  const meKybStatus =
+    (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? null;
+  const meKybApproved = isKybApproved(meKybStatus);
+  // Gate off-screen fetches so Home/Accounts win connection slots after login.
+  const screen = state.screen;
+  const needsActivityFeed =
+    screen === "home" ||
+    screen === "wallets" ||
+    screen === "accountDetail" ||
+    screen === "cards" ||
+    screen === "reports" ||
+    screen === "transactions";
+  const activityPoll =
+    screen === "home" || screen === "transactions" || screen === "wallets";
   const kybWizard = useKybWizard({
     businessId,
     kybSummary: meQuery.data?.kyb_summary,
@@ -362,13 +376,16 @@ export default function DashboardApp(props: Props = {}) {
     queryKey: ["transactions"],
     queryFn: transactionsApi.list,
     retry: false,
-    refetchInterval: 15_000,
+    enabled: needsActivityFeed,
+    refetchInterval: activityPoll ? 15_000 : false,
   });
   const txFilterStatus =
     state.txFilter === "processing" || state.txFilter === "failed"
       ? state.txFilter
       : "all";
-  const transactionsPageQuery = useTransactionsPage(txFilterStatus);
+  const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
+    enabled: screen === "transactions",
+  });
   // Tx detail modal fetches by id, not by list index/position — the list can
   // reorder or refetch (15s poll above) while the modal is open, and an
   // index would silently point at a different transaction.
@@ -395,20 +412,29 @@ export default function DashboardApp(props: Props = {}) {
       !!state.depositAccept,
   });
   const invoicesQuery = useQuery({
-
     queryKey: ["invoices"],
     queryFn: () => invoicesApi.list(),
     retry: false,
+    enabled: screen === "invoices" || state.modal === "invoice",
   });
   const apiKeysQuery = useQuery({
     queryKey: ["api-keys"],
     queryFn: () => apiKeysApi.list(),
     retry: false,
+    enabled: screen === "developer" || state.modal === "apiKey",
   });
   // Public supported-catalog, used by the Send ("by country") flow to
   // resolve a real aggregator networkId per provider instead of relying on
   // the hardcoded corridor list alone. See lib/services/catalog.ts.
-  const sendCatalogQuery = useSendCatalog();
+  // Also powers Home display-currency options — keep warm on Home.
+  const sendCatalogQuery = useSendCatalog({
+    enabled:
+      screen === "home" ||
+      state.modal === "send" ||
+      state.modal === "deposit" ||
+      state.modal === "bulk" ||
+      !!state.fundAfricanTargetCurrency,
+  });
 
   // Settled once the first catalog fetch finishes (success or error). Until
   // then, Send provider chips must not fall back to hardcoded rail.options.
@@ -466,6 +492,8 @@ export default function DashboardApp(props: Props = {}) {
   // Listing/creating deposit accounts requires KYB approval — check eligibility
   // first so an unverified business sees a clear gate instead of a raw 400
   // from `GET /v1/iban/accounts` (see docs/api-contract.md).
+  // When `/me` (or login seed) already says KYB approved, start the IBAN list
+  // in parallel with eligibility instead of waiting for that extra RTT.
   const depositEligibilityQuery = useQuery({
     queryKey: ["deposit-accounts-eligibility"],
     queryFn: depositAccountsApi.eligibility,
@@ -475,7 +503,9 @@ export default function DashboardApp(props: Props = {}) {
     queryKey: ["deposit-accounts"],
     queryFn: depositAccountsApi.list,
     retry: false,
-    enabled: depositEligibilityQuery.data?.eligible === true,
+    enabled:
+      depositEligibilityQuery.data?.eligible === true ||
+      (meKybApproved && depositEligibilityQuery.data?.eligible !== false),
   });
   const stablecoinAccountsQuery = useQuery({
     queryKey: ["stablecoin-accounts"],
@@ -601,6 +631,7 @@ export default function DashboardApp(props: Props = {}) {
       queryKey: ["api-key", k.id],
       queryFn: () => apiKeysApi.get(k.id),
       retry: false,
+      enabled: screen === "developer" || state.modal === "apiKey",
     })),
   });
   const apiKeyDetailById = new Map<number, any>();
@@ -3297,8 +3328,15 @@ export default function DashboardApp(props: Props = {}) {
   verificationStatus={depositEligibilityQuery.data?.verification_status}
   eligibilityErrorMessage={depositEligibilityErrorMessage}
   accountsLoading={
-    (depositEligible && depositAccountsQuery.isLoading) ||
-    stablecoinAccountsQuery.isLoading
+    accounts.length === 0 &&
+    ((depositEligible && depositAccountsQuery.isLoading) ||
+      stablecoinAccountsQuery.isLoading ||
+      depositEligibilityQuery.isLoading)
+  }
+  accountsPendingMore={
+    accounts.length > 0 &&
+    ((depositEligible && depositAccountsQuery.isLoading) ||
+      stablecoinAccountsQuery.isLoading)
   }
   accountsErrorMessage={depositAccountsErrorMessage}
   onRetryAccounts={() => {

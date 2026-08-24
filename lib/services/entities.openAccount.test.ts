@@ -159,6 +159,43 @@ describe("resolvePrimaryEntityId", () => {
   });
 });
 
+describe("listStablecoinAccounts", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches per-entity accounts in parallel", async () => {
+    const { listStablecoinAccounts } = await import("./entities");
+    vi.spyOn(entitiesApi, "list").mockResolvedValue([
+      { id: "10", customer_ref: null, entity_type: "business", status: "active" },
+      { id: "20", customer_ref: null, entity_type: "business", status: "active" },
+    ]);
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    vi.spyOn(entitiesApi, "listAccounts").mockImplementation(async (entityId: string) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 20));
+      inFlight -= 1;
+      return [
+        {
+          id: `acct-${entityId}`,
+          asset_type: "stablecoin",
+          currency: "USDC",
+          network: entityId === "10" ? "Base" : "Polygon",
+          status: "active",
+          wallet_address: `0x${entityId}`,
+        },
+      ];
+    });
+
+    const accounts = await listStablecoinAccounts();
+    expect(accounts).toHaveLength(2);
+    expect(maxInFlight).toBe(2);
+  });
+});
+
 describe("balance normalization", () => {
   const normalize = (balance: unknown) =>
     normalizeFinancialAccount(

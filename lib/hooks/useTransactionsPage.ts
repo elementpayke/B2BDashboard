@@ -16,9 +16,13 @@ import { transactionsApi, type TransactionStatus } from "@/lib/services/transact
 
 export const TRANSACTIONS_PAGE_SIZE = 10;
 
-export function useTransactionsPage(statusFilter: TransactionStatus | "all") {
+export function useTransactionsPage(
+  statusFilter: TransactionStatus | "all",
+  options?: { enabled?: boolean },
+) {
   const [offset, setOffset] = useState(0);
   const status = statusFilter === "all" ? undefined : statusFilter;
+  const enabled = options?.enabled ?? true;
 
   // A stale offset from a previous filter's page 3 would silently show an
   // empty (or just wrong) page under the new status scope, so switching
@@ -31,10 +35,10 @@ export function useTransactionsPage(statusFilter: TransactionStatus | "all") {
     queryKey: ["transactions-page", status, offset],
     queryFn: () => transactionsApi.listPage({ status, limit: TRANSACTIONS_PAGE_SIZE, offset }),
     placeholderData: keepPreviousData,
-    // Matches the polling cadence the old unpaginated list used, so a
-    // status change elsewhere (e.g. an order settling) still shows up here
-    // without a manual refresh.
-    refetchInterval: 15_000,
+    enabled,
+    // Poll only while the Transactions screen is mounted/active — Home no
+    // longer pays for a second 15s orders stream on every dashboard visit.
+    refetchInterval: enabled ? 15_000 : false,
     retry: false,
   });
 

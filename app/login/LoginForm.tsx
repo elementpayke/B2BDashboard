@@ -2,7 +2,8 @@
 
 import { useId, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authApi } from "@/lib/services/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { authApi, authMePlaceholderFromLogin } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
 import {
   authPageStyle,
@@ -75,6 +76,7 @@ function AuthChrome() {
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const errorId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -86,7 +88,11 @@ export default function LoginForm() {
     setError(null);
     setSubmitting(true);
     try {
-      await authApi.login(email, password);
+      const login = await authApi.login(email, password);
+      // Seed shell identity/KYB from login so Home doesn't wait on /me alone,
+      // then invalidate so the real `/me` replaces the placeholder promptly.
+      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
       const next = safeNextPath(searchParams.get("next"));
       router.push(next);
       router.refresh();

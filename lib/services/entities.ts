@@ -337,14 +337,26 @@ async function collectStablecoinAccounts(
   const entities = await entitiesApi.list();
   if (!Array.isArray(entities) || entities.length === 0) return [];
 
+  // Fan out per-entity account lists in parallel — sequential awaits were the
+  // main post-login waterfall for stablecoin cards (1 + N round trips).
+  const perEntity = await Promise.all(
+    entities.map(async (entity) => {
+      if (!entity?.id) return [] as FinancialAccount[];
+      const raw = await entitiesApi.listAccounts(entity.id);
+      const accounts: FinancialAccount[] = [];
+      for (const row of extractAccountRows(raw)) {
+        const account = normalizeFinancialAccount(row, entity.id);
+        if (!account || !predicate(account)) continue;
+        accounts.push(account);
+      }
+      return accounts;
+    }),
+  );
+
   const found: FinancialAccount[] = [];
   const seen = new Set<string>();
-  for (const entity of entities) {
-    if (!entity?.id) continue;
-    const raw = await entitiesApi.listAccounts(entity.id);
-    for (const row of extractAccountRows(raw)) {
-      const account = normalizeFinancialAccount(row, entity.id);
-      if (!account || !predicate(account)) continue;
+  for (const accounts of perEntity) {
+    for (const account of accounts) {
       if (seen.has(account.id)) continue;
       seen.add(account.id);
       found.push(account);

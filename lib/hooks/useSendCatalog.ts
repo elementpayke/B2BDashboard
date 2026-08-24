@@ -11,11 +11,12 @@ import { catalogApi, type SupportedCatalogData } from "@/lib/services/catalog";
  * `providerNamesFromCatalog(..., catalogSettled=false)` yields `[]` so the
  * provider chips do not flash stale names.
  */
-export function useSendCatalog() {
+export function useSendCatalog(options?: { enabled?: boolean }) {
   return useQuery<SupportedCatalogData>({
     queryKey: ["supported-catalog"],
     queryFn: () => catalogApi.get(),
     retry: false,
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled ?? true,
   });
 }

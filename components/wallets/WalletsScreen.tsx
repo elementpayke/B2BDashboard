@@ -42,6 +42,12 @@ export type WalletsScreenProps = {
   /** Set when the eligibility check itself failed (network/5xx) — distinct from a real "not eligible" result. */
   eligibilityErrorMessage?: string;
   accountsLoading: boolean;
+  /**
+   * When some account cards are already visible but another rail is still
+   * fetching (e.g. IBAN ready, stablecoin walking entities), append a
+   * trailing skeleton instead of blanking the whole strip.
+   */
+  accountsPendingMore?: boolean;
   accountsErrorMessage?: string;
   /** Re-fetch eligibility and/or deposit accounts after a failure. */
   onRetryAccounts?: () => void;
@@ -77,14 +83,21 @@ function AccountCardSkeleton() {
 export default function WalletsScreen(p: WalletsScreenProps) {
   const showGate = !p.eligibilityLoading && !p.eligible && !p.eligibilityErrorMessage;
   const showError = Boolean(p.eligibilityErrorMessage || p.accountsErrorMessage);
-  // Hide the strip on list failures / gate so "0 accounts" doesn't look like success.
-  // Also hide while eligibility is still resolving — avoids an empty strip flash.
-  const showAccountsRow = !showGate && !showError && !p.eligibilityLoading;
+  const hasAccountCards = (p.accounts || []).length > 0;
+  // Show the strip whenever we have (or are loading) cards — including
+  // stablecoin rows while IBAN is still gated by KYB. Gate banner stays above.
+  const showAccountsRow =
+    !showError &&
+    (hasAccountCards ||
+      p.accountsLoading ||
+      p.accountsPendingMore ||
+      (!p.eligibilityLoading && p.eligible));
   const showEmpty =
     showAccountsRow &&
     !p.accountsLoading &&
+    !p.accountsPendingMore &&
     p.eligible &&
-    (p.accounts || []).length === 0;
+    !hasAccountCards;
 
   return (
     <div
@@ -249,10 +262,10 @@ export default function WalletsScreen(p: WalletsScreenProps) {
       {showAccountsRow ? (
         <div
           className="ep-wallets__strip ep-scroll-hint"
-          aria-busy={p.accountsLoading}
+          aria-busy={p.accountsLoading || Boolean(p.accountsPendingMore)}
           aria-label="Currency accounts"
         >
-          {p.accountsLoading ? (
+          {p.accountsLoading && !hasAccountCards ? (
             <>
               <AccountCardSkeleton />
               <AccountCardSkeleton />
@@ -295,6 +308,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                   <div className="ep-wallets__card-detail">{acc.detail}</div>
                 </button>
               ))}
+              {p.accountsPendingMore ? <AccountCardSkeleton /> : null}
             </>
           )}
           {p.eligible && !p.accountsLoading && p.canCreateBank !== false ? (
