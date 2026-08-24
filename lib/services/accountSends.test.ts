@@ -92,9 +92,9 @@ describe("account send validation", () => {
     expect(() => validateStellarAddress(swapped)).toThrow(/Stellar public key/);
   });
 
-  it("explains Mboka EVM-only send errors only on the Stellar rail", () => {
+  it("rewrites legacy EVM-only send errors on the Stellar rail", () => {
     expect(explainAccountSendError("to_address must be a valid 20-byte EVM address.", "stellar")).toMatch(
-      /not accepted by the send API yet/i,
+      /backend that accepts G/i,
     );
     expect(explainAccountSendError("to_address must be a valid 20-byte EVM address.", "base")).toBe(
       "to_address must be a valid 20-byte EVM address.",

@@ -76,11 +76,10 @@ the exact failure mode). See
 - Confirm: `POST /v1/accounts/{account_id}/sends` with `{ preview_token }`
   and a required `Idempotency-Key` header (8–64 chars). The dashboard mints
   a fresh UUID per confirm attempt.
-- Partner aggregator already forwards Stellar account-sends (used by Mboka
-  Stellar OffRamp auto-send). Mboka's public send controller may still reject
-  Stellar (`network must be Base or Polygon` / EVM `to_address`). The
-  dashboard submits the real Stellar payload and fails closed with that
-  response — never a fake success.
+- Stellar account-sends are supported end-to-end: Mboka accepts `G…` +
+  `network: Stellar`, and the aggregator pays Circle USDC on Horizon from the
+  Element-custodial wallet (same path OffRamp auto-send uses). Destination must
+  be funded on-network with a Circle USDC trustline.
 - USDT / Ethereum / Solana chips are intentionally not offered — the backend
   rejects them (`assert_stablecoin_account`).
 - If no ready account exists for the chosen network, the Stablecoin tab
