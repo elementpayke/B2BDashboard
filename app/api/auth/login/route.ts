@@ -11,6 +11,8 @@ type LoginBusinessData = {
   user_id: number;
   business_id: number | null;
   wallet_address: string | null;
+  business_name?: string | null;
+  permissions?: string[];
 };
 
 type Envelope = {

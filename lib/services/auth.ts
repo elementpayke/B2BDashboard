@@ -7,6 +7,9 @@ export type LoginResult = {
   user_id: number;
   business_id: number | null;
   wallet_address: string | null;
+  /** Present once Mboka enriches login; optional for older responses. */
+  business_name?: string | null;
+  permissions?: string[];
 };
 
 export type AuthMeUser = {
@@ -32,10 +35,55 @@ export type KybSummary = {
 
 export type AuthMe = {
   user: AuthMeUser;
+  principal?: "individual" | "business" | string;
   business: AuthMeBusiness | null;
   role: string | null;
+  permissions?: string[];
+  memberships?: Array<{
+    business_id: number;
+    name: string;
+    role: string;
+    status: string;
+  }>;
   kyb_summary: KybSummary | null;
 };
+
+/**
+ * Build a partial `auth-me` cache entry from the login response so the
+ * dashboard shell (role, KYB chip, business id) can paint before `/me`
+ * returns. Full `/me` still replaces this once it settles.
+ */
+export function authMePlaceholderFromLogin(
+  login: LoginResult,
+  email: string,
+): AuthMe {
+  const businessName =
+    (login.business_name && login.business_name.trim()) || "Your business";
+  return {
+    user: {
+      id: login.user_id,
+      email: email.trim(),
+      email_verified: true,
+      kyc_verified: false,
+    },
+    business:
+      typeof login.business_id === "number" && Number.isFinite(login.business_id)
+        ? {
+            id: login.business_id,
+            name: businessName,
+            legal_name: null,
+            country: "",
+            status: "active",
+            kyb_verified: login.kyb_status === "approved",
+            registration_number: null,
+          }
+        : null,
+    role: login.role,
+    kyb_summary: login.kyb_status
+      ? { profile: { kyb_status: login.kyb_status } }
+      : null,
+  };
+}
 
 export const authApi = {
   login: (email: string, password: string) =>

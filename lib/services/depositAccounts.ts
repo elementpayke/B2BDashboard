@@ -125,6 +125,8 @@ export type DepositAccountBalance = {
 
 export type DepositAccount = {
   id?: string | null;
+  /** Partner entity id that owns this deposit account (Cards / nested routes). */
+  entity_id?: string | null;
   currency: string;
   status: DepositAccountStatus;
   account_holder_name?: string | null;
@@ -143,6 +145,9 @@ export type DepositAccount = {
 
 export type DepositAccountListResult = {
   accounts: DepositAccount[];
+  /** Present once Mboka soft-fails KYB on the list endpoint (HTTP 200). */
+  eligible?: boolean;
+  verification_status?: string | null;
 };
 
 export type DepositAccountEligibility = {

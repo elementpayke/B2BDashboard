@@ -100,6 +100,16 @@ export async function resolveUsdFundingAccount(params: {
 
   if (depositUsd?.id) {
     const accountId = String(depositUsd.id);
+    if (depositUsd.entity_id) {
+      return {
+        entityId: String(depositUsd.entity_id),
+        accountId,
+        currency: "USD",
+        balanceLabel: formatAccountBalance(depositUsd.balance),
+        status: depositUsd.status,
+        accountMask: maskIban(depositUsd.iban),
+      };
+    }
     // Prefer the entity that actually owns this account id.
     for (const entity of entities) {
       if (!entity?.id) continue;
