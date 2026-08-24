@@ -22,7 +22,8 @@ import {
   type PrimaryTransactionFilter,
 } from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
-import { authApi } from "@/lib/services/auth";
+import { authApi, type AuthMe } from "@/lib/services/auth";
+import { bootstrapApi } from "@/lib/services/bootstrap";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import {
@@ -362,15 +363,60 @@ export default function DashboardApp(props: Props = {}) {
     enabled: state.modal === "kyb",
     onSubmitted: () => {
       queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
     },
   });
-  const summaryQuery = useQuery({ queryKey: ["dashboard-summary"], queryFn: dashboardApi.summary, retry: false });
+  // One-shot Home aggregate: identity slice, eligibility, treasury, FX, all accounts.
+  const bootstrapQuery = useQuery({
+    queryKey: ["dashboard-bootstrap"],
+    queryFn: bootstrapApi.get,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const bootstrapReady = bootstrapQuery.isSuccess;
+  const bootstrapFailed = bootstrapQuery.isError;
+  // When bootstrap lands first, lift business name / KYB into auth-me cache.
+  useEffect(() => {
+    const patch = bootstrapQuery.data?.authMePatch;
+    if (!patch?.business?.name) return;
+    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) => {
+      if (!prev) return prev;
+      const prevName = prev.business?.name?.trim() || "";
+      if (prevName && prevName !== "Your business") {
+        return {
+          ...prev,
+          role: patch.role ?? prev.role,
+          kyb_summary: patch.kyb_summary ?? prev.kyb_summary,
+        };
+      }
+      return {
+        ...prev,
+        role: patch.role ?? prev.role,
+        kyb_summary: patch.kyb_summary ?? prev.kyb_summary,
+        business: patch.business
+          ? {
+              ...(prev.business ?? patch.business),
+              ...patch.business,
+            }
+          : prev.business,
+      };
+    });
+  }, [bootstrapQuery.data, queryClient]);
+  const summaryQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: dashboardApi.summary,
+    retry: false,
+    // Bootstrap already carries treasury + FX; keep summary for money-in/out when needed.
+    enabled: true,
+  });
   const exchangeRatesQuery = useQuery({
     queryKey: ["exchange-rates"],
     queryFn: dashboardApi.exchangeRates,
     retry: false,
     staleTime: 60_000,
+    // Skip when bootstrap already supplied usable FX.
+    enabled: !bootstrapQuery.data?.fxRates,
   });
   const transactionsQuery = useQuery({
     queryKey: ["transactions"],
@@ -489,44 +535,57 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [sendCatalogQuery.data, state.depositCountryIdx, state.depositRailIdx, state.depositProviderName, setState]);
 
-  // Listing/creating deposit accounts requires KYB approval — check eligibility
-  // first so an unverified business sees a clear gate instead of a raw 400
-  // from `GET /v1/iban/accounts` (see docs/api-contract.md).
-  // When `/me` (or login seed) already says KYB approved, start the IBAN list
-  // in parallel with eligibility instead of waiting for that extra RTT.
+  // Prefer bootstrap accounts. Fall back to eligibility → IBAN + entities walk
+  // only when bootstrap fails (older backends / outage).
   const depositEligibilityQuery = useQuery({
     queryKey: ["deposit-accounts-eligibility"],
     queryFn: depositAccountsApi.eligibility,
     retry: false,
+    enabled: bootstrapFailed,
   });
   const depositAccountsQuery = useQuery({
     queryKey: ["deposit-accounts"],
     queryFn: depositAccountsApi.list,
     retry: false,
     enabled:
-      depositEligibilityQuery.data?.eligible === true ||
-      (meKybApproved && depositEligibilityQuery.data?.eligible !== false),
+      bootstrapFailed &&
+      (depositEligibilityQuery.data?.eligible === true ||
+        (meKybApproved && depositEligibilityQuery.data?.eligible !== false) ||
+        // Soft-fail list: try directly once eligibility isn't known false.
+        depositEligibilityQuery.isFetched),
   });
   const stablecoinAccountsQuery = useQuery({
     queryKey: ["stablecoin-accounts"],
     queryFn: listStablecoinAccounts,
     retry: false,
+    enabled: bootstrapFailed,
   });
 
   const cardsSurfaceOpen =
     state.screen === "cards" ||
     state.modal === "newCard" ||
     state.modal === "cardDetail";
+  const bootstrapFiatAccounts = bootstrapQuery.data?.fiatAccounts ?? [];
+  const fundingDepositAccounts = bootstrapReady
+    ? bootstrapFiatAccounts
+    : (depositAccountsQuery.data?.accounts ?? []);
   // Prefer IBAN USD once eligibility+list settle; still allow entity-account fallback.
   const usdFundingReady =
-    depositEligibilityQuery.isFetched &&
-    (depositEligibilityQuery.data?.eligible !== true ||
-      depositAccountsQuery.isFetched);
+    bootstrapReady ||
+    (depositEligibilityQuery.isFetched &&
+      (depositEligibilityQuery.data?.eligible !== true ||
+        depositAccountsQuery.isFetched));
   const usdFundingQuery = useQuery({
-    queryKey: ["usd-funding-account", depositAccountsQuery.dataUpdatedAt],
+    queryKey: [
+      "usd-funding-account",
+      bootstrapReady ? "boot" : "legacy",
+      bootstrapReady
+        ? bootstrapQuery.dataUpdatedAt
+        : depositAccountsQuery.dataUpdatedAt,
+    ],
     queryFn: () =>
       resolveUsdFundingAccount({
-        depositAccounts: depositAccountsQuery.data?.accounts ?? [],
+        depositAccounts: fundingDepositAccounts,
       }),
     enabled: cardsSurfaceOpen && usdFundingReady,
     retry: false,
@@ -556,10 +615,18 @@ export default function DashboardApp(props: Props = {}) {
   // Prefill convert accounts once lists load so the form isn't empty.
   useEffect(() => {
     if (state.screen !== "convert" && state.modal !== "convert") return;
-    const fiat = (depositAccountsQuery.data?.accounts ?? [])
+    const fiat = (
+      bootstrapReady
+        ? (bootstrapQuery.data?.fiatAccounts ?? [])
+        : (depositAccountsQuery.data?.accounts ?? [])
+    )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
-    const usdc = (stablecoinAccountsQuery.data ?? [])
+    const usdc = (
+      bootstrapReady
+        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+        : (stablecoinAccountsQuery.data ?? [])
+    )
       .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
       .map((a) => String(a.id));
     const mode = state.convertMode;
@@ -585,6 +652,8 @@ export default function DashboardApp(props: Props = {}) {
     state.convertSourceAccountId,
     state.convertDestAccountId,
     state.convertBridgeUsdcId,
+    bootstrapReady,
+    bootstrapQuery.data,
     depositAccountsQuery.data,
     stablecoinAccountsQuery.data,
     setState,
@@ -1672,6 +1741,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ convertAccepting: true, convertError: "" });
     try {
       const accepted = await conversionsApi.accept(quote.quote_id);
+      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -1944,7 +2014,9 @@ export default function DashboardApp(props: Props = {}) {
         return setState({ createAccountError: "Choose a stablecoin and a network." });
       }
       const occupied = occupiedStablecoinNetworkCodes(
-        stablecoinAccountsQuery.data ?? [],
+        bootstrapReady
+          ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+          : (stablecoinAccountsQuery.data ?? []),
       );
       if (occupied.has(state.createAccountNetwork.trim().toUpperCase())) {
         return setState({
@@ -1961,6 +2033,7 @@ export default function DashboardApp(props: Props = {}) {
         });
         const entityId = await resolvePrimaryEntityId();
         await entitiesApi.openAccount(entityId, payload);
+        queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
         queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
         queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
         setState({ createAccountSaving: false, modal: null });
@@ -1989,6 +2062,7 @@ export default function DashboardApp(props: Props = {}) {
         currency: state.createAccountCurrency,
         accountName: state.createAccountName.trim(),
       });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       setState({ createAccountSaving: false, modal: null });
     } catch (err) {
@@ -2262,8 +2336,12 @@ export default function DashboardApp(props: Props = {}) {
     };
     const depositStatusColors = (status: string): [string, string] =>
       depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
-    const depositAccountsList = depositAccountsQuery.data?.accounts ?? [];
-    const stablecoinAccountsList = stablecoinAccountsQuery.data ?? [];
+    const depositAccountsList = bootstrapReady
+      ? (bootstrapQuery.data?.fiatAccounts ?? [])
+      : (depositAccountsQuery.data?.accounts ?? []);
+    const stablecoinAccountsList = bootstrapReady
+      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+      : (stablecoinAccountsQuery.data ?? []);
     const selectedDepositAccount =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
         ? depositAccountsList.find(
@@ -2402,6 +2480,7 @@ export default function DashboardApp(props: Props = {}) {
     }))
     .filter((item) => item.balance !== null);
   const homeFxRates = mergeExchangeRates(
+    bootstrapQuery.data?.fxRates,
     summaryQuery.data?.fx_rates,
     exchangeRatesQuery.data,
   );
@@ -2543,14 +2622,23 @@ export default function DashboardApp(props: Props = {}) {
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
   const accountsCount = accounts.length;
-  const depositEligible = depositEligibilityQuery.data?.eligible === true;
-  const depositEligibilityErrorMessage = depositEligibilityQuery.isError
-    ? (depositEligibilityQuery.error instanceof Error
-        ? depositEligibilityQuery.error.message
-        : "Couldn't check account eligibility. Try again.")
-    : undefined;
+  const depositEligible = bootstrapReady
+    ? Boolean(bootstrapQuery.data?.eligibility.eligible)
+    : depositEligibilityQuery.data?.eligible === true;
+  const depositEligibilityErrorMessage = bootstrapReady
+    ? undefined
+    : depositEligibilityQuery.isError
+      ? (depositEligibilityQuery.error instanceof Error
+          ? depositEligibilityQuery.error.message
+          : "Couldn't check account eligibility. Try again.")
+      : bootstrapQuery.isError
+        ? (bootstrapQuery.error instanceof Error
+            ? bootstrapQuery.error.message
+            : "Couldn't load accounts. Try again.")
+        : undefined;
   const depositAccountsErrorMessage =
-    depositAccountsQuery.isError || stablecoinAccountsQuery.isError
+    !bootstrapReady &&
+    (depositAccountsQuery.isError || stablecoinAccountsQuery.isError)
       ? (depositAccountsQuery.error instanceof Error
           ? depositAccountsQuery.error.message
           : stablecoinAccountsQuery.error instanceof Error
@@ -2904,17 +2992,21 @@ export default function DashboardApp(props: Props = {}) {
   const depositNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.depositAsset);
   const depositNetworks = depositNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const treasuryWalletAddress = resolveTreasuryWalletAddress({
-    summaryWallet: summaryQuery.data?.totals.wallet_address,
-    stablecoinAccounts: stablecoinAccountsQuery.data,
+    summaryWallet:
+      bootstrapQuery.data?.treasuryWallet ??
+      summaryQuery.data?.totals.wallet_address,
+    stablecoinAccounts: stablecoinAccountsList,
   });
   const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
   const pinnedOnRampDest = resolveOnRampDestination({
-    accounts: stablecoinAccountsQuery.data ?? [],
+    accounts: stablecoinAccountsList,
     selectedAccountId: s.fundTargetAccountId,
     depositNetworkKey: s.depositNetwork,
     depositAsset: s.depositAsset,
     fundAfricanTargetCurrency: s.fundAfricanTargetCurrency,
-    summaryWallet: summaryQuery.data?.totals.wallet_address,
+    summaryWallet:
+      bootstrapQuery.data?.treasuryWallet ??
+      summaryQuery.data?.totals.wallet_address,
   });
   const depositAssetCode = (pinnedOnRampDest?.asset.currency || s.depositAsset).toUpperCase();
   const sendStep = s.sendStep;
@@ -3324,22 +3416,34 @@ export default function DashboardApp(props: Props = {}) {
   }
   accounts={accounts}
   eligible={depositEligible}
-  eligibilityLoading={depositEligibilityQuery.isLoading}
-  verificationStatus={depositEligibilityQuery.data?.verification_status}
+  eligibilityLoading={
+    bootstrapQuery.isLoading ||
+    (!bootstrapReady && depositEligibilityQuery.isLoading)
+  }
+  verificationStatus={
+    bootstrapReady
+      ? bootstrapQuery.data?.eligibility.verification_status
+      : depositEligibilityQuery.data?.verification_status
+  }
   eligibilityErrorMessage={depositEligibilityErrorMessage}
   accountsLoading={
     accounts.length === 0 &&
-    ((depositEligible && depositAccountsQuery.isLoading) ||
-      stablecoinAccountsQuery.isLoading ||
-      depositEligibilityQuery.isLoading)
+    (bootstrapQuery.isLoading ||
+      (!bootstrapReady &&
+        ((depositEligible && depositAccountsQuery.isLoading) ||
+          stablecoinAccountsQuery.isLoading ||
+          depositEligibilityQuery.isLoading)))
   }
   accountsPendingMore={
     accounts.length > 0 &&
-    ((depositEligible && depositAccountsQuery.isLoading) ||
-      stablecoinAccountsQuery.isLoading)
+    (bootstrapQuery.isFetching ||
+      (!bootstrapReady &&
+        ((depositEligible && depositAccountsQuery.isLoading) ||
+          stablecoinAccountsQuery.isLoading)))
   }
   accountsErrorMessage={depositAccountsErrorMessage}
   onRetryAccounts={() => {
+    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
     queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
     queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
     queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
@@ -3981,7 +4085,8 @@ export default function DashboardApp(props: Props = {}) {
       selectedStablecoinAccount.id,
       action,
     );
-    await queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    await queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+        queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
     if (action === "delete") {
       backToWallets();
       return;

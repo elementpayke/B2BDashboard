@@ -9,6 +9,7 @@ export type LoginResult = {
   wallet_address: string | null;
   /** Present once Mboka enriches login; optional for older responses. */
   business_name?: string | null;
+  permissions?: string[];
 };
 
 export type AuthMeUser = {
@@ -34,8 +35,16 @@ export type KybSummary = {
 
 export type AuthMe = {
   user: AuthMeUser;
+  principal?: "individual" | "business" | string;
   business: AuthMeBusiness | null;
   role: string | null;
+  permissions?: string[];
+  memberships?: Array<{
+    business_id: number;
+    name: string;
+    role: string;
+    status: string;
+  }>;
   kyb_summary: KybSummary | null;
 };
 
