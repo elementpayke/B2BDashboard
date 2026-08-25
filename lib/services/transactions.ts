@@ -8,6 +8,19 @@ import { ordersApi, type Order, type OrderStatus } from "./orders";
 export type TransactionStatus = "processing" | "completed" | "failed" | "refunded" | "canceled" | "frozen";
 export type TransactionDirection = "in" | "out" | "unknown";
 
+/** Fiat-rail counterparty for receipts / transaction detail. */
+export type TransactionPayment = {
+  party_name?: string | null;
+  account_name?: string | null;
+  /** Bank account number or mobile-money MSISDN. */
+  account_number?: string | null;
+  account_kind?: "phone" | "bank_account" | string | null;
+  method_type?: "mobile_money" | "bank" | string | null;
+  network_id?: string | null;
+  /** Human rail label when known (e.g. M-PESA). */
+  network_name?: string | null;
+};
+
 export type Transaction = {
   id: number;
   direction: TransactionDirection;
@@ -23,6 +36,7 @@ export type Transaction = {
   crypto_network?: string | null;
   exchange_rate?: string | null;
   psp_transaction_id?: string | null;
+  payment?: TransactionPayment | null;
   created_at: string;
   updated_at: string;
 };
@@ -67,6 +81,36 @@ function directionFromOrder(order: Order): TransactionDirection {
 }
 
 /**
+ * Prefer first-class `payment` on TransactionOut; fall back to the accept-time
+ * snapshot under `client_metadata.payment` on OrderOut.
+ */
+export function paymentFromOrderMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): TransactionPayment | null {
+  const raw = metadata?.["payment"];
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const out: TransactionPayment = {
+    party_name: typeof p.party_name === "string" ? p.party_name : null,
+    account_name: typeof p.account_name === "string" ? p.account_name : null,
+    account_number: typeof p.account_number === "string" ? p.account_number : null,
+    account_kind: typeof p.account_kind === "string" ? p.account_kind : null,
+    method_type: typeof p.method_type === "string" ? p.method_type : null,
+    network_id: typeof p.network_id === "string" ? p.network_id : null,
+    network_name: typeof p.network_name === "string" ? p.network_name : null,
+  };
+  if (
+    !out.party_name &&
+    !out.account_number &&
+    !out.method_type &&
+    !out.network_name
+  ) {
+    return null;
+  }
+  return out;
+}
+
+/**
  * `GET /v1/orders` and `GET /v1/transactions` are both thin views over the
  * same `merchant_orders` row (same `id` — safe to pass into
  * `transactionsApi.get`/`useOrderStatus` interchangeably); only the wire
@@ -89,6 +133,7 @@ export function mapOrderToTransaction(order: Order): Transaction {
     crypto_network: order.crypto_network,
     exchange_rate: order.exchange_rate,
     psp_transaction_id: order.psp_transaction_id,
+    payment: paymentFromOrderMetadata(order.client_metadata),
     created_at: order.created_at,
     updated_at: order.updated_at,
   };

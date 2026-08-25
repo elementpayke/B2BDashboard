@@ -1,15 +1,18 @@
 /**
- * Printable Mboka documents — bank letters and payment receipts.
+ * Printable Mboka documents — payment receipts and bank letters.
  *
- * These leave the product: a counterparty's bank sees them, so they carry the
- * brand rather than the dashboard's chrome. The document is standalone, so it
- * uses the kit's literal hexes instead of the theme's custom properties, and
- * embeds the Chamfer mark inline rather than linking an asset (a saved file
- * with a broken <img> is worse than no mark at all).
- *
- * Colour tokens: indigo #3B2ED3 · ink #131126 · bone #F6F4EF.
- * The back block always sits at 45% opacity of the front.
+ * These leave the product: a counterparty sees them, so they carry the brand
+ * rather than the dashboard chrome. Documents are standalone HTML that the
+ * browser prints to PDF (no PDF dependency). Colour: indigo #3B2ED3 · ink
+ * #131126 · bone #F6F4EF.
  */
+
+import { MBOKA_LETTERHEAD, MBOKA_LOGO_SVG } from "@/lib/documents/letterhead";
+import {
+  RECEIPT_SHARE_METHODS,
+  buildReceiptSharePayload,
+  type ReceiptSharePayload,
+} from "@/lib/documents/receiptShare";
 
 export type DocumentRow = {
   label: string;
@@ -24,22 +27,24 @@ export type DocumentSection = {
 };
 
 export type BrandedDocument = {
-  /** Browser/window title and the PDF's default filename. */
+  /** Browser/window title and the PDF's default filename stem. */
   fileTitle: string;
   /** Large heading inside the document. */
   heading: string;
   subheading?: string;
+  /** Optional status chip under the heading (e.g. Settled). */
+  statusBadge?: string;
   /** Hero figure — the amount on a receipt. Omitted on letters. */
   amount?: string;
   amountCaption?: string;
+  /** Secondary line under the amount (e.g. "Deposit · KES"). */
+  party?: string;
   sections: DocumentSection[];
   footnote?: string;
 };
 
-const MARK = `<svg viewBox="0 0 44 44" width="34" height="34" aria-hidden="true"><rect width="44" height="44" rx="11" fill="#3B2ED3"></rect><path d="M24 18H35V35H18V24Z" fill="#FFFFFF" fill-opacity="0.45"></path><path d="M9 9H26V20L20 26H9Z" fill="#FFFFFF"></path></svg>`;
-
 /** Values come from user input and API responses — never interpolate raw. */
-function esc(value: string): string {
+export function esc(value: string): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -54,84 +59,382 @@ function renderRow(row: DocumentRow): string {
 
 function renderSection(section: DocumentSection): string {
   if (!section.rows.length) return "";
-  return `<section><h2>${esc(section.title)}</h2><table>${section.rows.map(renderRow).join("")}</table></section>`;
+  return `<section class="block"><h2>${esc(section.title)}</h2><table>${section.rows.map(renderRow).join("")}</table></section>`;
 }
 
-export function renderBrandedDocument(doc: BrandedDocument): string {
+function shareMenuItemsHtml(): string {
+  return RECEIPT_SHARE_METHODS.map(
+    (m) =>
+      `<button type="button" class="share-item" data-share="${esc(m.id)}">
+        <span class="share-item__label">${esc(m.label)}</span>
+        <span class="share-item__hint">${esc(m.hint)}</span>
+      </button>`,
+  ).join("");
+}
+
+function shareScript(payload: ReceiptSharePayload): string {
+  // Embed as JSON inside a script — escape </script> breakouts.
+  const json = JSON.stringify(payload).replace(/</g, "\\u003c");
+  return `<script>
+(function () {
+  var SHARE = ${json};
+  var menu = document.getElementById("share-menu");
+  var toggle = document.getElementById("share-toggle");
+  var toast = document.getElementById("share-toast");
+
+  function showToast(msg) {
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.hidden = false;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function () { toast.hidden = true; }, 2200);
+  }
+
+  function closeMenu() {
+    if (!menu || !toggle) return;
+    menu.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+  }
+
+  function openMenu() {
+    if (!menu || !toggle) return;
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+  }
+
+  function encode(s) { return encodeURIComponent(s || ""); }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    return new Promise(function (resolve) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand("copy");
+        ta.remove();
+        resolve(ok);
+      } catch (e) { resolve(false); }
+    });
+  }
+
+  function downloadHtml() {
+    var blob = new Blob([document.documentElement.outerHTML], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = SHARE.filename || "mboka-receipt.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function runShare(id) {
+    var text = SHARE.text || "";
+    var title = SHARE.title || "Mboka receipt";
+    if (id === "device") {
+      if (!navigator.share) {
+        showToast("Device share isn’t available here — try WhatsApp or Copy");
+        return;
+      }
+      navigator.share({ title: title, text: text }).then(closeMenu).catch(function (err) {
+        if (err && err.name === "AbortError") { closeMenu(); return; }
+        showToast("Couldn’t open device share");
+      });
+      return;
+    }
+    if (id === "whatsapp") {
+      window.open("https://wa.me/?text=" + encode(text), "_blank", "noopener,noreferrer");
+      closeMenu();
+      return;
+    }
+    if (id === "email") {
+      window.location.href = "mailto:?subject=" + encode(title) + "&body=" + encode(text);
+      closeMenu();
+      return;
+    }
+    if (id === "sms") {
+      window.location.href = "sms:?&body=" + encode(text);
+      closeMenu();
+      return;
+    }
+    if (id === "telegram") {
+      window.open(
+        "https://t.me/share/url?url=" + encode("https://mboka.africa") + "&text=" + encode(text),
+        "_blank",
+        "noopener,noreferrer"
+      );
+      closeMenu();
+      return;
+    }
+    if (id === "copy") {
+      copyText(text).then(function (ok) {
+        showToast(ok ? "Receipt copied" : "Couldn’t copy — select the text manually");
+        closeMenu();
+      });
+      return;
+    }
+    if (id === "pdf") {
+      closeMenu();
+      window.print();
+      return;
+    }
+    if (id === "html") {
+      downloadHtml();
+      showToast("Receipt file saved");
+      closeMenu();
+    }
+  }
+
+  if (toggle && menu) {
+    toggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (menu.hidden) openMenu(); else closeMenu();
+    });
+    menu.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest("[data-share]") : null;
+      if (!btn) return;
+      runShare(btn.getAttribute("data-share"));
+    });
+    document.addEventListener("click", function () { closeMenu(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeMenu();
+    });
+  }
+})();
+</script>`;
+}
+
+export function renderBrandedDocument(
+  doc: BrandedDocument,
+  options?: { filenameStem?: string },
+): string {
   const generated = new Intl.DateTimeFormat(undefined, {
     dateStyle: "long",
     timeStyle: "short",
   }).format(new Date());
+
+  const addressHtml = MBOKA_LETTERHEAD.lines.map((line) => `<div>${esc(line)}</div>`).join("");
+  const sharePayload = buildReceiptSharePayload(
+    doc,
+    options?.filenameStem || doc.fileTitle || "mboka-receipt",
+  );
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(doc.fileTitle)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --indigo:#3B2ED3; --ink:#131126; --bone:#F6F4EF; --muted:#4C4A66; --muted2:#8B89A6; --line:rgba(19,17,38,0.10); }
+  :root {
+    --indigo:#3B2ED3;
+    --indigo-tint:#EEEDFB;
+    --ink:#131126;
+    --bone:#F6F4EF;
+    --muted:#4C4A66;
+    --muted2:#8B89A6;
+    --line:rgba(19,17,38,0.10);
+    --success:#0F7A4A;
+    --success-tint:#E6F6EE;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bone); color:var(--ink);
-         font-family:'DM Sans', system-ui, -apple-system, sans-serif;
-         -webkit-font-smoothing:antialiased; padding:32px 20px; }
-  .sheet { max-width:640px; margin:0 auto; background:#fff; border:1px solid var(--line);
-           border-radius:20px; padding:36px 34px; }
-  /* Clear space around the lockup equals a quarter of the mark's height. */
-  .brand { display:flex; align-items:center; gap:11px; padding-bottom:9px; }
-  .brand__word { font-family:'Space Grotesk', system-ui, sans-serif; font-weight:600;
-                 text-transform:uppercase; letter-spacing:0.04em; font-size:16px; }
-  h1 { font-family:'Space Grotesk', system-ui, sans-serif; font-size:24px; font-weight:700;
-       letter-spacing:-0.02em; margin:22px 0 4px; }
-  .sub { color:var(--muted); font-size:13.5px; margin:0; }
-  .amount { font-family:'DM Mono', ui-monospace, monospace; font-size:34px; font-weight:500;
-            letter-spacing:-0.02em; margin:22px 0 2px; }
-  .amount-caption { color:var(--muted); font-size:12.5px; margin:0 0 4px; }
-  section { margin-top:26px; }
-  h2 { font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
-       color:var(--muted2); margin:0 0 8px; }
+  body {
+    margin:0; background:linear-gradient(165deg, #EFEBFB 0%, var(--bone) 42%, #F8F6F1 100%);
+    color:var(--ink); font-family:'DM Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing:antialiased; padding:28px 16px 56px;
+  }
+  .toolbar {
+    position:sticky; top:0; z-index:2; max-width:720px; margin:0 auto 16px;
+    display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; align-items:center;
+    padding:10px 0;
+  }
+  .toolbar button, .toolbar__share > button {
+    appearance:none; border:0; cursor:pointer; font:inherit; font-weight:600;
+    font-size:13.5px; border-radius:999px; padding:10px 18px;
+  }
+  .toolbar__primary { background:var(--indigo); color:#fff; }
+  .toolbar__primary:hover { filter:brightness(1.05); }
+  .toolbar__ghost { background:#fff; color:var(--ink); border:1px solid var(--line) !important; }
+  .toolbar__share { position:relative; }
+  .share-menu {
+    position:absolute; right:0; top:calc(100% + 8px); width:min(320px, 86vw);
+    background:#fff; border:1px solid var(--line); border-radius:16px;
+    box-shadow:0 16px 40px rgba(19,17,38,0.14); padding:6px; z-index:5;
+  }
+  .share-item {
+    width:100%; display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    text-align:left; padding:10px 12px !important; border-radius:12px !important;
+    background:transparent; color:var(--ink);
+  }
+  .share-item:hover { background:var(--indigo-tint); }
+  .share-item__label { font-size:13.5px; font-weight:700; }
+  .share-item__hint { font-size:11.5px; font-weight:500; color:var(--muted); }
+  .share-toast {
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
+    background:var(--ink); color:#fff; font-size:13px; font-weight:600;
+    padding:10px 16px; border-radius:999px; z-index:20;
+    box-shadow:0 10px 30px rgba(19,17,38,0.25);
+  }
+  .sheet {
+    max-width:720px; margin:0 auto; background:#fff;
+    border:1px solid var(--line); border-radius:24px; overflow:hidden;
+    box-shadow:0 18px 50px rgba(19,17,38,0.08);
+  }
+  .hero {
+    padding:28px 34px 22px;
+    background:
+      radial-gradient(120% 80% at 100% -10%, rgba(59,46,211,0.16), transparent 55%),
+      linear-gradient(180deg, #FBFAFF 0%, #FFFFFF 100%);
+    border-bottom:1px solid var(--line);
+  }
+  .letterhead { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+  .letterhead__brand { display:flex; flex-direction:column; gap:6px; }
+  .letterhead__tag {
+    font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--muted2); margin:0;
+  }
+  .letterhead__addr {
+    text-align:right; font-size:12px; line-height:1.55; color:var(--muted);
+    min-width:140px;
+  }
+  h1 {
+    font-family:'Space Grotesk', system-ui, sans-serif; font-size:26px; font-weight:700;
+    letter-spacing:-0.03em; margin:22px 0 8px;
+  }
+  .sub { color:var(--muted); font-size:14px; margin:0; line-height:1.45; max-width:36em; }
+  .badge {
+    display:inline-flex; align-items:center; gap:6px; margin-top:14px;
+    padding:5px 11px; border-radius:999px; font-size:12px; font-weight:700;
+    background:var(--success-tint); color:var(--success);
+  }
+  .badge::before {
+    content:""; width:7px; height:7px; border-radius:50%; background:currentColor;
+  }
+  .amount-panel {
+    margin:22px 34px 0; padding:20px 22px; border-radius:18px;
+    background:var(--indigo-tint); border:1px solid rgba(59,46,211,0.12);
+  }
+  .amount-caption {
+    margin:0; font-size:12px; font-weight:700; letter-spacing:0.07em;
+    text-transform:uppercase; color:var(--indigo);
+  }
+  .amount {
+    font-family:'DM Mono', ui-monospace, monospace; font-size:36px; font-weight:500;
+    letter-spacing:-0.03em; margin:6px 0 0; color:var(--ink);
+  }
+  .party { margin:6px 0 0; color:var(--muted); font-size:13.5px; font-weight:500; }
+  .body { padding:8px 34px 28px; }
+  .block { margin-top:22px; }
+  h2 {
+    font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--muted2); margin:0 0 10px;
+  }
   table { width:100%; border-collapse:collapse; }
-  th, td { text-align:left; font-size:13.5px; padding:9px 0; border-bottom:1px solid var(--line);
-           vertical-align:top; }
-  th { font-weight:500; color:var(--muted); width:44%; }
+  th, td {
+    text-align:left; font-size:13.5px; padding:11px 0;
+    border-bottom:1px solid var(--line); vertical-align:top;
+  }
+  th { font-weight:500; color:var(--muted); width:42%; padding-right:16px; }
   td { font-weight:600; word-break:break-word; }
-  td.mono { font-family:'DM Mono', ui-monospace, monospace; font-weight:500; }
+  td.mono { font-family:'DM Mono', ui-monospace, monospace; font-weight:500; font-size:13px; }
   tr:last-child th, tr:last-child td { border-bottom:none; }
-  footer { margin-top:28px; padding-top:16px; border-top:1px solid var(--line);
-           color:var(--muted2); font-size:11.5px; line-height:1.6; }
+  footer.doc-foot {
+    margin:8px 34px 28px; padding-top:16px; border-top:1px solid var(--line);
+    color:var(--muted2); font-size:11.5px; line-height:1.65;
+  }
   @media print {
+    @page { margin:14mm; }
     body { background:#fff; padding:0; }
-    .sheet { border:none; border-radius:0; max-width:none; padding:24px 0; }
+    .toolbar, .share-toast { display:none !important; }
+    .sheet {
+      border:none; border-radius:0; box-shadow:none; max-width:none;
+    }
+    .hero { background:#fff; }
+    .amount-panel { break-inside:avoid; }
+  }
+  @media (max-width:560px) {
+    .hero, .body, footer.doc-foot, .amount-panel { padding-left:20px; padding-right:20px; }
+    .amount-panel { margin-left:20px; margin-right:20px; }
+    .letterhead { flex-direction:column; }
+    .letterhead__addr { text-align:left; }
+    .amount { font-size:28px; }
   }
 </style></head>
 <body>
+  <div class="toolbar" role="region" aria-label="Receipt actions">
+    <button type="button" class="toolbar__ghost" onclick="window.close()">Close</button>
+    <div class="toolbar__share">
+      <button type="button" class="toolbar__ghost" id="share-toggle" aria-haspopup="menu" aria-expanded="false" aria-controls="share-menu">Share</button>
+      <div class="share-menu" id="share-menu" role="menu" hidden>
+        ${shareMenuItemsHtml()}
+      </div>
+    </div>
+    <button type="button" class="toolbar__primary" onclick="window.print()">Download PDF</button>
+  </div>
+  <div class="share-toast" id="share-toast" hidden role="status" aria-live="polite"></div>
   <main class="sheet">
-    <div class="brand">${MARK}<span class="brand__word">Mboka</span></div>
-    <h1>${esc(doc.heading)}</h1>
-    ${doc.subheading ? `<p class="sub">${esc(doc.subheading)}</p>` : ""}
-    ${doc.amount ? `<p class="amount">${esc(doc.amount)}</p>` : ""}
-    ${doc.amountCaption ? `<p class="amount-caption">${esc(doc.amountCaption)}</p>` : ""}
-    ${doc.sections.map(renderSection).join("")}
-    <footer>
-      Generated ${esc(generated)} from your Mboka dashboard.
-      ${doc.footnote ? esc(doc.footnote) : ""}
+    <header class="hero">
+      <div class="letterhead">
+        <div class="letterhead__brand">
+          ${MBOKA_LOGO_SVG}
+          <p class="letterhead__tag">${esc(MBOKA_LETTERHEAD.tagline)}</p>
+        </div>
+        <div class="letterhead__addr">${addressHtml}</div>
+      </div>
+      <h1>${esc(doc.heading)}</h1>
+      ${doc.subheading ? `<p class="sub">${esc(doc.subheading)}</p>` : ""}
+      ${doc.statusBadge ? `<span class="badge">${esc(doc.statusBadge)}</span>` : ""}
+    </header>
+    ${
+      doc.amount
+        ? `<div class="amount-panel">
+      ${doc.amountCaption ? `<p class="amount-caption">${esc(doc.amountCaption)}</p>` : ""}
+      <p class="amount">${esc(doc.amount)}</p>
+      ${doc.party ? `<p class="party">${esc(doc.party)}</p>` : ""}
+    </div>`
+        : ""
+    }
+    <div class="body">
+      ${doc.sections.map(renderSection).join("")}
+    </div>
+    <footer class="doc-foot">
+      Generated ${esc(generated)} · ${esc(MBOKA_LETTERHEAD.product)} business payments.
+      ${doc.footnote ? ` ${esc(doc.footnote)}` : ""}
+      This is a computer-generated receipt and does not require a signature.
     </footer>
   </main>
+  ${shareScript(sharePayload)}
 </body></html>`;
 }
 
 /**
- * Open the document in a new tab so the browser's own "Save as PDF" handles
- * the export — no PDF dependency, and the user gets a real PDF rather than a
- * text file. Falls back to downloading the HTML when popups are blocked.
+ * Open the document in a new tab. "Download PDF" uses the browser print
+ * dialog (Save as PDF) — no PDF library, and the user gets a real PDF.
+ * Falls back to downloading the HTML when popups are blocked.
  */
 export function openBrandedDocument(doc: BrandedDocument, filenameStem: string): void {
-  const html = renderBrandedDocument(doc);
+  const html = renderBrandedDocument(doc, { filenameStem });
   const win = window.open("", "_blank");
   if (win) {
     win.opener = null;
     win.document.write(html);
     win.document.close();
+    // Hint the print dialog's default filename where browsers honour <title>.
+    try {
+      win.document.title = filenameStem.endsWith(".pdf")
+        ? filenameStem
+        : `${filenameStem}.pdf`;
+    } catch {
+      /* cross-origin / closed — ignore */
+    }
     return;
   }
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });

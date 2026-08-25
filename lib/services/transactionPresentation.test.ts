@@ -57,6 +57,25 @@ describe("presentTransaction", () => {
       ),
     ).toBe("supplier-invoice-17");
   });
+
+  it("flattens payment counterparty fields for the detail modal and receipt", () => {
+    const view = presentTransaction(
+      transaction({
+        payment: {
+          party_name: "Jane Wanjiku",
+          account_number: "+254712345678",
+          account_kind: "phone",
+          method_type: "mobile_money",
+          network_name: "M-PESA",
+        },
+      }),
+    );
+    expect(view.partyName).toBe("Jane Wanjiku");
+    expect(view.accountNumber).toBe("+254712345678");
+    expect(view.accountKind).toBe("phone");
+    expect(view.networkName).toBe("M-PESA");
+    expect(view.railType).toBe("mobile");
+  });
 });
 
 describe("formatTransactionDate", () => {

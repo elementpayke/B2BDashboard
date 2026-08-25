@@ -4,6 +4,8 @@ import {
   buildTransactionReceipt,
   isReceiptable,
   receiptFilename,
+  receiptPaymentMethod,
+  receiptPaymentRefLabel,
   type ReceiptTransaction,
 } from "@/lib/documents/transactionReceipt";
 
@@ -13,11 +15,18 @@ const settledPayout: ReceiptTransaction = {
   status: "completed",
   amount_fiat: "41300.00",
   currency: "KES",
-  aggregator_order_id: "AGG-77123",
+  aggregator_order_id: "YC-f423126f-9666-53e3-ab99-d5d0da4a284e",
   external_order_id: "inv-2026-014",
-  wallet_address: "0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",
+  psp_transaction_id: "QJH7K2M0X1",
+  provider: "yellowcard",
+  networkName: "M-PESA",
+  partyName: "Jane Wanjiku",
+  accountNumber: "+254712345678",
+  accountKind: "phone",
+  methodType: "mobile_money",
   created_at: "2026-08-14T09:15:00Z",
   updated_at: "2026-08-14T09:17:30Z",
+  client: "Payout · KES",
 };
 
 describe("isReceiptable", () => {
@@ -30,28 +39,61 @@ describe("isReceiptable", () => {
   });
 });
 
+describe("receiptPaymentMethod", () => {
+  it("surfaces M-Pesa and bank rails without aggregator brands", () => {
+    expect(receiptPaymentMethod("M-Pesa")).toBe("M-Pesa");
+    expect(receiptPaymentMethod("yellowcard")).toBe("Local transfer");
+    expect(receiptPaymentMethod("yellowcard", null, "M-PESA")).toBe("M-Pesa");
+    expect(receiptPaymentMethod("NCBA Bank Kenya")).toBe("Bank transfer");
+    expect(receiptPaymentMethod(null, "mobile")).toBe("Mobile money");
+  });
+});
+
 describe("buildTransactionReceipt", () => {
-  it("labels an outbound order as a payout and carries both references", () => {
+  it("builds a web2 payout receipt with payment refs and no crypto fields", () => {
     const doc = buildTransactionReceipt(settledPayout);
     expect(doc.heading).toBe("Payout receipt");
-    expect(doc.amount).toBe("KES 41300.00");
-    expect(doc.amountCaption).toBe("Sent");
+    expect(doc.amount).toBe("KES 41,300.00");
+    expect(doc.amountCaption).toBe("Amount sent");
+    expect(doc.statusBadge).toBe("Settled");
+    expect(doc.party).toBe("Payout · KES");
 
-    const reference = doc.sections.find((s) => s.title === "Reference");
-    expect(reference?.rows.map((r) => r.value)).toEqual([
-      "4821",
-      "AGG-77123",
-      "inv-2026-014",
-    ]);
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([
+        { label: "Payment method", value: "M-Pesa" },
+        { label: "Currency", value: "KES" },
+        { label: "Recipient", value: "Jane Wanjiku" },
+        { label: "M-Pesa number", value: "+254712345678", mono: true },
+        { label: "M-Pesa reference", value: "QJH7K2M0X1", mono: true },
+      ]),
+    );
+
+    const html = renderBrandedDocument(doc);
+    expect(html).not.toContain("Wallet");
+    expect(html).not.toContain("Settlement asset");
+    expect(html).not.toContain("0x9F2c");
+    expect(html).not.toContain("USDC");
+    expect(html).toContain("Download PDF");
+    expect(html).toContain("Nairobi, Kenya");
+    expect(html).toContain('aria-label="Mboka"');
+    expect(html).toContain("Recipient");
+    expect(html).toContain("+254712345678");
+    expect(html).toContain("M-Pesa reference");
+    expect(html).toContain('id="share-toggle"');
+    expect(html).toContain("WhatsApp");
+    expect(html).toContain("Messages / SMS");
+    expect(html).toContain("Telegram");
+    expect(html).toContain("Copy details");
   });
 
   it("labels an inbound order as a deposit", () => {
     const doc = buildTransactionReceipt({ ...settledPayout, direction: "in" });
     expect(doc.heading).toBe("Deposit receipt");
-    expect(doc.amountCaption).toBe("Received");
+    expect(doc.amountCaption).toBe("Amount received");
   });
 
-  it("omits reference and settlement rows the order does not carry", () => {
+  it("omits payment reference when the PSP id is missing", () => {
     const doc = buildTransactionReceipt({
       id: 7,
       direction: "unknown",
@@ -60,43 +102,39 @@ describe("buildTransactionReceipt", () => {
       currency: "USD",
       aggregator_order_id: null,
       external_order_id: null,
-      wallet_address: null,
+      psp_transaction_id: null,
       created_at: null,
       updated_at: null,
     });
-    expect(doc.heading).toBe("Transaction receipt");
-    expect(doc.sections.find((s) => s.title === "Reference")?.rows).toHaveLength(1);
+    expect(doc.heading).toBe("Payment receipt");
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows.map((r) => r.label)).toEqual(["Payment method", "Currency"]);
     expect(
-      doc.sections.find((s) => s.title === "Settlement")?.rows.map((r) => r.label),
-    ).toEqual([]);
+      doc.sections.find((s) => s.title === "References")?.rows.map((r) => r.label),
+    ).toContain("Receipt number");
   });
 
-  it("collapses the settled row when it matches created", () => {
-    const doc = buildTransactionReceipt({
-      ...settledPayout,
-      updated_at: settledPayout.created_at,
-    });
-    const labels = doc.sections.find((s) => s.title === "Settlement")?.rows.map((r) => r.label);
-    expect(labels).not.toContain("Settled");
+  it("uses bank reference label for bank rails", () => {
+    expect(receiptPaymentRefLabel("Equity Bank", "bank")).toBe("Bank reference");
   });
 });
 
 describe("receiptFilename", () => {
-  it("prefers the aggregator reference and stays filesystem-safe", () => {
-    expect(receiptFilename(settledPayout)).toBe("mboka-receipt-agg-77123");
+  it("prefers the customer reference and stays filesystem-safe", () => {
+    expect(receiptFilename(settledPayout)).toBe("mboka-receipt-inv-2026-014");
     expect(
-      receiptFilename({ ...settledPayout, aggregator_order_id: "AGG/77 123" }),
+      receiptFilename({ ...settledPayout, external_order_id: "AGG/77 123" }),
     ).toBe("mboka-receipt-agg-77-123");
   });
 
-  it("falls back to the order id", () => {
+  it("falls back to a Mboka id", () => {
     expect(
       receiptFilename({
         ...settledPayout,
         aggregator_order_id: null,
         external_order_id: null,
       }),
-    ).toBe("mboka-receipt-4821");
+    ).toBe("mboka-receipt-mbk-4821");
   });
 });
 
@@ -112,11 +150,10 @@ describe("renderBrandedDocument", () => {
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   });
 
-  it("embeds the mark inline rather than linking an asset", () => {
+  it("embeds the wordmark inline rather than linking an asset", () => {
     const html = renderBrandedDocument(buildTransactionReceipt(settledPayout));
-    expect(html).toContain('<svg viewBox="0 0 44 44"');
+    expect(html).toContain('viewBox="0 0 166 44"');
     expect(html).toContain("#3B2ED3");
-    // Back block stays at 45% of the front — never equalise them.
     expect(html).toContain('fill-opacity="0.45"');
   });
 });
