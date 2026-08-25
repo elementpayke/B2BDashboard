@@ -170,6 +170,15 @@ has no `direction` field of its own. `OrderOut.id` is the same
 `useOrderStatus`, so the tx detail modal and live-status polling work
 unchanged against rows sourced from either endpoint.
 
+`GET /v1/transactions/{id}` also returns `provider`, `psp_transaction_id`,
+`order_type`, and a `payment` object when available (`party_name`,
+`account_number`, `account_kind`, `method_type`, `network_name`) so the
+detail modal and PDF receipt can show recipient/payer + M-Pesa/bank
+account. New accepts snapshot that under `client_metadata.payment`; older
+rows are backfilled from the linked quote's `raw_request` on detail fetch.
+`mapOrderToTransaction` reads the same snapshot from
+`Order.client_metadata.payment` for the Transactions list.
+
 Home's "Recent activity", the Wallets/Cards "recent transactions" widgets,
 and Reports (see below) intentionally keep using the original unpaginated
 `transactionsApi.list()` — they already only ever showed the fetched page's

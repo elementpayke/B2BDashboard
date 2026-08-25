@@ -15,6 +15,13 @@ export type TransactionPresentation = Transaction & {
   statusColor: string;
   statusSoft: string;
   flagUrl: null;
+  /** Flattened for modal + PDF receipt. */
+  partyName: string | null;
+  accountNumber: string | null;
+  accountKind: string | null;
+  networkName: string | null;
+  methodType: string | null;
+  railType: "mobile" | "bank" | null;
 };
 
 function typeLabel(transaction: Transaction): string {
@@ -62,6 +69,16 @@ export function formatTransactionDate(value: string, now = new Date()): string {
   }).format(date);
 }
 
+function railTypeFromPayment(transaction: Transaction): "mobile" | "bank" | null {
+  const payment = transaction.payment;
+  if (!payment) return null;
+  const kind = (payment.account_kind || "").toLowerCase();
+  const method = (payment.method_type || "").toLowerCase();
+  if (kind === "phone" || method.includes("mobile") || method === "momo") return "mobile";
+  if (kind === "bank_account" || method === "bank") return "bank";
+  return null;
+}
+
 export function presentTransaction(transaction: Transaction): TransactionPresentation {
   const status = describeTransactionStatus(transaction.status);
   const kind = typeLabel(transaction);
@@ -76,6 +93,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     : transaction.amount_fiat;
   const ref = transactionReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
+  const payment = transaction.payment;
 
   return {
     ...transaction,
@@ -95,5 +113,11 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     statusColor: status.color,
     statusSoft: status.soft,
     flagUrl: null,
+    partyName: payment?.party_name?.trim() || null,
+    accountNumber: payment?.account_number?.trim() || null,
+    accountKind: payment?.account_kind?.trim() || null,
+    networkName: payment?.network_name?.trim() || null,
+    methodType: payment?.method_type?.trim() || null,
+    railType: railTypeFromPayment(transaction),
   };
 }

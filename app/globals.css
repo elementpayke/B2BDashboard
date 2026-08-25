@@ -8983,9 +8983,96 @@ select.ep-wallets-create__control {
   line-height: 1.45;
 }
 
-.ep-txn-detail__receipt {
+.ep-txn-detail__actions {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-top: 16px;
+}
+
+.ep-txn-detail__share-wrap {
+  position: relative;
+}
+
+.ep-txn-detail__share,
+.ep-txn-detail__receipt {
   width: 100%;
+}
+
+.ep-txn-detail__share-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgba(19, 17, 38, 0.14);
+  max-height: min(360px, 55vh);
+  overflow: auto;
+}
+
+.ep-txn-detail__share-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ep-txn-detail__share-item:hover,
+.ep-txn-detail__share-item:focus-visible {
+  background: var(--surface2);
+  outline: none;
+}
+
+.ep-txn-detail__share-label {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.ep-txn-detail__share-hint {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.ep-txn-detail__toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  z-index: 7;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 28px rgba(19, 17, 38, 0.22);
+}
+
+@media (max-width: 420px) {
+  .ep-txn-detail__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Amount field: label plus the USD / local-currency entry toggle. */
