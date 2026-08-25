@@ -1,4 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+vi.mock("@/lib/apiClient", () => ({
+  apiEnvelope: vi.fn(),
+  apiUpload: vi.fn(),
+  ApiRequestError: class ApiRequestError extends Error {
+    status: number;
+    data: unknown;
+    constructor(message: string, status: number, data: unknown = null) {
+      super(message);
+      this.name = "ApiRequestError";
+      this.status = status;
+      this.data = data;
+    }
+  },
+}));
+
+import { ApiRequestError, apiEnvelope } from "@/lib/apiClient";
 import {
   buildProfilePayload,
   buildShareholderPayload,
@@ -7,8 +24,14 @@ import {
   describeKybStatus,
   emptyKybWizardDraft,
   formatKybServiceError,
+  inferWizardStartStep,
   isKybApproved,
+  isKybInProgress,
+  isKybInReview,
+  kybApi,
   kybTierDisplay,
+  labelForDocumentType,
+  newKybIdempotencyKey,
   normalizeDateOfBirth,
   profileDraftFromSummary,
   validateAddressUboStep,
@@ -16,7 +39,10 @@ import {
   validateProfileDraft,
   type KybWizardProfileDraft,
 } from "./kyb";
-import { ApiRequestError } from "@/lib/apiClient";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function validDraft(): KybWizardProfileDraft {
   const draft = emptyKybWizardDraft("KE");
@@ -44,12 +70,26 @@ describe("kyb status helpers", () => {
     expect(describeKybStatus("approved")).toBe("Complete");
     expect(describeKybStatus("submitted")).toBe("In review");
     expect(kybTierDisplay("rejected").label).toBe("Rejected");
+    expect(describeKybStatus("pending")).toBe("In progress");
   });
 
   it("treats only approved as cleared for money actions", () => {
     expect(isKybApproved("approved")).toBe(true);
     expect(isKybApproved("submitted")).toBe(false);
     expect(isKybApproved("pending")).toBe(false);
+  });
+
+  it("treats pending as in-progress (profile/docs still open)", () => {
+    expect(isKybInProgress("pending")).toBe(true);
+    expect(isKybInProgress("submitted")).toBe(false);
+    expect(isKybInProgress("approved")).toBe(false);
+    expect(isKybInProgress(undefined)).toBe(false);
+  });
+
+  it("treats submitted as in-review", () => {
+    expect(isKybInReview("submitted")).toBe(true);
+    expect(isKybInReview("pending")).toBe(false);
+    expect(isKybInReview("approved")).toBe(false);
   });
 
   it("allows the wizard for pending, rejected, and expired", () => {
@@ -98,6 +138,35 @@ describe("validateProfileDraft", () => {
     draft.associates[0].dateOfBirth = "2015-01-01";
     expect(validateAddressUboStep(draft)).toMatch(/18/);
   });
+
+  it("allows an optional website when it is a valid https URL", () => {
+    const draft = validDraft();
+    draft.website = "https://acme.example";
+    expect(validateBusinessStep(draft)).toBeNull();
+  });
+
+  it("rejects a malformed website when provided", () => {
+    const draft = validDraft();
+    draft.website = "not-a-url";
+    expect(validateBusinessStep(draft)).toMatch(/website/i);
+  });
+
+  it("requires tax_id (EIN) when country is US", () => {
+    const draft = validDraft();
+    draft.country = "US";
+    draft.taxId = "";
+    expect(validateBusinessStep(draft)).toMatch(/tax id|ein/i);
+    draft.taxId = "12-3456789";
+    expect(validateBusinessStep(draft)).toBeNull();
+  });
+
+  it("accepts financials when present as known enum values", () => {
+    const draft = validDraft();
+    draft.estimatedEmployees = "11-50";
+    draft.annualRevenueRange = "1MTo10M";
+    draft.sourceOfFunds = "Investment";
+    expect(validateBusinessStep(draft)).toBeNull();
+  });
 });
 
 describe("normalizeDateOfBirth", () => {
@@ -109,9 +178,135 @@ describe("normalizeDateOfBirth", () => {
 
 describe("formatKybServiceError", () => {
   it("maps aggregator 502 to a user-friendly message", () => {
-    expect(formatKybServiceError(new ApiRequestError("Aggregator returned 502 for /internal/partner/enrollments/kyb", 502))).toMatch(
-      /temporarily unavailable/i,
-    );
+    expect(
+      formatKybServiceError(
+        new ApiRequestError("Aggregator returned 502 for /internal/partner/enrollments/kyb", 502),
+      ),
+    ).toMatch(/temporarily unavailable/i);
+  });
+
+  it("surfaces 422 missing[] fields from submit", () => {
+    expect(
+      formatKybServiceError(
+        new ApiRequestError("Incomplete package", 422, { missing: ["website", "tax_id", "identity"] }),
+      ),
+    ).toMatch(/website.*tax_id.*identity/i);
+  });
+});
+
+describe("labelForDocumentType", () => {
+  it("maps vault document categories to readable labels", () => {
+    expect(labelForDocumentType("certificate_of_incorporation")).toMatch(/certificate of incorporation/i);
+    expect(labelForDocumentType("memorandum_of_association")).toMatch(/memorandum/i);
+    expect(labelForDocumentType("proof_of_address")).toMatch(/proof of address/i);
+    expect(labelForDocumentType("identity")).toMatch(/identity/i);
+    expect(labelForDocumentType("address")).toMatch(/address/i);
+  });
+});
+
+describe("inferWizardStartStep", () => {
+  it("starts at step 1 with no profile", () => {
+    expect(inferWizardStartStep({ profile: null })).toBe(1);
+  });
+
+  it("starts at step 2 when address and associates exist but docs are unknown", () => {
+    expect(
+      inferWizardStartStep({
+        profile: {
+          legal_name: "Acme",
+          registration_number: "R1",
+          business_type: "LimitedCompany",
+          registered_address: { street: "Main", city: "Lagos", post_code: "100001", country: "NG" },
+          associates: [
+            {
+              id: "a1",
+              relationship_types: ["UBO"],
+              full_name: { first_name: "Sam", last_name: "Lee" },
+              date_of_birth: "1990-01-01",
+            },
+          ],
+        },
+      }),
+    ).toBe(2);
+  });
+
+  it("starts at step 3 when requirements or docs are already known", () => {
+    expect(
+      inferWizardStartStep({
+        profile: {
+          legal_name: "Acme",
+          registration_number: "R1",
+          business_type: "LimitedCompany",
+          registered_address: { street: "Main", city: "Lagos", post_code: "100001", country: "NG" },
+          associates: [
+            {
+              id: "a1",
+              relationship_types: ["UBO"],
+              full_name: { first_name: "Sam", last_name: "Lee" },
+              date_of_birth: "1990-01-01",
+            },
+          ],
+        },
+        hasDocumentRequirements: true,
+      }),
+    ).toBe(3);
+    expect(
+      inferWizardStartStep({
+        profile: {
+          legal_name: "Acme",
+          registration_number: "R1",
+          business_type: "LimitedCompany",
+          registered_address: { street: "Main", city: "Lagos", post_code: "100001", country: "NG" },
+          associates: [
+            {
+              id: "a1",
+              relationship_types: ["UBO"],
+              full_name: { first_name: "Sam", last_name: "Lee" },
+              date_of_birth: "1990-01-01",
+            },
+          ],
+        },
+        hasUploadedDocuments: true,
+      }),
+    ).toBe(3);
+  });
+});
+
+describe("newKybIdempotencyKey", () => {
+  it("returns a non-empty unique key", () => {
+    expect(newKybIdempotencyKey().length).toBeGreaterThan(0);
+    expect(newKybIdempotencyKey()).not.toBe(newKybIdempotencyKey());
+  });
+});
+
+describe("kybApi poll and idempotency", () => {
+  it("pollVerifierStatus POSTs to …/kyb/status/poll", async () => {
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({ kyb_status: "submitted", profile_exists: true } as never);
+
+    await kybApi.pollVerifierStatus(42);
+
+    expect(mocked).toHaveBeenCalledWith("POST", "/businesses/42/kyb/status/poll", {});
+  });
+
+  it("status GETs the cached …/kyb/status endpoint", async () => {
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({ kyb_status: "pending", profile_exists: true } as never);
+
+    await kybApi.status(7);
+
+    expect(mocked).toHaveBeenCalledWith("GET", "/businesses/7/kyb/status");
+  });
+
+  it("passes Idempotency-Key on initiate and submit when provided", async () => {
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({} as never);
+
+    await kybApi.initiate(9, "kyb-init-1");
+    await kybApi.submitForReview(9, "kyb-submit-1");
+
+    expect(mocked.mock.calls[0][3]).toEqual({ headers: { "Idempotency-Key": "kyb-init-1" } });
+    expect(mocked.mock.calls[1][3]).toEqual({ headers: { "Idempotency-Key": "kyb-submit-1" } });
   });
 });
 

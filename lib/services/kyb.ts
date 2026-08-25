@@ -1,5 +1,11 @@
-import { ApiRequestError, apiEnvelope, apiUpload } from "@/lib/apiClient";
+import {
+  ApiRequestError,
+  apiEnvelope,
+  apiUpload,
+  type RequestOptions,
+} from "@/lib/apiClient";
 import { isValidIsoCountryCode } from "@/lib/data/isoCountries";
+import { newIdempotencyKey } from "@/lib/services/orders";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** E.164: + then 7–15 digits, first digit non-zero. */
@@ -49,8 +55,23 @@ function isValidHttpUrl(raw: string): boolean {
   }
 }
 
+function missingFieldsFromErrorData(data: unknown): string[] {
+  if (!data || typeof data !== "object") return [];
+  const record = data as Record<string, unknown>;
+  if (Array.isArray(record.missing)) {
+    return record.missing.map((item) => String(item)).filter(Boolean);
+  }
+  return [];
+}
+
 export function formatKybServiceError(err: unknown): string {
   if (err instanceof ApiRequestError) {
+    if (err.status === 422) {
+      const missing = missingFieldsFromErrorData(err.data);
+      if (missing.length > 0) {
+        return `Missing required items: ${missing.join(", ")}.`;
+      }
+    }
     if (err.status === 502 || /aggregator returned 502/i.test(err.message)) {
       return "Verification service is temporarily unavailable. Your details were saved — please try again in a few minutes.";
     }
@@ -218,8 +239,35 @@ const KYB_TIER_DISPLAY: Record<KybStatus, KybTierDisplay> = {
   submitted: { label: "In review", color: "var(--amber)", soft: "var(--amber-tint)" },
   rejected: { label: "Rejected", color: "var(--red)", soft: "var(--red-tint)" },
   expired: { label: "Expired", color: "var(--red)", soft: "var(--red-tint)" },
-  pending: { label: "Not started", color: "var(--muted)", soft: "var(--surface2)" },
+  /** Vault `incomplete` maps to pending — profile/docs may still be open. */
+  pending: { label: "In progress", color: "var(--muted)", soft: "var(--surface2)" },
 };
+
+/** Human labels for Mboka / vault document type keys. */
+export const KYB_DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  certificate_of_incorporation: "Certificate of incorporation",
+  memorandum_of_association: "Memorandum of association",
+  proof_of_address: "Proof of address",
+  identity: "Identity document",
+  address: "Proof of address",
+  power_of_attorney: "Power of attorney",
+  corporate_structure: "Corporate structure",
+  director_structure: "Director structure",
+  bank_statement: "Bank statement",
+  tax_registration: "Tax registration",
+  passport_front: "Passport (front)",
+  passport_back: "Passport (back)",
+  national_id_front: "National ID (front)",
+  national_id_back: "National ID (back)",
+  drivers_license_front: "Driver's license (front)",
+  drivers_license_back: "Driver's license (back)",
+  other: "Other document",
+};
+
+export function labelForDocumentType(type: string): string {
+  const key = type.trim().toLowerCase();
+  return KYB_DOCUMENT_TYPE_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export function kybTierDisplay(status: string | null | undefined): KybTierDisplay {
   return KYB_TIER_DISPLAY[(status as KybStatus) || "pending"] ?? KYB_TIER_DISPLAY.pending;
@@ -229,12 +277,65 @@ export function isKybApproved(status: string | null | undefined): boolean {
   return status === "approved";
 }
 
+/** Profile/docs still open — vault `incomplete` → Mboka `pending`. */
+export function isKybInProgress(status: string | null | undefined): boolean {
+  return status === "pending";
+}
+
+/** Final submit done — vault `pending_review` → Mboka `submitted`. */
+export function isKybInReview(status: string | null | undefined): boolean {
+  return status === "submitted";
+}
+
 export function canOpenKybWizard(status: string | null | undefined): boolean {
   return status === "pending" || status === "rejected" || status === "expired";
 }
 
 export function describeKybStatus(status: string | null | undefined): string {
   return kybTierDisplay(status).label;
+}
+
+/** Fresh Idempotency-Key for KYB initiate / submit / document mutations. */
+export function newKybIdempotencyKey(): string {
+  return newIdempotencyKey();
+}
+
+function idempotencyHeaders(key?: string): RequestOptions | undefined {
+  return key ? { headers: { "Idempotency-Key": key } } : undefined;
+}
+
+export type InferWizardStartStepInput = {
+  profile?: KybProfile | Record<string, unknown> | null;
+  hasDocumentRequirements?: boolean;
+  hasUploadedDocuments?: boolean;
+};
+
+/**
+ * Restore wizard step from an existing pending profile.
+ * Address+associates → 2; known requirements / uploaded docs → 3.
+ */
+export function inferWizardStartStep(input: InferWizardStartStepInput): 1 | 2 | 3 {
+  const profile = input.profile as KybProfile | null | undefined;
+  if (!profile) return 1;
+
+  const hasBusinessBasics = !!(
+    String(profile.legal_name || "").trim() &&
+    String(profile.registration_number || "").trim() &&
+    profile.business_type
+  );
+  if (!hasBusinessBasics) return 1;
+
+  const addr = profile.registered_address;
+  const hasAddress = !!(addr && String(addr.street || "").trim() && String(addr.city || "").trim());
+  const associates = profile.associates ?? [];
+  const hasAssociates =
+    Array.isArray(associates) &&
+    associates.some((a) => String(a?.full_name?.first_name || "").trim());
+
+  if (!hasAddress || !hasAssociates) return hasBusinessBasics ? 2 : 1;
+
+  if (input.hasDocumentRequirements || input.hasUploadedDocuments) return 3;
+  return 2;
 }
 
 /** Stable UUID v4-ish id for a new associate row. */
@@ -363,6 +464,9 @@ export function validateBusinessStep(draft: KybWizardProfileDraft): string | nul
   if (!draft.registrationNumber.trim()) return "Registration number is required.";
   if (!isValidIsoCountryCode(draft.country)) {
     return "Select a valid business country from the list.";
+  }
+  if (draft.country.trim().toUpperCase() === "US" && !draft.taxId.trim()) {
+    return "Tax ID (EIN) is required for US-incorporated businesses.";
   }
   if (!draft.businessType) return "Choose a business type.";
   if (!draft.industry.trim()) return "Industry is required.";
@@ -497,14 +601,22 @@ function businessPath(businessId: number, suffix: string): string {
 export const kybApi = {
   summary: (businessId: number) => apiEnvelope<KybSummary>("GET", businessPath(businessId, "")),
   status: (businessId: number) => apiEnvelope<KybStatusResult>("GET", businessPath(businessId, "/status")),
+  /** Sync status from the upstream vault / verifier after submit. */
+  pollVerifierStatus: (businessId: number) =>
+    apiEnvelope<KybStatusResult>("POST", businessPath(businessId, "/status/poll"), {}),
   createProfile: (businessId: number, payload: KybProfileInput) =>
     apiEnvelope<KybProfile>("POST", businessPath(businessId, "/profile"), payload),
   patchProfile: (businessId: number, payload: Partial<KybProfileInput>) =>
     apiEnvelope<KybProfile>("PATCH", businessPath(businessId, "/profile"), payload),
   upsertAddress: (businessId: number, payload: BusinessAddress) =>
     apiEnvelope<BusinessAddress & { id: number }>("PUT", businessPath(businessId, "/address"), payload),
-  initiate: (businessId: number) =>
-    apiEnvelope<KybInitiateResult>("POST", businessPath(businessId, "/initiate"), { provider: "international_ramp" }),
+  initiate: (businessId: number, idempotencyKey?: string) =>
+    apiEnvelope<KybInitiateResult>(
+      "POST",
+      businessPath(businessId, "/initiate"),
+      { provider: "international_ramp" },
+      idempotencyHeaders(idempotencyKey),
+    ),
   documentRequirements: (businessId: number, corridor?: string) => {
     const qs = corridor ? `?corridor=${encodeURIComponent(corridor)}` : "";
     return apiEnvelope<KybDocumentRequirements>(
@@ -516,8 +628,13 @@ export const kybApi = {
     apiEnvelope<KybDocumentList>("GET", businessPath(businessId, "/documents")),
   uploadDocument: (businessId: number, formData: FormData) =>
     apiUpload<KybDocument>("POST", businessPath(businessId, "/documents"), formData),
-  submitDocument: (businessId: number, docId: number) =>
-    apiEnvelope<unknown>("POST", businessPath(businessId, "/documents/submit"), { doc_id: docId }),
+  submitDocument: (businessId: number, docId: number, idempotencyKey?: string) =>
+    apiEnvelope<unknown>(
+      "POST",
+      businessPath(businessId, "/documents/submit"),
+      { doc_id: docId },
+      idempotencyHeaders(idempotencyKey),
+    ),
   listShareholders: (businessId: number) =>
     apiEnvelope<KybShareholderList>("GET", businessPath(businessId, "/shareholders")),
   addShareholder: (businessId: number, shareholder: Record<string, unknown>) =>
@@ -527,6 +644,11 @@ export const kybApi = {
       doc_id: docId,
       shareholder_id: shareholderId,
     }),
-  submitForReview: (businessId: number) =>
-    apiEnvelope<unknown>("POST", businessPath(businessId, "/submit"), {}),
+  submitForReview: (businessId: number, idempotencyKey?: string) =>
+    apiEnvelope<unknown>(
+      "POST",
+      businessPath(businessId, "/submit"),
+      {},
+      idempotencyHeaders(idempotencyKey),
+    ),
 };

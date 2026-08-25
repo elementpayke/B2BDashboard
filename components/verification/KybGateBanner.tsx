@@ -7,10 +7,15 @@ export type KybGateBannerProps = {
   onStartVerification?: () => void;
   /** When true, show a CTA to open the KYB wizard. */
   showAction?: boolean;
+  /** CTA label — defaults to Continue when mid-flow / rejected. */
+  actionLabel?: string;
+  /** Shown when KYB was rejected — from profile.reviewer_notes. */
+  reviewerNotes?: string | null;
 };
 
 export default function KybGateBanner(p: KybGateBannerProps) {
   const status = p.verificationStatus?.trim();
+  const notes = p.reviewerNotes?.trim();
 
   return (
     <div
@@ -53,7 +58,8 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             lineHeight: 1.4,
           }}
         >
-          Complete business verification before sending or receiving money.
+          Complete business verification before sending money or opening deposit accounts.
+          Deposit accounts require KYB approval.
         </p>
         {status ? (
           <p
@@ -66,6 +72,19 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             }}
           >
             Current status: {status}
+          </p>
+        ) : null}
+        {notes ? (
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "var(--red)",
+              lineHeight: 1.4,
+            }}
+          >
+            Reviewer notes: {notes}
           </p>
         ) : null}
       </div>
@@ -88,7 +107,7 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             WebkitTapHighlightColor: "transparent",
           }}
         >
-          Start verification
+          {p.actionLabel || "Continue verification"}
         </button>
       ) : null}
     </div>

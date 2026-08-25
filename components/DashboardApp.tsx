@@ -198,7 +198,7 @@ import VerificationScreen from "@/components/verification/VerificationScreen";
 import KybWizardModal from "@/components/verification/KybWizardModal";
 import KybGateBanner from "@/components/verification/KybGateBanner";
 import { useKybWizard } from "@/lib/hooks/useKybWizard";
-import { canOpenKybWizard, describeKybStatus, isKybApproved, kybTierDisplay } from "@/lib/services/kyb";
+import { canOpenKybWizard, describeKybStatus, isKybApproved, isKybInProgress, kybTierDisplay } from "@/lib/services/kyb";
 
 type Props = {
   boostDarkContrast?: boolean;
@@ -2738,7 +2738,7 @@ export default function DashboardApp(props: Props = {}) {
   const tier2Approved = kybApproved;
   const tiers = [
         { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: emailVerified ? "Complete" : "Pending", statusColor: emailVerified ? "var(--indigo-text)" : "var(--muted)", statusSoft: emailVerified ? "var(--indigo-tint)" : "var(--surface2)", locked: false },
-        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: !kybStatusLoading && canOpenKybWizard(kybStatus), kybActionLabel: kybStatus === "rejected" || kybStatus === "expired" ? "Continue verification" : "Start verification" },
+        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: !kybStatusLoading && canOpenKybWizard(kybStatus), kybActionLabel: kybStatus === "rejected" || kybStatus === "expired" || isKybInProgress(kybStatus) ? "Continue verification" : "Start verification" },
         { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: kybStatusLoading ? "…" : !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
       ];
   // The backend only ever returns the full plaintext key once, in the
@@ -3359,7 +3359,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 
 {!kybStatusLoading && !kybApproved ? (
-<KybGateBanner verificationStatus={describeKybStatus(kybStatus)} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
+<KybGateBanner verificationStatus={describeKybStatus(kybStatus)} reviewerNotes={typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string" ? meQuery.data.kyb_summary.profile.reviewer_notes : null} showAction={canOpenKybWizard(kybStatus)} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
 <div className="ep-home__qa-row" aria-label="Quick actions">
@@ -3601,7 +3601,7 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isVerification) ? (<>
-<VerificationScreen tiers={tiers} onUpgradeTier3={openModalTier} onStartKyb={openModalKyb} />
+<VerificationScreen tiers={tiers} onUpgradeTier3={openModalTier} onStartKyb={openModalKyb} reviewerNotes={kybStatus === "rejected" && typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string" ? meQuery.data.kyb_summary.profile.reviewer_notes : null} />
 </>) : null}
 
 {(isTeam) ? (<>

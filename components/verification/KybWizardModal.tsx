@@ -120,8 +120,10 @@ export default function KybWizardModal(p: KybWizardModalProps) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center" }}>
         <span style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px" }}>✓</span>
-        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>KYB submitted</span>
-        <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>Compliance review usually takes 1–2 business days.</span>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700" }}>In review</span>
+        <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+          Compliance usually takes 1–2 business days. Deposit accounts unlock once KYB is approved.
+        </span>
         <button type="button" onClick={p.closeModal} style={{ marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer" }}>
           Done
         </button>
@@ -148,6 +150,23 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             onChange={(code) => p.patchDraft({ country: code })}
             required
           />
+          {p.draft.country.trim().toUpperCase() === "US" ? (
+            <TextField
+              label="Tax ID (EIN)"
+              value={p.draft.taxId}
+              onChange={(v) => p.patchDraft({ taxId: v })}
+              placeholder="12-3456789"
+              hint="Required for US-incorporated businesses"
+            />
+          ) : (
+            <TextField
+              label="Tax ID"
+              value={p.draft.taxId}
+              onChange={(v) => p.patchDraft({ taxId: v })}
+              placeholder="Optional"
+              hint="Optional — include if your corridor requires it"
+            />
+          )}
           <SelectField label="Business type" value={p.draft.businessType} onChange={(v) => p.patchDraft({ businessType: v as KybWizardProfileDraft["businessType"] })} options={BUSINESS_TYPE_OPTIONS} />
           <TextField label="Industry" value={p.draft.industry} onChange={(v) => p.patchDraft({ industry: v })} placeholder="Fintech" />
           <TextField label="Website" value={p.draft.website} onChange={(v) => p.patchDraft({ website: v })} placeholder="https://example.com" type="url" hint="Optional — must start with https://" />
