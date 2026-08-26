@@ -107,7 +107,7 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             WebkitTapHighlightColor: "transparent",
           }}
         >
-          {p.actionLabel || "Continue verification"}
+          {p.actionLabel || "Start verification"}
         </button>
       ) : null}
     </div>

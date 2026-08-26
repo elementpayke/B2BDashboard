@@ -71,6 +71,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   /** Only full-reset when business changes or first open — keep mid-flow on reopen. */
   const sessionBusinessIdRef = useRef<number | null | undefined>(undefined);
   const sessionInitializedRef = useRef(false);
+  const resumeLoadIdRef = useRef(0);
 
   useEffect(() => {
     if (!opts.enabled) return;
@@ -84,8 +85,10 @@ export function useKybWizard(opts: UseKybWizardOptions) {
 
     sessionBusinessIdRef.current = opts.businessId;
     sessionInitializedRef.current = true;
+    const loadId = ++resumeLoadIdRef.current;
 
     const nextDraft = profileDraftFromSummary(opts.kybSummary, opts.business);
+    const profile = opts.kybSummary?.profile ?? null;
     setDraft(nextDraft);
     setError("");
     setSubmitted(false);
@@ -93,10 +96,80 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setDocRows([]);
     setShareholderId(null);
 
-    const startStep = inferWizardStartStep({
-      profile: opts.kybSummary?.profile ?? null,
-    });
-    setStep(startStep);
+    // Optimistic step from profile only; refined after document state loads.
+    setStep(inferWizardStartStep({ profile }));
+
+    const businessId = opts.businessId;
+    if (!businessId) return;
+
+    void (async () => {
+      let reqs: KybDocumentRequirements | null = null;
+      let hasUploadedDocuments = false;
+
+      try {
+        const listed = await kybApi.listDocuments(businessId);
+        hasUploadedDocuments = listed.documents.some((d) => d.is_active);
+      } catch {
+        // Best-effort resume — fall back to requirements / profile-only step.
+      }
+
+      try {
+        reqs = await kybApi.documentRequirements(
+          businessId,
+          nextDraft.country || undefined,
+        );
+        if (
+          reqs.business_documents.some((d) => d.uploaded) ||
+          reqs.shareholder_documents.some((d) => d.uploaded)
+        ) {
+          hasUploadedDocuments = true;
+        }
+      } catch {
+        // Requirements may be unavailable before initiate; keep profile step.
+      }
+
+      // Ignore stale loads when business changes mid-flight (not on every re-render).
+      if (loadId !== resumeLoadIdRef.current) return;
+
+      const hasDocumentRequirements = !!reqs && hasUploadedDocuments;
+      if (reqs && hasUploadedDocuments) {
+        const associateRef = nextDraft.associates[0]?.id;
+        setRequirements(reqs);
+        setDocRows([
+          ...reqs.business_documents.map((d) => ({
+            requirementType: d.type,
+            label: d.label?.trim() || labelForDocumentType(d.type),
+            category: "business" as const,
+            issuingCountryRequired: d.issuing_country_required,
+            file: null,
+            uploadedDocId: null,
+            submitted: d.uploaded,
+            uploading: false,
+            error: "",
+          })),
+          ...reqs.shareholder_documents.map((d) => ({
+            requirementType: d.type,
+            label: d.label?.trim() || labelForDocumentType(d.type),
+            category: "shareholder" as const,
+            associateRefId: associateRef,
+            issuingCountryRequired: d.issuing_country_required,
+            file: null,
+            uploadedDocId: null,
+            submitted: d.uploaded,
+            uploading: false,
+            error: "",
+          })),
+        ]);
+      }
+
+      setStep(
+        inferWizardStartStep({
+          profile,
+          hasDocumentRequirements,
+          hasUploadedDocuments,
+        }),
+      );
+    })();
   }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business]);
 
   const patchDraft = useCallback((patch: Partial<KybWizardProfileDraft>) => {
@@ -176,7 +249,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           issuingCountryRequired: d.issuing_country_required,
           file: null,
           uploadedDocId: null,
-          submitted: false,
+          submitted: d.uploaded,
           uploading: false,
           error: "",
         })),
