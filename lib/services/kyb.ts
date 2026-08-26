@@ -392,6 +392,7 @@ export type KybWizardProfileDraft = {
   registrationNumber: string;
   country: string;
   taxId: string;
+  incorporationDate: string;
   businessType: BusinessType | "";
   industry: string;
   website: string;
@@ -413,6 +414,7 @@ export function emptyKybWizardDraft(defaultCountry = "KE"): KybWizardProfileDraf
     registrationNumber: "",
     country: defaultCountry,
     taxId: "",
+    incorporationDate: "",
     businessType: "",
     industry: "",
     website: "",
@@ -456,6 +458,7 @@ export function profileDraftFromSummary(
   draft.registrationNumber = (profile.registration_number as string) || business?.registration_number || "";
   draft.country = (profile.country as string) || business?.country || draft.country;
   draft.taxId = (profile.tax_id as string) || "";
+  draft.incorporationDate = (profile.incorporation_date as string) || "";
   draft.businessType = (profile.business_type as BusinessType) || "";
   draft.industry = (profile.industry as string) || "";
   draft.website = (profile.website as string) || "";
@@ -497,6 +500,15 @@ export function validateBusinessStep(draft: KybWizardProfileDraft): string | nul
   }
   if (draft.country.trim().toUpperCase() === "US" && !draft.taxId.trim()) {
     return "Tax ID (EIN) is required for US-incorporated businesses.";
+  }
+  const incorporationDate = normalizeDateOfBirth(draft.incorporationDate);
+  if (!incorporationDate) {
+    return "Incorporation date is required (use the date picker).";
+  }
+  const incorpYear = Number(incorporationDate.slice(0, 4));
+  const thisYear = new Date().getUTCFullYear();
+  if (incorpYear < 1900 || incorpYear > thisYear) {
+    return "Incorporation date year looks invalid.";
   }
   if (!draft.businessType) return "Choose a business type.";
   if (!draft.industry.trim()) return "Industry is required.";
@@ -583,11 +595,14 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
       ubo: { ownership_percentage: Number(associate.ownershipPercentage) },
     },
   ];
+  const incorporationDate =
+    normalizeDateOfBirth(draft.incorporationDate) || draft.incorporationDate.trim();
   return {
     legal_name: draft.legalName.trim(),
     registration_number: draft.registrationNumber.trim(),
     country: draft.country.trim().toUpperCase(),
     tax_id: draft.taxId.trim() || undefined,
+    incorporation_date: incorporationDate || undefined,
     business_type: draft.businessType || undefined,
     industry: draft.industry.trim() || undefined,
     website: draft.website.trim() || undefined,

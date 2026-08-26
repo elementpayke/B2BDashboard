@@ -150,6 +150,15 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             onChange={(code) => p.patchDraft({ country: code })}
             required
           />
+          <TextField
+            label="Incorporation date"
+            value={p.draft.incorporationDate}
+            onChange={(v) => p.patchDraft({ incorporationDate: v })}
+            type="date"
+            max={new Date().toISOString().slice(0, 10)}
+            min="1900-01-01"
+            hint="Required for compliance review"
+          />
           {p.draft.country.trim().toUpperCase() === "US" ? (
             <TextField
               label="Tax ID (EIN)"

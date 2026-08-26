@@ -49,6 +49,7 @@ const completePendingProfile = {
   registration_number: "R1",
   business_type: "LimitedCompany",
   industry: "Fintech",
+  incorporation_date: "2020-01-15",
   estimated_employees: "1-10",
   annual_revenue_range: "100kTo1M",
   source_of_funds: "Revenue",

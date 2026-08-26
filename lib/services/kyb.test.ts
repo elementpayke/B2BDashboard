@@ -50,6 +50,7 @@ function validDraft(): KybWizardProfileDraft {
   const draft = emptyKybWizardDraft("KE");
   draft.legalName = "ElementPay Ltd";
   draft.registrationNumber = "BN123456";
+  draft.incorporationDate = "2020-01-15";
   draft.businessType = "LimitedCompany";
   draft.industry = "Fintech";
   draft.estimatedEmployees = "1-10";
@@ -365,9 +366,18 @@ describe("buildProfilePayload", () => {
     const payload = buildProfilePayload(validDraft());
     expect(payload.legal_name).toBe("ElementPay Ltd");
     expect(payload.country).toBe("KE");
+    expect(payload.incorporation_date).toBe("2020-01-15");
     expect(payload.registered_address?.city).toBe("Nairobi");
     expect(payload.associates?.[0].relationship_types).toContain("UBO");
     expect(payload.associates?.[0].ubo?.ownership_percentage).toBe(60);
+  });
+});
+
+describe("incorporation date validation", () => {
+  it("requires an incorporation date for vault KYB", () => {
+    const draft = validDraft();
+    draft.incorporationDate = "";
+    expect(validateBusinessStep(draft)).toMatch(/incorporation date/i);
   });
 });
 
