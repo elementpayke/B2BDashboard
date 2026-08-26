@@ -360,13 +360,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           associateRefId: row.associateRefId,
         });
         const uploaded = await kybApi.uploadDocument(opts.businessId, form);
-        if (row.category === "business") {
-          await kybApi.submitDocument(opts.businessId, uploaded.id, newKybIdempotencyKey());
-        } else {
-          const shId = await ensureShareholderRegistered();
-          if (!shId) throw new Error("Register the beneficial owner with the verifier first.");
-          await kybApi.submitShareholderDocument(opts.businessId, uploaded.id, shId);
-        }
+        // Vault path: multipart upload already base64-posts to the aggregator.
         setDocRows((rows) =>
           rows.map((r, i) =>
             i === index
@@ -398,7 +392,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         return false;
       }
     },
-    [docRows, draft.country, ensureShareholderRegistered, opts.businessId],
+    [docRows, draft.country, opts.businessId],
   );
 
   const setDocumentFile = useCallback(

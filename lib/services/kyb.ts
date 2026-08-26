@@ -166,7 +166,7 @@ export type KybRequiredDocument = {
 };
 
 export type KybDocumentRequirements = {
-  provider: "international_ramp";
+  provider: "customer_vault" | "international_ramp";
   corridor: string | null;
   business_documents: KybRequiredDocument[];
   shareholder_documents: KybRequiredDocument[];
@@ -174,7 +174,7 @@ export type KybDocumentRequirements = {
 };
 
 export type KybInitiateResult = {
-  provider: "international_ramp" | "noah";
+  provider: "customer_vault" | "international_ramp" | "noah";
   kyb_status: KybStatus;
   document_requirements: KybDocumentRequirements | null;
 };
@@ -659,7 +659,7 @@ export const kybApi = {
     apiEnvelope<KybInitiateResult>(
       "POST",
       businessPath(businessId, "/initiate"),
-      { provider: "international_ramp" },
+      { provider: "customer_vault" },
       idempotencyHeaders(idempotencyKey),
     ),
   documentRequirements: (businessId: number, corridor?: string) => {

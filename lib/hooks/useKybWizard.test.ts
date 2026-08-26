@@ -76,7 +76,7 @@ const completePendingProfile = {
 
 function emptyRequirements() {
   return {
-    provider: "international_ramp" as const,
+    provider: "customer_vault" as const,
     corridor: "KE",
     business_documents: [] as const,
     shareholder_documents: [] as const,
@@ -91,7 +91,7 @@ beforeEach(() => {
   listDocuments.mockResolvedValue({ documents: [] });
   documentRequirements.mockResolvedValue(emptyRequirements());
   initiate.mockResolvedValue({
-    provider: "international_ramp",
+    provider: "customer_vault",
     kyb_status: "pending",
     document_requirements: null,
   });
@@ -125,7 +125,7 @@ describe("useKybWizard restore + submit poll", () => {
       documents: [{ id: 9, document_type: "identity", provider_document_type: "identity", is_active: true }],
     });
     documentRequirements.mockResolvedValue({
-      provider: "international_ramp",
+      provider: "customer_vault",
       corridor: "KE",
       business_documents: [
         {
@@ -233,7 +233,7 @@ describe("useKybWizard restore + submit poll", () => {
     const onSubmitted = vi.fn();
     // Walk the wizard from step 2 to submit with one already-uploaded document.
     documentRequirements.mockResolvedValue({
-      provider: "international_ramp",
+      provider: "customer_vault",
       corridor: "KE",
       business_documents: [
         {
@@ -283,7 +283,7 @@ describe("useKybWizard restore + submit poll", () => {
       new ApiRequestError("Incomplete", 422, { missing: ["identity", "tax_id"] }),
     );
     documentRequirements.mockResolvedValue({
-      provider: "international_ramp",
+      provider: "customer_vault",
       corridor: null,
       business_documents: [
         {
@@ -332,7 +332,7 @@ describe("useKybWizard restore + submit poll", () => {
     });
     submitDocument.mockResolvedValue({});
     documentRequirements.mockResolvedValue({
-      provider: "international_ramp",
+      provider: "customer_vault",
       corridor: "KE",
       business_documents: [
         {
@@ -369,7 +369,7 @@ describe("useKybWizard restore + submit poll", () => {
     });
     await waitFor(() => {
       expect(uploadDocument).toHaveBeenCalled();
-      expect(submitDocument).toHaveBeenCalled();
+      expect(submitDocument).not.toHaveBeenCalled();
       expect(result.current.docRows[0]?.submitted).toBe(true);
     });
 
