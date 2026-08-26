@@ -295,9 +295,9 @@ export function isStatusOnlyKybSummary(
 export function mergeKybSummaryCache(
   previous: { profile?: Record<string, unknown> | null } | null | undefined,
   incoming: { profile?: Record<string, unknown> | null } | null | undefined,
-): { profile: Record<string, unknown> | null } | null {
+): { profile?: Record<string, unknown> | null } | null {
   if (incoming == null) return previous ?? null;
-  if (!previous?.profile) return incoming as { profile: Record<string, unknown> | null };
+  if (!previous?.profile) return incoming;
   if (isStatusOnlyKybSummary(incoming)) {
     const status = incoming.profile?.kyb_status;
     return {
@@ -307,7 +307,7 @@ export function mergeKybSummaryCache(
       },
     };
   }
-  return incoming as { profile: Record<string, unknown> | null };
+  return incoming;
 }
 
 /** Final submit done — vault `pending_review` → Mboka `submitted`. */
