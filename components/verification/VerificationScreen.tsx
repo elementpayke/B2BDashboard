@@ -20,6 +20,8 @@ export type VerificationScreenProps = {
   tiers: VerificationTier[];
   onUpgradeTier3: () => void;
   onStartKyb?: () => void;
+  /** From KYB profile when status is rejected. */
+  reviewerNotes?: string | null;
 };
 
 const ctaStyle: React.CSSProperties = {
@@ -63,8 +65,28 @@ export default function VerificationScreen(p: VerificationScreenProps) {
         }}
       >
         Complete each tier to raise your send limits. Start with business verification (Tier 2)
-        before requesting institutional access.
+        before requesting institutional access. Deposit accounts and money movement require an
+        approved KYB case — status “In review” means compliance is still checking your
+        submission.
       </p>
+
+      {p.reviewerNotes?.trim() ? (
+        <div
+          role="status"
+          style={{
+            padding: "12px 14px",
+            borderRadius: "14px",
+            background: "var(--red-tint)",
+            border: "1px solid color-mix(in srgb, var(--red) 28%, var(--border))",
+            fontSize: "13px",
+            lineHeight: 1.45,
+            color: "var(--red)",
+            fontWeight: 600,
+          }}
+        >
+          Reviewer notes: {p.reviewerNotes.trim()}
+        </div>
+      ) : null}
 
       <div className="ep-grid-3" role="list" aria-label="Verification tiers">
         {(p.tiers || []).map((t) => {

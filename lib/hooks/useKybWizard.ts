@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ApiRequestError } from "@/lib/apiClient";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildProfilePayload,
   buildShareholderPayload,
   buildUploadFormData,
   formatKybServiceError,
+  inferWizardStartStep,
   kybApi,
+  labelForDocumentType,
+  newKybIdempotencyKey,
   profileDraftFromSummary,
   validateAddressUboStep,
   validateBusinessStep,
@@ -47,6 +49,13 @@ export type DocumentUploadState = {
 
 const STEP_LABELS = ["Business", "Address & UBO", "Documents", "Submit"];
 
+const POST_SUBMIT_POLL_ATTEMPTS = 3;
+const POST_SUBMIT_POLL_DELAY_MS = 400;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function useKybWizard(opts: UseKybWizardOptions) {
   const [step, setStep] = useState<KybWizardStep>(1);
   const [draft, setDraft] = useState<KybWizardProfileDraft>(() =>
@@ -59,15 +68,108 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   const [shareholderId, setShareholderId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
+  /** Only full-reset when business changes or first open — keep mid-flow on reopen. */
+  const sessionBusinessIdRef = useRef<number | null | undefined>(undefined);
+  const sessionInitializedRef = useRef(false);
+  const resumeLoadIdRef = useRef(0);
+
   useEffect(() => {
     if (!opts.enabled) return;
-    setDraft(profileDraftFromSummary(opts.kybSummary, opts.business));
-    setStep(1);
+
+    const businessChanged = sessionBusinessIdRef.current !== opts.businessId;
+    const firstOpen = !sessionInitializedRef.current;
+
+    if (!businessChanged && !firstOpen) {
+      return;
+    }
+
+    sessionBusinessIdRef.current = opts.businessId;
+    sessionInitializedRef.current = true;
+    const loadId = ++resumeLoadIdRef.current;
+
+    const nextDraft = profileDraftFromSummary(opts.kybSummary, opts.business);
+    const profile = opts.kybSummary?.profile ?? null;
+    setDraft(nextDraft);
     setError("");
     setSubmitted(false);
     setRequirements(null);
     setDocRows([]);
     setShareholderId(null);
+
+    // Optimistic step from profile only; refined after document state loads.
+    setStep(inferWizardStartStep({ profile }));
+
+    const businessId = opts.businessId;
+    if (!businessId) return;
+
+    void (async () => {
+      let reqs: KybDocumentRequirements | null = null;
+      let hasUploadedDocuments = false;
+
+      try {
+        const listed = await kybApi.listDocuments(businessId);
+        hasUploadedDocuments = listed.documents.some((d) => d.is_active);
+      } catch {
+        // Best-effort resume — fall back to requirements / profile-only step.
+      }
+
+      try {
+        reqs = await kybApi.documentRequirements(
+          businessId,
+          nextDraft.country || undefined,
+        );
+        if (
+          reqs.business_documents.some((d) => d.uploaded) ||
+          reqs.shareholder_documents.some((d) => d.uploaded)
+        ) {
+          hasUploadedDocuments = true;
+        }
+      } catch {
+        // Requirements may be unavailable before initiate; keep profile step.
+      }
+
+      // Ignore stale loads when business changes mid-flight (not on every re-render).
+      if (loadId !== resumeLoadIdRef.current) return;
+
+      const hasDocumentRequirements = !!reqs && hasUploadedDocuments;
+      if (reqs && hasUploadedDocuments) {
+        const associateRef = nextDraft.associates[0]?.id;
+        setRequirements(reqs);
+        setDocRows([
+          ...reqs.business_documents.map((d) => ({
+            requirementType: d.type,
+            label: d.label?.trim() || labelForDocumentType(d.type),
+            category: "business" as const,
+            issuingCountryRequired: d.issuing_country_required,
+            file: null,
+            uploadedDocId: null,
+            submitted: d.uploaded,
+            uploading: false,
+            error: "",
+          })),
+          ...reqs.shareholder_documents.map((d) => ({
+            requirementType: d.type,
+            label: d.label?.trim() || labelForDocumentType(d.type),
+            category: "shareholder" as const,
+            associateRefId: associateRef,
+            issuingCountryRequired: d.issuing_country_required,
+            file: null,
+            uploadedDocId: null,
+            submitted: d.uploaded,
+            uploading: false,
+            error: "",
+          })),
+        ]);
+      }
+
+      setStep(
+        inferWizardStartStep({
+          profile,
+          hasDocumentRequirements,
+          hasUploadedDocuments,
+        }),
+      );
+    })();
   }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business]);
 
   const patchDraft = useCallback((patch: Partial<KybWizardProfileDraft>) => {
@@ -124,6 +226,38 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     }
   }, [draft, opts.businessId]);
 
+  const rowsFromRequirements = useCallback(
+    (reqs: KybDocumentRequirements): DocumentUploadState[] => {
+      const associateRef = draft.associates[0]?.id;
+      return [
+        ...reqs.business_documents.map((d) => ({
+          requirementType: d.type,
+          label: d.label?.trim() || labelForDocumentType(d.type),
+          category: "business" as const,
+          issuingCountryRequired: d.issuing_country_required,
+          file: null,
+          uploadedDocId: null,
+          submitted: d.uploaded,
+          uploading: false,
+          error: "",
+        })),
+        ...reqs.shareholder_documents.map((d) => ({
+          requirementType: d.type,
+          label: d.label?.trim() || labelForDocumentType(d.type),
+          category: "shareholder" as const,
+          associateRefId: associateRef,
+          issuingCountryRequired: d.issuing_country_required,
+          file: null,
+          uploadedDocId: null,
+          submitted: d.uploaded,
+          uploading: false,
+          error: "",
+        })),
+      ];
+    },
+    [draft.associates],
+  );
+
   const prepareDocuments = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
     setBusy(true);
@@ -132,7 +266,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       let reqs = requirements;
       if (!reqs) {
         try {
-          const initiated = await kybApi.initiate(opts.businessId);
+          const initiated = await kybApi.initiate(opts.businessId, newKybIdempotencyKey());
           reqs = initiated.document_requirements ?? null;
         } catch (initiateErr) {
           // Aggregator/sandbox can 502 on enroll while profile is already saved.
@@ -150,33 +284,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         }
         setRequirements(reqs);
       }
-      const associateRef = draft.associates[0]?.id;
-      const rows: DocumentUploadState[] = [
-        ...reqs.business_documents.map((d) => ({
-          requirementType: d.type,
-          label: d.label,
-          category: "business" as const,
-          issuingCountryRequired: d.issuing_country_required,
-          file: null,
-          uploadedDocId: null,
-          submitted: d.uploaded,
-          uploading: false,
-          error: "",
-        })),
-        ...reqs.shareholder_documents.map((d) => ({
-          requirementType: d.type,
-          label: d.label,
-          category: "shareholder" as const,
-          associateRefId: associateRef,
-          issuingCountryRequired: d.issuing_country_required,
-          file: null,
-          uploadedDocId: null,
-          submitted: false,
-          uploading: false,
-          error: "",
-        })),
-      ];
-      setDocRows(rows);
+      setDocRows(rowsFromRequirements(reqs));
       setBusy(false);
       return true;
     } catch (err) {
@@ -184,7 +292,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       setError(formatKybServiceError(err));
       return false;
     }
-  }, [draft.associates, draft.country, opts.businessId, requirements]);
+  }, [draft.country, opts.businessId, requirements, rowsFromRequirements]);
 
   const ensureShareholderRegistered = useCallback(async (): Promise<string | null> => {
     if (!opts.businessId) return null;
@@ -225,7 +333,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         });
         const uploaded = await kybApi.uploadDocument(opts.businessId, form);
         if (row.category === "business") {
-          await kybApi.submitDocument(opts.businessId, uploaded.id);
+          await kybApi.submitDocument(opts.businessId, uploaded.id, newKybIdempotencyKey());
         } else {
           const shId = await ensureShareholderRegistered();
           if (!shId) throw new Error("Register the beneficial owner with the verifier first.");
@@ -245,10 +353,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
               ? {
                   ...r,
                   uploading: false,
-                  error:
-                    err instanceof ApiRequestError || err instanceof Error
-                      ? err.message
-                      : "Upload failed.",
+                  error: formatKybServiceError(err),
                 }
               : r,
           ),
@@ -262,22 +367,40 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setDocRows((rows) => rows.map((r, i) => (i === index ? { ...r, file, error: "" } : r)));
   }, []);
 
+  const pollAfterSubmit = useCallback(async (businessId: number) => {
+    for (let attempt = 0; attempt < POST_SUBMIT_POLL_ATTEMPTS; attempt += 1) {
+      try {
+        const status = await kybApi.pollVerifierStatus(businessId);
+        if (status.kyb_status === "approved" || status.kyb_status === "rejected") {
+          return status;
+        }
+      } catch {
+        // Poll is best-effort after a successful submit — don't fail the UX.
+      }
+      if (attempt < POST_SUBMIT_POLL_ATTEMPTS - 1) {
+        await sleep(POST_SUBMIT_POLL_DELAY_MS);
+      }
+    }
+    return null;
+  }, []);
+
   const submitForReview = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
     setBusy(true);
     setError("");
     try {
-      await kybApi.submitForReview(opts.businessId);
+      await kybApi.submitForReview(opts.businessId, newKybIdempotencyKey());
+      await pollAfterSubmit(opts.businessId);
       setSubmitted(true);
       setBusy(false);
       opts.onSubmitted?.();
       return true;
     } catch (err) {
       setBusy(false);
-      setError(err instanceof ApiRequestError || err instanceof Error ? err.message : "Submit failed.");
+      setError(formatKybServiceError(err));
       return false;
     }
-  }, [opts]);
+  }, [opts, pollAfterSubmit]);
 
   const nextStep = useCallback(async () => {
     if (step === 1) {
@@ -313,7 +436,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return;
     }
     await submitForReview();
-  }, [docRows, prepareDocuments, saveProfile, step, submitForReview]);
+  }, [docRows, draft, prepareDocuments, saveProfile, step, submitForReview]);
 
   const backStep = useCallback(() => {
     setError("");
