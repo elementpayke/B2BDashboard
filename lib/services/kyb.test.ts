@@ -28,6 +28,8 @@ import {
   isKybApproved,
   isKybInProgress,
   isKybInReview,
+  isStatusOnlyKybSummary,
+  mergeKybSummaryCache,
   kybApi,
   kybTierDisplay,
   labelForDocumentType,
@@ -48,6 +50,7 @@ function validDraft(): KybWizardProfileDraft {
   const draft = emptyKybWizardDraft("KE");
   draft.legalName = "ElementPay Ltd";
   draft.registrationNumber = "BN123456";
+  draft.incorporationDate = "2020-01-15";
   draft.businessType = "LimitedCompany";
   draft.industry = "Fintech";
   draft.estimatedEmployees = "1-10";
@@ -204,9 +207,57 @@ describe("labelForDocumentType", () => {
   });
 });
 
+describe("mergeKybSummaryCache", () => {
+  it("detects status-only stubs", () => {
+    expect(isStatusOnlyKybSummary({ profile: { kyb_status: "pending" } })).toBe(true);
+    expect(
+      isStatusOnlyKybSummary({
+        profile: { kyb_status: "pending", industry: "Fintech" },
+      }),
+    ).toBe(false);
+  });
+
+  it("preserves full profile fields when merging a bootstrap status stub", () => {
+    const merged = mergeKybSummaryCache(
+      {
+        profile: {
+          kyb_status: "pending",
+          business_type: "LimitedCompany",
+          industry: "Fintech",
+          estimated_employees: "1-10",
+        },
+      },
+      { profile: { kyb_status: "submitted" } },
+    );
+    expect(merged?.profile?.business_type).toBe("LimitedCompany");
+    expect(merged?.profile?.industry).toBe("Fintech");
+    expect(merged?.profile?.kyb_status).toBe("submitted");
+  });
+});
+
 describe("inferWizardStartStep", () => {
   it("starts at step 1 with no profile", () => {
     expect(inferWizardStartStep({ profile: null })).toBe(1);
+  });
+
+  it("uses business legal name / registration when profile omits them", () => {
+    expect(
+      inferWizardStartStep({
+        profile: {
+          business_type: "LimitedCompany",
+          registered_address: { street: "Main", city: "Lagos", post_code: "100001", country: "NG" },
+          associates: [
+            {
+              id: "a1",
+              relationship_types: ["UBO"],
+              full_name: { first_name: "Sam", last_name: "Lee" },
+              date_of_birth: "1990-01-01",
+            },
+          ],
+        },
+        business: { legal_name: "Acme", registration_number: "R1", country: "NG" },
+      }),
+    ).toBe(2);
   });
 
   it("starts at step 2 when address and associates exist but docs are unknown", () => {
@@ -315,9 +366,18 @@ describe("buildProfilePayload", () => {
     const payload = buildProfilePayload(validDraft());
     expect(payload.legal_name).toBe("ElementPay Ltd");
     expect(payload.country).toBe("KE");
+    expect(payload.incorporation_date).toBe("2020-01-15");
     expect(payload.registered_address?.city).toBe("Nairobi");
     expect(payload.associates?.[0].relationship_types).toContain("UBO");
     expect(payload.associates?.[0].ubo?.ownership_percentage).toBe(60);
+  });
+});
+
+describe("incorporation date validation", () => {
+  it("requires an incorporation date for vault KYB", () => {
+    const draft = validDraft();
+    draft.incorporationDate = "";
+    expect(validateBusinessStep(draft)).toMatch(/incorporation date/i);
   });
 });
 
