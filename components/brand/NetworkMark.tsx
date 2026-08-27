@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useId } from "react";
 import { toPartnerNetwork } from "@/lib/services/entities";
 
 export type NetworkMarkNetwork = "Base" | "Polygon" | "Stellar";
@@ -37,23 +37,33 @@ function PolygonGlyph() {
   );
 }
 
-function StellarGlyph() {
-  // Stellar-style star on dark disc.
+function StellarGlyph({ clipId }: { clipId: string }) {
+  // Brand mark from public/brand/stellar-mark.png (circle + diagonal bars + ribbon).
   return (
     <>
-      <circle cx="16" cy="16" r="16" fill="#0A0B0D" />
-      <path
-        fill="#FFFFFF"
-        d="M7.2 16.8c4.4-.4 8.1-1.6 11.1-3.5 3-1.9 5.1-4.3 6.3-7.1.2 1.1.2 2.1 0 3.1-1.1 4.1-3.7 7.3-7.7 9.5-2.7 1.5-5.8 2.4-9.7 2.7v-4.7zm17.6-1.6c-4.4.4-8.1 1.6-11.1 3.5-3 1.9-5.1 4.3-6.3 7.1-.2-1.1-.2-2.1 0-3.1 1.1-4.1 3.7-7.3 7.7-9.5 2.7-1.5 5.8-2.4 9.7-2.7v4.7z"
+      <defs>
+        <clipPath id={clipId}>
+          <circle cx="16" cy="16" r="16" />
+        </clipPath>
+      </defs>
+      <circle cx="16" cy="16" r="16" fill="#000000" />
+      <image
+        href="/brand/stellar-mark.png"
+        x="5"
+        y="2"
+        width="22"
+        height="28"
+        preserveAspectRatio="xMidYMid meet"
+        clipPath={`url(#${clipId})`}
       />
     </>
   );
 }
 
-function glyphFor(network: NetworkMarkNetwork) {
+function glyphFor(network: NetworkMarkNetwork, clipId: string) {
   if (network === "Base") return <BaseGlyph />;
   if (network === "Polygon") return <PolygonGlyph />;
-  return <StellarGlyph />;
+  return <StellarGlyph clipId={clipId} />;
 }
 
 /**
@@ -67,6 +77,7 @@ export default function NetworkMark({
   className,
 }: NetworkMarkProps) {
   const partner = partnerNetworkForMark(network);
+  const clipId = useId().replace(/:/g, "");
   if (!partner) return null;
 
   const label = title === undefined ? partner : title;
@@ -85,7 +96,7 @@ export default function NetworkMark({
       focusable="false"
     >
       {decorative ? null : <title>{label}</title>}
-      {glyphFor(partner)}
+      {glyphFor(partner, clipId)}
     </svg>
   );
 }
