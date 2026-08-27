@@ -73,6 +73,7 @@ import {
   formatNetworkLabel,
   isReadyStatus,
   isFundableStablecoinAccount,
+  isSendableStablecoinAccount,
   occupiedStablecoinNetworkCodes,
   isClosedStatus,
   isCloseableStablecoinAccount,
@@ -995,16 +996,23 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.sendRecipient.trim() || !state.sendAmount.trim()) return;
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
-        const accounts = sendableAccountsQuery.data ?? [];
+        const accounts = [
+          ...(sendableAccountsQuery.data ?? []),
+          ...resolvedStablecoinAccounts.filter(isSendableStablecoinAccount),
+        ];
         const account =
-          accountForNetwork(accounts, state.sendChain) ||
-          accounts.find((a) => a.id === state.sendAccountId);
+          accounts.find((a) => a.id === state.sendAccountId) ||
+          accountForNetwork(accounts, state.sendChain);
         if (!account) {
           throw new Error("No ready USDC account on this network.");
         }
+        // Prefer bootstrap/list balance when the dedicated sendable fetch is
+        // stale or Horizon briefly reported zeros while the account page shows funds.
+        const balanceAccount =
+          resolvedStablecoinAccounts.find((a) => a.id === account.id) || account;
         assertSufficientBalance({
           amount: state.sendAmount.trim(),
-          balance: account.balance,
+          balance: balanceAccount.balance ?? account.balance,
           currency: account.currency || "USDC",
         });
         const payload = buildSendPreviewPayload({
@@ -1345,11 +1353,16 @@ export default function DashboardApp(props: Props = {}) {
       state.selectedAcctKey.startsWith("stablecoin:")
     ) {
       const accountId = state.selectedAcctKey.slice("stablecoin:".length);
-      const account = (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
+      const account =
+        resolvedStablecoinAccounts.find((row) => row.id === accountId) ||
+        (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
       if (account) {
         setState({
           sendChain: toUiNetworkKey(account.network),
           sendAccountId: account.id,
+          sendGroup: "crypto",
+          sendMethod: "crypto",
+          sendStep: 2,
         });
       }
     }
@@ -3119,6 +3132,8 @@ export default function DashboardApp(props: Props = {}) {
     depositNetworkOptions.find((n) => n.key === s.depositNetwork)?.label ||
     pinnedOnRampDest?.asset.network ||
     formatNetworkLabel(s.depositNetwork);
+  const depositNetworkKey =
+    pinnedOnRampDest?.asset.network || s.depositNetwork;
   const depositPickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
@@ -3997,6 +4012,7 @@ export default function DashboardApp(props: Props = {}) {
   depositBankArrival={depositBankArrival}
   depositBankLines={depositBankLines}
   depositAssetCode={depositAssetCode}
+  depositNetwork={depositNetworkKey}
   depositNetworkLabel={depositNetworkLabel}
   depositAddress={depositAddress}
   depositAddressEmptyMessage={depositAddressEmptyMessage}
