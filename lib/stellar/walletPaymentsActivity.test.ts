@@ -70,28 +70,42 @@ describe("walletPaymentToActivityItem", () => {
     expect(item.meta).toContain("Tx a1b2c3d4e5");
   });
 
-  it("maps outbound on-chain payments and opens the Stellar explorer", () => {
+  it("maps outbound on-chain payments and opens in-app detail (not the explorer)", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    const item = walletPaymentToActivityItem(
-      payment({
-        direction: "out",
-        amount: "9",
-        txHash: OTHER_HASH,
-      }),
-      {
-        network: "stellar_public",
-      },
-    );
+    const onOpenDetail = vi.fn();
+    const outbound = payment({
+      direction: "out",
+      amount: "9",
+      txHash: OTHER_HASH,
+    });
+    const item = walletPaymentToActivityItem(outbound, {
+      network: "stellar_public",
+      onOpenDetail,
+    });
 
     expect(item.client).toBe("Payout · USDC");
     expect(item.type).toBe("Stellar send");
     expect(item.amount).toBe("−9.00 USDC");
     item.openDetail?.();
-    expect(openSpy).toHaveBeenCalledWith(
-      `https://stellar.expert/explorer/public/tx/${OTHER_HASH}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
+    expect(onOpenDetail).toHaveBeenCalledWith(outbound);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("presentOnchainWalletPayment", () => {
+  it("includes from, to, time, and explorer URL for the detail modal", async () => {
+    const { presentOnchainWalletPayment } = await import("./walletPaymentsActivity");
+    const presented = presentOnchainWalletPayment(payment(), {
+      network: "stellar_testnet",
+    });
+
+    expect(presented.from_address).toBe(payment().from);
+    expect(presented.to_address).toBe(payment().to);
+    expect(presented.created_at).toBe("2026-08-20T12:00:00Z");
+    expect(presented.tx_hash).toBe(HASH);
+    expect(presented.explorerUrl).toContain("/testnet/tx/");
+    expect(presented.hideReceipt).toBe(true);
+    expect(presented.id).toBe(`onchain:${HASH}`);
   });
 });
 
@@ -134,6 +148,6 @@ describe("mergeWalletPaymentsWithElementActivity", () => {
     });
 
     expect(merged).toHaveLength(1);
-    expect(merged[0]?.id).toBe("1");
+    expect(merged[0]?.id).toBe("onchain:hash-1");
   });
 });

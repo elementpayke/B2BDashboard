@@ -44,7 +44,7 @@ describe("TxDetailModal Stellar inbound rows", () => {
 
     expect(screen.getByText("Tx hash")).toBeInTheDocument();
     expect(screen.getAllByText(STELLAR_HASH).length).toBeGreaterThanOrEqual(1);
-    const link = screen.getByRole("link", { name: /view on explorer/i });
+    const link = screen.getByRole("link", { name: /view on chain/i });
     expect(link).toHaveAttribute(
       "href",
       `https://stellar.expert/explorer/testnet/tx/${STELLAR_HASH}`,
@@ -71,6 +71,34 @@ describe("TxDetailModal Stellar inbound rows", () => {
       />,
     );
     expect(screen.queryByText("Tx hash")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /view on explorer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view on chain/i })).not.toBeInTheDocument();
+  });
+
+  it("shows From, To, and Time for an on-chain Stellar payment", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          from_address: "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVWX",
+          to_address: "GZYXWVUTSRQPONMLKJIHGFEDCBA765432ZYXWVUTSRQPONMLKJIHGFED",
+          type: "Stellar send",
+          client: "Payout · USDC",
+          amount: "−2.00 USDC",
+          direction: "out",
+          hideReceipt: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("From")).toBeInTheDocument();
+    expect(
+      screen.getByText("GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVWX"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("To")).toBeInTheDocument();
+    expect(
+      screen.getByText("GZYXWVUTSRQPONMLKJIHGFEDCBA765432ZYXWVUTSRQPONMLKJIHGFED"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Time")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view on chain/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /download pdf/i })).not.toBeInTheDocument();
   });
 });

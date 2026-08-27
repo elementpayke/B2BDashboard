@@ -18,7 +18,12 @@ import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits
 import { presentTransaction } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
 import { useStellarWalletPayments } from "@/lib/hooks/useStellarWalletPayments";
-import { mergeWalletPaymentsWithElementActivity } from "@/lib/stellar/walletPaymentsActivity";
+import {
+  mergeWalletPaymentsWithElementActivity,
+  parseOnchainTxDetailId,
+  presentOnchainWalletPayment,
+  onchainTxDetailId,
+} from "@/lib/stellar/walletPaymentsActivity";
 import { isStellarUsdcRail } from "@/lib/stellar/network";
 import {
   PRIMARY_TX_FILTERS,
@@ -452,7 +457,10 @@ export default function DashboardApp(props: Props = {}) {
   const txDetailQuery = useQuery({
     queryKey: ["transaction", state.selectedTxId],
     queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
-    enabled: state.selectedTxId != null && state.modal === "txDetail",
+    enabled:
+      state.selectedTxId != null &&
+      state.modal === "txDetail" &&
+      parseOnchainTxDetailId(state.selectedTxId) == null,
     retry: false,
   });
   // Live order-status polling (backoff) for whichever order is currently
@@ -1243,6 +1251,11 @@ export default function DashboardApp(props: Props = {}) {
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number | string) => () =>
     setState({ modal: "txDetail", selectedTxId: id });
+  const openOnchainTxDetail = (payment: { txHash: string }) =>
+    setState({
+      modal: "txDetail",
+      selectedTxId: onchainTxDetailId(payment.txHash),
+    });
   // UX redesign: account card → full Account detail screen; Details button → modal.
   const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
     setState({
@@ -2380,12 +2393,14 @@ export default function DashboardApp(props: Props = {}) {
     // Fetched by id (txDetailQuery), independent of the list above — see
     // openTxDetail. Falls back to the list's cached copy while the detail
     // fetch is in flight so the modal isn't blank on first open.
-    const txDetail = txDetailQuery.data
-      ? decorateTx(txDetailQuery.data)
-      : decoratedAll.find((t) => t.id === s.selectedTxId)
-        ?? filteredTransactions.find((t) => t.id === s.selectedTxId);
+    // Horizon-only wallet rows use `onchain:<hash>` and skip the API.
+    const listTxDetail =
+      decoratedAll.find((t) => t.id === s.selectedTxId) ??
+      filteredTransactions.find((t) => t.id === s.selectedTxId);
+    const apiTxDetail = txDetailQuery.data ? decorateTx(txDetailQuery.data) : null;
+    const txDetailBase = apiTxDetail ?? listTxDetail;
     const txLiveStatus =
-      s.modal === "txDetail" && txDetail && !txStatusQuery.isTerminal
+      s.modal === "txDetail" && txDetailBase && !txStatusQuery.isTerminal
         ? {
             label: txStatusQuery.isFrozen ? "Frozen — needs review" : "Tracking live — updates automatically",
             isFetching: txStatusQuery.isFetching,
@@ -2733,9 +2748,25 @@ export default function DashboardApp(props: Props = {}) {
             elementActivity: elementAccountDetailRecent,
             network: selectedStablecoinAccount.network,
             limit: 25,
+            onOpenDetail: openOnchainTxDetail,
           })
         : elementAccountDetailRecent.slice(0, 5)
       : elementAccountDetailRecent.slice(0, 5);
+  const onchainSelectedHash = parseOnchainTxDetailId(s.selectedTxId);
+  const onchainTxDetail =
+    onchainSelectedHash && selectedStablecoinAccount
+      ? (() => {
+          const payment = (stellarWalletPaymentsQuery.data ?? []).find(
+            (row) => row.txHash.toLowerCase() === onchainSelectedHash.toLowerCase(),
+          );
+          return payment
+            ? presentOnchainWalletPayment(payment, {
+                network: selectedStablecoinAccount.network,
+              })
+            : null;
+        })()
+      : null;
+  const txDetail = onchainTxDetail ?? txDetailBase;
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
