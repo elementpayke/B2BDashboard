@@ -14,7 +14,6 @@ import {
   mergeExchangeRates,
 } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
-import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
 import {
@@ -254,7 +253,7 @@ export default function DashboardApp(props: Props = {}) {
     txSearch: "",
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
-    selectedTxId: null as number | string | null,
+    selectedTxId: null as number | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
@@ -448,7 +447,7 @@ export default function DashboardApp(props: Props = {}) {
   // index would silently point at a different transaction.
   const txDetailQuery = useQuery({
     queryKey: ["transaction", state.selectedTxId],
-    queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
+    queryFn: () => transactionsApi.get(state.selectedTxId as number),
     enabled: state.selectedTxId != null && state.modal === "txDetail",
     retry: false,
   });
@@ -456,11 +455,8 @@ export default function DashboardApp(props: Props = {}) {
   // in view: the tx detail modal, or the send modal's just-accepted order.
   // See lib/hooks/useOrderStatus.ts for why this polls rather than using
   // the backend's WebSocket (which requires a JWT in the browser).
-  // Account-credit rows (`acr_…`) are not merchant_orders — skip order polling.
-  const selectedTxIsMerchantOrder =
-    state.selectedTxId != null && typeof state.selectedTxId === "number";
   const txStatusQuery = useOrderStatus(state.selectedTxId, {
-    enabled: state.modal === "txDetail" && selectedTxIsMerchantOrder,
+    enabled: state.modal === "txDetail" && state.selectedTxId != null,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
@@ -1238,8 +1234,7 @@ export default function DashboardApp(props: Props = {}) {
   }, [state.modal]);
 
   const stopClick = (e) => e.stopPropagation();
-  const openTxDetail = (id: number | string) => () =>
-    setState({ modal: "txDetail", selectedTxId: id });
+  const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
   const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
     setState({
@@ -2707,10 +2702,6 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
-  const accountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
-    financialAccountId: selectedStablecoinAccount?.id ?? null,
-    walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
-  }).slice(0, 5);
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
@@ -3555,7 +3546,7 @@ export default function DashboardApp(props: Props = {}) {
   balance={acctDetail.balance ?? "—"}
   balanceSub={acctDetail.balanceSub ?? "Balance not yet available"}
   summaryLines={acctDetailLines}
-  recent={accountDetailRecent}
+  recent={walletsRecent}
   canConvert={Boolean(acctDetail.showConvert)}
   canFund={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
   canSend={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}

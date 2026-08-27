@@ -8,7 +8,6 @@ const connectStellarWallet = vi.fn();
 const disconnectStellarWallet = vi.fn();
 const signStellarTransaction = vi.fn();
 const sendStellarUsdc = vi.fn();
-const creditWatchMock = vi.fn();
 
 vi.mock("@/lib/stellar/walletKit", () => ({
   connectStellarWallet: (...args: unknown[]) => connectStellarWallet(...args),
@@ -20,25 +19,13 @@ vi.mock("@/lib/stellar/sendUsdc", () => ({
   sendStellarUsdc: (...args: unknown[]) => sendStellarUsdc(...args),
 }));
 
-vi.mock("@/lib/hooks/useStellarCreditWatch", () => ({
-  useStellarCreditWatch: (...args: unknown[]) => creditWatchMock(...args),
-}));
-
 describe("StellarWalletDeposit", () => {
   beforeEach(() => {
     connectStellarWallet.mockReset();
     disconnectStellarWallet.mockReset();
     signStellarTransaction.mockReset();
     sendStellarUsdc.mockReset();
-    creditWatchMock.mockReset();
-    creditWatchMock.mockReturnValue({
-      phase: "submitted",
-      matched: null,
-      message: "Payment submitted. It should credit shortly.",
-      isFetching: false,
-    });
   });
-
   it("connects then sends USDC from the wallet", async () => {
     connectStellarWallet.mockResolvedValue("GABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD");
     sendStellarUsdc.mockResolvedValue({ hash: "abc123hash" });
@@ -67,31 +54,6 @@ describe("StellarWalletDeposit", () => {
       "href",
       expect.stringContaining("/tx/abc123hash"),
     );
-  });
-
-  it("shows Credited when ElementPay confirms the credit", async () => {
-    connectStellarWallet.mockResolvedValue("GABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD");
-    sendStellarUsdc.mockResolvedValue({ hash: "abc123hash" });
-    creditWatchMock.mockReturnValue({
-      phase: "credited",
-      matched: { id: "acr_1", tx_hash: "abc123hash" },
-      message: "Credited",
-      isFetching: false,
-    });
-
-    render(
-      <StellarWalletDeposit
-        destination="GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE"
-        network="Stellar"
-        suggestedAmount="100"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Send from wallet" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Send from wallet" }));
-    await waitFor(() => expect(screen.getByText("Credited")).toBeInTheDocument());
-    expect(screen.queryByText(/should credit shortly/i)).not.toBeInTheDocument();
   });
 
   it("shows an error when the wallet send fails", async () => {

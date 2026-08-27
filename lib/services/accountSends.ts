@@ -1,7 +1,6 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 import { newIdempotencyKey } from "@/lib/services/orders";
 import { toAssetNetwork, toPartnerNetwork } from "@/lib/services/entities";
-import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 import { StrKey } from "@stellar/stellar-sdk";
 
 /**
@@ -155,7 +154,11 @@ export function buildSendExplorerUrl(opts: {
   const key = String(opts.network ?? "").trim().toLowerCase();
 
   if (network === "Stellar" || key.includes("stellar")) {
-    return stellarExplorerTxUrl({ txHash: hash, network: opts.network });
+    const isPublic =
+      key.includes("public") || key.includes("mainnet") || key.includes("pubnet");
+    return isPublic
+      ? `https://stellar.expert/explorer/public/tx/${encodeURIComponent(hash)}`
+      : `https://stellar.expert/explorer/testnet/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Base" || key.includes("base")) {
     return `https://basescan.org/tx/${encodeURIComponent(hash)}`;

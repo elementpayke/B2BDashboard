@@ -76,65 +76,6 @@ describe("presentTransaction", () => {
     expect(view.networkName).toBe("M-PESA");
     expect(view.railType).toBe("mobile");
   });
-  it("prefers tx_hash then credit id for inbound Stellar deposits", () => {
-    const hash =
-      "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
-    expect(
-      transactionReference(
-        transaction({
-          id: "acr_01hqxyzcredit0001",
-          direction: "in",
-          currency: "USDC",
-          crypto_network: "stellar_testnet",
-          source: "stellar_payment",
-          tx_hash: hash,
-          aggregator_order_id: null,
-          external_order_id: null,
-        }),
-      ),
-    ).toBe(hash);
-    expect(
-      transactionReference(
-        transaction({
-          id: "acr_01hqxyzcredit0001",
-          direction: "in",
-          currency: "USDC",
-          crypto_network: "stellar_testnet",
-          source: "stellar_payment",
-          tx_hash: null,
-          aggregator_order_id: null,
-          external_order_id: null,
-        }),
-      ),
-    ).toBe("acr_01hqxyzcredit0001");
-  });
-
-  it("labels inbound Stellar credits as Stellar deposit and keeps the hash in meta", () => {
-    const hash =
-      "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
-    const view = presentTransaction(
-      transaction({
-        id: "acr_01hqxyzcredit0001",
-        direction: "in",
-        status: "completed",
-        amount_fiat: "25.50",
-        currency: "USDC",
-        crypto_network: "stellar_testnet",
-        source: "stellar_payment",
-        tx_hash: hash,
-        memo: null,
-        aggregator_order_id: null,
-        external_order_id: null,
-      }),
-    );
-    expect(view.type).toBe("Stellar deposit");
-    expect(view.client).toBe("Deposit · USDC");
-    expect(view.ref).toBe(hash);
-    expect(view.meta).toContain("Ref a1b2c3d4e5");
-    expect(view.explorerUrl).toBe(
-      `https://stellar.expert/explorer/testnet/tx/${hash}`,
-    );
-  });
 });
 
 describe("formatTransactionDate", () => {
