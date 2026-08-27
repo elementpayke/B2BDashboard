@@ -95,6 +95,14 @@ const baseProps = {
   depositNetworkLabel: "Base",
   depositAddress: "",
   closeModal: vi.fn(),
+  depositWalletOptions: [
+    { value: "acct-usdc-base", label: "USDC · Base · 0xabc1…def0" },
+  ],
+  depositWalletId: "acct-usdc-base",
+  selectDepositWallet: vi.fn(),
+  depositWalletsLoading: false,
+  depositWalletLocked: false,
+  depositWalletLabel: "USDC · Base · 0xabc1…def0",
 };
 
 describe("DepositModal country-first step", () => {
@@ -155,6 +163,71 @@ describe("DepositModal country-first step", () => {
     );
 
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+
+  it("lets the user pick which wallet to top up to", () => {
+    const selectDepositWallet = vi.fn();
+    render(
+      <DepositModal
+        {...baseProps}
+        depositSub="country"
+        depositCountryRows={countryRows(vi.fn())}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositWalletOptions={[
+          { value: "acct-usdc-base", label: "USDC · Base · 0xabc1…def0" },
+          { value: "acct-usdc-stellar", label: "USDC · Stellar · GABCDE…WXYZ" },
+        ]}
+        depositWalletId="acct-usdc-base"
+        selectDepositWallet={selectDepositWallet}
+      />,
+    );
+
+    expect(screen.getByText("Top up to wallet")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /USDC · Base/i }));
+    fireEvent.click(screen.getByRole("option", { name: /USDC · Stellar/i }));
+    expect(selectDepositWallet).toHaveBeenCalledWith("acct-usdc-stellar");
+  });
+
+  it("hides Continue until a destination wallet is selected", () => {
+    const kenyaIdx = COUNTRIES.findIndex((c) => c.code === "KES");
+    render(
+      <DepositModal
+        {...baseProps}
+        depositSub="method"
+        depositCountryRows={countryRows(vi.fn())}
+        depositMethodGroups={methodGroupsFor(kenyaIdx, 0)}
+        depositSelectedCountryName="Kenya"
+        depositMethodChosen
+        depositWalletId=""
+        depositWalletLabel={null}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+  });
+
+  it("shows the selected wallet on the review step", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositStepIs1={false}
+        depositStepIs3
+        depositStepDots={[{ on: true }, { on: true }, { on: true }]}
+        depositSub="method"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName="Kenya"
+        depositMethodChosen
+        depositAmount="1000"
+        depositPhone="712345678"
+        depositDestinationSummary="Kenya · Mobile money"
+        depositWalletLabel="USDC · Base · 0xabc1…def0"
+      />,
+    );
+
+    expect(screen.getByText("To")).toBeInTheDocument();
+    expect(screen.getByText("USDC · Base · 0xabc1…def0")).toBeInTheDocument();
   });
 });
 

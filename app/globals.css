@@ -2457,6 +2457,14 @@ body {
   flex-shrink: 0;
 }
 
+.ep-network-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: block;
+}
+
 .ep-home__balance-row-code {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 13px;
