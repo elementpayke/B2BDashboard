@@ -1,0 +1,76 @@
+// @vitest-environment jsdom
+
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import TxDetailModal from "./TxDetailModal";
+
+const STELLAR_HASH =
+  "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
+
+function stellarDepositDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "acr_01hqxyzcredit0001",
+    direction: "in",
+    status: "completed",
+    type: "Stellar deposit",
+    client: "Deposit · USDC",
+    amount: "+25.50 USDC",
+    amountColor: "var(--success)",
+    ref: STELLAR_HASH,
+    statusLabel: "Completed",
+    statusIcon: "✓",
+    statusColor: "var(--success)",
+    statusSoft: "var(--success-soft)",
+    created_at: "2026-08-20T12:00:00Z",
+    updated_at: "2026-08-20T12:00:00Z",
+    tx_hash: STELLAR_HASH,
+    crypto_network: "stellar_testnet",
+    cryptoNetworkLabel: "Stellar",
+    memo: null,
+    explorerUrl: `https://stellar.expert/explorer/testnet/tx/${STELLAR_HASH}`,
+    provider: null,
+    railType: null,
+    networkName: null,
+    partyName: null,
+    accountNumber: null,
+    psp_transaction_id: null,
+    ...overrides,
+  };
+}
+
+describe("TxDetailModal Stellar inbound rows", () => {
+  it("shows Tx hash, explorer link, and network for a Stellar credit", () => {
+    render(<TxDetailModal txDetail={stellarDepositDetail()} />);
+
+    expect(screen.getByText("Tx hash")).toBeInTheDocument();
+    expect(screen.getAllByText(STELLAR_HASH).length).toBeGreaterThanOrEqual(1);
+    const link = screen.getByRole("link", { name: /view on explorer/i });
+    expect(link).toHaveAttribute(
+      "href",
+      `https://stellar.expert/explorer/testnet/tx/${STELLAR_HASH}`,
+    );
+    expect(screen.getByText("Network")).toBeInTheDocument();
+    expect(screen.getByText("Stellar")).toBeInTheDocument();
+    expect(screen.queryByText("Memo")).not.toBeInTheDocument();
+  });
+
+  it("shows memo when the API returned one", () => {
+    render(<TxDetailModal txDetail={stellarDepositDetail({ memo: "invoice-9" })} />);
+    expect(screen.getByText("Memo")).toBeInTheDocument();
+    expect(screen.getByText("invoice-9")).toBeInTheDocument();
+  });
+
+  it("does not invent a Tx hash row when hash is missing", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          tx_hash: null,
+          explorerUrl: null,
+          ref: "acr_01hqxyzcredit0001",
+        })}
+      />,
+    );
+    expect(screen.queryByText("Tx hash")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view on explorer/i })).not.toBeInTheDocument();
+  });
+});
