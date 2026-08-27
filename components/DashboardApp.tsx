@@ -175,6 +175,7 @@ import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
 import SendModal from "@/components/send/SendModal";
 import MbokaMark from "@/components/brand/MbokaMark";
+import NetworkMark, { partnerNetworkForMark } from "@/components/brand/NetworkMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
 import HeaderRates from "@/components/navigation/HeaderRates";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
@@ -2647,6 +2648,7 @@ export default function DashboardApp(props: Props = {}) {
   });
   const stableBalanceRows = stablecoinAccountsList.map((a) => ({
     flagUrl: null as string | null,
+    network: a.network,
     code: `${a.currency}/${formatNetworkLabel(a.network)}`,
     balance: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
   }));
@@ -3566,6 +3568,8 @@ export default function DashboardApp(props: Props = {}) {
 <button key={__i1} type="button" className="ep-home__chip" onClick={setScreen("wallets")}>
 {hc.flagUrl ? (
   <span className="ep-flag" style={{backgroundImage: `url(${hc.flagUrl})`}} aria-hidden />
+) : partnerNetworkForMark(hc.network) ? (
+  <NetworkMark network={hc.network} size={28} title={null} />
 ) : (
   <span className="ep-home__balance-row-avatar" aria-hidden>{String(hc.code).slice(0, 2)}</span>
 )}
