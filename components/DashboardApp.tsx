@@ -14,6 +14,7 @@ import {
   mergeExchangeRates,
 } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
+import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
 import {
@@ -2706,6 +2707,10 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
+  const accountDetailRecent = recentActivityForFinancialAccount(
+    decoratedAll,
+    selectedStablecoinAccount?.id ?? null,
+  ).slice(0, 5);
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
@@ -3550,7 +3555,7 @@ export default function DashboardApp(props: Props = {}) {
   balance={acctDetail.balance ?? "—"}
   balanceSub={acctDetail.balanceSub ?? "Balance not yet available"}
   summaryLines={acctDetailLines}
-  recent={walletsRecent}
+  recent={accountDetailRecent}
   canConvert={Boolean(acctDetail.showConvert)}
   canFund={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
   canSend={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}

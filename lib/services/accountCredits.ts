@@ -167,6 +167,23 @@ export function mapAccountCreditToTransaction(credit: AccountCredit): Transactio
   };
 }
 
+/**
+ * Account detail "Recent" — when Mboka projects `financial_account_id` on
+ * activity rows, prefer rows for that wallet. If the feed has no scoped ids
+ * yet, keep the unfiltered page (fail open on older APIs). Never invent rows.
+ */
+export function recentActivityForFinancialAccount<
+  T extends { financial_account_id?: string | null },
+>(items: T[], financialAccountId: string | null | undefined): T[] {
+  const accountId = String(financialAccountId ?? "").trim();
+  if (!accountId) return items;
+  const anyScoped = items.some((row) => Boolean(String(row.financial_account_id ?? "").trim()));
+  if (!anyScoped) return items;
+  return items.filter(
+    (row) => String(row.financial_account_id ?? "").trim() === accountId,
+  );
+}
+
 function normalizeCreditsList(raw: unknown): AccountCreditList {
   const rows = extractAccountCreditRows(raw);
   const items = rows
