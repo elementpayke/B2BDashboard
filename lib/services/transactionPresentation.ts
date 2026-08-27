@@ -1,6 +1,9 @@
+import { isInboundStellarDeposit } from "./accountCredits";
 import { transactionPartyLabel } from "./channelLabels";
+import { formatNetworkLabel } from "./entities";
 import type { Transaction } from "./transactions";
 import { describeTransactionStatus } from "./transactionStatus";
+import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 
 export type TransactionPresentation = Transaction & {
   client: string;
@@ -22,9 +25,14 @@ export type TransactionPresentation = Transaction & {
   networkName: string | null;
   methodType: string | null;
   railType: "mobile" | "bank" | null;
+  /** stellar.expert (or null) when `tx_hash` is present on a Stellar row. */
+  explorerUrl: string | null;
+  /** Human network label for detail rows (e.g. Stellar). */
+  cryptoNetworkLabel: string | null;
 };
 
 function typeLabel(transaction: Transaction): string {
+  if (isInboundStellarDeposit(transaction)) return "Stellar deposit";
   if (transaction.direction === "in") return "Deposit";
   if (transaction.direction === "out") return "Payout";
   return "Transaction";
@@ -36,6 +44,12 @@ function shortReference(value: string): string {
 }
 
 export function transactionReference(transaction: Transaction): string {
+  if (isInboundStellarDeposit(transaction)) {
+    const hash = transaction.tx_hash?.trim();
+    if (hash) return hash;
+    const creditId = String(transaction.id || "").trim();
+    if (creditId.startsWith("acr_")) return creditId;
+  }
   return (
     transaction.external_order_id ||
     transaction.aggregator_order_id ||
@@ -94,6 +108,13 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   const ref = transactionReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
   const payment = transaction.payment;
+  const explorerUrl = stellarExplorerTxUrl({
+    txHash: transaction.tx_hash,
+    network: transaction.crypto_network,
+  });
+  const cryptoNetworkLabel = transaction.crypto_network
+    ? formatNetworkLabel(transaction.crypto_network)
+    : null;
 
   return {
     ...transaction,
@@ -119,5 +140,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     networkName: payment?.network_name?.trim() || null,
     methodType: payment?.method_type?.trim() || null,
     railType: railTypeFromPayment(transaction),
+    explorerUrl,
+    cryptoNetworkLabel,
   };
 }

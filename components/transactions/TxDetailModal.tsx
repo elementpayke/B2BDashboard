@@ -316,7 +316,61 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       mono: true,
     });
   }
-  if (created) rows.push({ label: "Created", value: created, mono: true });
+
+  const txHash =
+    typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
+  const explorerUrl =
+    typeof txDetail.explorerUrl === "string" ? txDetail.explorerUrl.trim() : "";
+  if (txHash) {
+    rows.push({
+      label: "Tx hash",
+      mono: true,
+      value: explorerUrl ? (
+        <>
+          <span className="ep-txn-detail__hash">{txHash}</span>{" "}
+          <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
+            View on chain
+          </a>
+        </>
+      ) : (
+        txHash
+      ),
+    });
+  }
+
+  const cryptoNetworkLabel =
+    (typeof txDetail.cryptoNetworkLabel === "string" &&
+      txDetail.cryptoNetworkLabel.trim()) ||
+    (typeof txDetail.crypto_network === "string" && txDetail.crypto_network.trim()
+      ? txDetail.crypto_network.trim()
+      : "");
+  if (cryptoNetworkLabel) {
+    // Prefer human label when present (e.g. "Stellar" over stellar_testnet).
+    const networkDisplay =
+      typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()
+        ? txDetail.cryptoNetworkLabel.trim()
+        : cryptoNetworkLabel;
+    rows.push({ label: "Network", value: networkDisplay });
+  }
+
+  const fromAddress =
+    typeof txDetail.from_address === "string" ? txDetail.from_address.trim() : "";
+  if (fromAddress) {
+    rows.push({ label: "From", value: fromAddress, mono: true });
+  }
+
+  const toAddress =
+    typeof txDetail.to_address === "string" ? txDetail.to_address.trim() : "";
+  if (toAddress) {
+    rows.push({ label: "To", value: toAddress, mono: true });
+  }
+
+  const memo = typeof txDetail.memo === "string" ? txDetail.memo.trim() : "";
+  if (memo) {
+    rows.push({ label: "Memo", value: memo, mono: true });
+  }
+
+  if (created) rows.push({ label: "Time", value: created, mono: true });
   if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
   return (
@@ -398,7 +452,9 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         ))}
       </div>
 
-      {isReceiptable(txDetail.status) ? <ReceiptActions txDetail={txDetail} /> : null}
+      {isReceiptable(txDetail.status) && !txDetail.hideReceipt ? (
+        <ReceiptActions txDetail={txDetail} />
+      ) : null}
     </div>
   );
 }

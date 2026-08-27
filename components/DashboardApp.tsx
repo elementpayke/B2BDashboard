@@ -14,8 +14,17 @@ import {
   mergeExchangeRates,
 } from "@/lib/services/dashboard";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
+import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
+import { useStellarWalletPayments } from "@/lib/hooks/useStellarWalletPayments";
+import {
+  mergeWalletPaymentsWithElementActivity,
+  parseOnchainTxDetailId,
+  presentOnchainWalletPayment,
+  onchainTxDetailId,
+} from "@/lib/stellar/walletPaymentsActivity";
+import { isStellarUsdcRail } from "@/lib/stellar/network";
 import {
   PRIMARY_TX_FILTERS,
   searchTransactions,
@@ -253,7 +262,7 @@ export default function DashboardApp(props: Props = {}) {
     txSearch: "",
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
-    selectedTxId: null as number | null,
+    selectedTxId: null as number | string | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
@@ -447,16 +456,22 @@ export default function DashboardApp(props: Props = {}) {
   // index would silently point at a different transaction.
   const txDetailQuery = useQuery({
     queryKey: ["transaction", state.selectedTxId],
-    queryFn: () => transactionsApi.get(state.selectedTxId as number),
-    enabled: state.selectedTxId != null && state.modal === "txDetail",
+    queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
+    enabled:
+      state.selectedTxId != null &&
+      state.modal === "txDetail" &&
+      parseOnchainTxDetailId(state.selectedTxId) == null,
     retry: false,
   });
   // Live order-status polling (backoff) for whichever order is currently
   // in view: the tx detail modal, or the send modal's just-accepted order.
   // See lib/hooks/useOrderStatus.ts for why this polls rather than using
   // the backend's WebSocket (which requires a JWT in the browser).
+  // Account-credit rows (`acr_…`) are not merchant_orders — skip order polling.
+  const selectedTxIsMerchantOrder =
+    state.selectedTxId != null && typeof state.selectedTxId === "number";
   const txStatusQuery = useOrderStatus(state.selectedTxId, {
-    enabled: state.modal === "txDetail" && state.selectedTxId != null,
+    enabled: state.modal === "txDetail" && selectedTxIsMerchantOrder,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
@@ -1234,7 +1249,13 @@ export default function DashboardApp(props: Props = {}) {
   }, [state.modal]);
 
   const stopClick = (e) => e.stopPropagation();
-  const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
+  const openTxDetail = (id: number | string) => () =>
+    setState({ modal: "txDetail", selectedTxId: id });
+  const openOnchainTxDetail = (payment: { txHash: string }) =>
+    setState({
+      modal: "txDetail",
+      selectedTxId: onchainTxDetailId(payment.txHash),
+    });
   // UX redesign: account card → full Account detail screen; Details button → modal.
   const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
     setState({
@@ -2372,12 +2393,14 @@ export default function DashboardApp(props: Props = {}) {
     // Fetched by id (txDetailQuery), independent of the list above — see
     // openTxDetail. Falls back to the list's cached copy while the detail
     // fetch is in flight so the modal isn't blank on first open.
-    const txDetail = txDetailQuery.data
-      ? decorateTx(txDetailQuery.data)
-      : decoratedAll.find((t) => t.id === s.selectedTxId)
-        ?? filteredTransactions.find((t) => t.id === s.selectedTxId);
+    // Horizon-only wallet rows use `onchain:<hash>` and skip the API.
+    const listTxDetail =
+      decoratedAll.find((t) => t.id === s.selectedTxId) ??
+      filteredTransactions.find((t) => t.id === s.selectedTxId);
+    const apiTxDetail = txDetailQuery.data ? decorateTx(txDetailQuery.data) : null;
+    const txDetailBase = apiTxDetail ?? listTxDetail;
     const txLiveStatus =
-      s.modal === "txDetail" && txDetail && !txStatusQuery.isTerminal
+      s.modal === "txDetail" && txDetailBase && !txStatusQuery.isTerminal
         ? {
             label: txStatusQuery.isFrozen ? "Frozen — needs review" : "Tracking live — updates automatically",
             isFetching: txStatusQuery.isFetching,
@@ -2410,6 +2433,12 @@ export default function DashboardApp(props: Props = {}) {
             (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
+    const stellarWalletPaymentsQuery = useStellarWalletPayments({
+      network: selectedStablecoinAccount?.network,
+      currency: selectedStablecoinAccount?.currency,
+      address: selectedStablecoinAccount?.walletAddress,
+      limit: 25,
+    });
     const acctDetail = selectedDepositAccount
       ? (() => {
           const view = mapDepositAccountToCardView(selectedDepositAccount);
@@ -2702,6 +2731,42 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
+  const elementAccountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
+    financialAccountId: selectedStablecoinAccount?.id ?? null,
+    walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
+  });
+  const accountDetailRecent =
+    selectedStablecoinAccount &&
+    Boolean(selectedStablecoinAccount.walletAddress) &&
+    isStellarUsdcRail({
+      network: selectedStablecoinAccount.network,
+      currency: selectedStablecoinAccount.currency,
+    })
+      ? stellarWalletPaymentsQuery.isFetched
+        ? mergeWalletPaymentsWithElementActivity({
+            payments: stellarWalletPaymentsQuery.data ?? [],
+            elementActivity: elementAccountDetailRecent,
+            network: selectedStablecoinAccount.network,
+            limit: 25,
+            onOpenDetail: openOnchainTxDetail,
+          })
+        : elementAccountDetailRecent.slice(0, 5)
+      : elementAccountDetailRecent.slice(0, 5);
+  const onchainSelectedHash = parseOnchainTxDetailId(s.selectedTxId);
+  const onchainTxDetail =
+    onchainSelectedHash && selectedStablecoinAccount
+      ? (() => {
+          const payment = (stellarWalletPaymentsQuery.data ?? []).find(
+            (row) => row.txHash.toLowerCase() === onchainSelectedHash.toLowerCase(),
+          );
+          return payment
+            ? presentOnchainWalletPayment(payment, {
+                network: selectedStablecoinAccount.network,
+              })
+            : null;
+        })()
+      : null;
+  const txDetail = onchainTxDetail ?? txDetailBase;
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
@@ -3546,7 +3611,7 @@ export default function DashboardApp(props: Props = {}) {
   balance={acctDetail.balance ?? "—"}
   balanceSub={acctDetail.balanceSub ?? "Balance not yet available"}
   summaryLines={acctDetailLines}
-  recent={walletsRecent}
+  recent={accountDetailRecent}
   canConvert={Boolean(acctDetail.showConvert)}
   canFund={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
   canSend={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}

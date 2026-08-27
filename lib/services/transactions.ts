@@ -22,7 +22,11 @@ export type TransactionPayment = {
 };
 
 export type Transaction = {
-  id: number;
+  /**
+   * Merchant order id (number) or projected account-credit id (`acr_…` string)
+   * when Mboka includes inbound credits in `GET /v1/transactions`.
+   */
+  id: number | string;
   direction: TransactionDirection;
   status: TransactionStatus;
   amount_fiat: string;
@@ -37,6 +41,14 @@ export type Transaction = {
   exchange_rate?: string | null;
   psp_transaction_id?: string | null;
   payment?: TransactionPayment | null;
+  /** On-chain hash when the API returns one (Stellar / EVM). Never invented. */
+  tx_hash?: string | null;
+  /** Optional payment memo when present; entity funding is address-only so usually null. */
+  memo?: string | null;
+  /** Partner FinancialAccount id for account-scoped credits. */
+  financial_account_id?: string | null;
+  /** Credit/event source (e.g. `stellar_payment`, `account.credited`). */
+  source?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -134,8 +146,131 @@ export function mapOrderToTransaction(order: Order): Transaction {
     exchange_rate: order.exchange_rate,
     psp_transaction_id: order.psp_transaction_id,
     payment: paymentFromOrderMetadata(order.client_metadata),
+    tx_hash: null,
+    memo: null,
+    financial_account_id: null,
+    source: null,
     created_at: order.created_at,
     updated_at: order.updated_at,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function optionalString(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function toAmount(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  return Number.isFinite(Number(raw.replace(/,/g, ""))) ? raw : null;
+}
+
+function parseTransactionId(value: unknown): number | string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+    return trimmed;
+  }
+  return null;
+}
+
+function parseDirection(value: unknown): TransactionDirection | null {
+  const key = optionalString(value)?.toLowerCase();
+  if (key === "in" || key === "out" || key === "unknown") return key;
+  return null;
+}
+
+function parseStatus(value: unknown): TransactionStatus | null {
+  const key = optionalString(value)?.toLowerCase();
+  if (
+    key === "processing" ||
+    key === "completed" ||
+    key === "failed" ||
+    key === "refunded" ||
+    key === "canceled" ||
+    key === "frozen"
+  ) {
+    return key;
+  }
+  return null;
+}
+
+/**
+ * Normalize a `GET /v1/transactions` (or detail) wire row, including projected
+ * inbound account credits (`acr_…` ids) with optional `tx_hash` / `memo` /
+ * `crypto_network`. Returns `null` when required fields are missing — fail
+ * closed; never invents hashes, memos, or amounts.
+ */
+export function normalizeTransactionWire(raw: unknown): Transaction | null {
+  const row = asRecord(raw);
+  if (!row) return null;
+
+  const id = parseTransactionId(row.id);
+  const direction = parseDirection(row.direction) ?? "unknown";
+  const status = parseStatus(row.status);
+  const amount = toAmount(row.amount_fiat ?? row.amount);
+  const currency = optionalString(row.currency ?? row.currency_code)?.toUpperCase();
+  const createdAt = optionalString(row.created_at ?? row.createdAt ?? row.observed_at);
+  const updatedAt =
+    optionalString(row.updated_at ?? row.updatedAt ?? row.observed_at) ?? createdAt;
+
+  if (id === null || !status || !amount || !currency || !createdAt || !updatedAt) {
+    return null;
+  }
+
+  const paymentRaw = asRecord(row.payment);
+  const payment = paymentRaw
+    ? paymentFromOrderMetadata({ payment: paymentRaw })
+    : null;
+
+  const provider = optionalString(row.provider);
+  let cryptoNetwork = optionalString(
+    row.crypto_network ?? row.cryptoNetwork ?? row.network,
+  );
+  // Mboka credit projection today sets provider=stellar without crypto_network.
+  if (
+    !cryptoNetwork &&
+    (String(provider || "").toLowerCase().includes("stellar") ||
+      String(id).startsWith("acr_"))
+  ) {
+    cryptoNetwork = "Stellar";
+  }
+
+  return {
+    id,
+    direction,
+    status,
+    amount_fiat: amount,
+    currency,
+    aggregator_order_id: optionalString(row.aggregator_order_id),
+    external_order_id: optionalString(row.external_order_id),
+    wallet_address: optionalString(row.wallet_address ?? row.walletAddress),
+    provider,
+    order_type: optionalString(row.order_type) as Order["order_type"] | null,
+    crypto_currency: optionalString(row.crypto_currency)?.toUpperCase() ?? null,
+    crypto_network: cryptoNetwork,
+    exchange_rate: optionalString(row.exchange_rate),
+    psp_transaction_id: optionalString(row.psp_transaction_id),
+    payment,
+    tx_hash: optionalString(row.tx_hash ?? row.txHash ?? row.transaction_hash),
+    memo: optionalString(row.memo),
+    financial_account_id: optionalString(
+      row.financial_account_id ?? row.financialAccountId ?? row.account_id,
+    ),
+    source: optionalString(row.source),
+    created_at: createdAt,
+    updated_at: updatedAt,
   };
 }
 
@@ -145,22 +280,77 @@ export const transactionsApi = {
   // business/user. Kept for the surfaces that only ever needed that page
   // (Home "Recent activity", Wallets/Cards recents, Reports, tx detail's
   // list-cache fallback) — see listPage below for the paginated screen.
-  list: () => apiEnvelope<TransactionList>("GET", "/v1/transactions"),
-  get: (id: number) => apiEnvelope<Transaction>("GET", `/v1/transactions/${id}`),
+  // Rows are normalized so projected credit fields (`tx_hash`, `memo`,
+  // `acr_…` ids) are kept when present and invalid rows fail closed.
+  async list(): Promise<TransactionList> {
+    const raw = await apiEnvelope<unknown>("GET", "/v1/transactions");
+    const obj =
+      raw !== null && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : null;
+    const rows = Array.isArray(obj?.items)
+      ? obj.items
+      : Array.isArray(raw)
+        ? raw
+        : [];
+    const items = rows
+      .map((row) => normalizeTransactionWire(row))
+      .filter((row): row is Transaction => row !== null);
+    const total =
+      typeof obj?.total === "number" && Number.isFinite(obj.total) ? obj.total : items.length;
+    return { items, total };
+  },
+
+  async get(id: number | string): Promise<Transaction | null> {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/transactions/${encodeURIComponent(String(id))}`,
+    );
+    return normalizeTransactionWire(raw);
+  },
 
   // Server-side filtered/paginated transaction history for the dedicated
   // Transactions screen. Sources pages from `GET /v1/orders?status=&limit=
   // &offset=` (which supports them, unlike `GET /v1/transactions`) and maps
   // each row back into the Transaction shape the rest of the app renders.
+  // Account credits are not on `/v1/orders`, so the first page of "all" /
+  // "completed" also merges `GET /v1/account-credits` (fail open if missing).
   async listPage(params: TransactionPageParams = {}): Promise<TransactionPage> {
     const page = await ordersApi.list({
       status: params.status as OrderStatus | undefined,
       limit: params.limit,
       offset: params.offset,
     });
+    let items = page.items.map(mapOrderToTransaction);
+    let total = page.total;
+    const offset = params.offset ?? 0;
+    const status = params.status;
+    const mergeCredits =
+      offset === 0 && (status === undefined || status === "completed");
+
+    if (mergeCredits) {
+      try {
+        const { accountCreditsApi, mapAccountCreditToTransaction } = await import(
+          "./accountCredits"
+        );
+        const credits = await accountCreditsApi.list();
+        const creditTxs = credits.items.map(mapAccountCreditToTransaction);
+        const seen = new Set(items.map((row) => String(row.id)));
+        const extras = creditTxs.filter((row) => !seen.has(String(row.id)));
+        if (extras.length) {
+          items = [...extras, ...items].sort((a, b) =>
+            String(b.created_at).localeCompare(String(a.created_at)),
+          );
+          total += extras.length;
+        }
+      } catch {
+        // Endpoint missing / unauthorized — keep orders-only page.
+      }
+    }
+
     return {
-      items: page.items.map(mapOrderToTransaction),
-      total: page.total,
+      items,
+      total,
       limit: page.limit,
       offset: page.offset,
     };

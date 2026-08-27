@@ -15,7 +15,7 @@ import { TRANSACTION_STATUS } from "@/lib/services/transactionStatus";
  * PSP refs (M-Pesa code, bank reference) when the backend provides them.
  */
 export type ReceiptTransaction = {
-  id: number;
+  id: number | string;
   direction: string;
   status: string;
   amount_fiat: string;
@@ -38,6 +38,8 @@ export type ReceiptTransaction = {
   /** Human rail label from quote (e.g. M-PESA). */
   networkName?: string | null;
   methodType?: string | null;
+  /** On-chain hash when Mboka returned one (Stellar inbound credits). */
+  tx_hash?: string | null;
 };
 
 /** Terminal-and-successful — the only states a receipt should exist for. */
@@ -208,6 +210,10 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
     { label: "Receipt number", value: number, mono: true },
     { label: "Transaction ID", value: String(tx.id), mono: true },
   ];
+  const txHash = tx.tx_hash?.trim();
+  if (txHash) {
+    referenceRows.push({ label: "Tx hash", value: txHash, mono: true });
+  }
   // Second order id when both external and aggregator exist and differ.
   if (
     tx.external_order_id?.trim() &&

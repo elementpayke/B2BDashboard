@@ -27,7 +27,8 @@ the exact failure mode). See
 |---|---|---|
 | Auth | `POST /api/auth/{businesses/signup,businesses/login,verify-email,password/forgot,password/reset}`, `GET /api/auth/me`, `POST /api/auth/refresh` | Business (B2B) flows only. `/forgot-password` and `/reset-password` call the dashboard BFF routes. Reset email/code are handed off via tab `sessionStorage` (never left in the URL); if Mboka email links still arrive with `?email=&code=`, the reset page migrates them into sessionStorage and immediately strips the query. Access/refresh tokens remain httpOnly cookies. |
 | Dashboard (Home) | `GET /v1/bootstrap` (preferred); fallback `GET /v1/dashboard/summary` + `GET /v1/exchange-rates` + IBAN/entity account lists | **Bootstrap** returns identity, eligibility, treasury, FX, and flat fiat+stablecoin accounts with balances in one RTT. Legacy waterfall remains only if bootstrap fails. |
-| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}`, `GET /v1/orders` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. The dedicated Transactions screen's status filter + Prev/Next pagination are server-side via `GET /v1/orders?status=&limit=&offset=` — see Transaction history pagination below for why. |
+| Transactions | `GET /v1/transactions`, `GET /v1/transactions/{id}`, `GET /v1/orders` | Filter chips cover all 6 backend statuses (processing/completed/failed/refunded/canceled/frozen). The tx detail modal fetches by id (`GET /v1/transactions/{id}`), not by list index/position — see Order status lifecycle below. The dedicated Transactions screen's status filter + Prev/Next pagination are server-side via `GET /v1/orders?status=&limit=&offset=` — see Transaction history pagination below for why. Wire rows are normalized in `lib/services/transactions.ts` (`normalizeTransactionWire`) so optional Stellar fields (`tx_hash`, `crypto_network`, `memo`) and projected credit ids (`acr_…`) are kept when present and invalid rows fail closed. |
+| Account credits (Stellar inbound) | `GET /v1/account-credits`, `GET /v1/account-credits/{id}` | Partner `account.credited` projections (e.g. Freighter/QR USDC top-ups observed against a business FinancialAccount). Mapped in `lib/services/accountCredits.ts` → dashboard `Transaction` via `mapAccountCreditToTransaction`. Required: id, amount, financial_account_id, observed_at. `tx_hash` / `memo` never invented when omitted. If the running Mboka env returns 404, UI surfaces must fail closed (no mock credits). On Stellar USDC account detail, these rows are now only used to enrich/link matching Horizon payments; the recent list itself is Horizon-backed. See Stellar inbound mapping notes below. |
 | Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transactions-page"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
 | Invoices | `POST /v1/invoices/drafts`, `POST /v1/invoices`, `GET /v1/invoices`, `POST /v1/invoices/{id}/mark-paid`, `GET /v1/invoices/{id}/public-link` | The dashboard's simple 2-field ("client" + "amount") modal composes a minimal `DraftPayloadIn` and calls create-draft → issue in sequence. |
@@ -49,7 +50,7 @@ the exact failure mode). See
 
 | Area | Why |
 |---|---|
-| Deposit / Top up — **Stablecoin** tab | No standalone stablecoin deposit endpoint. Address comes from the matching ready entity account (Stellar USDC = `G…`); EVM chips may show the dashboard-summary treasury. Mock `DEPOSIT_ADDRESSES` are not used. Stellar is omitted for USDT. |
+| Deposit / Top up — **Stablecoin** tab | Address comes from the matching ready entity account (Stellar USDC = `G…`); EVM chips may show the dashboard-summary treasury. Mock `DEPOSIT_ADDRESSES` are not used. Stellar is omitted for USDT. **Inbound visibility** is split by surface: Stellar USDC account detail reads recent on-chain wallet payments directly from Horizon (`/accounts/{G}/payments?order=desc&limit=&join=transactions`) and prefers ElementPay presentation only when a matching `tx_hash` already exists in `GET /v1/account-credits` / projected `GET /v1/transactions`. No client POST report-hash. If Horizon or Mboka credits are unavailable, fail closed (see Wired row + mapping notes). |
 | Bulk-payout modal | Real bulk CSV payouts are a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
 | Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
 | Cards — **Fund / Withdraw as prepaid load** | Partner docs: `amount` on issue is **not** a card wallet top-up. Cards spend the linked **USD** account balance. UI “Fund USD” opens the USD deposit fund flow instead of a fake card load. |
@@ -146,6 +147,42 @@ the exact failure mode). See
   generic amount/recipient summary line since the 409 response doesn't
   carry the original accept payload.
 
+## Stellar inbound account-credit mapping notes (`lib/services/accountCredits.ts`, `lib/services/transactions.ts`)
+
+Freighter / SEP-0007 QR top-ups to the business entity `G…` are **address-only**
+(no memo on send or QR). The dashboard does **not** observe Horizon for the
+entity wallet and does **not** POST a client-side report-hash.
+
+Mboka (watcher) is the source of truth for credits:
+
+- `GET /v1/account-credits` (+ optional get-by-id) — fields consumed when
+  present: `id` (`acr_…`), `tx_hash`, `amount`, `currency`,
+  `financial_account_id`, `from`/`to` (or `from_address`/`to_address`),
+  `observed_at`, `source`, optional `crypto_network`, optional `memo`.
+- `GET /v1/transactions` may also project inbound credits into the same
+  activity feed (`id` scheme `acr_…`; `direction: in`; same optional
+  `tx_hash` / `crypto_network` / `memo` / `wallet_address`).
+
+Dashboard mappers:
+
+- `normalizeAccountCredit` / `mapAccountCreditToTransaction` — fail closed
+  (drop the row) when id, amount, financial_account_id/`account_id`, or
+  observed_at/`created_at` are missing or unparseable. Numeric credit ids
+  become `acr_<n>` to match the transactions projection; GET-by-id strips
+  that prefix for Mboka's int path. Never invent `tx_hash`, memo, or balances.
+- `normalizeTransactionWire` — same fail-closed rule; maps `account_id` →
+  `financial_account_id` and defaults `crypto_network` to `Stellar` when
+  Mboka only sends `provider: "stellar"` / `acr_…` ids.
+- `isInboundStellarDeposit` — true for inbound rows with Stellar
+  `crypto_network`/`source`/`provider`, or `acr_…` + `tx_hash`.
+- `recentActivityForFinancialAccount` — prefers `financial_account_id`, else
+  matches `wallet_address` to the open G… when the feed lacks account ids.
+- Transactions screen `listPage` merges `GET /v1/account-credits` onto the
+  first page of all/completed (orders pagination still cannot include them).
+
+Follow-up UI slices consume these types; they must not mock production
+credits when the endpoint is absent.
+
 ## Transaction history filters & pagination (`lib/services/transactions.ts`, `lib/hooks/useTransactionsPage.ts`)
 
 `GET /v1/transactions` takes **no query parameters** — it always returns the
@@ -178,6 +215,11 @@ account. New accepts snapshot that under `client_metadata.payment`; older
 rows are backfilled from the linked quote's `raw_request` on detail fetch.
 `mapOrderToTransaction` reads the same snapshot from
 `Order.client_metadata.payment` for the Transactions list.
+
+When Mboka projects inbound account credits into this feed, rows may use
+string ids (`acr_…`) and optional `tx_hash`, `crypto_network`, and `memo`
+(entity funding is address-only, so memo is usually null). The dashboard
+normalizer keeps those fields when present and drops incomplete rows.
 
 Home's "Recent activity", the Wallets/Cards "recent transactions" widgets,
 and Reports (see below) intentionally keep using the original unpaginated
