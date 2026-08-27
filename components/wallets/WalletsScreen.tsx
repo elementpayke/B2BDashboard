@@ -28,7 +28,7 @@ export type WalletsScreenProps = {
   addAccountMenu: boolean;
   toggleAddAccountMenu: () => void;
   closeAddAccountMenu: () => void;
-  openCreateAccount: (kind: string) => () => void;
+  openCreateAccount: (kind: string, preferredNetwork?: string) => () => void;
   /** When false, Stablecoin Account menu item is disabled (all slots open). */
   canCreateStablecoin?: boolean;
   /** When false, Bank account menu item is disabled (USD+EUR already open). */
