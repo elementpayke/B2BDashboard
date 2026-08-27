@@ -55,3 +55,23 @@ export function truncateStellarAddress(address: string): string {
   if (trimmed.length <= 12) return trimmed;
   return `${trimmed.slice(0, 6)}…${trimmed.slice(-6)}`;
 }
+
+/**
+ * stellar.expert transaction URL for a confirmed Stellar payment hash.
+ * Returns null when the hash is missing — never invents an explorer link.
+ * Prefers explicit `isTestnet`; otherwise uses `resolveStellarNetwork(network)`.
+ */
+export function stellarExplorerTxUrl(opts: {
+  txHash: string | null | undefined;
+  network?: string | null;
+  isTestnet?: boolean;
+}): string | null {
+  const hash = String(opts.txHash ?? "").trim();
+  if (!hash) return null;
+  const isTestnet =
+    typeof opts.isTestnet === "boolean"
+      ? opts.isTestnet
+      : resolveStellarNetwork(opts.network).isTestnet;
+  const explorer = isTestnet ? "testnet" : "public";
+  return `https://stellar.expert/explorer/${explorer}/tx/${encodeURIComponent(hash)}`;
+}
