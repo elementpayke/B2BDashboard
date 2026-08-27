@@ -66,7 +66,19 @@ export function stablecoinNetworksForAsset<T extends { key: string }>(
 export type StablecoinPickerDestination = {
   address: string | null;
   emptyMessage: string;
+  /**
+   * When true, Receive / Top-up may offer Create Account for this rail
+   * (Base / Polygon / Stellar USDC with no listed account yet).
+   */
+  offerCreate: boolean;
+  /** Partner network code for pre-filling Create Account (`STELLAR`, …). */
+  createNetwork?: string | null;
 };
+
+function isCreatableUsdcNetwork(networkKey: string): boolean {
+  const partner = toPartnerNetwork(networkKey);
+  return partner === "Base" || partner === "Polygon" || partner === "Stellar";
+}
 
 /**
  * Address shown on Receive / Top-up stablecoin pickers.
@@ -80,15 +92,26 @@ export function resolveStablecoinPickerDestination(input: {
 }): StablecoinPickerDestination {
   const currency = assetCurrency(input.asset);
   const stellar = isStellarNetworkKey(input.networkKey);
+  const accounts = input.accounts ?? [];
+  const createNetwork = toPartnerNetwork(input.networkKey)?.toUpperCase() ?? null;
+  const canCreate =
+    currency === "USDC" && isCreatableUsdcNetwork(input.networkKey);
 
   if (stellar && currency !== "USDC") {
     return {
       address: null,
       emptyMessage: "USDT is not available on Stellar. Choose USDC or another network.",
+      offerCreate: false,
     };
   }
 
-  const match = (input.accounts ?? []).find(
+  const listedOnRail = accounts.find(
+    (a) =>
+      a.assetType.toLowerCase() === "stablecoin" &&
+      a.currency.trim().toUpperCase() === currency &&
+      networksEqual(a.network, input.networkKey),
+  );
+  const match = accounts.find(
     (a) =>
       isFundableStablecoinAccount(a) &&
       a.currency.trim().toUpperCase() === currency &&
@@ -97,30 +120,51 @@ export function resolveStablecoinPickerDestination(input: {
   const matchedAddress = clean(match?.walletAddress);
 
   if (stellar) {
-    if (!matchedAddress) {
+    if (matchedAddress) {
+      return { address: matchedAddress, emptyMessage: "", offerCreate: false };
+    }
+    if (listedOnRail) {
       return {
         address: null,
         emptyMessage:
-          "No ready Stellar USDC wallet. Open a Stellar USDC account and wait until it is active with a deposit address.",
+          "Your Stellar USDC account is still opening. Come back when it is active with a deposit address.",
+        offerCreate: false,
       };
     }
-    return { address: matchedAddress, emptyMessage: "" };
+    return {
+      address: null,
+      emptyMessage: "No Stellar USDC wallet yet. Create one to get a deposit address.",
+      offerCreate: true,
+      createNetwork,
+    };
   }
 
   if (matchedAddress) {
-    return { address: matchedAddress, emptyMessage: "" };
+    return { address: matchedAddress, emptyMessage: "", offerCreate: false };
   }
 
   const treasury = clean(input.treasuryWallet);
   // Summary treasury is the EVM deposit address — never treat a G… key as Base/Polygon.
   if (treasury && !treasury.startsWith("G")) {
-    return { address: treasury, emptyMessage: "" };
+    return { address: treasury, emptyMessage: "", offerCreate: false };
+  }
+
+  if (listedOnRail) {
+    return {
+      address: null,
+      emptyMessage:
+        "Your wallet on this network is still opening. Come back when it is active with a deposit address.",
+      offerCreate: false,
+    };
   }
 
   return {
     address: null,
-    emptyMessage:
-      "Receive address unavailable. Open a ready wallet on this network or try again later.",
+    emptyMessage: canCreate
+      ? `No ${currency} wallet on this network yet. Create one to get a deposit address.`
+      : "Receive address unavailable. Open a ready wallet on this network or try again later.",
+    offerCreate: canCreate,
+    createNetwork: canCreate ? createNetwork : null,
   };
 }
 
@@ -212,7 +256,7 @@ export function describeMissingOnRampDestination(input: {
   if (input.summaryFailed) {
     return "We couldn't load your account details just now, so this payment can't be priced. Try again in a moment.";
   }
-  return "No ready stablecoin deposit wallet matches this fund. Open the account you want to credit and wait until it is active.";
+  return "No ready stablecoin deposit wallet matches this fund. Choose a ready wallet above, or open one under Accounts and wait until it is active.";
 }
 
 export type AfricanFundOpenIntent = {

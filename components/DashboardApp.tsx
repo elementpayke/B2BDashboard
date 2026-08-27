@@ -567,6 +567,12 @@ export default function DashboardApp(props: Props = {}) {
     enabled: bootstrapFailed,
   });
 
+  /** Prefer bootstrap payload; fall back to the dedicated list query. */
+  const resolvedStablecoinAccounts = bootstrapReady
+    ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+    : (stablecoinAccountsQuery.data ?? []);
+  const fundableRefundWallets = resolvedStablecoinAccounts.filter(isFundableStablecoinAccount);
+
   const cardsSurfaceOpen =
     state.screen === "cards" ||
     state.modal === "newCard" ||
@@ -833,6 +839,26 @@ export default function DashboardApp(props: Props = {}) {
         });
         return;
       }
+      // OffRamp quotes need a refund wallet — pick one the user can see/change.
+      const preferred =
+        fundableRefundWallets.find((a) => a.id === state.sendAccountId) ||
+        fundableRefundWallets.find((a) => a.currency.trim().toUpperCase() === "USDC") ||
+        fundableRefundWallets[0] ||
+        null;
+      setState({
+        sendStep: 2,
+        sendQuoteError: preferred
+          ? ""
+          : "No ready stablecoin wallet to refund from. Open a USDC account and wait until it is active.",
+        sendAccountId: preferred?.id || "",
+        sendChain: preferred ? toUiNetworkKey(preferred.network) || state.sendChain : state.sendChain,
+        sendAsset: preferred
+          ? preferred.currency.trim().toLowerCase() || state.sendAsset
+          : state.sendAsset,
+        sendPreview: null,
+        sendAcceptError: "",
+      });
+      return;
     }
     // Stablecoin tab step 1 → 2: require a ready USDC account on the chosen
     // network before collecting the recipient (Phase 4).
@@ -886,7 +912,7 @@ export default function DashboardApp(props: Props = {}) {
         // tag asset/network; fall back to summary or any ready USDC wallet
         // so a 500 from /dashboard/summary is not reported as unprovisioned.
         const rampDest = resolveOnRampDestination({
-          accounts: stablecoinAccountsQuery.data ?? [],
+          accounts: resolvedStablecoinAccounts,
           selectedAccountId: state.sendAccountId || undefined,
           depositNetworkKey: state.sendChain,
           depositAsset: state.sendAsset,
@@ -1048,7 +1074,7 @@ export default function DashboardApp(props: Props = {}) {
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
       try {
         const rampDest = resolveOnRampDestination({
-          accounts: stablecoinAccountsQuery.data ?? [],
+          accounts: resolvedStablecoinAccounts,
           selectedAccountId: state.fundTargetAccountId,
           depositNetworkKey: state.depositNetwork,
           depositAsset: state.depositAsset,
@@ -1811,25 +1837,33 @@ export default function DashboardApp(props: Props = {}) {
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
   const closeAddAccountMenu = () => setState({ addAccountMenu: false });
-  const openCreateAccount = (kind) => () => {
-    const stableOccupied = occupiedStablecoinNetworkCodes(
-      stablecoinAccountsQuery.data ?? [],
-    );
+  const openCreateAccount = (kind, preferredNetwork) => () => {
+    const stableOccupied = occupiedStablecoinNetworkCodes(resolvedStablecoinAccounts);
     const fiatOccupied = occupiedFiatCurrencyCodes(
-      depositAccountsQuery.data?.accounts ?? [],
+      bootstrapReady
+        ? (bootstrapQuery.data?.fiatAccounts ?? [])
+        : (depositAccountsQuery.data?.accounts ?? []),
     );
     if (kind === "stablecoin") {
       const available = SUPPORTED_STABLECOIN_NETWORKS.filter(
         (code) => !stableOccupied.has(code),
       );
+      const preferred = typeof preferredNetwork === "string"
+        ? preferredNetwork.trim().toUpperCase()
+        : "";
+      const preferredOk =
+        preferred && available.includes(preferred as (typeof SUPPORTED_STABLECOIN_NETWORKS)[number])
+          ? preferred
+          : "";
       setState({
         modal: "createAccount",
         addAccountMenu: false,
         createAccountKind: "stablecoin",
-        createAccountName: "",
+        createAccountName: preferredOk === "STELLAR" ? "Stellar USDC" : "",
         createAccountCurrency: "",
         createAccountStablecoin: available.length > 0 ? "USDC" : "",
-        createAccountNetwork: available.length === 1 ? available[0] : "",
+        createAccountNetwork:
+          preferredOk || (available.length === 1 ? available[0] : ""),
         createAccountError:
           available.length === 0
             ? "You already have a USDC account on every available network."
@@ -3086,7 +3120,7 @@ export default function DashboardApp(props: Props = {}) {
     pinnedOnRampDest?.asset.network ||
     formatNetworkLabel(s.depositNetwork);
   const depositPickerDest = resolveStablecoinPickerDestination({
-    accounts: stablecoinAccountsQuery.data ?? [],
+    accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
     networkKey: s.depositNetwork,
     treasuryWallet: treasuryWalletAddress,
@@ -3167,13 +3201,20 @@ export default function DashboardApp(props: Props = {}) {
     formatNetworkLabel(s.receiveNetwork);
   const receiveAssetCode = s.receiveAsset.toUpperCase();
   const receivePickerDest = resolveStablecoinPickerDestination({
-    accounts: stablecoinAccountsQuery.data ?? [],
+    accounts: resolvedStablecoinAccounts,
     asset: s.receiveAsset,
     networkKey: s.receiveNetwork,
     treasuryWallet: treasuryWalletAddress,
   });
   const receiveAddress = receivePickerDest.address || "—";
   const receiveAddressEmptyMessage = receivePickerDest.emptyMessage;
+  const receiveCreateAccount =
+    receivePickerDest.offerCreate && receivePickerDest.createNetwork
+      ? openCreateAccount("stablecoin", receivePickerDest.createNetwork)
+      : null;
+  const receiveCreateAccountLabel = receivePickerDest.createNetwork
+    ? `Create ${receiveAssetCode} on ${receiveNetworkLabel}`
+    : "Create stablecoin account";
   const copyReceiveAddress = receivePickerDest.address
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
@@ -3865,6 +3906,27 @@ export default function DashboardApp(props: Props = {}) {
   onSaveRecipientDetails={saveCurrentRecipientDetails}
   saveRecipientBusy={saveRecipientBusy}
   saveRecipientMessage={saveRecipientMessage}
+  sendRefundWalletOptions={fundableRefundWallets.map((a) => ({
+    value: a.id,
+    label: `${a.currency} · ${formatNetworkLabel(a.network)}${
+      a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
+    }`,
+  }))}
+  sendRefundWalletId={s.sendAccountId || ""}
+  selectSendRefundWallet={(accountId) => {
+    const account = fundableRefundWallets.find((row) => row.id === accountId);
+    if (!account) return;
+    setState({
+      sendAccountId: account.id,
+      sendChain: toUiNetworkKey(account.network) || s.sendChain,
+      sendAsset: account.currency.trim().toLowerCase() || s.sendAsset,
+      sendQuoteError: "",
+      sendPreview: null,
+    });
+  }}
+  sendRefundWalletsLoading={
+    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
+  }
   sendRecipientName={sendRecipientName}
   setSendRecipientName={setSendRecipientName}
   sendRecipientLabel={sendRecipientLabel}
@@ -3961,6 +4023,8 @@ export default function DashboardApp(props: Props = {}) {
   copyReceiveAddress={copyReceiveAddress}
   receiveAddressCopied={receiveAddressCopied}
   receiveAddressEmptyMessage={receiveAddressEmptyMessage}
+  onCreateStablecoinAccount={receiveCreateAccount}
+  createStablecoinAccountLabel={receiveCreateAccountLabel}
 />
 </section>) : null}
 

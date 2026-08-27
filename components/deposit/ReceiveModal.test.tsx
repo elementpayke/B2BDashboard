@@ -46,10 +46,23 @@ describe("ReceiveModal stablecoin", () => {
     renderCrypto({
       receiveAddress: "—",
       receiveAddressEmptyMessage:
-        "No ready Stellar USDC wallet. Open a Stellar USDC account and wait until it is active with a deposit address.",
+        "No Stellar USDC wallet yet. Create one to get a deposit address.",
     });
     expect(screen.queryByText(stellarAddr)).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/No ready Stellar USDC wallet/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/No Stellar USDC wallet yet/i);
+  });
+
+  it("offers Create Account when no Stellar wallet exists", () => {
+    const onCreate = vi.fn();
+    renderCrypto({
+      receiveAddress: "—",
+      receiveAddressEmptyMessage:
+        "No Stellar USDC wallet yet. Create one to get a deposit address.",
+      onCreateStablecoinAccount: onCreate,
+      createStablecoinAccountLabel: "Create USDC on Stellar",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create USDC on Stellar" }));
+    expect(onCreate).toHaveBeenCalled();
   });
 
   it("selects Stellar when the chip is clicked", () => {
