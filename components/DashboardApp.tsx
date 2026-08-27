@@ -17,6 +17,9 @@ import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
+import { useStellarWalletPayments } from "@/lib/hooks/useStellarWalletPayments";
+import { mergeWalletPaymentsWithElementActivity } from "@/lib/stellar/walletPaymentsActivity";
+import { isStellarUsdcRail } from "@/lib/stellar/network";
 import {
   PRIMARY_TX_FILTERS,
   searchTransactions,
@@ -2415,6 +2418,12 @@ export default function DashboardApp(props: Props = {}) {
             (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
+    const stellarWalletPaymentsQuery = useStellarWalletPayments({
+      network: selectedStablecoinAccount?.network,
+      currency: selectedStablecoinAccount?.currency,
+      address: selectedStablecoinAccount?.walletAddress,
+      limit: 25,
+    });
     const acctDetail = selectedDepositAccount
       ? (() => {
           const view = mapDepositAccountToCardView(selectedDepositAccount);
@@ -2707,10 +2716,26 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
-  const accountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
+  const elementAccountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
     financialAccountId: selectedStablecoinAccount?.id ?? null,
     walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
-  }).slice(0, 5);
+  });
+  const accountDetailRecent =
+    selectedStablecoinAccount &&
+    Boolean(selectedStablecoinAccount.walletAddress) &&
+    isStellarUsdcRail({
+      network: selectedStablecoinAccount.network,
+      currency: selectedStablecoinAccount.currency,
+    })
+      ? stellarWalletPaymentsQuery.isFetched
+        ? mergeWalletPaymentsWithElementActivity({
+            payments: stellarWalletPaymentsQuery.data ?? [],
+            elementActivity: elementAccountDetailRecent,
+            network: selectedStablecoinAccount.network,
+            limit: 25,
+          })
+        : elementAccountDetailRecent.slice(0, 5)
+      : elementAccountDetailRecent.slice(0, 5);
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
