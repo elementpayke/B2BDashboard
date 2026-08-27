@@ -1837,7 +1837,7 @@ export default function DashboardApp(props: Props = {}) {
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
   const closeAddAccountMenu = () => setState({ addAccountMenu: false });
-  const openCreateAccount = (kind, preferredNetwork) => () => {
+  const openCreateAccount = (kind: string, preferredNetwork?: string) => () => {
     const stableOccupied = occupiedStablecoinNetworkCodes(resolvedStablecoinAccounts);
     const fiatOccupied = occupiedFiatCurrencyCodes(
       bootstrapReady
