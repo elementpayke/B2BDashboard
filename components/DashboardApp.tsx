@@ -49,6 +49,9 @@ import {
 } from "@/lib/services/orders";
 import {
   accountSendsApi,
+  buildAccountSendResultSummary,
+  buildAccountSendSuccessDetails,
+  buildSendExplorerUrl,
   buildSendPreviewPayload,
   explainAccountSendError,
   sendCryptoRecipientPlaceholder,
@@ -2956,10 +2959,22 @@ export default function DashboardApp(props: Props = {}) {
   const sendAccepting = s.sendAccepting;
   const sendAcceptError = s.sendAcceptError;
   const sendResultText = s.sendConfirm
-    ? `${s.sendConfirm.amount} ${s.sendConfirm.currency} · ${s.sendConfirm.status}${s.sendConfirm.id ? ` · ${s.sendConfirm.id}` : ""}`
+    ? buildAccountSendResultSummary(s.sendConfirm)
     : s.sendAccept
       ? `Order #${s.sendAccept.merchant_order_id} · ${s.sendAccept.status}`
       : null;
+  const sendSuccessDetails = s.sendConfirm
+    ? buildAccountSendSuccessDetails({
+        ...s.sendConfirm,
+        network: s.sendConfirm.network || s.sendChain,
+      })
+    : null;
+  const sendExplorerUrl = s.sendConfirm
+    ? buildSendExplorerUrl({
+        network: s.sendConfirm.network || s.sendChain,
+        txHash: s.sendConfirm.tx_hash,
+      })
+    : null;
   // Live status on the send-success step, via the same polling hook the tx
   // detail modal uses. `sendStatusQuery.data` starts undefined right after
   // accept (first poll hasn't landed yet) — fall back to the accept
@@ -3961,6 +3976,8 @@ export default function DashboardApp(props: Props = {}) {
   sendAccepting={sendAccepting}
   submitSend={submitSend}
   sendResultText={sendResultText}
+  sendSuccessDetails={sendSuccessDetails}
+  sendExplorerUrl={sendExplorerUrl}
   sendLiveStatus={sendLiveStatus}
   closeModal={closeModal}
 />
