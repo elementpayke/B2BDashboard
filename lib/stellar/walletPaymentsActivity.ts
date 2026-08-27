@@ -149,24 +149,23 @@ export function mergeWalletPaymentsWithElementActivity(opts: {
   limit?: number;
   onOpenDetail?: (payment: OnchainWalletPayment) => void;
 }): ActivityItem[] {
-  const byHash = new Map<string, LinkedWalletActivityItem>();
+  const matchedHashes = new Set<string>();
   for (const item of opts.elementActivity) {
     const hash = normalizeHash(item.tx_hash);
-    if (!hash || byHash.has(hash)) continue;
-    byHash.set(hash, item);
+    if (hash) matchedHashes.add(hash);
   }
 
-  return [...opts.payments]
-    .sort((a, b) => createdAtMs(b.createdAt) - createdAtMs(a.createdAt))
-    .map((payment) => {
-      const linked = byHash.get(normalizeHash(payment.txHash));
-      return (
-        linked ??
-        walletPaymentToActivityItem(payment, {
-          network: opts.network,
-          onOpenDetail: opts.onOpenDetail,
-        })
-      );
-    })
+  const unmatchedOnchain = opts.payments
+    .filter((payment) => !matchedHashes.has(normalizeHash(payment.txHash)))
+    .map((payment) => ({
+      ...walletPaymentToActivityItem(payment, {
+        network: opts.network,
+        onOpenDetail: opts.onOpenDetail,
+      }),
+      created_at: payment.createdAt,
+    }));
+
+  return [...opts.elementActivity, ...unmatchedOnchain]
+    .sort((a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at))
     .slice(0, opts.limit ?? 25);
 }

@@ -135,6 +135,26 @@ describe("presentTransaction", () => {
       `https://stellar.expert/explorer/testnet/tx/${hash}`,
     );
   });
+
+  it("uses network-aware explorers and skips stellar.expert for EVM hashes", () => {
+    expect(
+      presentTransaction(
+        transaction({
+          crypto_network: "Base",
+          tx_hash: "0xdeadbeef",
+        }),
+      ).explorerUrl,
+    ).toBe("https://basescan.org/tx/0xdeadbeef");
+
+    expect(
+      presentTransaction(
+        transaction({
+          crypto_network: "Polygon",
+          tx_hash: "0xabc",
+        }),
+      ).explorerUrl,
+    ).toBe("https://polygonscan.com/tx/0xabc");
+  });
 });
 
 describe("formatTransactionDate", () => {

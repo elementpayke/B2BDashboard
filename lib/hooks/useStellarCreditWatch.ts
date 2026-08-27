@@ -135,19 +135,20 @@ export function useStellarCreditWatch(
 
   const query = useQuery({
     queryKey: ["stellar-credit-watch", hash],
-    queryFn: () => fetchCreditMatch(hash as string),
-    enabled: Boolean(hash) && enabled,
-    retry: false,
-    refetchInterval: (q) => {
-      const matched = q.state.data ?? null;
+    queryFn: async () => {
+      const matched = await fetchCreditMatch(hash as string);
       attemptRef.current += 1;
-      const next = nextCreditWatchPhase({
+      phaseRef.current = nextCreditWatchPhase({
         phase: phaseRef.current,
         matched,
         attempt: attemptRef.current,
       });
-      phaseRef.current = next;
-      if (next !== "submitted") return false;
+      return matched;
+    },
+    enabled: Boolean(hash) && enabled,
+    retry: false,
+    refetchInterval: () => {
+      if (phaseRef.current !== "submitted") return false;
       return nextPollIntervalMs(attemptRef.current);
     },
   });
@@ -158,9 +159,12 @@ export function useStellarCreditWatch(
     matched,
     attempt: attemptRef.current,
   });
-  if (phase === "credited" || phase === "timed_out") {
-    phaseRef.current = phase;
-  }
+
+  useEffect(() => {
+    if (phase === "credited" || phase === "timed_out") {
+      phaseRef.current = phase;
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (!matched || phase !== "credited") return;
