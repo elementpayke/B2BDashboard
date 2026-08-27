@@ -1,5 +1,6 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
+import ChoicePicker, { type ChoicePickerOption } from "@/components/ui/ChoicePicker";
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -90,6 +91,14 @@ export type DepositModalProps = {
   fundTargetCurrency?: string | null;
   fundConvertStatus?: string;
   fundConvertError?: string;
+  /** Destination stablecoin wallet — mirrors Send’s refund-wallet picker. */
+  depositWalletOptions?: ChoicePickerOption[];
+  depositWalletId?: string;
+  selectDepositWallet?: (accountId: string) => void;
+  depositWalletsLoading?: boolean;
+  /** Account-detail fund: destination wallet is already pinned. */
+  depositWalletLocked?: boolean;
+  depositWalletLabel?: string | null;
 };
 
 function SearchField({
@@ -176,7 +185,9 @@ export default function DepositModal(p: DepositModalProps) {
   );
 
   const showContinue =
-    p.depositIsCrypto || (p.depositIsCountry && p.depositSub === "method" && p.depositMethodChosen);
+    (p.depositIsCrypto ||
+      (p.depositIsCountry && p.depositSub === "method" && p.depositMethodChosen)) &&
+    Boolean(p.depositWalletId || (p.depositWalletLocked && p.depositWalletLabel));
 
   const copyDepositAddress = async () => {
     if (!hasAddress) return;
@@ -237,6 +248,30 @@ export default function DepositModal(p: DepositModalProps) {
                   </button>
                 ))}
               </div>
+              )}
+
+              {p.depositWalletLocked && p.depositWalletLabel ? (
+                <div className="ep-money-banner ep-money-banner--info" role="note">
+                  Top up to {p.depositWalletLabel}
+                </div>
+              ) : p.selectDepositWallet &&
+                (p.depositWalletsLoading || (p.depositWalletOptions || []).length > 0) ? (
+                <ChoicePicker
+                  id="deposit-target-wallet"
+                  label="Top up to wallet"
+                  title="Choose wallet"
+                  value={p.depositWalletId || ""}
+                  options={p.depositWalletOptions || []}
+                  onChange={p.selectDepositWallet}
+                  loading={p.depositWalletsLoading}
+                  loadingLabel="Loading wallets…"
+                  placeholder="Select a ready stablecoin wallet"
+                />
+              ) : (
+                <p className="ep-money-hint">
+                  No ready stablecoin wallet yet. Open a USDC account under Accounts and wait until
+                  it is active with a deposit address.
+                </p>
               )}
 
               {p.depositIsCountry && p.depositSub === "country" ? (
@@ -540,6 +575,12 @@ export default function DepositModal(p: DepositModalProps) {
                       : p.depositPhone}
                   </span>
                 </div>
+                {p.depositWalletLabel ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">To</span>
+                    <span className="ep-money-review__v">{p.depositWalletLabel}</span>
+                  </div>
+                ) : null}
                 <div className="ep-money-review__row">
                   <span className="ep-money-review__k">Via</span>
                   <span className="ep-money-review__v">{p.depositDestinationSummary}</span>
