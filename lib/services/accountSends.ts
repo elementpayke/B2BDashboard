@@ -38,6 +38,8 @@ export type AccountSend = {
   receive_amount: string | null;
   preview_token: string | null;
   provider_send_id: string | null;
+  /** On-chain hash when the partner has submitted the transfer. */
+  tx_hash?: string | null;
   ledger_journal_reference: string | null;
   expires_at: string | null;
 };
@@ -117,6 +119,128 @@ export function sendCryptoRecipientPlaceholder(networkKey: string): string {
   return toPartnerNetwork(networkKey) === "Stellar"
     ? "G… (Stellar public key)"
     : "0x… (EVM address)";
+}
+
+/** Display USDC amounts with two decimal places (API may return 18-scale decimals). */
+export function formatSendAmountDisplay(amount: string | null | undefined): string {
+  const raw = String(amount ?? "").trim().replace(/,/g, "");
+  if (!raw) return "0.00";
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return raw;
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Human status label for the send success summary. */
+export function formatSendStatusDisplay(status: string | null | undefined): string {
+  const raw = String(status ?? "").trim();
+  if (!raw) return "submitted";
+  return raw.replace(/_/g, " ");
+}
+
+/**
+ * Public explorer URL for a confirmed account-send tx hash.
+ * Returns null when the hash/network cannot be linked.
+ */
+export function buildSendExplorerUrl(opts: {
+  network: string | null | undefined;
+  txHash: string | null | undefined;
+}): string | null {
+  const hash = String(opts.txHash ?? "").trim();
+  if (!hash) return null;
+  const network = toPartnerNetwork(opts.network) || String(opts.network ?? "").trim();
+  const key = String(opts.network ?? "").trim().toLowerCase();
+
+  if (network === "Stellar" || key.includes("stellar")) {
+    const isPublic =
+      key.includes("public") || key.includes("mainnet") || key.includes("pubnet");
+    return isPublic
+      ? `https://stellar.expert/explorer/public/tx/${encodeURIComponent(hash)}`
+      : `https://stellar.expert/explorer/testnet/tx/${encodeURIComponent(hash)}`;
+  }
+  if (network === "Base" || key.includes("base")) {
+    return `https://basescan.org/tx/${encodeURIComponent(hash)}`;
+  }
+  if (network === "Polygon" || key.includes("polygon")) {
+    return `https://polygonscan.com/tx/${encodeURIComponent(hash)}`;
+  }
+  return null;
+}
+
+export function buildAccountSendResultSummary(send: {
+  amount?: string | null;
+  currency?: string | null;
+  status?: string | null;
+  id?: string | null;
+}): string {
+  const amount = formatSendAmountDisplay(send.amount);
+  const currency = String(send.currency || "USDC").trim().toUpperCase() || "USDC";
+  const status = formatSendStatusDisplay(send.status);
+  const id = String(send.id || "").trim();
+  return id ? `${amount} ${currency} · ${status} · ${id}` : `${amount} ${currency} · ${status}`;
+}
+
+export type AccountSendSuccessDetails = {
+  title: string;
+  amountDisplay: string;
+  currency: string;
+  statusLabel: string;
+  referenceId: string | null;
+  networkLabel: string | null;
+  explorerLabel: string;
+};
+
+/** Title copy matched to send lifecycle (avoid “on its way” when already completed). */
+export function buildSendSuccessTitle(status: string | null | undefined): string {
+  const key = String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (key === "completed" || key === "settled" || key === "success" || key === "succeeded") {
+    return "Transfer complete";
+  }
+  if (key === "failed" || key === "canceled" || key === "cancelled" || key === "rejected") {
+    return "Transfer failed";
+  }
+  return "Payment on its way";
+}
+
+/** Human label for the explorer CTA. */
+export function buildSendExplorerLabel(network: string | null | undefined): string {
+  const partner = toPartnerNetwork(network) || String(network ?? "").trim();
+  const key = String(network ?? "").trim().toLowerCase();
+  if (partner === "Stellar" || key.includes("stellar")) return "View on Stellar";
+  if (partner === "Base" || key.includes("base")) return "View on Basescan";
+  if (partner === "Polygon" || key.includes("polygon")) return "View on Polygonscan";
+  return "View onchain";
+}
+
+/** Structured fields for the send-success receipt UI. */
+export function buildAccountSendSuccessDetails(send: {
+  amount?: string | null;
+  currency?: string | null;
+  status?: string | null;
+  id?: string | null;
+  network?: string | null;
+}): AccountSendSuccessDetails {
+  const currency = String(send.currency || "USDC").trim().toUpperCase() || "USDC";
+  const statusRaw = formatSendStatusDisplay(send.status);
+  const statusLabel = statusRaw
+    ? statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1)
+    : "Submitted";
+  const network =
+    toPartnerNetwork(send.network) || String(send.network ?? "").trim() || null;
+  return {
+    title: buildSendSuccessTitle(send.status),
+    amountDisplay: formatSendAmountDisplay(send.amount),
+    currency,
+    statusLabel,
+    referenceId: String(send.id || "").trim() || null,
+    networkLabel: network,
+    explorerLabel: buildSendExplorerLabel(send.network),
+  };
 }
 
 /** Keep legacy EVM-only rejection copy readable if an older API is still live. */

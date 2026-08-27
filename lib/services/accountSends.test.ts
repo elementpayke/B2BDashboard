@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAccountSendResultSummary,
+  buildAccountSendSuccessDetails,
+  buildSendExplorerUrl,
   buildSendPreviewPayload,
   explainAccountSendError,
+  formatSendAmountDisplay,
   sendCryptoRecipientPlaceholder,
   validateEvmAddress,
   validateSendAddress,
@@ -99,6 +103,58 @@ describe("account send validation", () => {
     expect(explainAccountSendError("to_address must be a valid 20-byte EVM address.", "base")).toBe(
       "to_address must be a valid 20-byte EVM address.",
     );
+  });
+
+  it("formats send amounts to two decimal places", () => {
+    expect(formatSendAmountDisplay("3.000000000000000000")).toBe("3.00");
+    expect(formatSendAmountDisplay("12.5")).toBe("12.50");
+    expect(formatSendAmountDisplay("")).toBe("0.00");
+  });
+
+  it("builds a compact success summary and explorer links", () => {
+    expect(
+      buildAccountSendResultSummary({
+        amount: "3.000000000000000000",
+        currency: "USDC",
+        status: "completed",
+        id: "snd_0617a5b5cf7e4e3f957e06c934a15931",
+      }),
+    ).toBe("3.00 USDC · completed · snd_0617a5b5cf7e4e3f957e06c934a15931");
+
+    expect(
+      buildAccountSendSuccessDetails({
+        amount: "4.000000000000000000",
+        currency: "USDC",
+        status: "completed",
+        id: "snd_2167511adc59414bb399563d8cebe337",
+        network: "Stellar",
+      }),
+    ).toEqual({
+      title: "Transfer complete",
+      amountDisplay: "4.00",
+      currency: "USDC",
+      statusLabel: "Completed",
+      referenceId: "snd_2167511adc59414bb399563d8cebe337",
+      networkLabel: "Stellar",
+      explorerLabel: "View on Stellar",
+    });
+
+    expect(
+      buildSendExplorerUrl({
+        network: "Stellar",
+        txHash: "abc123",
+      }),
+    ).toBe("https://stellar.expert/explorer/testnet/tx/abc123");
+    expect(
+      buildSendExplorerUrl({
+        network: "stellar_public",
+        txHash: "abc123",
+      }),
+    ).toBe("https://stellar.expert/explorer/public/tx/abc123");
+    expect(buildSendExplorerUrl({ network: "Base", txHash: "0xdead" })).toBe(
+      "https://basescan.org/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Stellar", txHash: "" })).toBeNull();
   });
 });
 

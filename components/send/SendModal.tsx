@@ -106,6 +106,18 @@ export type SendModalProps = {
   sendAccepting: boolean;
   submitSend: () => void;
   sendResultText: string | null;
+  /** Structured receipt fields for stablecoin confirm success. */
+  sendSuccessDetails?: {
+    title: string;
+    amountDisplay: string;
+    currency: string;
+    statusLabel: string;
+    referenceId: string | null;
+    networkLabel: string | null;
+    explorerLabel: string;
+  } | null;
+  /** Explorer URL for the confirmed on-chain transfer, when known. */
+  sendExplorerUrl?: string | null;
   /** Live order status (polled via lib/hooks/useOrderStatus), null for the simulated stablecoin tab. */
   sendLiveStatus: { label: string; color: string; soft: string; isSettling: boolean } | null;
   closeModal: () => void;
@@ -803,36 +815,86 @@ export default function SendModal(p: SendModalProps) {
       ) : null}
 
       {p.sendDone ? (
-        <div className="ep-money-success">
-          <MbokaMark
-            size={48}
-            motion={p.sendLiveStatus?.isSettling ? "inflight" : "settlement"}
-            title={null}
-          />
-          <span className="ep-money-success__title">Payment on its way</span>
-          <span className="ep-money-success__body">
-            {p.sendResultText || `${p.sendYouPayText} to ${p.sendRecipient} · ${p.sendArrivalText}`}
-          </span>
-          {p.sendLiveStatus ? (
-            <span
-              className="ep-money-status"
-              style={{ background: p.sendLiveStatus.soft, color: p.sendLiveStatus.color }}
-              role="status"
-            >
-              {p.sendLiveStatus.isSettling ? (
-                <MbokaMark size={14} motion="inflight" tone="mono" title={null} />
+        <div className="ep-money-success ep-send-success">
+          <div className="ep-send-success__mark" aria-hidden="true">
+            <MbokaMark
+              size={44}
+              motion={p.sendLiveStatus?.isSettling ? "inflight" : "settlement"}
+              title={null}
+            />
+          </div>
+
+          <div className="ep-send-success__hero">
+            <h4 className="ep-send-success__title">
+              {p.sendSuccessDetails?.title ||
+                (p.sendLiveStatus?.isSettling ? "Payment on its way" : "Transfer complete")}
+            </h4>
+            {p.sendSuccessDetails ? (
+              <p className="ep-send-success__amount">
+                <span className="ep-send-success__amount-value">
+                  {p.sendSuccessDetails.amountDisplay}
+                </span>{" "}
+                <span className="ep-send-success__amount-asset">
+                  {p.sendSuccessDetails.currency}
+                </span>
+              </p>
+            ) : null}
+            {p.sendLiveStatus ? (
+              <span
+                className="ep-money-status"
+                style={{ background: p.sendLiveStatus.soft, color: p.sendLiveStatus.color }}
+                role="status"
+              >
+                {p.sendLiveStatus.isSettling ? (
+                  <MbokaMark size={14} motion="inflight" tone="mono" title={null} />
+                ) : null}
+                {p.sendLiveStatus.label}
+              </span>
+            ) : p.sendSuccessDetails ? (
+              <span className="ep-send-success__badge" role="status">
+                {p.sendSuccessDetails.statusLabel}
+              </span>
+            ) : null}
+          </div>
+
+          {p.sendSuccessDetails ? (
+            <dl className="ep-send-success__meta">
+              {p.sendSuccessDetails.networkLabel ? (
+                <div className="ep-send-success__meta-row">
+                  <dt>Network</dt>
+                  <dd>{p.sendSuccessDetails.networkLabel}</dd>
+                </div>
               ) : null}
-              {p.sendLiveStatus.label}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className="ep-btn-secondary"
-            onClick={p.closeModal}
-            style={{ width: "auto", minWidth: 120 }}
-          >
-            Done
-          </button>
+              {p.sendSuccessDetails.referenceId ? (
+                <div className="ep-send-success__meta-row">
+                  <dt>Reference</dt>
+                  <dd title={p.sendSuccessDetails.referenceId}>
+                    <code className="ep-send-success__ref">{p.sendSuccessDetails.referenceId}</code>
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : (
+            <p className="ep-money-success__body">
+              {p.sendResultText || `${p.sendYouPayText} to ${p.sendRecipient} · ${p.sendArrivalText}`}
+            </p>
+          )}
+
+          <div className="ep-send-success__actions">
+            <button type="button" className="ep-btn-primary" onClick={p.closeModal}>
+              Done
+            </button>
+            {p.sendExplorerUrl ? (
+              <a
+                className="ep-send-success__explorer"
+                href={p.sendExplorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {p.sendSuccessDetails?.explorerLabel || "View onchain"} ↗
+              </a>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </>
