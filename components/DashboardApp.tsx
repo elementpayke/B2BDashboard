@@ -253,7 +253,7 @@ export default function DashboardApp(props: Props = {}) {
     txSearch: "",
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
-    selectedTxId: null as number | null,
+    selectedTxId: null as number | string | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
@@ -447,7 +447,7 @@ export default function DashboardApp(props: Props = {}) {
   // index would silently point at a different transaction.
   const txDetailQuery = useQuery({
     queryKey: ["transaction", state.selectedTxId],
-    queryFn: () => transactionsApi.get(state.selectedTxId as number),
+    queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
     enabled: state.selectedTxId != null && state.modal === "txDetail",
     retry: false,
   });
@@ -455,8 +455,11 @@ export default function DashboardApp(props: Props = {}) {
   // in view: the tx detail modal, or the send modal's just-accepted order.
   // See lib/hooks/useOrderStatus.ts for why this polls rather than using
   // the backend's WebSocket (which requires a JWT in the browser).
+  // Account-credit rows (`acr_…`) are not merchant_orders — skip order polling.
+  const selectedTxIsMerchantOrder =
+    state.selectedTxId != null && typeof state.selectedTxId === "number";
   const txStatusQuery = useOrderStatus(state.selectedTxId, {
-    enabled: state.modal === "txDetail" && state.selectedTxId != null,
+    enabled: state.modal === "txDetail" && selectedTxIsMerchantOrder,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
@@ -1234,7 +1237,8 @@ export default function DashboardApp(props: Props = {}) {
   }, [state.modal]);
 
   const stopClick = (e) => e.stopPropagation();
-  const openTxDetail = (id: number) => () => setState({ modal: "txDetail", selectedTxId: id });
+  const openTxDetail = (id: number | string) => () =>
+    setState({ modal: "txDetail", selectedTxId: id });
   // UX redesign: account card → full Account detail screen; Details button → modal.
   const openAcctDetail = (kind: "fiat" | "stablecoin", key: string) => () =>
     setState({
