@@ -200,6 +200,7 @@ import FundChooserModal, { type FundChooserOption } from "@/components/wallets/F
 import CloseAccountModal, { type CloseAccountAction } from "@/components/wallets/CloseAccountModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import {
+  AFRICAN_FUND_FIAT_CURRENCIES,
   africanFundDisabledReason,
   planAfricanFundOrchestration,
 } from "@/lib/services/fundOrchestration";
@@ -596,6 +597,26 @@ export default function DashboardApp(props: Props = {}) {
     ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
     : (stablecoinAccountsQuery.data ?? []);
   const fundableRefundWallets = resolvedStablecoinAccounts.filter(isFundableStablecoinAccount);
+
+  // Top-up destination wallet — mirror Send’s refund-wallet auto-pick so quotes
+  // always land on an explicit account-backed address.
+  const fundableWalletIds = fundableRefundWallets.map((a) => a.id).join("|");
+  useEffect(() => {
+    if (state.modal !== "deposit") return;
+    if (state.fundTargetAccountId) return;
+    if (fundableRefundWallets.length === 0) return;
+    const preferred =
+      fundableRefundWallets.find((a) => a.currency.trim().toUpperCase() === "USDC") ||
+      fundableRefundWallets[0];
+    if (!preferred) return;
+    setState({
+      fundTargetAccountId: preferred.id,
+      depositAsset: preferred.currency.trim().toLowerCase() || "usdc",
+      depositNetwork: toUiNetworkKey(preferred.network) || state.depositNetwork,
+    });
+    // fundableWalletIds tracks account identity without depending on a fresh array each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.modal, state.fundTargetAccountId, fundableWalletIds]);
 
   const cardsSurfaceOpen =
     state.screen === "cards" ||
@@ -1091,7 +1112,14 @@ export default function DashboardApp(props: Props = {}) {
     });
   const depositNext = async () => {
     if (state.depositGroup === "crypto") {
-      setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1) }));
+      if (!state.fundTargetAccountId) {
+        setState({
+          depositQuoteError:
+            "Select a ready stablecoin wallet to top up. Open a USDC account under Accounts if you do not have one yet.",
+        });
+        return;
+      }
+      setState((s: any) => ({ depositStep: Math.min(2, s.depositStep + 1), depositQuoteError: "" }));
       return;
     }
     if (
@@ -1100,8 +1128,23 @@ export default function DashboardApp(props: Props = {}) {
     ) {
       return;
     }
+    if (state.depositStep === 1 && !state.fundTargetAccountId) {
+      setState({
+        depositQuoteError:
+          "Select a ready stablecoin wallet to top up. Open a USDC account under Accounts if you do not have one yet.",
+      });
+      return;
+    }
     if (state.depositStep === 2) {
       if (!state.depositPhone.trim() || !state.depositAmount.trim()) return;
+      if (!state.fundTargetAccountId) {
+        setState({
+          depositQuoteLoading: false,
+          depositQuoteError:
+            "Select a ready stablecoin wallet to top up before requesting a quote.",
+        });
+        return;
+      }
       setState({ depositQuoteLoading: true, depositQuoteError: "" });
       try {
         const rampDest = resolveOnRampDestination({
@@ -3272,6 +3315,24 @@ export default function DashboardApp(props: Props = {}) {
         summaryFailed: summaryQuery.isError,
       })
     : depositPickerDest.emptyMessage;
+  const depositWalletOptions = fundableRefundWallets.map((a) => ({
+    value: a.id,
+    label: `${a.currency} · ${formatNetworkLabel(a.network)}${
+      a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
+    }`,
+  }));
+  const depositWalletLabel =
+    depositWalletOptions.find((option) => option.value === s.fundTargetAccountId)?.label ||
+    (pinnedOnRampDest
+      ? `${pinnedOnRampDest.asset.currency} · ${formatNetworkLabel(pinnedOnRampDest.asset.network)}`
+      : null);
+  const depositWalletLocked = Boolean(
+    s.fundTargetAccountId &&
+      s.fundAfricanTargetCurrency &&
+      !(AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(
+        s.fundAfricanTargetCurrency.trim().toUpperCase(),
+      ),
+  );
   const depositDestinationSummary = buildDepositDestinationSummary({
     depositGroup: s.depositGroup,
     depositAsset: (pinnedOnRampDest?.asset.currency || s.depositAsset).toLowerCase(),
@@ -4148,6 +4209,28 @@ export default function DashboardApp(props: Props = {}) {
   fundTargetCurrency={s.fundAfricanTargetCurrency}
   fundConvertStatus={s.fundConvertStatus}
   fundConvertError={s.fundConvertError}
+  depositWalletOptions={depositWalletOptions}
+  depositWalletId={s.fundTargetAccountId || ""}
+  selectDepositWallet={(accountId) => {
+    if (depositWalletLocked) return;
+    const account = fundableRefundWallets.find((row) => row.id === accountId);
+    if (!account) return;
+    setState({
+      fundTargetAccountId: account.id,
+      depositAsset: account.currency.trim().toLowerCase() || s.depositAsset,
+      depositNetwork: toUiNetworkKey(account.network) || s.depositNetwork,
+      depositQuote: null,
+      depositQuoteError: "",
+      depositAccept: null,
+      depositAcceptError: "",
+      depositDone: false,
+    });
+  }}
+  depositWalletsLoading={
+    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
+  }
+  depositWalletLocked={depositWalletLocked}
+  depositWalletLabel={depositWalletLabel}
 />
 </section>) : null}
 
