@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useStellarCreditWatch } from "@/lib/hooks/useStellarCreditWatch";
 import { parseStellarAmount } from "@/lib/stellar/amount";
 import { formatStellarWalletError, isWalletModalClosed } from "@/lib/stellar/errors";
-import { resolveStellarNetwork, stellarExplorerTxUrl, truncateStellarAddress } from "@/lib/stellar/network";
+import { resolveStellarNetwork, truncateStellarAddress } from "@/lib/stellar/network";
 import { sendStellarUsdc } from "@/lib/stellar/sendUsdc";
 import {
   connectStellarWallet,
@@ -34,14 +33,9 @@ export default function StellarWalletDeposit({
   const [error, setError] = useState<string | null>(null);
   const [hash, setHash] = useState<string | null>(null);
 
-  const creditWatch = useStellarCreditWatch(hash, { enabled: Boolean(hash) });
-
   const parsed = parseStellarAmount(amount);
   const canSend = Boolean(address) && parsed.ok && !busy && !hash;
   const amountHint = parsed.error;
-  const explorerUrl = hash
-    ? stellarExplorerTxUrl({ txHash: hash, isTestnet: config.isTestnet })
-    : null;
 
   const connect = async () => {
     setError(null);
@@ -150,12 +144,18 @@ export default function StellarWalletDeposit({
 
       {hash ? (
         <div className="ep-fund-sc__wallet-ok" role="status">
-          {creditWatch.message}{" "}
-          {explorerUrl ? (
-            <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
-              View on explorer
-            </a>
-          ) : null}
+          Payment submitted. It should credit shortly.{" "}
+          <a
+            href={
+              config.isTestnet
+                ? `https://stellar.expert/explorer/testnet/tx/${hash}`
+                : `https://stellar.expert/explorer/public/tx/${hash}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on explorer
+          </a>
           <button type="button" className="ep-fund-sc__btn-secondary" onClick={() => setHash(null)}>
             Send another
           </button>

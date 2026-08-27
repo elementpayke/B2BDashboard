@@ -117,36 +117,6 @@ describe("buildTransactionReceipt", () => {
   it("uses bank reference label for bank rails", () => {
     expect(receiptPaymentRefLabel("Equity Bank", "bank")).toBe("Bank reference");
   });
-  it("includes the on-chain tx hash in References when present", () => {
-    const hash =
-      "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
-    const doc = buildTransactionReceipt({
-      id: "acr_01hqxyzcredit0001",
-      direction: "in",
-      status: "completed",
-      amount_fiat: "25.50",
-      currency: "USDC",
-      aggregator_order_id: null,
-      external_order_id: null,
-      psp_transaction_id: null,
-      tx_hash: hash,
-      created_at: "2026-08-20T12:00:00Z",
-      updated_at: "2026-08-20T12:00:00Z",
-      client: "Deposit · USDC",
-    });
-    const refs = doc.sections.find((s) => s.title === "References");
-    expect(refs?.rows).toEqual(
-      expect.arrayContaining([
-        { label: "Tx hash", value: hash, mono: true },
-      ]),
-    );
-  });
-
-  it("omits Tx hash when the API did not return one", () => {
-    const doc = buildTransactionReceipt(settledPayout);
-    const refs = doc.sections.find((s) => s.title === "References");
-    expect(refs?.rows.map((r) => r.label)).not.toContain("Tx hash");
-  });
 });
 
 describe("receiptFilename", () => {

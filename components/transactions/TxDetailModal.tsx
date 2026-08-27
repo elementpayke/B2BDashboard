@@ -316,48 +316,6 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       mono: true,
     });
   }
-
-  const txHash =
-    typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
-  const explorerUrl =
-    typeof txDetail.explorerUrl === "string" ? txDetail.explorerUrl.trim() : "";
-  if (txHash) {
-    rows.push({
-      label: "Tx hash",
-      mono: true,
-      value: explorerUrl ? (
-        <>
-          <span className="ep-txn-detail__hash">{txHash}</span>{" "}
-          <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
-            View on explorer
-          </a>
-        </>
-      ) : (
-        txHash
-      ),
-    });
-  }
-
-  const cryptoNetworkLabel =
-    (typeof txDetail.cryptoNetworkLabel === "string" &&
-      txDetail.cryptoNetworkLabel.trim()) ||
-    (typeof txDetail.crypto_network === "string" && txDetail.crypto_network.trim()
-      ? txDetail.crypto_network.trim()
-      : "");
-  if (cryptoNetworkLabel) {
-    // Prefer human label when present (e.g. "Stellar" over stellar_testnet).
-    const networkDisplay =
-      typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()
-        ? txDetail.cryptoNetworkLabel.trim()
-        : cryptoNetworkLabel;
-    rows.push({ label: "Network", value: networkDisplay });
-  }
-
-  const memo = typeof txDetail.memo === "string" ? txDetail.memo.trim() : "";
-  if (memo) {
-    rows.push({ label: "Memo", value: memo, mono: true });
-  }
-
   if (created) rows.push({ label: "Created", value: created, mono: true });
   if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
