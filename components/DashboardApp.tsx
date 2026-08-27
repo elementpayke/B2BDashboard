@@ -2400,7 +2400,10 @@ export default function DashboardApp(props: Props = {}) {
     const apiTxDetail = txDetailQuery.data ? decorateTx(txDetailQuery.data) : null;
     const txDetailBase = apiTxDetail ?? listTxDetail;
     const txLiveStatus =
-      s.modal === "txDetail" && txDetailBase && !txStatusQuery.isTerminal
+      s.modal === "txDetail" &&
+      txDetailBase &&
+      selectedTxIsMerchantOrder &&
+      !txStatusQuery.isTerminal
         ? {
             label: txStatusQuery.isFrozen ? "Frozen — needs review" : "Tracking live — updates automatically",
             isFetching: txStatusQuery.isFetching,

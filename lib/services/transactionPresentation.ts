@@ -1,9 +1,9 @@
+import { buildSendExplorerUrl } from "./accountSends";
 import { isInboundStellarDeposit } from "./accountCredits";
 import { transactionPartyLabel } from "./channelLabels";
 import { formatNetworkLabel } from "./entities";
 import type { Transaction } from "./transactions";
 import { describeTransactionStatus } from "./transactionStatus";
-import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 
 export type TransactionPresentation = Transaction & {
   client: string;
@@ -25,7 +25,7 @@ export type TransactionPresentation = Transaction & {
   networkName: string | null;
   methodType: string | null;
   railType: "mobile" | "bank" | null;
-  /** stellar.expert (or null) when `tx_hash` is present on a Stellar row. */
+  /** Network-aware explorer URL (or null) when `tx_hash` can be linked. */
   explorerUrl: string | null;
   /** Human network label for detail rows (e.g. Stellar). */
   cryptoNetworkLabel: string | null;
@@ -108,7 +108,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   const ref = transactionReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
   const payment = transaction.payment;
-  const explorerUrl = stellarExplorerTxUrl({
+  const explorerUrl = buildSendExplorerUrl({
     txHash: transaction.tx_hash,
     network: transaction.crypto_network,
   });

@@ -4,11 +4,19 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import StellarWalletDeposit from "./StellarWalletDeposit";
 
-const connectStellarWallet = vi.fn();
-const disconnectStellarWallet = vi.fn();
-const signStellarTransaction = vi.fn();
-const sendStellarUsdc = vi.fn();
-const creditWatchMock = vi.fn();
+const {
+  connectStellarWallet,
+  disconnectStellarWallet,
+  signStellarTransaction,
+  sendStellarUsdc,
+  creditWatchMock,
+} = vi.hoisted(() => ({
+  connectStellarWallet: vi.fn(),
+  disconnectStellarWallet: vi.fn(),
+  signStellarTransaction: vi.fn(),
+  sendStellarUsdc: vi.fn(),
+  creditWatchMock: vi.fn(),
+}));
 
 vi.mock("@/lib/stellar/walletKit", () => ({
   connectStellarWallet: (...args: unknown[]) => connectStellarWallet(...args),

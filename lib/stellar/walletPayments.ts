@@ -67,23 +67,34 @@ export function parseHorizonPaymentRecord(
   if (!type || !HORIZON_PAYMENT_TYPES.has(type)) return null;
   if (row.transaction_successful === false) return null;
 
-  const assetCode = optionalString(row.asset_code)?.toUpperCase();
-  const assetIssuer = normalizeAddress(row.asset_issuer);
-  if (assetCode !== "USDC" || assetIssuer !== options.usdcIssuer.trim().toUpperCase()) {
-    return null;
-  }
-
   const account = options.account.trim().toUpperCase();
   const from = normalizeAddress(row.from);
   const to = normalizeAddress(row.to);
   const direction = paymentDirection({ account, from, to });
-  const amount = positiveAmount(row.amount);
+  if (!direction || !from || !to) return null;
+
+  const isPathPayment =
+    type === "path_payment_strict_receive" || type === "path_payment_strict_send";
+  // Path payments: destination leg is asset_*/amount; source leg is
+  // source_asset_*/source_amount. Ordinary payments only expose destination fields.
+  const useSourceLeg = isPathPayment && direction === "out";
+  const assetCode = optionalString(
+    useSourceLeg ? row.source_asset_code : row.asset_code,
+  )?.toUpperCase();
+  const assetIssuer = normalizeAddress(
+    useSourceLeg ? row.source_asset_issuer : row.asset_issuer,
+  );
+  if (assetCode !== "USDC" || assetIssuer !== options.usdcIssuer.trim().toUpperCase()) {
+    return null;
+  }
+
+  const amount = positiveAmount(useSourceLeg ? row.source_amount : row.amount);
   const txHash = optionalString(row.transaction_hash);
   const createdAt =
     optionalString(row.created_at) ??
     optionalString(asRecord(row.transaction_attr)?.created_at);
   const pagingToken = optionalString(row.paging_token);
-  if (!direction || !from || !to || !amount || !txHash || !createdAt || !pagingToken) {
+  if (!amount || !txHash || !createdAt || !pagingToken) {
     return null;
   }
 

@@ -150,4 +150,23 @@ describe("mergeWalletPaymentsWithElementActivity", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.id).toBe("onchain:hash-1");
   });
+
+  it("preserves ElementPay activity when Horizon returns no payments", () => {
+    const linked = elementActivity();
+    const older = elementActivity({
+      id: "acr_older",
+      tx_hash: "olderhash",
+      created_at: "2026-08-19T10:00:00Z",
+    });
+    const merged = mergeWalletPaymentsWithElementActivity({
+      payments: [],
+      elementActivity: [linked, older],
+      network: "stellar_testnet",
+      limit: 25,
+    });
+
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toBe(linked);
+    expect(merged[1]).toBe(older);
+  });
 });

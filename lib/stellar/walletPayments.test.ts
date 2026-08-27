@@ -113,6 +113,65 @@ describe("parseHorizonPaymentRecord", () => {
       ),
     ).toBeNull();
   });
+
+  it("uses the destination USDC leg for inbound path payments", () => {
+    expect(
+      parseHorizonPaymentRecord(
+        paymentRecord({
+          type: "path_payment_strict_receive",
+          asset_code: "USDC",
+          asset_issuer: ISSUER,
+          amount: "12.0000000",
+          source_asset_type: "native",
+          source_amount: "40.0000000",
+        }),
+        { account: ACCOUNT, usdcIssuer: ISSUER },
+      ),
+    ).toMatchObject({
+      direction: "in",
+      amount: "12.0000000",
+    });
+  });
+
+  it("uses the source USDC leg for outbound path payments", () => {
+    expect(
+      parseHorizonPaymentRecord(
+        paymentRecord({
+          type: "path_payment_strict_send",
+          from: ACCOUNT,
+          to: "GCEZWKPX56LJ7EG6H7KPWNTJ6V45WILG5PCVLRBOLLMOTLWTWWHLCSMM",
+          asset_code: "EURC",
+          asset_issuer: "GAEURCISSUER2345678901234567890123456789012345678901234",
+          amount: "8.0000000",
+          source_asset_code: "USDC",
+          source_asset_issuer: ISSUER,
+          source_amount: "9.2500000",
+        }),
+        { account: ACCOUNT, usdcIssuer: ISSUER },
+      ),
+    ).toMatchObject({
+      direction: "out",
+      amount: "9.2500000",
+    });
+  });
+
+  it("drops outbound path payments whose source leg is not Circle USDC", () => {
+    expect(
+      parseHorizonPaymentRecord(
+        paymentRecord({
+          type: "path_payment_strict_send",
+          from: ACCOUNT,
+          to: "GCEZWKPX56LJ7EG6H7KPWNTJ6V45WILG5PCVLRBOLLMOTLWTWWHLCSMM",
+          asset_code: "USDC",
+          asset_issuer: ISSUER,
+          amount: "9.0000000",
+          source_asset_type: "native",
+          source_amount: "30.0000000",
+        }),
+        { account: ACCOUNT, usdcIssuer: ISSUER },
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("fetchStellarWalletPayments", () => {

@@ -338,9 +338,11 @@ export const transactionsApi = {
         const seen = new Set(items.map((row) => String(row.id)));
         const extras = creditTxs.filter((row) => !seen.has(String(row.id)));
         if (extras.length) {
-          items = [...extras, ...items].sort((a, b) =>
-            String(b.created_at).localeCompare(String(a.created_at)),
-          );
+          items = [...extras, ...items]
+            .sort((a, b) =>
+              String(b.created_at).localeCompare(String(a.created_at)),
+            )
+            .slice(0, page.limit);
           total += extras.length;
         }
       } catch {

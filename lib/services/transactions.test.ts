@@ -137,6 +137,52 @@ describe("transactionsApi.listPage", () => {
     expect(page.total).toBe(2);
   });
 
+  it("caps the merged first page at the page limit", async () => {
+    mockedApiEnvelope
+      .mockResolvedValueOnce({
+        items: [
+          order({
+            id: 1,
+            order_type: "OffRamp",
+            status: "completed",
+            created_at: "2026-08-20T00:00:00Z",
+          }),
+          order({
+            id: 2,
+            order_type: "OffRamp",
+            status: "completed",
+            created_at: "2026-08-19T00:00:00Z",
+          }),
+        ],
+        total: 2,
+        limit: 2,
+        offset: 0,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 7,
+            tx_hash: "deadbeef",
+            amount: "3.00",
+            currency: "USDC",
+            account_id: "acc-1",
+            from_address: "GFROM",
+            to_address: "GTO",
+            created_at: "2026-08-21T00:00:00Z",
+            memo: null,
+          },
+        ],
+        total: 1,
+      });
+
+    const page = await transactionsApi.listPage({ limit: 2, offset: 0 });
+
+    expect(page.items).toHaveLength(2);
+    expect(page.items[0]?.id).toBe("acr_7");
+    expect(page.items.map((row) => row.id)).not.toContain(2);
+    expect(page.total).toBe(3);
+  });
+
   it("does not merge credits onto non-completed status pages", async () => {
     mockedApiEnvelope.mockResolvedValueOnce({
       items: [order({ id: 1, order_type: "OnRamp", status: "processing" })],
