@@ -172,6 +172,9 @@ Dashboard mappers:
   rows; preserves optional Stellar fields when the API returns them.
 - `isInboundStellarDeposit` — true for `direction: in` when
   `crypto_network` is Stellar or `source` implies stellar.
+- `recentActivityForFinancialAccount` — Account detail Recent prefers rows
+  whose `financial_account_id` matches the open wallet when the feed
+  projects that field; otherwise keeps the unfiltered page.
 
 Follow-up UI slices (explorer helper, activity detail, post-Freighter poll,
 account-scoped recent) consume these types; they must not mock production
