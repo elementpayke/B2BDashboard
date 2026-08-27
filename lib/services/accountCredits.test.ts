@@ -164,6 +164,30 @@ describe("mapAccountCreditToTransaction", () => {
     const tx = mapAccountCreditToTransaction(credit);
     expect(isInboundStellarDeposit(tx)).toBe(false);
   });
+  it("normalizes Mboka numeric credit ids to acr_<n> and maps account_id", () => {
+    const credit = normalizeAccountCredit({
+      id: 7,
+      tx_hash: STELLAR_HASH,
+      amount: "25.50",
+      currency: "USDC",
+      account_id: "acc-partner-1",
+      from_address: "GFROM",
+      to_address: "GTO",
+      created_at: "2026-08-20T12:00:00Z",
+      memo: null,
+    });
+    expect(credit).toMatchObject({
+      id: "acr_7",
+      financial_account_id: "acc-partner-1",
+      observed_at: "2026-08-20T12:00:00Z",
+      wallet_address: "GTO",
+    });
+    const tx = mapAccountCreditToTransaction(credit!);
+    expect(tx.id).toBe("acr_7");
+    expect(tx.provider).toBe("stellar");
+    expect(tx.crypto_network).toBe("Stellar");
+    expect(isInboundStellarDeposit(tx)).toBe(true);
+  });
 });
 
 describe("normalizeTransactionWire (extended inbound fields)", () => {
@@ -212,6 +236,28 @@ describe("normalizeTransactionWire (extended inbound fields)", () => {
     expect(tx).not.toBeNull();
     expect(tx!.id).toBe("acr_01hqxyzcredit0001");
     expect(tx!.tx_hash).toBe(STELLAR_HASH);
+    expect(isInboundStellarDeposit(tx!)).toBe(true);
+  });
+
+  it("accepts Mboka projected credits with provider=stellar and account_id", () => {
+    const tx = normalizeTransactionWire({
+      id: "acr_7",
+      direction: "in",
+      status: "completed",
+      amount_fiat: "25",
+      currency: "USDC",
+      aggregator_order_id: null,
+      external_order_id: null,
+      wallet_address: "GDEST",
+      provider: "stellar",
+      created_at: "2026-08-20T12:00:00Z",
+      updated_at: "2026-08-20T12:00:00Z",
+      tx_hash: STELLAR_HASH,
+      account_id: "acc-partner-1",
+    });
+    expect(tx).not.toBeNull();
+    expect(tx!.financial_account_id).toBe("acc-partner-1");
+    expect(tx!.crypto_network).toBe("Stellar");
     expect(isInboundStellarDeposit(tx!)).toBe(true);
   });
 
@@ -280,11 +326,11 @@ describe("accountCreditsApi", () => {
     expect(page.total).toBe(2);
   });
 
-  it("gets a single credit by id", async () => {
-    mockedApiEnvelope.mockResolvedValueOnce(creditWire({ id: "acr_one" }));
-    const credit = await accountCreditsApi.get("acr_one");
-    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/account-credits/acr_one");
-    expect(credit?.id).toBe("acr_one");
+  it("gets a single credit by id using the numeric Mboka path", async () => {
+    mockedApiEnvelope.mockResolvedValueOnce(creditWire({ id: 7, account_id: "acc-1" }));
+    const credit = await accountCreditsApi.get("acr_7");
+    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/account-credits/7");
+    expect(credit?.id).toBe("acr_7");
   });
 
   it("returns null from get when the payload fails closed", async () => {

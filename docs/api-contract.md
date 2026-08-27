@@ -166,18 +166,21 @@ Mboka (watcher) is the source of truth for credits:
 Dashboard mappers:
 
 - `normalizeAccountCredit` / `mapAccountCreditToTransaction` — fail closed
-  (drop the row) when id, amount, financial_account_id, or observed_at are
-  missing or unparseable. Never invent `tx_hash`, memo, or balances.
-- `normalizeTransactionWire` — same fail-closed rule for list/detail wire
-  rows; preserves optional Stellar fields when the API returns them.
-- `isInboundStellarDeposit` — true for `direction: in` when
-  `crypto_network` is Stellar or `source` implies stellar.
-- `recentActivityForFinancialAccount` — Account detail Recent prefers rows
-  whose `financial_account_id` matches the open wallet when the feed
-  projects that field; otherwise keeps the unfiltered page.
+  (drop the row) when id, amount, financial_account_id/`account_id`, or
+  observed_at/`created_at` are missing or unparseable. Numeric credit ids
+  become `acr_<n>` to match the transactions projection; GET-by-id strips
+  that prefix for Mboka's int path. Never invent `tx_hash`, memo, or balances.
+- `normalizeTransactionWire` — same fail-closed rule; maps `account_id` →
+  `financial_account_id` and defaults `crypto_network` to `Stellar` when
+  Mboka only sends `provider: "stellar"` / `acr_…` ids.
+- `isInboundStellarDeposit` — true for inbound rows with Stellar
+  `crypto_network`/`source`/`provider`, or `acr_…` + `tx_hash`.
+- `recentActivityForFinancialAccount` — prefers `financial_account_id`, else
+  matches `wallet_address` to the open G… when the feed lacks account ids.
+- Transactions screen `listPage` merges `GET /v1/account-credits` onto the
+  first page of all/completed (orders pagination still cannot include them).
 
-Follow-up UI slices (explorer helper, activity detail, post-Freighter poll,
-account-scoped recent) consume these types; they must not mock production
+Follow-up UI slices consume these types; they must not mock production
 credits when the endpoint is absent.
 
 ## Transaction history filters & pagination (`lib/services/transactions.ts`, `lib/hooks/useTransactionsPage.ts`)

@@ -234,6 +234,19 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
     ? paymentFromOrderMetadata({ payment: paymentRaw })
     : null;
 
+  const provider = optionalString(row.provider);
+  let cryptoNetwork = optionalString(
+    row.crypto_network ?? row.cryptoNetwork ?? row.network,
+  );
+  // Mboka credit projection today sets provider=stellar without crypto_network.
+  if (
+    !cryptoNetwork &&
+    (String(provider || "").toLowerCase().includes("stellar") ||
+      String(id).startsWith("acr_"))
+  ) {
+    cryptoNetwork = "Stellar";
+  }
+
   return {
     id,
     direction,
@@ -243,17 +256,17 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
     aggregator_order_id: optionalString(row.aggregator_order_id),
     external_order_id: optionalString(row.external_order_id),
     wallet_address: optionalString(row.wallet_address ?? row.walletAddress),
-    provider: optionalString(row.provider),
+    provider,
     order_type: optionalString(row.order_type) as Order["order_type"] | null,
     crypto_currency: optionalString(row.crypto_currency)?.toUpperCase() ?? null,
-    crypto_network: optionalString(row.crypto_network ?? row.cryptoNetwork ?? row.network),
+    crypto_network: cryptoNetwork,
     exchange_rate: optionalString(row.exchange_rate),
     psp_transaction_id: optionalString(row.psp_transaction_id),
     payment,
     tx_hash: optionalString(row.tx_hash ?? row.txHash ?? row.transaction_hash),
     memo: optionalString(row.memo),
     financial_account_id: optionalString(
-      row.financial_account_id ?? row.financialAccountId,
+      row.financial_account_id ?? row.financialAccountId ?? row.account_id,
     ),
     source: optionalString(row.source),
     created_at: createdAt,
@@ -300,15 +313,44 @@ export const transactionsApi = {
   // Transactions screen. Sources pages from `GET /v1/orders?status=&limit=
   // &offset=` (which supports them, unlike `GET /v1/transactions`) and maps
   // each row back into the Transaction shape the rest of the app renders.
+  // Account credits are not on `/v1/orders`, so the first page of "all" /
+  // "completed" also merges `GET /v1/account-credits` (fail open if missing).
   async listPage(params: TransactionPageParams = {}): Promise<TransactionPage> {
     const page = await ordersApi.list({
       status: params.status as OrderStatus | undefined,
       limit: params.limit,
       offset: params.offset,
     });
+    let items = page.items.map(mapOrderToTransaction);
+    let total = page.total;
+    const offset = params.offset ?? 0;
+    const status = params.status;
+    const mergeCredits =
+      offset === 0 && (status === undefined || status === "completed");
+
+    if (mergeCredits) {
+      try {
+        const { accountCreditsApi, mapAccountCreditToTransaction } = await import(
+          "./accountCredits"
+        );
+        const credits = await accountCreditsApi.list();
+        const creditTxs = credits.items.map(mapAccountCreditToTransaction);
+        const seen = new Set(items.map((row) => String(row.id)));
+        const extras = creditTxs.filter((row) => !seen.has(String(row.id)));
+        if (extras.length) {
+          items = [...extras, ...items].sort((a, b) =>
+            String(b.created_at).localeCompare(String(a.created_at)),
+          );
+          total += extras.length;
+        }
+      } catch {
+        // Endpoint missing / unauthorized — keep orders-only page.
+      }
+    }
+
     return {
-      items: page.items.map(mapOrderToTransaction),
-      total: page.total,
+      items,
+      total,
       limit: page.limit,
       offset: page.offset,
     };

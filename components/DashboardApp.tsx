@@ -2707,10 +2707,10 @@ export default function DashboardApp(props: Props = {}) {
             : "Couldn't load currency accounts. Try again.")
       : undefined;
   const walletsRecent = decoratedAll.slice(0, 5);
-  const accountDetailRecent = recentActivityForFinancialAccount(
-    decoratedAll,
-    selectedStablecoinAccount?.id ?? null,
-  ).slice(0, 5);
+  const accountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
+    financialAccountId: selectedStablecoinAccount?.id ?? null,
+    walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
+  }).slice(0, 5);
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",

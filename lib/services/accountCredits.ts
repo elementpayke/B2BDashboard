@@ -2,15 +2,15 @@ import { apiEnvelope } from "@/lib/apiClient";
 import type { Transaction, TransactionStatus } from "./transactions";
 
 /**
- * Account credits — Mboka projections of partner `account.credited` events
- * (e.g. Stellar USDC inflows observed against a business FinancialAccount).
+ * Account credits — Mboka Horizon watcher observations for inbound Stellar USDC.
  *
- * Endpoints (Mboka — projected / may still be Limited in some envs):
+ * Endpoints:
  * - `GET /v1/account-credits`
- * - `GET /v1/account-credits/{id}`
+ * - `GET /v1/account-credits/{id}` (numeric PK — strip `acr_` before calling)
  *
- * Fail closed: rows missing id, amount, financial_account_id, or observed_at
- * are dropped. `tx_hash` / `memo` are never invented when the API omits them.
+ * Wire today: `id` int, `account_id` (provider account id), `created_at`,
+ * `tx_hash`, addresses, optional `memo`. `crypto_network` / `source` may be
+ * absent; FE fills Stellar defaults for this Stellar-only endpoint.
  *
  * See `docs/api-contract.md` (Stellar inbound account-credit mapping notes).
  */
@@ -36,6 +36,15 @@ export type AccountCreditList = {
   total: number;
 };
 
+export type RecentActivityScope =
+  | string
+  | null
+  | undefined
+  | {
+      financialAccountId?: string | null;
+      walletAddress?: string | null;
+    };
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -54,6 +63,28 @@ function toAmount(value: unknown): string | null {
   const raw = String(value).trim();
   if (!raw) return null;
   return Number.isFinite(Number(raw.replace(/,/g, ""))) ? raw : null;
+}
+
+/** Dashboard / transactions id: numeric Mboka PK → `acr_<n>`. */
+export function toAccountCreditId(raw: string | number): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return value;
+  if (value.startsWith("acr_")) return value;
+  if (/^\d+$/.test(value)) return `acr_${value}`;
+  return value;
+}
+
+/**
+ * Path segment for `GET /v1/account-credits/{id}` — Mboka expects an int.
+ * Only strips `acr_` when the suffix is all digits.
+ */
+export function accountCreditApiPathId(raw: string | number): string {
+  const value = String(raw ?? "").trim();
+  if (value.startsWith("acr_")) {
+    const suffix = value.slice("acr_".length);
+    if (/^\d+$/.test(suffix)) return suffix;
+  }
+  return value;
 }
 
 /** Pull credit rows out of common list envelopes. */
@@ -81,7 +112,7 @@ export function normalizeAccountCredit(raw: unknown): AccountCredit | null {
   const row = asRecord(raw);
   if (!row) return null;
 
-  const id = optionalString(row.id ?? row.credit_id);
+  const rawId = optionalString(row.id ?? row.credit_id);
   const amount = toAmount(row.amount ?? row.amount_fiat ?? row.gross_amount);
   const financialAccountId = optionalString(
     row.financial_account_id ?? row.financialAccountId ?? row.account_id,
@@ -89,7 +120,7 @@ export function normalizeAccountCredit(raw: unknown): AccountCredit | null {
   const observedAt = optionalString(
     row.observed_at ?? row.observedAt ?? row.created_at ?? row.createdAt,
   );
-  if (!id || !amount || !financialAccountId || !observedAt) return null;
+  if (!rawId || !amount || !financialAccountId || !observedAt) return null;
 
   const currency =
     optionalString(row.currency ?? row.currency_code)?.toUpperCase() ?? "USDC";
@@ -101,9 +132,11 @@ export function normalizeAccountCredit(raw: unknown): AccountCredit | null {
   );
   const walletAddress =
     optionalString(row.wallet_address ?? row.walletAddress) ?? toAddress;
+  const cryptoNetwork =
+    optionalString(row.crypto_network ?? row.cryptoNetwork ?? row.network) ?? "Stellar";
 
   return {
-    id,
+    id: toAccountCreditId(rawId),
     tx_hash: optionalString(row.tx_hash ?? row.txHash ?? row.transaction_hash),
     amount,
     currency,
@@ -112,7 +145,7 @@ export function normalizeAccountCredit(raw: unknown): AccountCredit | null {
     to_address: toAddress,
     observed_at: observedAt,
     source: optionalString(row.source ?? row.event_type),
-    crypto_network: optionalString(row.crypto_network ?? row.cryptoNetwork ?? row.network),
+    crypto_network: cryptoNetwork,
     memo: optionalString(row.memo),
     wallet_address: walletAddress,
   };
@@ -124,16 +157,28 @@ function isStellarNetwork(network: string | null | undefined): boolean {
 }
 
 /**
- * True when a dashboard transaction row represents an inbound Stellar deposit
- * (account credit or projected `/v1/transactions` credit).
+ * True when a dashboard transaction row represents an inbound Stellar deposit.
+ * Matches Mboka today (`provider: "stellar"`, `acr_<n>` + `tx_hash`) and the
+ * fuller `crypto_network` / `source` fields when the backend adds them.
  */
 export function isInboundStellarDeposit(
-  tx: Pick<Transaction, "direction" | "crypto_network" | "source">,
+  tx: Pick<
+    Transaction,
+    "direction" | "crypto_network" | "source" | "provider" | "id" | "tx_hash"
+  >,
 ): boolean {
   if (tx.direction !== "in") return false;
   if (isStellarNetwork(tx.crypto_network)) return true;
   const source = (tx.source || "").trim().toLowerCase();
-  return source.includes("stellar");
+  if (source.includes("stellar")) return true;
+  const provider = (tx.provider || "").trim().toLowerCase();
+  if (provider.includes("stellar")) return true;
+  const id = String(tx.id ?? "");
+  if (id.startsWith("acr_") && Boolean(String(tx.tx_hash ?? "").trim())) {
+    if (tx.crypto_network && !isStellarNetwork(tx.crypto_network)) return false;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -142,6 +187,8 @@ export function isInboundStellarDeposit(
  */
 export function mapAccountCreditToTransaction(credit: AccountCredit): Transaction {
   const status: TransactionStatus = "completed";
+  const network = credit.crypto_network ?? "Stellar";
+  const stellar = isStellarNetwork(network);
   return {
     id: credit.id,
     direction: "in",
@@ -151,37 +198,72 @@ export function mapAccountCreditToTransaction(credit: AccountCredit): Transactio
     aggregator_order_id: null,
     external_order_id: null,
     wallet_address: credit.wallet_address,
-    provider: null,
+    provider: stellar ? "stellar" : null,
     order_type: null,
     crypto_currency: credit.currency.toUpperCase() === "USDC" ? "USDC" : credit.currency,
-    crypto_network: credit.crypto_network,
+    crypto_network: network,
     exchange_rate: null,
     psp_transaction_id: null,
     payment: null,
     tx_hash: credit.tx_hash,
     memo: credit.memo,
     financial_account_id: credit.financial_account_id,
-    source: credit.source,
+    source: credit.source ?? (stellar ? "stellar_payment" : null),
     created_at: credit.observed_at,
     updated_at: credit.observed_at,
   };
 }
 
+function resolveRecentScope(scope: RecentActivityScope): {
+  financialAccountId: string;
+  walletAddress: string;
+} {
+  if (scope && typeof scope === "object") {
+    return {
+      financialAccountId: String(scope.financialAccountId ?? "").trim(),
+      walletAddress: String(scope.walletAddress ?? "").trim(),
+    };
+  }
+  return {
+    financialAccountId: String(scope ?? "").trim(),
+    walletAddress: "",
+  };
+}
+
 /**
- * Account detail "Recent" — when Mboka projects `financial_account_id` on
- * activity rows, prefer rows for that wallet. If the feed has no scoped ids
- * yet, keep the unfiltered page (fail open on older APIs). Never invent rows.
+ * Account detail "Recent" — prefer rows for the open wallet when the feed
+ * carries `financial_account_id` / `account_id`, or match `wallet_address`
+ * when Mboka only projects the G… (current transactions merge). Never invent.
  */
 export function recentActivityForFinancialAccount<
-  T extends { financial_account_id?: string | null },
->(items: T[], financialAccountId: string | null | undefined): T[] {
-  const accountId = String(financialAccountId ?? "").trim();
-  if (!accountId) return items;
-  const anyScoped = items.some((row) => Boolean(String(row.financial_account_id ?? "").trim()));
-  if (!anyScoped) return items;
-  return items.filter(
-    (row) => String(row.financial_account_id ?? "").trim() === accountId,
+  T extends {
+    financial_account_id?: string | null;
+    wallet_address?: string | null;
+  },
+>(items: T[], scope: RecentActivityScope): T[] {
+  const { financialAccountId, walletAddress } = resolveRecentScope(scope);
+  if (!financialAccountId && !walletAddress) return items;
+
+  const anyAccountScoped = items.some((row) =>
+    Boolean(String(row.financial_account_id ?? "").trim()),
   );
+  if (anyAccountScoped && financialAccountId) {
+    return items.filter(
+      (row) => String(row.financial_account_id ?? "").trim() === financialAccountId,
+    );
+  }
+
+  const anyWalletScoped = items.some((row) =>
+    Boolean(String(row.wallet_address ?? "").trim()),
+  );
+  if (anyWalletScoped && walletAddress) {
+    const want = walletAddress.toUpperCase();
+    return items.filter(
+      (row) => String(row.wallet_address ?? "").trim().toUpperCase() === want,
+    );
+  }
+
+  return items;
 }
 
 function normalizeCreditsList(raw: unknown): AccountCreditList {
@@ -203,9 +285,10 @@ export const accountCreditsApi = {
   },
 
   get: async (id: string): Promise<AccountCredit | null> => {
+    const pathId = accountCreditApiPathId(id);
     const raw = await apiEnvelope<unknown>(
       "GET",
-      `/v1/account-credits/${encodeURIComponent(id)}`,
+      `/v1/account-credits/${encodeURIComponent(pathId)}`,
     );
     return normalizeAccountCredit(raw);
   },
