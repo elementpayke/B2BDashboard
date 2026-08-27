@@ -7536,6 +7536,16 @@ select.ep-wallets-create__control {
   border-radius: 6px;
 }
 
+.ep-money-empty-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-money-empty-stack > .ep-btn-primary {
+  width: 100%;
+}
+
 .ep-money-empty {
   padding: 14px 12px;
   border-radius: 12px;

@@ -82,6 +82,11 @@ export type SendModalProps = {
   onSaveRecipientDetails: () => void;
   saveRecipientBusy?: boolean;
   saveRecipientMessage?: string;
+  /** Country OffRamp: ready stablecoin wallets used as the refund/source rail. */
+  sendRefundWalletOptions?: { value: string; label: string }[];
+  sendRefundWalletId?: string;
+  selectSendRefundWallet?: (accountId: string) => void;
+  sendRefundWalletsLoading?: boolean;
   sendRecipientName: string;
   setSendRecipientName: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendRecipientLabel: string;
@@ -513,19 +518,41 @@ export default function SendModal(p: SendModalProps) {
 
               <div className="ep-send-recipient__card" role="group" aria-label="Recipient">
                 {p.sendIsCountry ? (
-                  <div className="ep-money-field">
-                    <label className="ep-money-label" htmlFor="send-recipient-name">
-                      Account holder name
-                    </label>
-                    <input
-                      id="send-recipient-name"
-                      className="ep-money-input"
-                      value={p.sendRecipientName}
-                      onChange={p.setSendRecipientName}
-                      placeholder="e.g. Jane Mukami"
-                      autoComplete="name"
-                    />
-                  </div>
+                  <>
+                    {p.selectSendRefundWallet &&
+                    (p.sendRefundWalletsLoading ||
+                      (p.sendRefundWalletOptions || []).length > 0) ? (
+                      <ChoicePicker
+                        id="send-refund-wallet"
+                        label="Pay / refund from wallet"
+                        title="Choose wallet"
+                        value={p.sendRefundWalletId || ""}
+                        options={p.sendRefundWalletOptions || []}
+                        onChange={p.selectSendRefundWallet}
+                        loading={p.sendRefundWalletsLoading}
+                        loadingLabel="Loading wallets…"
+                        placeholder="Select a ready stablecoin wallet"
+                      />
+                    ) : (
+                      <p className="ep-money-hint">
+                        No ready stablecoin wallet yet. Open a USDC account under Accounts and wait
+                        until it is active with a deposit address.
+                      </p>
+                    )}
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="send-recipient-name">
+                        Account holder name
+                      </label>
+                      <input
+                        id="send-recipient-name"
+                        className="ep-money-input"
+                        value={p.sendRecipientName}
+                        onChange={p.setSendRecipientName}
+                        placeholder="e.g. Jane Mukami"
+                        autoComplete="name"
+                      />
+                    </div>
+                  </>
                 ) : null}
 
                 {/* Bank rails repeat the institution picker here, per the design.

@@ -16,6 +16,9 @@ export type ReceiveModalProps = {
   copyReceiveAddress: () => void;
   receiveAddressCopied: boolean;
   receiveAddressEmptyMessage?: string;
+  /** When set, empty crypto state offers Create Account. */
+  onCreateStablecoinAccount?: (() => void) | null;
+  createStablecoinAccountLabel?: string;
 };
 
 export default function ReceiveModal(p: ReceiveModalProps) {
@@ -174,9 +177,20 @@ export default function ReceiveModal(p: ReceiveModalProps) {
               </button>
             </div>
           ) : (
-            <div className="ep-money-empty" role="status">
-              {p.receiveAddressEmptyMessage ||
-                "Receive address unavailable. Open a ready wallet on this network or try again later."}
+            <div className="ep-money-empty-stack">
+              <div className="ep-money-empty" role="status">
+                {p.receiveAddressEmptyMessage ||
+                  "Receive address unavailable. Open a ready wallet on this network or try again later."}
+              </div>
+              {p.onCreateStablecoinAccount ? (
+                <button
+                  type="button"
+                  className="ep-btn-primary ep-btn-primary--ink"
+                  onClick={p.onCreateStablecoinAccount}
+                >
+                  {p.createStablecoinAccountLabel || "Create stablecoin account"}
+                </button>
+              ) : null}
             </div>
           )}
         </div>

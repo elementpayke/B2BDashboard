@@ -320,7 +320,9 @@ describe("resolveStablecoinPickerDestination", () => {
       treasuryWallet: TREASURY_EVM,
     });
     expect(dest.address).toBeNull();
-    expect(dest.emptyMessage).toMatch(/No ready Stellar USDC wallet/i);
+    expect(dest.emptyMessage).toMatch(/No Stellar USDC wallet yet/i);
+    expect(dest.offerCreate).toBe(true);
+    expect(dest.createNetwork).toBe("STELLAR");
   });
 
   it("does not invent a Stellar address from a pending account", () => {
@@ -330,6 +332,8 @@ describe("resolveStablecoinPickerDestination", () => {
       networkKey: "stellar",
     });
     expect(dest.address).toBeNull();
+    expect(dest.offerCreate).toBe(false);
+    expect(dest.emptyMessage).toMatch(/still opening/i);
   });
 
   it("uses the matching Base account before the treasury", () => {
@@ -350,5 +354,16 @@ describe("resolveStablecoinPickerDestination", () => {
       treasuryWallet: TREASURY_EVM,
     });
     expect(dest.address).toBe(TREASURY_EVM);
+    expect(dest.offerCreate).toBe(false);
+  });
+
+  it("returns a ready Stellar address with no create offer", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [stellarUsdc],
+      asset: "usdc",
+      networkKey: "stellar",
+    });
+    expect(dest.address).toBe(STELLAR_ADDR);
+    expect(dest.offerCreate).toBe(false);
   });
 });
