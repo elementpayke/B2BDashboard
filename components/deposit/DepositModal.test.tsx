@@ -9,6 +9,19 @@ import {
 } from "@/lib/hooks/depositFlowHelpers";
 import DepositModal, { type DepositCountryRow, type DepositMethodGroup } from "./DepositModal";
 
+vi.mock("next/dynamic", () => ({
+  default: () =>
+    function StellarWalletStub() {
+      return <div>Or send from a wallet</div>;
+    },
+}));
+
+vi.mock("@/components/wallets/DepositAddressQr", () => ({
+  default: ({ networkLabel }: { networkLabel: string }) => (
+    <div>Scan with a {networkLabel} wallet</div>
+  ),
+}));
+
 function countryRows(onSelect: (idx: number) => void): DepositCountryRow[] {
   return COUNTRIES.map((c, i) => ({
     idx: i,
@@ -78,6 +91,7 @@ const baseProps = {
   depositBankLines: [],
   depositPromptSent: false,
   depositAssetCode: "USDC",
+  depositNetwork: "base",
   depositNetworkLabel: "Base",
   depositAddress: "",
   closeModal: vi.fn(),
@@ -141,5 +155,60 @@ describe("DepositModal country-first step", () => {
     );
 
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+});
+
+describe("DepositModal stablecoin address step", () => {
+  it("shows QR scan and Stellar wallet connect for Stellar USDC", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositIsCountry={false}
+        depositIsCrypto
+        depositStepIs1={false}
+        depositStepIs2
+        depositStepDots={[{ on: true }, { on: true }]}
+        depositSub="country"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositDestinationSummary="USDC · Stellar"
+        depositAssetCode="USDC"
+        depositNetwork="stellar"
+        depositNetworkLabel="Stellar"
+        depositAddress="GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Copy deposit address/i })).toBeInTheDocument();
+    expect(screen.getByText("Scan with a Stellar wallet")).toBeInTheDocument();
+    expect(screen.getByText("Or send from a wallet")).toBeInTheDocument();
+  });
+
+  it("shows QR but not Stellar wallet connect on Base", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositIsCountry={false}
+        depositIsCrypto
+        depositStepIs1={false}
+        depositStepIs2
+        depositStepDots={[{ on: true }, { on: true }]}
+        depositSub="country"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositDestinationSummary="USDC · Base"
+        depositAssetCode="USDC"
+        depositNetwork="base"
+        depositNetworkLabel="Base"
+        depositAddress="0xabc123"
+      />,
+    );
+
+    expect(screen.getByText("Scan with a Base wallet")).toBeInTheDocument();
+    expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
 });

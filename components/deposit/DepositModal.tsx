@@ -1,9 +1,16 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
+import DepositAddressQr from "@/components/wallets/DepositAddressQr";
 import React, { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   countryMatchesQuery,
 } from "@/lib/hooks/depositFlowHelpers";
+import { isStellarUsdcRail } from "@/lib/stellar/network";
+
+const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
+  ssr: false,
+});
 
 export type DepositCountryRow = {
   idx: number;
@@ -74,6 +81,7 @@ export type DepositModalProps = {
   depositBankLines: any[];
   depositPromptSent: boolean;
   depositAssetCode: string;
+  depositNetwork: string;
   depositNetworkLabel: string;
   depositAddress: string;
   depositAddressEmptyMessage?: string;
@@ -480,6 +488,12 @@ export default function DepositModal(p: DepositModalProps) {
                       {addressCopied ? "Copied" : "Copy"}
                     </button>
                   </div>
+                  <DepositAddressQr
+                    address={p.depositAddress}
+                    currency={p.depositAssetCode}
+                    network={p.depositNetwork}
+                    networkLabel={p.depositNetworkLabel}
+                  />
                   {copyError ? (
                     <div className="ep-money-banner ep-money-banner--danger" role="alert">
                       {copyError}
@@ -489,6 +503,16 @@ export default function DepositModal(p: DepositModalProps) {
                     <span className="ep-money-hint" role="status" aria-live="polite">
                       Address copied to clipboard.
                     </span>
+                  ) : null}
+                  {isStellarUsdcRail({
+                    network: p.depositNetwork,
+                    currency: p.depositAssetCode,
+                  }) ? (
+                    <StellarWalletDeposit
+                      destination={p.depositAddress}
+                      network={p.depositNetwork}
+                      suggestedAmount=""
+                    />
                   ) : null}
                 </div>
               ) : (
