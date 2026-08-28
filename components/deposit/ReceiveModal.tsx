@@ -2,7 +2,7 @@
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
 import React from "react";
 import dynamic from "next/dynamic";
-import { isStellarUsdcRail } from "@/lib/stellar/network";
+import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
   ssr: false,
@@ -192,9 +192,10 @@ export default function ReceiveModal(p: ReceiveModalProps) {
                 network={p.receiveNetwork}
                 networkLabel={p.receiveNetworkLabel}
               />
-              {isStellarUsdcRail({
+              {shouldOfferStellarWalletDeposit({
                 network: p.receiveNetwork,
                 currency: p.receiveAssetCode,
+                destination: p.receiveAddress,
               }) ? (
                 <StellarWalletDeposit
                   destination={p.receiveAddress}

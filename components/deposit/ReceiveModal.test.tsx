@@ -83,6 +83,16 @@ describe("ReceiveModal stablecoin", () => {
     expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
 
+  it("does not offer Stellar wallet connect when the destination is an EVM 0x address", () => {
+    renderCrypto({
+      receiveNetwork: "stellar",
+      receiveNetworkLabel: "Stellar",
+      receiveAddress: "0xcbdb81Ce50aE547e7cD19ccE3af45164e0bF3169",
+    });
+    expect(screen.getByText("Scan with a Stellar wallet")).toBeInTheDocument();
+    expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
+  });
+
   it("fails closed with a clear message when no Stellar wallet is ready", () => {
     renderCrypto({
       receiveAddress: "—",

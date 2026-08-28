@@ -206,6 +206,7 @@ import {
 } from "@/lib/services/fundOrchestration";
 import {
   describeMissingOnRampDestination,
+  pickFundableWalletForRail,
   resolveAfricanFundOpenIntent,
   resolveOnRampDestination,
   resolveStablecoinPickerDestination,
@@ -1721,13 +1722,46 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setSendAsset = (k) => () => setState({ sendAsset: k, sendPreview: null, sendQuoteError: "" });
   const setSendChain = (k) => () => setState({ sendChain: k, sendPreview: null, sendAccountId: "", sendQuoteError: "" });
-  const setDepositAsset = (k) => () =>
+  const setDepositAsset = (k) => () => {
+    const nextNetwork =
+      k === "usdt" && state.depositNetwork === "stellar" ? "base" : state.depositNetwork;
+    const match = pickFundableWalletForRail({
+      accounts: resolvedStablecoinAccounts,
+      networkKey: nextNetwork,
+      currency: k,
+      preferredAccountId: state.fundTargetAccountId,
+    });
     setState({
       depositAsset: k,
-      depositNetwork:
-        k === "usdt" && state.depositNetwork === "stellar" ? "base" : state.depositNetwork,
+      depositNetwork: nextNetwork,
+      fundTargetAccountId: match?.id ?? null,
+      depositQuote: null,
+      depositQuoteError: "",
+      depositAccept: null,
+      depositAcceptError: "",
+      depositDone: false,
     });
-  const setDepositNetwork = (k) => () => setState({ depositNetwork: k });
+  };
+  const setDepositNetwork = (k) => () => {
+    const match = pickFundableWalletForRail({
+      accounts: resolvedStablecoinAccounts,
+      networkKey: k,
+      currency: state.depositAsset,
+      preferredAccountId: state.fundTargetAccountId,
+    });
+    setState({
+      depositNetwork: k,
+      fundTargetAccountId: match?.id ?? null,
+      depositAsset: match
+        ? match.currency.trim().toLowerCase() || state.depositAsset
+        : state.depositAsset,
+      depositQuote: null,
+      depositQuoteError: "",
+      depositAccept: null,
+      depositAcceptError: "",
+      depositDone: false,
+    });
+  };
 
   const setReceiveGroup = (g) => () => setState({ receiveGroup: g, copiedKey: "" });
   const selectReceiveAcct = (i) => () => setState({ receiveAcctIdx: i, copiedKey: "" });
@@ -3294,10 +3328,10 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
-  const depositNetworkLabel =
-    depositNetworkOptions.find((n) => n.key === s.depositNetwork)?.label ||
-    pinnedOnRampDest?.asset.network ||
-    formatNetworkLabel(s.depositNetwork);
+  const depositNetworkLabel = pinnedOnRampDest
+    ? formatNetworkLabel(pinnedOnRampDest.asset.network)
+    : depositNetworkOptions.find((n) => n.key === s.depositNetwork)?.label ||
+      formatNetworkLabel(s.depositNetwork);
   const depositNetworkKey =
     pinnedOnRampDest?.asset.network || s.depositNetwork;
   const depositPickerDest = resolveStablecoinPickerDestination({

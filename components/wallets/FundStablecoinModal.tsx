@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { FundStablecoinRail } from "@/lib/services/entities";
-import { isStellarUsdcRail } from "@/lib/stellar/network";
+import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
@@ -238,7 +238,12 @@ export default function FundStablecoinModal({
         </div>
       ) : null}
 
-      {selected.walletAddress && isStellarUsdcRail(selected) ? (
+      {selected.walletAddress &&
+      shouldOfferStellarWalletDeposit({
+        network: selected.network,
+        currency: selected.currency,
+        destination: selected.walletAddress,
+      }) ? (
         <StellarWalletDeposit
           destination={selected.walletAddress}
           network={selected.network}
