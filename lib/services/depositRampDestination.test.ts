@@ -3,6 +3,7 @@ import type { FinancialAccount } from "./entities";
 import { buildDepositQuotePayload } from "./orders";
 import {
   describeMissingOnRampDestination,
+  pickFundableWalletForRail,
   resolveAfricanFundOpenIntent,
   resolveOnRampDestination,
   resolveStablecoinPickerDestination,
@@ -365,5 +366,59 @@ describe("resolveStablecoinPickerDestination", () => {
     });
     expect(dest.address).toBe(STELLAR_ADDR);
     expect(dest.offerCreate).toBe(false);
+  });
+});
+
+describe("pickFundableWalletForRail", () => {
+  const baseUsdc = acct({ id: "base-1", network: "Base", walletAddress: BASE_USDC });
+  const stellarUsdc = acct({
+    id: "stellar-1",
+    network: "Stellar",
+    walletAddress: STELLAR_ADDR,
+  });
+  const polyUsdc = acct({
+    id: "poly-1",
+    network: "Polygon",
+    walletAddress: "0x4444444444444444444444444444444444444444",
+  });
+
+  it("picks the ready wallet on the chosen rail and prefers the current selection when valid", () => {
+    expect(
+      pickFundableWalletForRail({
+        accounts: [baseUsdc, stellarUsdc, polyUsdc],
+        networkKey: "stellar",
+        currency: "usdc",
+      })?.id,
+    ).toBe("stellar-1");
+
+    expect(
+      pickFundableWalletForRail({
+        accounts: [baseUsdc, stellarUsdc, polyUsdc],
+        networkKey: "base",
+        currency: "USDC",
+        preferredAccountId: "base-1",
+      })?.id,
+    ).toBe("base-1");
+  });
+
+  it("ignores a preferred wallet that is on another rail so Top-up cannot drift", () => {
+    expect(
+      pickFundableWalletForRail({
+        accounts: [baseUsdc, stellarUsdc],
+        networkKey: "stellar",
+        currency: "usdc",
+        preferredAccountId: "base-1",
+      })?.id,
+    ).toBe("stellar-1");
+  });
+
+  it("returns null when no ready wallet exists on that rail", () => {
+    expect(
+      pickFundableWalletForRail({
+        accounts: [baseUsdc],
+        networkKey: "stellar",
+        currency: "usdc",
+      }),
+    ).toBeNull();
   });
 });

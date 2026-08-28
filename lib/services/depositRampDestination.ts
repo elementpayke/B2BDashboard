@@ -183,6 +183,32 @@ function destinationFrom(account: FinancialAccount): OnRampDestination | null {
   };
 }
 
+/**
+ * Prefer the currently selected wallet when it already matches the rail;
+ * otherwise the first ready wallet on that asset/network.
+ */
+export function pickFundableWalletForRail(opts: {
+  accounts: FinancialAccount[];
+  networkKey: string;
+  currency: string | null | undefined;
+  preferredAccountId?: string | null;
+}): FinancialAccount | null {
+  const wantCurrency = assetCurrency(opts.currency);
+  const fundable = (opts.accounts ?? []).filter(
+    (account) =>
+      isFundableStablecoinAccount(account) &&
+      account.currency.trim().toUpperCase() === wantCurrency &&
+      networksEqual(account.network, opts.networkKey),
+  );
+  if (fundable.length === 0) return null;
+  const preferredId = clean(opts.preferredAccountId);
+  if (preferredId) {
+    const preferred = fundable.find((account) => account.id === preferredId);
+    if (preferred) return preferred;
+  }
+  return fundable[0] ?? null;
+}
+
 function isAfricanFiat(currency: string | null | undefined): boolean {
   const fiat = (currency || "").trim().toUpperCase();
   return (AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(fiat);

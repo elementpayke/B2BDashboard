@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  STELLAR_USDC_ISSUER_PUBLIC,
-  STELLAR_USDC_ISSUER_TESTNET,
+  isLikelyStellarAddress,
   isStellarNetwork,
   isStellarUsdcRail,
+  shouldOfferStellarWalletDeposit,
   resolveStellarNetwork,
   stellarExplorerTxUrl,
   truncateStellarAddress,
+  STELLAR_USDC_ISSUER_PUBLIC,
+  STELLAR_USDC_ISSUER_TESTNET,
 } from "./network";
 
 describe("stellar network helpers", () => {
@@ -21,6 +23,54 @@ describe("stellar network helpers", () => {
     expect(isStellarUsdcRail({ network: "stellar_testnet", currency: "usdc" })).toBe(true);
     expect(isStellarUsdcRail({ network: "Stellar", currency: "USDT" })).toBe(false);
     expect(isStellarUsdcRail({ network: "Base", currency: "USDC" })).toBe(false);
+  });
+
+  it("recognizes classic G… deposit addresses and rejects EVM 0x addresses", () => {
+    expect(
+      isLikelyStellarAddress("GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE"),
+    ).toBe(true);
+    expect(isLikelyStellarAddress("0xcbdb81Ce50aE547e7cD19ccE3af45164e0bF3169")).toBe(false);
+    expect(isLikelyStellarAddress("")).toBe(false);
+  });
+
+  it("offers Freighter deposit only for Stellar USDC with a real G… destination", () => {
+    const stellarAddr = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
+    expect(
+      shouldOfferStellarWalletDeposit({
+        network: "stellar",
+        currency: "USDC",
+        destination: stellarAddr,
+      }),
+    ).toBe(true);
+    expect(
+      shouldOfferStellarWalletDeposit({
+        network: "stellar_public",
+        currency: "USDC",
+        destination: stellarAddr,
+      }),
+    ).toBe(true);
+    // Drifted UI label must not offer Freighter toward an EVM address.
+    expect(
+      shouldOfferStellarWalletDeposit({
+        network: "stellar",
+        currency: "USDC",
+        destination: "0xcbdb81Ce50aE547e7cD19ccE3af45164e0bF3169",
+      }),
+    ).toBe(false);
+    expect(
+      shouldOfferStellarWalletDeposit({
+        network: "Base",
+        currency: "USDC",
+        destination: stellarAddr,
+      }),
+    ).toBe(false);
+    expect(
+      shouldOfferStellarWalletDeposit({
+        network: "Stellar",
+        currency: "USDT",
+        destination: stellarAddr,
+      }),
+    ).toBe(false);
   });
 
   it("pins Circle testnet USDC unless the rail is explicitly public", () => {

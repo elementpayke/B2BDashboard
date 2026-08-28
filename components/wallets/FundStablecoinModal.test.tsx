@@ -58,4 +58,14 @@ describe("FundStablecoinModal Stellar wallet", () => {
     openAddressStep([base]);
     expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
+
+  it("does not offer Stellar wallet connect for a Stellar-labelled rail with an EVM address", () => {
+    openAddressStep([
+      {
+        ...stellar,
+        walletAddress: "0xcbdb81Ce50aE547e7cD19ccE3af45164e0bF3169",
+      },
+    ]);
+    expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
+  });
 });

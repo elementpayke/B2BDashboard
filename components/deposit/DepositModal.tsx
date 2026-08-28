@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import {
   countryMatchesQuery,
 } from "@/lib/hooks/depositFlowHelpers";
-import { isStellarUsdcRail } from "@/lib/stellar/network";
+import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
   ssr: false,
@@ -539,9 +539,10 @@ export default function DepositModal(p: DepositModalProps) {
                       Address copied to clipboard.
                     </span>
                   ) : null}
-                  {isStellarUsdcRail({
+                  {shouldOfferStellarWalletDeposit({
                     network: p.depositNetwork,
                     currency: p.depositAssetCode,
+                    destination: p.depositAddress,
                   }) ? (
                     <StellarWalletDeposit
                       destination={p.depositAddress}

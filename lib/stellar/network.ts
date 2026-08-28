@@ -31,6 +31,30 @@ export function isStellarUsdcRail(opts: {
   return isStellarNetwork(opts.network) && opts.currency.trim().toUpperCase() === "USDC";
 }
 
+/** True for a classic Stellar account id (G…, 56 chars). */
+export function isLikelyStellarAddress(address: string | null | undefined): boolean {
+  const value = String(address ?? "")
+    .trim()
+    .toUpperCase();
+  return /^G[A-Z2-7]{55}$/.test(value);
+}
+
+/**
+ * When to show Freighter / LOBSTR / xBull deposit in Top-up, Receive, and Fund.
+ * Requires both a Stellar USDC rail and a real G… destination — never a drifted
+ * EVM 0x address under a Stellar label.
+ */
+export function shouldOfferStellarWalletDeposit(opts: {
+  network: string;
+  currency: string;
+  destination?: string | null;
+}): boolean {
+  if (!isStellarUsdcRail({ network: opts.network, currency: opts.currency })) {
+    return false;
+  }
+  return isLikelyStellarAddress(opts.destination);
+}
+
 export function resolveStellarNetwork(network: string | null | undefined): StellarNetworkConfig {
   const key = (network || "").trim().toLowerCase();
   const isPublic = key.includes("public") || key.includes("mainnet") || key.includes("pubnet");
