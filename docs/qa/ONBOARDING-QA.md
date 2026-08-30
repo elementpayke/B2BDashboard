@@ -367,7 +367,104 @@ Do **not** implement in this docs branch without a separate product go-ahead.
 
 ---
 
-## QA walk notes (static + prior live stack)
+## S0–S7 path-walk friction log
+
+Method: code walk of B2BDASHBOARD + Mboka-Backend (`main` worktree) with line citations; prior local stack validation for S5–S6 Stellar credits. Full greenfield vault KYB submit against sandbox was **not** live-UAT’d (needs real docs).
+
+### S0 Signup
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| No country / entity type collected | High | FE `app/signup/page.tsx` state is only `businessName`, `email`, `password`, `confirmPassword`; `authApi.signup(businessName, email, password)` omits country |
+| Business country defaults to `KE` | High | BE `app/models/business.py` — `country` `server_default="KE"` |
+| Work-email domains only | Medium | BE signup policy `allow_public_domains=False` — personal Gmail fails without product explanation on FE |
+
+**Dead-end:** Unsupported / non-KE business discovers wrong vault document pack only after KYB step 1.
+
+### S1 Auth verified
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| Unverified email cannot login | High (product choice) | BE `app/controllers/auth.py` L98–99 — `ForbiddenError("Email address is not verified.")` |
+| No explore session without verify | Medium | FE `proxy.ts` only checks cookies; cookies only exist after verified login |
+| `/me` exposes stale `kyb_verified` | High | BE `auth.py` L493 reads `biz.kyb_verified`; never flipped by `set_kyb_status` |
+
+**Gate that works:** password policy + lockout on login.
+
+### S2 KYB started
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| Autosave / resume works | Pass | `lib/hooks/useKybWizard.ts` profile save + document resume |
+| Docs corridor uses business country | Medium | BE KYB initiate uses `business.country` — still `KE` if signup omitted country |
+| Entity type only here (not signup) | Medium | FE `KybWizardModal` “Business type” step |
+
+### S3 KYB submitted
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| Post-submit poll ~0.8s then stops | **Critical** | FE `useKybWizard.ts` L52–53: `POST_SUBMIT_POLL_ATTEMPTS = 3`, `POST_SUBMIT_POLL_DELAY_MS = 400` |
+| Still-`submitted` shows success “In review” | **Critical** | Poll returns early only on `approved`/`rejected`; otherwise wizard still completes success path |
+| Cannot reopen wizard while submitted | High | FE `lib/services/kyb.ts` L318–320 — `canOpenKybWizard` only `pending\|rejected\|expired` |
+| Money CTA → Verification with **no action** | **Critical** | FE `DashboardApp.tsx` L1406–1414: if not approved, `goVerification()`; wizard opens only if `canOpenKybWizard` — false for `submitted`. Banner `showAction={canOpenKybWizard(...)}` at L3645 |
+
+**Industry match:** opaque pending after submit — top Connect/PSP support driver.
+
+### S4 KYB approved
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| Profile status gates IBAN create | Pass | BE `deposit_accounts.py` L71–83 `_assert_verification_approved` requires `KybStatus.approved` |
+| FE money gate uses profile status | Pass | FE `isKybApproved(kybStatus)` in `guardMoneyModal` / home tiles |
+| `business.kyb_verified` never set true in app | High | BE `repositories/kyb.py` `set_kyb_status` L154–169 updates profile only; model docs claim flag drives access (`business.py` L31) |
+| No RFI / `needs_info` | High | Status enum has no needs-info; rejected = reopen + optional empty `reviewer_notes` |
+| Enrollment webhook updates status only | High | `enrollment_webhooks.py` maps approved → KYB status; does **not** open accounts |
+
+### S5 Rails ready
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| Accounts are **manual** open | **Critical** | FE Create Account → `depositAccountsApi.create` / `entitiesApi.openAccount`; eligibility unlocks create only |
+| Empty entity list blames KYB | High | FE `lib/services/entities.ts` L68–75 — “complete business verification…” even when already approved |
+| Wallets empty lacks inline CTA | Medium | `WalletsScreen` empty copy; CTA only in header |
+| Home approved + no rails: no Open/Fund strip | **Critical** | FE L3644 banner only when `!kybApproved`; no post-approve activation checklist |
+| IBAN pending coordinates | Medium | Account detail “Coordinates pending” OK; Receive fiat generic “No local receive account…” |
+
+### S6 First fund
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| No guided Fund checklist | **Critical** | Ad-hoc `FundChooserModal` / Deposit / Receive — no ordered mission |
+| Dual paths without recommendation | High | OnRamp vs IBAN vs crypto receive compete |
+| Stellar inbound may be invisible | High | BE `ACCOUNT_CREDITS_WATCHER_ENABLED` default `false` (`config.py` L268–269); watcher started only if true (`main.py` L165–166) |
+| Prior local validation | Pass (when enabled) | 5 testnet USDC credits backfilled to `account_credits` after watcher + `stellar_testnet` network label fix |
+
+### S7 First send
+
+| Friction | Severity | Evidence |
+|----------|----------|----------|
+| No first-send mission / prefilled corridor | High | Soft default `COUNTRIES[0]` Kenya in `chooseSendMethod` — not business country |
+| Viewer sees Send / Top up | High | FE `guardMoneyModal` KYB-only; BE `rbac.py` L22–24 — viewer has `money:read` not `money:write` |
+| Team invites look real, are mock | High | FE L3052–3055 comment “no backend yet”; L3896 Preview banner; local `TEAM_MEMBERS` state. BE **has** live routes `app/routes/team.py` L34–149 |
+| Contract docs stale | Medium | `docs/api-contract.md` L55 still says Team has **no backend** — false vs live APIs |
+
+---
+
+## Plan P0-candidate validation
+
+| Plan candidate | Validated? | Severity confirmed | Notes |
+|----------------|------------|--------------------|-------|
+| 1. KYB post-submit status UX | Yes | P0 | 3×400ms poll; stuck submitted; no CTA |
+| 2. No post-approval Fund → first-send scaffold | Yes | P0 | Banner disappears on approve; no mission |
+| 3. Partner entity / account readiness lag | Yes | P0/P1 | Manual open + misleading entity error |
+| 4. Team UI mock vs live backend | Yes | P1 | FE mock; BE live; contract wrong |
+| 5. Signup country default `KE` | Yes | P1 | Skews vault docs |
+| 6. Stale `business.kyb_verified` | Yes | P1 | Never set in `set_kyb_status` |
+| 7. Viewer role CTA mismatch | Yes | P1 | FE not role-gated |
+
+---
+
+## QA walk notes (runtime)
 
 Validated from code + prior local stack work (Stellar credits watcher):
 
@@ -383,5 +480,5 @@ Validated from code + prior local stack work (Stellar credits watcher):
 ## References
 
 - Industry patterns: Stripe Connect capability flags; Mercury/Brex TTV; Bridge customer→virtual account; Circle RFI; Paystack/Flutterwave country doc packs; Yellow Card geo early-fail.  
-- Internal contract: [`docs/api-contract.md`](../api-contract.md)  
-- Backend KYB watcher/docs: Mboka `docs/implementation/ACCOUNT_CREDITS_WATCHER.md`, `docs/AUTH.md`
+- Internal contract: [`docs/api-contract.md`](../api-contract.md) (Team section outdated — see P2-6).  
+- Backend: Mboka `docs/implementation/ACCOUNT_CREDITS_WATCHER.md`, `docs/AUTH.md`, `app/routes/team.py`, `app/services/security/rbac.py`
