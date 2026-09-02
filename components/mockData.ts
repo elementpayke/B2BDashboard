@@ -57,11 +57,15 @@ export const ACCOUNTS = [
   {code:"USDC",iso:null,name:"USD Coin",balance:"180,860.00",rail:"Stablecoin · multi-chain",detail:"Base, Ethereum, Solana, Stellar"},
   {code:"USDT",iso:null,name:"Tether",balance:"12,900.00",rail:"Stablecoin · multi-chain",detail:"Polygon, Ethereum"},
 ];
-export const ROLES = [  {key:"admin", label:"Admin", desc:"Full access, including team and API keys"},
+/** @deprecated Prefer MEMBERSHIP_ROLES from lib/services/team — kept for mock/preview screens. */
+export const ROLES = [
+  {key:"admin", label:"Admin", desc:"Full access, including team and API keys"},
+  {key:"developer", label:"Developer", desc:"Manage API keys and integrations"},
   {key:"finance", label:"Finance", desc:"Move money, view all balances and reports"},
   {key:"operator", label:"Operator", desc:"Create payouts, no access to keys or team"},
   {key:"viewer", label:"Viewer", desc:"Read-only access to balances and activity"},
 ];
+/** @deprecated Team screen loads from Mboka; mock retained for Storybook/preview only. */
 export const TEAM_MEMBERS = [
   {id:"u1", name:"Amara Nwosu", email:"amara@yourapp.com", role:"admin", status:"active"},
   {id:"u2", name:"Kwame Asante", email:"kwame@yourapp.com", role:"finance", status:"active"},

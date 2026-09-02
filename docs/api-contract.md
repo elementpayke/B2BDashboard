@@ -52,11 +52,11 @@ the exact failure mode). See
 |---|---|
 | Deposit / Top up — **Stablecoin** tab | Address comes from the matching ready entity account (Stellar USDC = `G…`); EVM chips may show the dashboard-summary treasury. Mock `DEPOSIT_ADDRESSES` are not used. Stellar is omitted for USDT. **Inbound visibility** is split by surface: Stellar USDC account detail reads recent on-chain wallet payments directly from Horizon (`/accounts/{G}/payments?order=desc&limit=&join=transactions`) and prefers ElementPay presentation only when a matching `tx_hash` already exists in `GET /v1/account-credits` / projected `GET /v1/transactions`. No client POST report-hash. If Horizon or Mboka credits are unavailable, fail closed (see Wired row + mapping notes). |
 | Bulk-payout modal | Real bulk CSV payouts are a bigger feature than this pass covers. **Send**, **Bulk**, and **Top up** entry points are KYB-gated like IBAN accounts until `kyb_status === "approved"`. |
-| Team screen (+ invite modal) | **No backend at all.** `BusinessMembership` model exists with the right `role` enum, but there is no route/controller to list/invite/update/remove members. The original design renders in full against local mock data — invites/role changes/removals persist only in component state for the session. |
+| Team screen (+ invite modal) | **Wired** via `lib/services/team.ts` → `GET/POST/PATCH/DELETE /api/businesses/{id}/members…` and invite revoke/accept. Admins manage; other roles can view. Accept deep-link: `/team/accept?token=…`. |
 | Cards — **Fund / Withdraw as prepaid load** | Partner docs: `amount` on issue is **not** a card wallet top-up. Cards spend the linked **USD** account balance. UI “Fund USD” opens the USD deposit fund flow instead of a fake card load. |
 | Send money — **saved recipients** | **No Mboka beneficiaries API.** Dashboard-owned BFF: `GET/POST /api/saved-recipients`, `DELETE /api/saved-recipients/{id}`, file-backed under `.data/` for now. Contract: `docs/saved-recipients.md`. Wired in Send (save + pick from saved details). |
 
-> ⚠️ Team still renders mock data behind an in-product **Preview** banner.
+> Team is live against Mboka membership APIs (`lib/services/team.ts`).
 > Cards issuing is live against active fiat USD (`lib/services/cards.ts`).
 
 ## Account-send mapping notes (`lib/services/accountSends.ts`)
@@ -283,10 +283,10 @@ list, that transaction's own detail query, and the dashboard summary.
 > `GET /v1/iban/accounts` and stablecoin G… / 0x addresses from ready entity
 > wallets (Stellar USDC never falls back to the EVM treasury).
 
-1. **Team backend**: add `GET/POST /api/businesses/{id}/members`,
-   `POST .../members/invite`, `PATCH .../members/{user_id}`,
-   `DELETE .../members/{user_id}` using the existing `BusinessMembership`
-   model, then wire the Team screen for real.
+1. **Team**: ~~add members APIs then wire FE~~ **Done** — Mboka
+   `/api/businesses/{id}/members*` + invite accept/revoke; dashboard
+   `lib/services/team.ts` + Team screen (admin manage, members view) and
+   `/team/accept`.
 2. **Cards**: ~~no data model exists~~ **Issuing wired** — virtual cards on active fiat USD via partner `…/cards` (`lib/services/cards.ts`). Card **funding** (acquiring charges) and spend transactions remain follow-ups; sandbox spend is empty per partner docs.
 3. **KYB wizard**: ~~build the real multi-step business-verification form~~ **Done (Track 5)** — `components/verification/*` + `lib/services/kyb.ts` drive `POST/PATCH …/kyb/profile`, `PUT …/kyb/address`, `POST …/kyb/initiate` (status remains **pending** until final submit), multipart `POST …/kyb/documents`, `POST …/documents/submit`, `POST …/shareholders`, `POST …/shareholders/documents`, `POST …/kyb/submit` → **submitted**, then `POST …/kyb/status/poll`. Upstream is partner **customer vault** (`/partner/customers*`); Mboka paths stay `/api/businesses/{id}/kyb/*`. Tier 3 institutional upgrade modal remains simulated.
 4. **Send modal — Stablecoin tab**: ~~no backend endpoint for direct
