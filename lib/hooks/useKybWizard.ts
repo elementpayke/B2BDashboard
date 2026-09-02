@@ -5,15 +5,20 @@ import {
   buildProfilePayload,
   buildShareholderPayload,
   buildUploadFormData,
+  canOpenKybWizard,
   formatKybServiceError,
+  helpForDocumentType,
   inferWizardStartStep,
   kybApi,
   labelForDocumentType,
   newKybIdempotencyKey,
   profileDraftFromSummary,
+  resizeAssociates,
   validateAddressUboStep,
   validateBusinessStep,
+  validateKybDocumentFile,
   validateProfileDraft,
+  validateSubmitStep,
   type KybDocumentRequirements,
   type KybWizardProfileDraft,
 } from "@/lib/services/kyb";
@@ -28,6 +33,8 @@ export type UseKybWizardOptions = {
     country?: string;
     registration_number?: string | null;
   } | null;
+  /** Live KYB status from /auth/me — used to reset after reject/expire. */
+  kybStatus?: string | null;
   enabled: boolean;
   onSubmitted?: () => void;
 };
@@ -37,14 +44,26 @@ export type KybWizardStep = 1 | 2 | 3 | 4;
 export type DocumentUploadState = {
   requirementType: string;
   label: string;
+  description: string;
+  helpText: string;
   category: "business" | "shareholder";
   associateRefId?: string;
   issuingCountryRequired: boolean;
   file: File | null;
   uploadedDocId: number | null;
+  downloadable: boolean;
   submitted: boolean;
   uploading: boolean;
   error: string;
+};
+
+export type KybSubmitOutcome = "submitted" | "approved" | "rejected";
+
+type ListedDoc = {
+  id: number;
+  provider_document_type: string;
+  is_active: boolean;
+  downloadable?: boolean;
 };
 
 const STEP_LABELS = ["Business", "Address & UBO", "Documents", "Submit"];
@@ -54,6 +73,71 @@ const POST_SUBMIT_POLL_DELAY_MS = 400;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function listedByType(listedDocs: ListedDoc[]): Map<string, ListedDoc> {
+  const byType = new Map<string, ListedDoc>();
+  for (const d of listedDocs) {
+    if (!d.is_active) continue;
+    const key = String(d.provider_document_type || "").trim().toLowerCase();
+    if (key && !byType.has(key)) byType.set(key, d);
+  }
+  return byType;
+}
+
+function mapRequirementRows(
+  reqs: KybDocumentRequirements,
+  listedDocs: ListedDoc[],
+  associateRef: string | undefined,
+  previous?: DocumentUploadState[],
+): DocumentUploadState[] {
+  const byType = listedByType(listedDocs);
+  const prevByType = new Map(
+    (previous || []).map((r) => [r.requirementType.trim().toLowerCase(), r]),
+  );
+
+  const mapDoc = (
+    d: KybDocumentRequirements["business_documents"][number],
+    category: "business" | "shareholder",
+  ): DocumentUploadState => {
+    const type = d.type;
+    const key = type.trim().toLowerCase();
+    const listed = byType.get(key);
+    const uploadedId = d.uploaded_doc_id ?? listed?.id ?? null;
+    const prev = prevByType.get(key);
+    // Keep in-flight upload / local file when revisiting step 3.
+    if (prev && (prev.uploading || prev.file) && !uploadedId) {
+      return {
+        ...prev,
+        label: d.label?.trim() || labelForDocumentType(type),
+        description: d.description?.trim() || labelForDocumentType(type),
+        helpText: helpForDocumentType(type, d.help_text),
+        category,
+        associateRefId: category === "shareholder" ? associateRef : undefined,
+        issuingCountryRequired: d.issuing_country_required,
+      };
+    }
+    return {
+      requirementType: type,
+      label: d.label?.trim() || labelForDocumentType(type),
+      description: d.description?.trim() || labelForDocumentType(type),
+      helpText: helpForDocumentType(type, d.help_text),
+      category,
+      associateRefId: category === "shareholder" ? associateRef : undefined,
+      issuingCountryRequired: d.issuing_country_required,
+      file: null,
+      uploadedDocId: uploadedId,
+      downloadable: !!(listed?.downloadable ?? (uploadedId != null && d.uploaded)),
+      submitted: !!d.uploaded || uploadedId != null,
+      uploading: false,
+      error: "",
+    };
+  };
+
+  return [
+    ...reqs.business_documents.map((d) => mapDoc(d, "business")),
+    ...reqs.shareholder_documents.map((d) => mapDoc(d, "shareholder")),
+  ];
 }
 
 export function useKybWizard(opts: UseKybWizardOptions) {
@@ -67,24 +151,43 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   const [docRows, setDocRows] = useState<DocumentUploadState[]>([]);
   const [shareholderId, setShareholderId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitOutcome, setSubmitOutcome] = useState<KybSubmitOutcome>("submitted");
 
-  /** Only full-reset when business changes or first open — keep mid-flow on reopen. */
+  /** Only full-reset when business changes, first open, or status becomes editable again. */
   const sessionBusinessIdRef = useRef<number | null | undefined>(undefined);
   const sessionInitializedRef = useRef(false);
+  const sessionStatusRef = useRef<string | null | undefined>(undefined);
   const resumeLoadIdRef = useRef(0);
+  const submittedRef = useRef(false);
+
+  useEffect(() => {
+    submittedRef.current = submitted;
+  }, [submitted]);
 
   useEffect(() => {
     if (!opts.enabled) return;
 
     const businessChanged = sessionBusinessIdRef.current !== opts.businessId;
     const firstOpen = !sessionInitializedRef.current;
+    const status = opts.kybStatus ?? null;
+    const prevStatus = sessionStatusRef.current;
+    // Clear success UI when KYB becomes editable again after a submit
+    // (reject/expire, or pending after a local submit while status was still locked).
+    const wasLocked = prevStatus === "submitted" || prevStatus === "approved";
+    const statusBecameEditable =
+      !!sessionInitializedRef.current &&
+      canOpenKybWizard(status) &&
+      status !== prevStatus &&
+      (wasLocked || submittedRef.current);
 
-    if (!businessChanged && !firstOpen) {
+    if (!businessChanged && !firstOpen && !statusBecameEditable) {
+      sessionStatusRef.current = status;
       return;
     }
 
     sessionBusinessIdRef.current = opts.businessId;
     sessionInitializedRef.current = true;
+    sessionStatusRef.current = status;
     const loadId = ++resumeLoadIdRef.current;
 
     const businessId = opts.businessId;
@@ -92,11 +195,11 @@ export function useKybWizard(opts: UseKybWizardOptions) {
 
     setError("");
     setSubmitted(false);
+    setSubmitOutcome("submitted");
     setRequirements(null);
     setDocRows([]);
     setShareholderId(null);
 
-    // Optimistic draft from cache; refined after GET …/kyb loads the saved profile.
     const cachedDraft = profileDraftFromSummary(opts.kybSummary, business);
     setDraft(cachedDraft);
     setStep(
@@ -116,20 +219,21 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         const summary = await kybApi.summary(businessId);
         if (loadId !== resumeLoadIdRef.current) return;
         summaryProfile = (summary.profile as Record<string, unknown> | null) ?? null;
-        const nextDraft = profileDraftFromSummary(summary, business);
-        setDraft(nextDraft);
+        setDraft(profileDraftFromSummary(summary, business));
       } catch {
         // Keep cached draft when summary fetch fails.
       }
 
       let reqs: KybDocumentRequirements | null = null;
       let hasUploadedDocuments = false;
+      let listedDocs: ListedDoc[] = [];
 
       try {
         const listed = await kybApi.listDocuments(businessId);
+        listedDocs = listed.documents;
         hasUploadedDocuments = listed.documents.some((d) => d.is_active);
       } catch {
-        // Best-effort resume — fall back to requirements / profile-only step.
+        // Best-effort resume.
       }
 
       try {
@@ -144,44 +248,19 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           hasUploadedDocuments = true;
         }
       } catch {
-        // Requirements may be unavailable before initiate; keep profile step.
+        // Requirements may be unavailable before initiate.
       }
 
       if (loadId !== resumeLoadIdRef.current) return;
 
       const hasDocumentRequirements = !!reqs && hasUploadedDocuments;
-      const draftForRows = profileDraftFromSummary(
-        summaryProfile ? { profile: summaryProfile } : opts.kybSummary,
-        business,
-      );
-      if (reqs && hasUploadedDocuments) {
-        const associateRef = draftForRows.associates[0]?.id;
+      if (reqs && (hasUploadedDocuments || reqs.business_documents.length || reqs.shareholder_documents.length)) {
         setRequirements(reqs);
-        setDocRows([
-          ...reqs.business_documents.map((d) => ({
-            requirementType: d.type,
-            label: d.label?.trim() || labelForDocumentType(d.type),
-            category: "business" as const,
-            issuingCountryRequired: d.issuing_country_required,
-            file: null,
-            uploadedDocId: null,
-            submitted: d.uploaded,
-            uploading: false,
-            error: "",
-          })),
-          ...reqs.shareholder_documents.map((d) => ({
-            requirementType: d.type,
-            label: d.label?.trim() || labelForDocumentType(d.type),
-            category: "shareholder" as const,
-            associateRefId: associateRef,
-            issuingCountryRequired: d.issuing_country_required,
-            file: null,
-            uploadedDocId: null,
-            submitted: d.uploaded,
-            uploading: false,
-            error: "",
-          })),
-        ]);
+        const associateRef = profileDraftFromSummary(
+          summaryProfile ? { profile: summaryProfile } : opts.kybSummary,
+          business,
+        ).associates[0]?.id;
+        setDocRows(mapRequirementRows(reqs, listedDocs, associateRef));
       }
 
       setStep(
@@ -193,13 +272,11 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         }),
       );
     })();
-  }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business]);
+  }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business, opts.kybStatus]);
 
   const patchDraft = useCallback((patch: Partial<KybWizardProfileDraft>) => {
     setDraft((prev) => {
       const next = { ...prev, ...patch };
-      // Keep address + UBO tax country aligned when the business country changes
-      // and those fields still match the previous business country (or are empty).
       if (patch.country && patch.country !== prev.country) {
         if (!prev.addressCountry || prev.addressCountry === prev.country) {
           next.addressCountry = patch.country;
@@ -216,6 +293,17 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setDraft((prev) => ({
       ...prev,
       associates: prev.associates.map((a, i) => (i === index ? { ...a, ...patch } : a)),
+    }));
+  }, []);
+
+  const setUboCount = useCallback((count: number) => {
+    setDraft((prev) => ({
+      ...prev,
+      associates: resizeAssociates(
+        prev.associates,
+        count,
+        prev.addressCountry || prev.country || "KE",
+      ),
     }));
   }, []);
 
@@ -249,38 +337,6 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     }
   }, [draft, opts.businessId]);
 
-  const rowsFromRequirements = useCallback(
-    (reqs: KybDocumentRequirements): DocumentUploadState[] => {
-      const associateRef = draft.associates[0]?.id;
-      return [
-        ...reqs.business_documents.map((d) => ({
-          requirementType: d.type,
-          label: d.label?.trim() || labelForDocumentType(d.type),
-          category: "business" as const,
-          issuingCountryRequired: d.issuing_country_required,
-          file: null,
-          uploadedDocId: null,
-          submitted: d.uploaded,
-          uploading: false,
-          error: "",
-        })),
-        ...reqs.shareholder_documents.map((d) => ({
-          requirementType: d.type,
-          label: d.label?.trim() || labelForDocumentType(d.type),
-          category: "shareholder" as const,
-          associateRefId: associateRef,
-          issuingCountryRequired: d.issuing_country_required,
-          file: null,
-          uploadedDocId: null,
-          submitted: d.uploaded,
-          uploading: false,
-          error: "",
-        })),
-      ];
-    },
-    [draft.associates],
-  );
-
   const prepareDocuments = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
     setBusy(true);
@@ -292,8 +348,6 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           const initiated = await kybApi.initiate(opts.businessId, newKybIdempotencyKey());
           reqs = initiated.document_requirements ?? null;
         } catch (initiateErr) {
-          // Aggregator/sandbox can 502 on enroll while profile is already saved.
-          // Fall back to the requirements endpoint so the user can continue.
           try {
             reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
           } catch {
@@ -307,7 +361,17 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         }
         setRequirements(reqs);
       }
-      setDocRows(rowsFromRequirements(reqs));
+
+      let listedDocs: ListedDoc[] = [];
+      try {
+        const listed = await kybApi.listDocuments(opts.businessId);
+        listedDocs = listed.documents;
+      } catch {
+        // Keep prior row state if list fails.
+      }
+
+      const associateRef = draft.associates[0]?.id;
+      setDocRows((prev) => mapRequirementRows(reqs!, listedDocs, associateRef, prev));
       setBusy(false);
       return true;
     } catch (err) {
@@ -315,7 +379,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       setError(formatKybServiceError(err));
       return false;
     }
-  }, [draft.country, opts.businessId, requirements, rowsFromRequirements]);
+  }, [draft.associates, draft.country, opts.businessId, requirements]);
 
   const ensureShareholderRegistered = useCallback(async (): Promise<string | null> => {
     if (!opts.businessId) return null;
@@ -336,6 +400,11 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     return id || null;
   }, [draft.associates, opts.businessId, shareholderId]);
 
+  const officerIssuingCountry = useCallback(() => {
+    const owner1 = draft.associates[0];
+    return (owner1?.country || draft.addressCountry || draft.country || "").trim().toUpperCase() || undefined;
+  }, [draft.addressCountry, draft.associates, draft.country]);
+
   const uploadDocumentRow = useCallback(
     async (index: number, fileOverride?: File | null): Promise<boolean> => {
       if (!opts.businessId) return false;
@@ -347,20 +416,32 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         );
         return false;
       }
+      const fileError = validateKybDocumentFile(file);
+      if (fileError) {
+        setDocRows((rows) =>
+          rows.map((r, i) => (i === index ? { ...r, file: null, error: fileError, uploading: false } : r)),
+        );
+        return false;
+      }
       setDocRows((rows) =>
         rows.map((r, i) =>
           i === index ? { ...r, file, uploading: true, error: "", submitted: false } : r,
         ),
       );
       try {
+        const issuing =
+          row.issuingCountryRequired
+            ? row.category === "shareholder"
+              ? officerIssuingCountry()
+              : draft.country.trim().toUpperCase() || undefined
+            : undefined;
         const form = buildUploadFormData({
           file,
           documentType: row.requirementType,
-          issuingCountry: row.issuingCountryRequired ? draft.country : undefined,
+          issuingCountry: issuing,
           associateRefId: row.associateRefId,
         });
         const uploaded = await kybApi.uploadDocument(opts.businessId, form);
-        // Vault path: multipart upload already base64-posts to the aggregator.
         setDocRows((rows) =>
           rows.map((r, i) =>
             i === index
@@ -369,6 +450,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
                   file,
                   uploading: false,
                   uploadedDocId: uploaded.id,
+                  downloadable: !!uploaded.downloadable,
                   submitted: true,
                   error: "",
                 }
@@ -392,17 +474,25 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         return false;
       }
     },
-    [docRows, draft.country, opts.businessId],
+    [docRows, draft.country, officerIssuingCountry, opts.businessId],
   );
 
   const setDocumentFile = useCallback(
     (index: number, file: File | null) => {
+      if (file) {
+        const fileError = validateKybDocumentFile(file);
+        if (fileError) {
+          setDocRows((rows) =>
+            rows.map((r, i) => (i === index ? { ...r, file: null, error: fileError, submitted: false } : r)),
+          );
+          return;
+        }
+      }
       setDocRows((rows) =>
         rows.map((r, i) =>
           i === index ? { ...r, file, submitted: false, error: "" } : r,
         ),
       );
-      // Selecting a file starts upload immediately — no separate Upload click needed.
       if (file) {
         void uploadDocumentRow(index, file);
       }
@@ -418,7 +508,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           return status;
         }
       } catch {
-        // Poll is best-effort after a successful submit — don't fail the UX.
+        // Poll is best-effort after a successful submit.
       }
       if (attempt < POST_SUBMIT_POLL_ATTEMPTS - 1) {
         await sleep(POST_SUBMIT_POLL_DELAY_MS);
@@ -429,11 +519,23 @@ export function useKybWizard(opts: UseKybWizardOptions) {
 
   const submitForReview = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
+    const attestationError = validateSubmitStep(draft);
+    if (attestationError) {
+      setError(attestationError);
+      return false;
+    }
     setBusy(true);
     setError("");
     try {
       await kybApi.submitForReview(opts.businessId, newKybIdempotencyKey());
-      await pollAfterSubmit(opts.businessId);
+      const polled = await pollAfterSubmit(opts.businessId);
+      if (polled?.kyb_status === "approved") {
+        setSubmitOutcome("approved");
+      } else if (polled?.kyb_status === "rejected") {
+        setSubmitOutcome("rejected");
+      } else {
+        setSubmitOutcome("submitted");
+      }
       setSubmitted(true);
       setBusy(false);
       opts.onSubmitted?.();
@@ -443,7 +545,61 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       setError(formatKybServiceError(err));
       return false;
     }
-  }, [opts, pollAfterSubmit]);
+  }, [draft, opts, pollAfterSubmit]);
+
+  const openDocument = useCallback(
+    async (index: number, mode: "view" | "download") => {
+      if (!opts.businessId) return;
+      const row = docRows[index];
+      if (!row?.uploadedDocId) {
+        setError("No uploaded file to open yet.");
+        return;
+      }
+      if (!row.downloadable) {
+        setError("This document isn’t available to view or download yet.");
+        return;
+      }
+      try {
+        await kybApi.openDocument(opts.businessId, row.uploadedDocId, mode);
+      } catch (err) {
+        setError(formatKybServiceError(err));
+      }
+    },
+    [docRows, opts.businessId],
+  );
+
+  const replaceDocumentRow = useCallback(
+    async (index: number): Promise<boolean> => {
+      if (!opts.businessId) return false;
+      const row = docRows[index];
+      const docId = row?.uploadedDocId;
+      if (docId) {
+        try {
+          await kybApi.deleteDocument(opts.businessId, docId);
+        } catch (err) {
+          setError(formatKybServiceError(err));
+          return false;
+        }
+      }
+      setDocRows((rows) =>
+        rows.map((r, i) =>
+          i === index
+            ? {
+                ...r,
+                file: null,
+                uploadedDocId: null,
+                downloadable: false,
+                submitted: false,
+                uploading: false,
+                error: "",
+              }
+            : r,
+        ),
+      );
+      return true;
+    },
+    [docRows, opts.businessId],
+  );
 
   const nextStep = useCallback(async () => {
     if (step === 1) {
@@ -470,6 +626,10 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return;
     }
     if (step === 3) {
+      if (docRows.some((r) => r.uploading)) {
+        setError("Wait for uploads to finish before continuing.");
+        return;
+      }
       const missingFile = docRows.some((r) => !r.submitted && !r.file);
       if (missingFile) {
         setError("Choose a file for every required document before continuing.");
@@ -503,8 +663,9 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setStep((s) => Math.max(1, s - 1) as KybWizardStep);
   }, []);
 
-  const stepDots = STEP_LABELS.map((_, i) => ({ on: i + 1 <= step }));
+  const stepDots = STEP_LABELS.map((label, i) => ({ on: i + 1 <= step, label }));
   const docsComplete = docRows.length > 0 && docRows.every((r) => r.submitted);
+  const docsUploading = docRows.some((r) => r.uploading);
 
   return {
     step,
@@ -513,14 +674,21 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     draft,
     patchDraft,
     patchAssociate,
+    setUboCount,
     error,
     busy,
     docRows,
     setDocumentFile,
     uploadDocumentRow,
+    openDocument,
+    replaceDocumentRow,
     docsComplete,
+    docsUploading,
     submitted,
+    submitOutcome,
     nextStep,
     backStep,
+    // Exposed for tests / advanced flows
+    ensureShareholderRegistered,
   };
 }

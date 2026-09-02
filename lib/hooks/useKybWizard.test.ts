@@ -14,6 +14,7 @@ const documentRequirements = vi.fn();
 const listDocuments = vi.fn();
 const uploadDocument = vi.fn();
 const submitDocument = vi.fn();
+const deleteDocument = vi.fn();
 
 vi.mock("@/lib/services/kyb", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/services/kyb")>();
@@ -32,6 +33,7 @@ vi.mock("@/lib/services/kyb", async (importOriginal) => {
       listDocuments: (...args: unknown[]) => listDocuments(...args),
       uploadDocument: (...args: unknown[]) => uploadDocument(...args),
       submitDocument: (...args: unknown[]) => submitDocument(...args),
+      deleteDocument: (...args: unknown[]) => deleteDocument(...args),
       listShareholders: vi.fn().mockResolvedValue({ shareholders: [] }),
       addShareholder: vi.fn(),
       submitShareholderDocument: vi.fn(),
@@ -49,6 +51,7 @@ const completePendingProfile = {
   registration_number: "R1",
   business_type: "LimitedCompany",
   industry: "Fintech",
+  website: "https://acme.example",
   incorporation_date: "2020-01-15",
   estimated_employees: "1-10",
   annual_revenue_range: "100kTo1M",
@@ -63,13 +66,19 @@ const completePendingProfile = {
   associates: [
     {
       id: "a1",
-      relationship_types: ["UBO"],
+      relationship_types: ["UBO", "Representative", "Director"],
       full_name: { first_name: "Jane", last_name: "Doe" },
       date_of_birth: "1985-03-15",
       email: "jane@example.com",
       phone_number: "+254700000000",
       tax_residence_country: "KE",
-      ubo: { ownership_percentage: 60 },
+      residential_address: {
+        street: "12 Owner Road",
+        city: "Nairobi",
+        post_code: "00100",
+        country: "KE",
+      },
+      ubo: { ownership_percentage: 100 },
     },
   ],
 };
@@ -88,6 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   pollVerifierStatus.mockResolvedValue({ kyb_status: "submitted", profile_exists: true });
   submitForReview.mockResolvedValue({});
+  deleteDocument.mockResolvedValue({});
   listDocuments.mockResolvedValue({ documents: [] });
   documentRequirements.mockResolvedValue(emptyRequirements());
   initiate.mockResolvedValue({
@@ -266,6 +276,9 @@ describe("useKybWizard restore + submit poll", () => {
       await result.current.nextStep();
     });
     await waitFor(() => expect(result.current.step).toBe(4));
+    act(() => {
+      result.current.patchDraft({ attestedAccurate: true });
+    });
     await act(async () => {
       await result.current.nextStep();
     });
@@ -313,6 +326,9 @@ describe("useKybWizard restore + submit poll", () => {
       await result.current.nextStep();
     });
     await waitFor(() => expect(result.current.step).toBe(4));
+    act(() => {
+      result.current.patchDraft({ attestedAccurate: true });
+    });
     await act(async () => {
       await result.current.nextStep();
     });
@@ -329,6 +345,7 @@ describe("useKybWizard restore + submit poll", () => {
       document_type: "certificate_of_incorporation",
       provider_document_type: "certificate_of_incorporation",
       is_active: true,
+      downloadable: true,
     });
     submitDocument.mockResolvedValue({});
     documentRequirements.mockResolvedValue({
@@ -371,11 +388,186 @@ describe("useKybWizard restore + submit poll", () => {
       expect(uploadDocument).toHaveBeenCalled();
       expect(submitDocument).not.toHaveBeenCalled();
       expect(result.current.docRows[0]?.submitted).toBe(true);
+      expect(result.current.docRows[0]?.downloadable).toBe(true);
     });
 
     await act(async () => {
       await result.current.nextStep();
     });
     await waitFor(() => expect(result.current.step).toBe(4));
+  });
+
+  it("resets after reject so Fix and resubmit is editable again", async () => {
+    documentRequirements.mockResolvedValue({
+      provider: "customer_vault",
+      corridor: "KE",
+      business_documents: [
+        {
+          type: "certificate_of_incorporation",
+          category: "business",
+          label: "Certificate",
+          requires_associate_ref_id: false,
+          issuing_country_required: false,
+          uploaded: true,
+          uploaded_doc_id: 1,
+        },
+      ],
+      shareholder_documents: [],
+      disclaimer: null,
+    });
+    listDocuments.mockResolvedValue({
+      documents: [
+        {
+          id: 1,
+          document_type: "certificate_of_incorporation",
+          provider_document_type: "certificate_of_incorporation",
+          is_active: true,
+          downloadable: true,
+        },
+      ],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ status }: { status: string }) =>
+        useKybWizard({
+          businessId: 11,
+          enabled: true,
+          kybStatus: status,
+          kybSummary: { profile: { ...completePendingProfile, kyb_status: status } },
+          business: { legal_name: "Acme", country: "KE", registration_number: "R1" },
+        }),
+      { initialProps: { status: "pending" } },
+    );
+
+    await waitFor(() => expect(result.current.step).toBe(3));
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    await waitFor(() => expect(result.current.step).toBe(4));
+    act(() => {
+      result.current.patchDraft({ attestedAccurate: true });
+    });
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    await waitFor(() => expect(result.current.submitted).toBe(true));
+
+    rerender({ status: "rejected" });
+    await waitFor(() => expect(result.current.submitted).toBe(false));
+    expect(result.current.step).not.toBe(4);
+  });
+
+  it("preserves uploaded doc rows when revisiting documents after going back", async () => {
+    listDocuments.mockResolvedValue({
+      documents: [
+        {
+          id: 42,
+          document_type: "certificate_of_incorporation",
+          provider_document_type: "certificate_of_incorporation",
+          is_active: true,
+          downloadable: true,
+        },
+      ],
+    });
+    documentRequirements.mockResolvedValue({
+      provider: "customer_vault",
+      corridor: "KE",
+      business_documents: [
+        {
+          type: "certificate_of_incorporation",
+          category: "business",
+          label: "Certificate",
+          requires_associate_ref_id: false,
+          issuing_country_required: false,
+          uploaded: true,
+          uploaded_doc_id: 42,
+        },
+      ],
+      shareholder_documents: [],
+      disclaimer: null,
+    });
+
+    const { result } = renderHook(() =>
+      useKybWizard({
+        businessId: 12,
+        enabled: true,
+        kybSummary: { profile: completePendingProfile },
+        business: { legal_name: "Acme", country: "KE", registration_number: "R1" },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.step).toBe(3));
+    expect(result.current.docRows[0]?.uploadedDocId).toBe(42);
+    expect(result.current.docRows[0]?.downloadable).toBe(true);
+
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    await waitFor(() => expect(result.current.step).toBe(4));
+    act(() => {
+      result.current.backStep();
+    });
+    await waitFor(() => expect(result.current.step).toBe(3));
+    expect(result.current.docRows[0]?.uploadedDocId).toBe(42);
+    expect(result.current.docRows[0]?.submitted).toBe(true);
+
+    act(() => {
+      result.current.backStep();
+    });
+    await waitFor(() => expect(result.current.step).toBe(2));
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    await waitFor(() => expect(result.current.step).toBe(3));
+    expect(result.current.docRows[0]?.uploadedDocId).toBe(42);
+    expect(result.current.docRows[0]?.downloadable).toBe(true);
+  });
+
+  it("replace deletes the prior document then clears the row", async () => {
+    listDocuments.mockResolvedValue({
+      documents: [
+        {
+          id: 7,
+          document_type: "certificate_of_incorporation",
+          provider_document_type: "certificate_of_incorporation",
+          is_active: true,
+          downloadable: true,
+        },
+      ],
+    });
+    documentRequirements.mockResolvedValue({
+      provider: "customer_vault",
+      corridor: "KE",
+      business_documents: [
+        {
+          type: "certificate_of_incorporation",
+          category: "business",
+          label: "Certificate",
+          requires_associate_ref_id: false,
+          issuing_country_required: false,
+          uploaded: true,
+          uploaded_doc_id: 7,
+        },
+      ],
+      shareholder_documents: [],
+      disclaimer: null,
+    });
+
+    const { result } = renderHook(() =>
+      useKybWizard({
+        businessId: 13,
+        enabled: true,
+        kybSummary: { profile: completePendingProfile },
+        business: { legal_name: "Acme", country: "KE", registration_number: "R1" },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.docRows[0]?.uploadedDocId).toBe(7));
+    await act(async () => {
+      await result.current.replaceDocumentRow(0);
+    });
+    expect(deleteDocument).toHaveBeenCalledWith(13, 7);
+    expect(result.current.docRows[0]?.uploadedDocId).toBeNull();
+    expect(result.current.docRows[0]?.submitted).toBe(false);
   });
 });

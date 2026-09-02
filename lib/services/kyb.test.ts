@@ -22,6 +22,8 @@ import {
   buildUploadFormData,
   canOpenKybWizard,
   describeKybStatus,
+  describeKybStatusDetail,
+  emptyAssociateDraft,
   emptyKybWizardDraft,
   formatKybServiceError,
   inferWizardStartStep,
@@ -31,14 +33,18 @@ import {
   isStatusOnlyKybSummary,
   mergeKybSummaryCache,
   kybApi,
+  kybStatusPresentation,
   kybTierDisplay,
   labelForDocumentType,
   newKybIdempotencyKey,
   normalizeDateOfBirth,
   profileDraftFromSummary,
+  resizeAssociates,
   validateAddressUboStep,
   validateBusinessStep,
+  validateKybDocumentFile,
   validateProfileDraft,
+  validateSubmitStep,
   type KybWizardProfileDraft,
 } from "./kyb";
 
@@ -53,6 +59,7 @@ function validDraft(): KybWizardProfileDraft {
   draft.incorporationDate = "2020-01-15";
   draft.businessType = "LimitedCompany";
   draft.industry = "Fintech";
+  draft.website = "https://elementpay.example";
   draft.estimatedEmployees = "1-10";
   draft.annualRevenueRange = "100kTo1M";
   draft.sourceOfFunds = "Revenue";
@@ -65,15 +72,20 @@ function validDraft(): KybWizardProfileDraft {
   draft.associates[0].email = "jane@example.com";
   draft.associates[0].phoneNumber = "+254700000000";
   draft.associates[0].ownershipPercentage = "60";
+  draft.associates[0].street = "12 Owner Road";
+  draft.associates[0].city = "Nairobi";
+  draft.associates[0].postCode = "00100";
+  draft.ownershipRemainderNote = "Remaining 40% held by minority shareholders under 25% each";
+  draft.attestedAccurate = true;
   return draft;
 }
 
 describe("kyb status helpers", () => {
-  it("maps known statuses to tier display labels", () => {
-    expect(describeKybStatus("approved")).toBe("Complete");
+  it("maps known statuses to clear feedback labels", () => {
+    expect(describeKybStatus("approved")).toBe("Verified");
     expect(describeKybStatus("submitted")).toBe("In review");
-    expect(kybTierDisplay("rejected").label).toBe("Rejected");
-    expect(describeKybStatus("pending")).toBe("In progress");
+    expect(kybTierDisplay("rejected").label).toBe("Action needed");
+    expect(describeKybStatus("pending")).toBe("Not submitted");
   });
 
   it("treats only approved as cleared for money actions", () => {
@@ -107,6 +119,13 @@ describe("kyb status helpers", () => {
     expect(canOpenKybWizard(undefined)).toBe(false);
     expect(canOpenKybWizard(null)).toBe(false);
     expect(isKybApproved(undefined)).toBe(false);
+  });
+
+  it("explains each status clearly for the verification screen", () => {
+    expect(kybStatusPresentation("approved").headline).toMatch(/verified/i);
+    expect(describeKybStatusDetail("submitted")).toMatch(/already submitted/i);
+    expect(describeKybStatusDetail("rejected", "Need MoA")).toMatch(/notes/i);
+    expect(describeKybStatusDetail("pending")).toMatch(/One submission/i);
   });
 });
 
@@ -142,8 +161,12 @@ describe("validateProfileDraft", () => {
     expect(validateAddressUboStep(draft)).toMatch(/18/);
   });
 
-  it("allows an optional website when it is a valid https URL", () => {
+  it("requires a real https website", () => {
     const draft = validDraft();
+    draft.website = "";
+    expect(validateBusinessStep(draft)).toMatch(/website/i);
+    draft.website = "http://insecure.example";
+    expect(validateBusinessStep(draft)).toMatch(/https/i);
     draft.website = "https://acme.example";
     expect(validateBusinessStep(draft)).toBeNull();
   });
@@ -161,6 +184,81 @@ describe("validateProfileDraft", () => {
     expect(validateBusinessStep(draft)).toMatch(/tax id|ein/i);
     draft.taxId = "12-3456789";
     expect(validateBusinessStep(draft)).toBeNull();
+  });
+
+  it("requires each UBO to own at least 25%", () => {
+    const draft = validDraft();
+    draft.associates[0].ownershipPercentage = "10";
+    expect(validateAddressUboStep(draft)).toMatch(/25/);
+  });
+
+  it("rejects ownership totals over 100%", () => {
+    const draft = validDraft();
+    draft.associates = resizeAssociates(draft.associates, 2, "KE");
+    draft.associates[0].ownershipPercentage = "60";
+    draft.associates[1] = {
+      ...emptyAssociateDraft("KE"),
+      firstName: "John",
+      lastName: "Smith",
+      dateOfBirth: "1980-01-01",
+      email: "john@example.com",
+      phoneNumber: "+254711111111",
+      ownershipPercentage: "50",
+      country: "KE",
+      street: "5 Side Street",
+      city: "Nairobi",
+      postCode: "00200",
+    };
+    expect(validateAddressUboStep(draft)).toMatch(/100%/);
+  });
+
+  it("accepts multiple complete UBOs when ownership sums to ≤100%", () => {
+    const draft = validDraft();
+    draft.associates = resizeAssociates(draft.associates, 2, "KE");
+    draft.associates[0].ownershipPercentage = "40";
+    draft.associates[0].street = "12 Owner Road";
+    draft.associates[0].city = "Nairobi";
+    draft.associates[0].postCode = "00100";
+    draft.associates[1] = {
+      ...emptyAssociateDraft("KE"),
+      firstName: "John",
+      lastName: "Smith",
+      dateOfBirth: "1980-01-01",
+      email: "john@example.com",
+      phoneNumber: "+254711111111",
+      ownershipPercentage: "35",
+      country: "KE",
+      street: "5 Side Street",
+      city: "Nairobi",
+      postCode: "00200",
+    };
+    draft.ownershipRemainderNote = "Remaining 25% held by a family trust";
+    expect(validateAddressUboStep(draft)).toBeNull();
+  });
+
+  it("requires a remainder note when UBO ownership is under 100%", () => {
+    const draft = validDraft();
+    draft.ownershipRemainderNote = "";
+    expect(validateAddressUboStep(draft)).toMatch(/remaining/i);
+  });
+
+  it("requires residential address for each UBO", () => {
+    const draft = validDraft();
+    draft.associates[0].street = "";
+    expect(validateAddressUboStep(draft)).toMatch(/residential street/i);
+  });
+
+  it("requires attestation before submit", () => {
+    const draft = validDraft();
+    draft.attestedAccurate = false;
+    expect(validateSubmitStep(draft)).toMatch(/attestation/i);
+  });
+
+  it("rejects oversized or unsupported document files", () => {
+    const big = new File([new Uint8Array(11 * 1024 * 1024)], "big.pdf", { type: "application/pdf" });
+    expect(validateKybDocumentFile(big)).toMatch(/10 MB/i);
+    const bad = new File(["x"], "notes.txt", { type: "text/plain" });
+    expect(validateKybDocumentFile(bad)).toMatch(/PDF|JPEG|PNG/i);
   });
 
   it("accepts financials when present as known enum values", () => {
@@ -202,7 +300,7 @@ describe("labelForDocumentType", () => {
     expect(labelForDocumentType("certificate_of_incorporation")).toMatch(/certificate of incorporation/i);
     expect(labelForDocumentType("memorandum_of_association")).toMatch(/memorandum/i);
     expect(labelForDocumentType("proof_of_address")).toMatch(/proof of address/i);
-    expect(labelForDocumentType("identity")).toMatch(/identity/i);
+    expect(labelForDocumentType("identity")).toMatch(/officer|id/i);
     expect(labelForDocumentType("address")).toMatch(/address/i);
   });
 });
@@ -369,7 +467,47 @@ describe("buildProfilePayload", () => {
     expect(payload.incorporation_date).toBe("2020-01-15");
     expect(payload.registered_address?.city).toBe("Nairobi");
     expect(payload.associates?.[0].relationship_types).toContain("UBO");
+    expect(payload.associates?.[0].relationship_types).toContain("Representative");
+    expect(payload.associates?.[0].relationship_types).toContain("Director");
     expect(payload.associates?.[0].ubo?.ownership_percentage).toBe(60);
+  });
+
+  it("marks only the first UBO as Representative and Director when multiple owners exist", () => {
+    const draft = validDraft();
+    draft.associates = resizeAssociates(draft.associates, 2, "KE");
+    draft.associates[0].ownershipPercentage = "40";
+    draft.associates[0].street = "12 Owner Road";
+    draft.associates[0].city = "Nairobi";
+    draft.associates[0].postCode = "00100";
+    draft.associates[1] = {
+      ...emptyAssociateDraft("KE"),
+      firstName: "John",
+      lastName: "Smith",
+      dateOfBirth: "1980-01-01",
+      email: "john@example.com",
+      phoneNumber: "+254711111111",
+      ownershipPercentage: "35",
+      country: "KE",
+      street: "5 Side Street",
+      city: "Nairobi",
+      postCode: "00200",
+    };
+    const payload = buildProfilePayload(draft);
+    expect(payload.associates).toHaveLength(2);
+    expect(payload.associates?.[0].relationship_types).toEqual(["UBO", "Representative", "Director"]);
+    expect(payload.associates?.[1].relationship_types).toEqual(["UBO"]);
+    expect(payload.associates?.[0].residential_address?.city).toBe("Nairobi");
+  });
+});
+
+describe("resizeAssociates", () => {
+  it("grows and shrinks while preserving existing owners", () => {
+    const one = [emptyAssociateDraft("KE")];
+    one[0].firstName = "Jane";
+    const two = resizeAssociates(one, 2, "KE");
+    expect(two).toHaveLength(2);
+    expect(two[0].firstName).toBe("Jane");
+    expect(resizeAssociates(two, 1, "KE")).toHaveLength(1);
   });
 });
 
