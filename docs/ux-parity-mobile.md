@@ -10,7 +10,7 @@ Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
 - **Visual match ≠ product clone.** Mobile = individual KYC + Virtual IBAN consumer app; dashboard = business KYB + treasury/team/API.
 - **No fake balances.** Keep `—` until a real balance source exists (`docs/api-contract.md`).
 - **Keep live wiring:** auth BFF cookies, deposit accounts, entities/stablecoin, send (OffRamp + account-sends), OnRamp deposit, transactions pagination, KYB wizard, API keys.
-- **Cards / Team / Tier 3** stay Preview-gated. Do not copy mobile’s non-functional social login buttons.
+- **Cards** stay Preview-gated where noted. **Team** is live against Mboka membership APIs. Do not copy mobile’s non-functional social login buttons.
 
 ## Design DNA to adopt
 
@@ -27,7 +27,7 @@ Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
 |------|---------|
 | **Shell / Home** | Largest visual gap: brand hexes, fonts, tab shell (mobile Pay FAB vs dashboard Send/More), home hero (mobile brand gradient + IBAN card vs flat balance strip). API summary/activity already wired. |
 | **Money** | APIs largely in place. Gap is wizard depth: amount heroes, transit success, receive method/QR chooser, wallets/activity chrome—prefer step shells over dense 3-step modals. |
-| **Auth / secondary** | Auth jobs map; chrome uneven (login polished, signup/verify thinner). Verification is KYB not KYC. Profile/settings weak on web. Cards/Team Preview-mock only; Developer real. |
+| **Auth / secondary** | Auth jobs map; chrome uneven (login polished, signup/verify thinner). Verification is KYB not KYC. Profile/settings weak on web. Cards Preview-mock; Team wired; Developer real. |
 
 ## PR-sized track order
 
@@ -52,7 +52,7 @@ Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
 12. **V1 KYB polish** — Progress / “what you’ll need”; keep KYB APIs.
 13. **S1 Settings/profile shell** — Business identity, KYB link, appearance, sign out.
 14. **D1 Developer extract/polish** — Real API keys only.
-15. **C1/T1 Cards & Team** — Redesign **behind Preview only**.
+15. **C1 Cards** — Redesign **behind Preview only**. Team is live.
 
 ## Suggested first implementation slice
 

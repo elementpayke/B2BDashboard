@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   flagUrl, COUNTRIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
-  DEPOSIT_NETWORKS, ACCOUNTS, ROLES, TEAM_MEMBERS,
+  DEPOSIT_NETWORKS, ACCOUNTS,
   CORRIDORS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
@@ -39,6 +39,16 @@ import { authApi, type AuthMe } from "@/lib/services/auth";
 import { bootstrapApi } from "@/lib/services/bootstrap";
 import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
+import {
+  teamApi,
+  canManageTeam,
+  defaultTeamAcceptUrl,
+  displayNameFromEmail,
+  initialsFromEmail,
+  roleLabel,
+  MEMBERSHIP_ROLES,
+  type MembershipRole,
+} from "@/lib/services/team";
 import {
   depositAccountsApi,
   mapDepositAccountToCardView,
@@ -287,7 +297,8 @@ export default function DashboardApp(props: Props = {}) {
     addAccountMenu: false, createAccountKind: "bank", createAccountName: "",
     createAccountCurrency: "", createAccountStablecoin: "", createAccountNetwork: "",
     createAccountSaving: false, createAccountError: "",
-    teamMembers: TEAM_MEMBERS, inviteOpen: false, inviteName: "", inviteEmail: "", inviteRole: "operator",
+    inviteOpen: false, inviteEmail: "", inviteRole: "operator" as MembershipRole,
+    inviteBusy: false, inviteError: "", teamActionError: "",
     newCardLabel: "",
     newCardFirstName: "",
     newCardLastName: "",
@@ -362,6 +373,9 @@ export default function DashboardApp(props: Props = {}) {
 
   const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
   const businessId = meQuery.data?.business?.id ?? null;
+  const myRole = meQuery.data?.role ?? null;
+  const myUserId = meQuery.data?.user?.id ?? null;
+  const isTeamAdmin = canManageTeam(myRole);
   const meKybStatus =
     (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? null;
   const meKybApproved = isKybApproved(meKybStatus);
@@ -501,6 +515,12 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: () => apiKeysApi.list(),
     retry: false,
     enabled: screen === "developer" || state.modal === "apiKey",
+  });
+  const teamQuery = useQuery({
+    queryKey: ["team", businessId],
+    queryFn: () => teamApi.list(businessId as number),
+    retry: false,
+    enabled: screen === "team" && typeof businessId === "number",
   });
   // Public supported-catalog, used by the Send ("by country") flow to
   // resolve a real aggregator networkId per provider instead of relying on
@@ -2127,25 +2147,77 @@ export default function DashboardApp(props: Props = {}) {
   };
   const terminateCard = () => setState({ modal: null });
 
-  const openInvite = () => setState({ inviteOpen: true, inviteName: "", inviteEmail: "", inviteRole: "operator" });
-  const closeInvite = () => setState({ inviteOpen: false });
-  const setInviteName = (e) => setState({ inviteName: e.target.value });
-  const setInviteEmail = (e) => setState({ inviteEmail: e.target.value });
-  const setInviteRole = (k) => () => setState({ inviteRole: k });
-  const submitInvite = () => {
-    const { inviteName, inviteEmail, inviteRole, teamMembers } = state;
-    if (!inviteName.trim() || !inviteEmail.trim()) return;
-    const id = "u" + (teamMembers.length + 1) + "_" + Date.now();
+  const openInvite = () =>
     setState({
-      teamMembers: [...teamMembers, { id, name: inviteName.trim(), email: inviteEmail.trim(), role: inviteRole, status: "invited" }],
-      inviteOpen: false,
+      inviteOpen: true,
+      inviteEmail: "",
+      inviteRole: "operator" as MembershipRole,
+      inviteBusy: false,
+      inviteError: "",
     });
+  const closeInvite = () => setState({ inviteOpen: false, inviteBusy: false, inviteError: "" });
+  const setInviteEmail = (e) => setState({ inviteEmail: e.target.value, inviteError: "" });
+  const setInviteRole = (k: MembershipRole) => () => setState({ inviteRole: k });
+  const submitInvite = async () => {
+    if (!isTeamAdmin || typeof businessId !== "number") return;
+    const email = String(state.inviteEmail || "").trim();
+    if (!email) return;
+    setState({ inviteBusy: true, inviteError: "" });
+    try {
+      await teamApi.invite(businessId, {
+        email,
+        role: state.inviteRole as MembershipRole,
+        accept_url: defaultTeamAcceptUrl(),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      setState({ inviteOpen: false, inviteBusy: false, inviteError: "" });
+    } catch (err) {
+      setState({
+        inviteBusy: false,
+        inviteError: err instanceof ApiRequestError ? err.message : "Couldn't send the invite.",
+      });
+    }
   };
-  const setMemberRole = (id) => (e) => {
-    const role = e.target.value;
-    setState(s => ({ teamMembers: s.teamMembers.map(m => m.id === id ? { ...m, role } : m) }));
+  const setMemberRole = (userId: number) => async (e) => {
+    if (!isTeamAdmin || typeof businessId !== "number") return;
+    const role = e.target.value as MembershipRole;
+    setState({ teamActionError: "" });
+    try {
+      await teamApi.updateRole(businessId, userId, role);
+      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      if (userId === myUserId) {
+        await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      }
+    } catch (err) {
+      setState({
+        teamActionError: err instanceof ApiRequestError ? err.message : "Couldn't update the role.",
+      });
+    }
   };
-  const removeMember = (id) => () => setState(s => ({ teamMembers: s.teamMembers.filter(m => m.id !== id) }));
+  const removeMember = (userId: number) => async () => {
+    if (!isTeamAdmin || typeof businessId !== "number") return;
+    setState({ teamActionError: "" });
+    try {
+      await teamApi.remove(businessId, userId);
+      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+    } catch (err) {
+      setState({
+        teamActionError: err instanceof ApiRequestError ? err.message : "Couldn't remove the member.",
+      });
+    }
+  };
+  const revokeInvite = (inviteId: number) => async () => {
+    if (!isTeamAdmin || typeof businessId !== "number") return;
+    setState({ teamActionError: "" });
+    try {
+      await teamApi.revokeInvite(businessId, inviteId);
+      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+    } catch (err) {
+      setState({
+        teamActionError: err instanceof ApiRequestError ? err.message : "Couldn't revoke the invite.",
+      });
+    }
+  };
 
   const openCreateApiKeyModal = () => setState({ modal: "apiKey", apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyError: "" });
   const setApiKeyName = (e) => setState({ apiKeyName: e.target.value });
@@ -3054,14 +3126,23 @@ export default function DashboardApp(props: Props = {}) {
     bg: s.apiKeyEnvironment === env ? "var(--ink)" : "var(--surface2)",
     color: s.apiKeyEnvironment === env ? "var(--bg)" : "var(--ink)",
   }));
-  // Team has no backend yet — these stay local/simulated exactly as the
-  // original design prototype had them. See docs/api-contract.md.
-  const roleOptions = ROLES;
-  const teamCount = s.teamMembers.length;
+  // Team loads from Mboka; only admins can invite / change roles / remove.
+  const teamMembers = teamQuery.data?.members ?? [];
+  const teamInvites = teamQuery.data?.invites ?? [];
+  const teamCount = teamMembers.length + teamInvites.length;
+  const teamLoading = teamQuery.isLoading || teamQuery.isFetching;
+  const teamLoadError =
+    teamQuery.isError
+      ? teamQuery.error instanceof ApiRequestError
+        ? teamQuery.error.message
+        : "Couldn't load the team."
+      : "";
   const inviteOpen = s.inviteOpen;
-  const inviteName = s.inviteName;
   const inviteEmail = s.inviteEmail;
-  const inviteRoleChips = ROLES.map(r => ({
+  const inviteBusy = !!s.inviteBusy;
+  const inviteError = s.inviteError || "";
+  const teamActionError = s.teamActionError || "";
+  const inviteRoleChips = MEMBERSHIP_ROLES.map((r) => ({
     key: r.key,
     label: r.label,
     desc: r.desc,
@@ -3070,19 +3151,46 @@ export default function DashboardApp(props: Props = {}) {
     bg: s.inviteRole === r.key ? "var(--indigo)" : "var(--surface2)",
     color: s.inviteRole === r.key ? "var(--indigo-on)" : "var(--ink)",
   }));
-  const inviteCanSubmit = !!(s.inviteName.trim() && s.inviteEmail.trim());
-  const inviteCannotSubmit = !(s.inviteName.trim() && s.inviteEmail.trim());
-  const teamRows = s.teamMembers.map(m => ({
-        ...m,
-        initials: m.name.split(" ").map(p => p[0]).join("").slice(0,2).toUpperCase(),
-        statusLabel: m.status === "active" ? "Active" : "Invited",
-        statusColor: m.status === "active" ? "var(--indigo-text)" : "var(--amber)",
-        statusSoft: m.status === "active" ? "var(--indigo-tint)" : "var(--amber-tint)",
-        roleLabel: ROLES.find((r) => r.key === m.role)?.label ?? m.role,
-        roleOptions: ROLES,
-        setRole: setMemberRole(m.id),
-        remove: removeMember(m.id),
-      }));
+  const inviteCanSubmit = !!(String(s.inviteEmail || "").trim()) && isTeamAdmin && !inviteBusy;
+  const inviteCannotSubmit = !inviteCanSubmit;
+  const teamRows = teamMembers.map((m) => {
+    const name = displayNameFromEmail(m.email);
+    return {
+      key: `member-${m.user_id}`,
+      kind: "member" as const,
+      userId: m.user_id,
+      name,
+      email: m.email,
+      role: m.role,
+      initials: initialsFromEmail(m.email),
+      statusLabel: "Active",
+      statusColor: "var(--indigo-text)",
+      statusSoft: "var(--indigo-tint)",
+      roleLabel: roleLabel(m.role),
+      roleOptions: MEMBERSHIP_ROLES,
+      setRole: setMemberRole(m.user_id),
+      remove: removeMember(m.user_id),
+      isSelf: m.user_id === myUserId,
+    };
+  });
+  const inviteRows = teamInvites.map((inv) => {
+    const name = displayNameFromEmail(inv.email);
+    return {
+      key: `invite-${inv.id}`,
+      kind: "invite" as const,
+      inviteId: inv.id,
+      name,
+      email: inv.email,
+      role: inv.role,
+      initials: initialsFromEmail(inv.email),
+      statusLabel: "Invited",
+      statusColor: "var(--amber)",
+      statusSoft: "var(--amber-tint)",
+      roleLabel: roleLabel(inv.role),
+      revoke: revokeInvite(inv.id),
+    };
+  });
+  const allTeamRows = [...teamRows, ...inviteRows];
   const modalOpen = !!s.modal;
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
@@ -3900,21 +4008,29 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isTeam) ? (<>
 <div data-screen-label="Team" className="ep-team">
-<div className="ep-team__preview" role="note">
-<span className="ep-team__preview-badge">Preview</span>
-<span className="ep-team__preview-text">Team members are simulated demo data — invites stay local to this session.</span>
-</div>
 <div className="ep-team__head">
 <h2 className="ep-team__title">Members · {teamCount}</h2>
+{isTeamAdmin ? (
 <button type="button" onClick={openInvite} className="ep-team__cta">+ Invite person</button>
+) : (
+<span className="ep-team__preview-text">Only admins can invite or change roles.</span>
+)}
 </div>
+{(teamLoadError || teamActionError) ? (
+<p className="ep-team__preview-text" role="alert" style={{ color: "var(--danger, #b42318)" }}>
+{teamLoadError || teamActionError}
+</p>
+) : null}
+{teamLoading && !allTeamRows.length ? (
+<p className="ep-team__preview-text">Loading team…</p>
+) : null}
 
 <section className="ep-panel ep-team__list">
-{(teamRows || []).map((m: any, __i1: number) => (
-<div key={__i1} className="ep-team-row">
+{(allTeamRows || []).map((m: any) => (
+<div key={m.key} className="ep-team-row">
 <span className="ep-team__avatar" aria-hidden>{m.initials}</span>
 <div className="ep-team__identity">
-<div className="ep-team__name">{m.name}</div>
+<div className="ep-team__name">{m.name}{m.isSelf ? " (you)" : ""}</div>
 <div className="ep-team__email">{m.email}</div>
 </div>
 <div className="ep-team__meta">
@@ -3922,15 +4038,25 @@ export default function DashboardApp(props: Props = {}) {
 <span className="ep-team__role-pill">{m.roleLabel}</span>
 </div>
 <div className="ep-team-row__actions">
+{m.kind === "member" && isTeamAdmin ? (
+<>
 <select value={m.role} onChange={m.setRole} aria-label={`Role for ${m.name}`}>
-{(m.roleOptions || []).map((ro: any, __i2: number) => (
-<option key={__i2} value={ro.key}>{ro.label}</option>
+{(m.roleOptions || []).map((ro: any) => (
+<option key={ro.key} value={ro.key}>{ro.label}</option>
 ))}
 </select>
 <button type="button" onClick={m.remove} className="ep-team__remove" aria-label={`Remove ${m.name}`}>✕</button>
+</>
+) : null}
+{m.kind === "invite" && isTeamAdmin ? (
+<button type="button" onClick={m.revoke} className="ep-team__remove" aria-label={`Revoke invite for ${m.email}`}>Revoke</button>
+) : null}
 </div>
 </div>
 ))}
+{!teamLoading && !allTeamRows.length && !teamLoadError ? (
+<p className="ep-team__preview-text">No members yet.</p>
+) : null}
 </section>
 
 {(inviteOpen) ? (<>
@@ -3940,10 +4066,6 @@ export default function DashboardApp(props: Props = {}) {
 <h3 id="ep-team-invite-title" className="ep-team__invite-title">Invite a teammate</h3>
 <button type="button" onClick={closeInvite} className="ep-team__invite-close" aria-label="Close invite">✕</button>
 </div>
-<label className="ep-team__field">
-<span className="ep-team__field-label">Full name</span>
-<input value={inviteName} onChange={setInviteName} placeholder="e.g. Amina Bello" className="ep-team__input" autoComplete="name" />
-</label>
 <label className="ep-team__field">
 <span className="ep-team__field-label">Email address</span>
 <input value={inviteEmail} onChange={setInviteEmail} placeholder="name@company.com" className="ep-team__input" type="email" autoComplete="email" />
@@ -3966,7 +4088,10 @@ export default function DashboardApp(props: Props = {}) {
 ))}
 </div>
 </div>
-<button type="button" onClick={submitInvite} disabled={inviteCannotSubmit} className="ep-team__invite-submit">Send invite</button>
+{inviteError ? <p role="alert" style={{ color: "var(--danger, #b42318)", fontSize: "13px" }}>{inviteError}</p> : null}
+<button type="button" onClick={submitInvite} disabled={inviteCannotSubmit} className="ep-team__invite-submit">
+{inviteBusy ? "Sending…" : "Send invite"}
+</button>
 </div>
 </div>
 </>) : null}
