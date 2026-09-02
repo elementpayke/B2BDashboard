@@ -157,6 +157,29 @@ export async function apiUpload<T>(method: string, path: string, formData: FormD
   return envelopeFromResponse<T>(res);
 }
 
+/** Binary download (e.g. KYB document content) through the Mboka proxy. */
+export async function apiDownloadBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await fetch(`${MBOKA_PREFIX}${path}`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try {
+      const json = (await res.json()) as { message?: string };
+      if (json?.message) message = json.message;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiRequestError(message, res.status);
+  }
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] ?? null;
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
 /** For our own dedicated auth routes (/api/auth/...), which aren't behind
  * the generic proxy since they need to intercept tokens rather than pass
  * them through. */

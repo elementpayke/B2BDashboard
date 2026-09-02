@@ -1,6 +1,14 @@
 "use client";
 
 import React from "react";
+import {
+  canOpenKybWizard,
+  describeKybStatus,
+  describeKybStatusDetail,
+  isKybApproved,
+  isKybInReview,
+  kybStatusPresentation,
+} from "@/lib/services/kyb";
 
 export type KybGateBannerProps = {
   verificationStatus?: string;
@@ -16,6 +24,34 @@ export type KybGateBannerProps = {
 export default function KybGateBanner(p: KybGateBannerProps) {
   const status = p.verificationStatus?.trim();
   const notes = p.reviewerNotes?.trim();
+  const presentation = kybStatusPresentation(status);
+  const detail = describeKybStatusDetail(status, notes);
+  const approved = isKybApproved(status);
+  const inReview = isKybInReview(status);
+  const showCta = p.showAction && !!p.onStartVerification && canOpenKybWizard(status);
+
+  if (approved) return null;
+
+  const tone = inReview
+    ? {
+        bg: "var(--amber-tint)",
+        border: "color-mix(in srgb, var(--amber) 28%, var(--border))",
+        badgeBg: "var(--amber)",
+        badgeLabel: "In review",
+      }
+    : status === "rejected" || status === "expired"
+      ? {
+          bg: "var(--red-tint)",
+          border: "color-mix(in srgb, var(--red) 28%, var(--border))",
+          badgeBg: "var(--red)",
+          badgeLabel: describeKybStatus(status),
+        }
+      : {
+          bg: "var(--amber-tint)",
+          border: "color-mix(in srgb, var(--amber) 28%, var(--border))",
+          badgeBg: "var(--amber)",
+          badgeLabel: "Verification required",
+        };
 
   return (
     <div
@@ -28,8 +64,8 @@ export default function KybGateBanner(p: KybGateBannerProps) {
         flexWrap: "wrap",
         padding: "14px 16px",
         borderRadius: "14px",
-        background: "var(--amber-tint)",
-        border: "1px solid color-mix(in srgb, var(--amber) 28%, var(--border))",
+        background: tone.bg,
+        border: `1px solid ${tone.border}`,
         minHeight: "52px",
       }}
     >
@@ -41,12 +77,12 @@ export default function KybGateBanner(p: KybGateBannerProps) {
           textTransform: "uppercase",
           padding: "5px 10px",
           borderRadius: "999px",
-          background: "var(--amber)",
+          background: tone.badgeBg,
           color: "#fff",
           flexShrink: 0,
         }}
       >
-        Verification required
+        {tone.badgeLabel}
       </span>
       <div style={{ flex: "1", minWidth: "200px" }}>
         <p
@@ -58,23 +94,9 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             lineHeight: 1.4,
           }}
         >
-          Complete business verification before sending money or opening deposit accounts.
-          Deposit accounts require KYB approval.
+          {presentation.headline}. {detail}
         </p>
-        {status ? (
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "var(--muted)",
-              lineHeight: 1.4,
-            }}
-          >
-            Current status: {status}
-          </p>
-        ) : null}
-        {notes ? (
+        {notes && (status === "rejected" || status === "expired") ? (
           <p
             style={{
               margin: "6px 0 0",
@@ -84,11 +106,11 @@ export default function KybGateBanner(p: KybGateBannerProps) {
               lineHeight: 1.4,
             }}
           >
-            Reviewer notes: {notes}
+            What compliance needs: {notes}
           </p>
         ) : null}
       </div>
-      {p.showAction && p.onStartVerification ? (
+      {showCta ? (
         <button
           type="button"
           onClick={p.onStartVerification}
@@ -107,7 +129,10 @@ export default function KybGateBanner(p: KybGateBannerProps) {
             WebkitTapHighlightColor: "transparent",
           }}
         >
-          {p.actionLabel || "Start verification"}
+          {p.actionLabel ||
+            (status === "rejected" || status === "expired"
+              ? "Fix and resubmit"
+              : "Start verification")}
         </button>
       ) : null}
     </div>

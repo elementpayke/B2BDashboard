@@ -1,5 +1,6 @@
 import {
   ApiRequestError,
+  apiDownloadBlob,
   apiEnvelope,
   apiUpload,
   type RequestOptions,
@@ -160,9 +161,12 @@ export type KybRequiredDocument = {
   type: string;
   category: "business" | "shareholder";
   label: string;
+  description?: string;
+  help_text?: string;
   requires_associate_ref_id: boolean;
   issuing_country_required: boolean;
   uploaded: boolean;
+  uploaded_doc_id?: number | null;
 };
 
 export type KybDocumentRequirements = {
@@ -183,9 +187,12 @@ export type KybDocument = {
   id: number;
   document_type: string;
   provider_document_type: string;
+  label?: string;
   issuing_country?: string | null;
   associate_ref_id?: string | null;
   is_active: boolean;
+  downloadable?: boolean;
+  content_path?: string | null;
 };
 
 export type KybDocumentList = { documents: KybDocument[] };
@@ -235,21 +242,65 @@ export const SOURCE_OF_FUNDS_OPTIONS: { value: SourceOfFunds; label: string }[] 
 export type KybTierDisplay = { label: string; color: string; soft: string };
 
 const KYB_TIER_DISPLAY: Record<KybStatus, KybTierDisplay> = {
-  approved: { label: "Complete", color: "var(--indigo-text)", soft: "var(--indigo-tint)" },
+  approved: { label: "Verified", color: "var(--indigo-text)", soft: "var(--indigo-tint)" },
   submitted: { label: "In review", color: "var(--amber)", soft: "var(--amber-tint)" },
-  rejected: { label: "Rejected", color: "var(--red)", soft: "var(--red-tint)" },
+  rejected: { label: "Action needed", color: "var(--red)", soft: "var(--red-tint)" },
   expired: { label: "Expired", color: "var(--red)", soft: "var(--red-tint)" },
   /** Vault `incomplete` maps to pending — profile/docs may still be open. */
-  pending: { label: "In progress", color: "var(--muted)", soft: "var(--surface2)" },
+  pending: { label: "Not submitted", color: "var(--muted)", soft: "var(--surface2)" },
 };
+
+export type KybStatusPresentation = KybTierDisplay & {
+  headline: string;
+};
+
+const KYB_STATUS_PRESENTATION: Record<KybStatus, KybStatusPresentation> = {
+  approved: {
+    ...KYB_TIER_DISPLAY.approved,
+    headline: "Business verified",
+  },
+  submitted: {
+    ...KYB_TIER_DISPLAY.submitted,
+    headline: "Verification in review",
+  },
+  rejected: {
+    ...KYB_TIER_DISPLAY.rejected,
+    headline: "More information needed",
+  },
+  expired: {
+    ...KYB_TIER_DISPLAY.expired,
+    headline: "Verification expired",
+  },
+  pending: {
+    ...KYB_TIER_DISPLAY.pending,
+    headline: "Submit business verification",
+  },
+};
+
+export function kybStatusPresentation(
+  status: string | null | undefined,
+): KybStatusPresentation {
+  if (status == null || status === "") {
+    return {
+      label: "…",
+      color: "var(--muted)",
+      soft: "var(--surface2)",
+      headline: "Business verification",
+    };
+  }
+  return (
+    KYB_STATUS_PRESENTATION[(status as KybStatus) || "pending"] ??
+    KYB_STATUS_PRESENTATION.pending
+  );
+}
 
 /** Human labels for Mboka / vault document type keys. */
 export const KYB_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   certificate_of_incorporation: "Certificate of incorporation",
   memorandum_of_association: "Memorandum of association",
-  proof_of_address: "Proof of address",
-  identity: "Identity document",
-  address: "Proof of address",
+  proof_of_address: "Business proof of address",
+  identity: "Officer photo ID",
+  address: "Officer proof of address",
   power_of_attorney: "Power of attorney",
   corporate_structure: "Corporate structure",
   director_structure: "Director structure",
@@ -264,9 +315,25 @@ export const KYB_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   other: "Other document",
 };
 
+export const KYB_DOCUMENT_TYPE_HELP: Record<string, string> = {
+  certificate_of_incorporation:
+    "Formation / registration certificate. PDF preferred.",
+  memorandum_of_association:
+    "Memorandum & articles, bylaws, or operating agreement.",
+  proof_of_address:
+    "Business address proof dated within 3 months (utility bill or bank letter).",
+  identity: "Passport, national ID, or driver's license for a director / UBO.",
+  address: "Officer residential proof of address (last 3 months).",
+};
+
 export function labelForDocumentType(type: string): string {
   const key = type.trim().toLowerCase();
   return KYB_DOCUMENT_TYPE_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function helpForDocumentType(type: string, fallback?: string | null): string {
+  const key = type.trim().toLowerCase();
+  return (fallback && fallback.trim()) || KYB_DOCUMENT_TYPE_HELP[key] || `Upload a clear PDF, JPEG, or PNG for ${labelForDocumentType(key).toLowerCase()}.`;
 }
 
 export function kybTierDisplay(status: string | null | undefined): KybTierDisplay {
@@ -321,6 +388,31 @@ export function canOpenKybWizard(status: string | null | undefined): boolean {
 
 export function describeKybStatus(status: string | null | undefined): string {
   return kybTierDisplay(status).label;
+}
+
+/** Longer user-facing copy for the verification screen / banners. */
+export function describeKybStatusDetail(
+  status: string | null | undefined,
+  reviewerNotes?: string | null,
+): string {
+  if (status == null || status === "") {
+    return "Checking your verification status…";
+  }
+  switch (status) {
+    case "approved":
+      return "Compliance approved your business. Accounts and transfers are unlocked.";
+    case "submitted":
+      return "You already submitted once. Compliance is reviewing your package — hang tight.";
+    case "rejected":
+      return reviewerNotes?.trim()
+        ? "Compliance couldn’t approve this package yet. Review their notes below, update what’s missing, then resubmit."
+        : "Compliance couldn’t approve this package yet. Update the requested details and resubmit.";
+    case "expired":
+      return "Your previous verification session expired. Start again with fresh documents.";
+    case "pending":
+    default:
+      return "One submission covers your business profile, beneficial owner, and required documents.";
+  }
 }
 
 /** Fresh Idempotency-Key for KYB initiate / submit / document mutations. */
@@ -385,6 +477,11 @@ export type KybWizardAssociateDraft = {
   phoneNumber: string;
   ownershipPercentage: string;
   country: string;
+  street: string;
+  street2: string;
+  city: string;
+  postCode: string;
+  state: string;
 };
 
 export type KybWizardProfileDraft = {
@@ -405,8 +502,41 @@ export type KybWizardProfileDraft = {
   postCode: string;
   state: string;
   addressCountry: string;
+  /** Required when UBO ownership sums to less than 100%. */
+  ownershipRemainderNote: string;
   associates: KybWizardAssociateDraft[];
+  /** Step 4 attestation — must be true before submit. */
+  attestedAccurate: boolean;
 };
+
+/** Compliance: UBO = ≥25% ownership. Cap the wizard at a practical count. */
+export const KYB_MIN_UBO_OWNERSHIP = 25;
+export const KYB_MAX_UBOS = 5;
+export const KYB_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const KYB_ALLOWED_DOCUMENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
+
+export function emptyAssociateDraft(defaultCountry = "KE"): KybWizardAssociateDraft {
+  return {
+    id: newAssociateId(),
+    firstName: "",
+    lastName: "",
+    dateOfBirth: "",
+    email: "",
+    phoneNumber: "",
+    ownershipPercentage: "",
+    country: defaultCountry,
+    street: "",
+    street2: "",
+    city: "",
+    postCode: "",
+    state: "",
+  };
+}
 
 export function emptyKybWizardDraft(defaultCountry = "KE"): KybWizardProfileDraft {
   return {
@@ -427,19 +557,26 @@ export function emptyKybWizardDraft(defaultCountry = "KE"): KybWizardProfileDraf
     postCode: "",
     state: "",
     addressCountry: defaultCountry,
-    associates: [
-      {
-        id: newAssociateId(),
-        firstName: "",
-        lastName: "",
-        dateOfBirth: "",
-        email: "",
-        phoneNumber: "",
-        ownershipPercentage: "",
-        country: defaultCountry,
-      },
-    ],
+    ownershipRemainderNote: "",
+    associates: [emptyAssociateDraft(defaultCountry)],
+    attestedAccurate: false,
   };
+}
+
+/** Grow/shrink the associates list when the user picks UBO count. */
+export function resizeAssociates(
+  associates: KybWizardAssociateDraft[],
+  count: number,
+  defaultCountry: string,
+): KybWizardAssociateDraft[] {
+  const n = Math.max(1, Math.min(KYB_MAX_UBOS, Math.floor(count) || 1));
+  if (associates.length === n) return associates;
+  if (associates.length > n) return associates.slice(0, n);
+  const next = [...associates];
+  while (next.length < n) {
+    next.push(emptyAssociateDraft(defaultCountry));
+  }
+  return next;
 }
 
 export function profileDraftFromSummary(
@@ -476,16 +613,24 @@ export function profileDraftFromSummary(
   }
   const associates = (profile.associates as AssociateInput[] | null | undefined) ?? [];
   if (associates.length > 0) {
-    draft.associates = associates.map((a) => ({
-      id: a.id,
-      firstName: a.full_name?.first_name || "",
-      lastName: a.full_name?.last_name || "",
-      dateOfBirth: a.date_of_birth || "",
-      email: a.email || "",
-      phoneNumber: a.phone_number || "",
-      ownershipPercentage: a.ubo?.ownership_percentage != null ? String(a.ubo.ownership_percentage) : "",
-      country: a.tax_residence_country || a.residential_address?.country || draft.country,
-    }));
+    draft.associates = associates.slice(0, KYB_MAX_UBOS).map((a) => {
+      const ra = a.residential_address;
+      return {
+        id: a.id || newAssociateId(),
+        firstName: a.full_name?.first_name || "",
+        lastName: a.full_name?.last_name || "",
+        dateOfBirth: a.date_of_birth || "",
+        email: a.email || "",
+        phoneNumber: a.phone_number || "",
+        ownershipPercentage: a.ubo?.ownership_percentage != null ? String(a.ubo.ownership_percentage) : "",
+        country: a.tax_residence_country || ra?.country || draft.country,
+        street: ra?.street || "",
+        street2: ra?.street2 || "",
+        city: ra?.city || "",
+        postCode: ra?.post_code || "",
+        state: ra?.state || "",
+      };
+    });
   }
   return draft;
 }
@@ -512,7 +657,10 @@ export function validateBusinessStep(draft: KybWizardProfileDraft): string | nul
   }
   if (!draft.businessType) return "Choose a business type.";
   if (!draft.industry.trim()) return "Industry is required.";
-  if (draft.website.trim() && !isValidHttpUrl(draft.website)) {
+  if (!draft.website.trim()) {
+    return "A real business website is required (https://…).";
+  }
+  if (!isValidHttpUrl(draft.website) || !draft.website.trim().toLowerCase().startsWith("https://")) {
     return "Website must be a valid URL starting with https://";
   }
   if (!draft.estimatedEmployees) return "Select estimated employees.";
@@ -533,33 +681,67 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
   if (!isValidIsoCountryCode(draft.addressCountry)) {
     return "Select a valid address country from the list.";
   }
-  const associate = draft.associates[0];
-  if (!associate) return "At least one beneficial owner is required.";
-  if (!NAME_RE.test(associate.firstName.trim())) {
-    return "Enter a valid UBO first name (letters only).";
+  if (!draft.associates.length) {
+    return "At least one beneficial owner (25%+) is required.";
   }
-  if (!NAME_RE.test(associate.lastName.trim())) {
-    return "Enter a valid UBO last name (letters only).";
+  if (draft.associates.length > KYB_MAX_UBOS) {
+    return `You can list up to ${KYB_MAX_UBOS} beneficial owners.`;
   }
-  const dob = normalizeDateOfBirth(associate.dateOfBirth);
-  if (!dob) {
-    return "Date of birth must be a valid calendar date (use the date picker).";
+
+  let ownershipSum = 0;
+  for (let i = 0; i < draft.associates.length; i += 1) {
+    const associate = draft.associates[i];
+    const who =
+      draft.associates.length === 1 ? "beneficial owner" : `beneficial owner ${i + 1}`;
+    if (!NAME_RE.test(associate.firstName.trim())) {
+      return `Enter a valid first name for ${who} (letters only).`;
+    }
+    if (!NAME_RE.test(associate.lastName.trim())) {
+      return `Enter a valid last name for ${who} (letters only).`;
+    }
+    const dob = normalizeDateOfBirth(associate.dateOfBirth);
+    if (!dob) {
+      return `Date of birth for ${who} must be a valid calendar date (use the date picker).`;
+    }
+    const age = ageYearsUtc(dob);
+    if (age < 18) return `${who[0].toUpperCase()}${who.slice(1)} must be at least 18 years old.`;
+    if (age > 120) return `Check the date of birth for ${who}.`;
+    if (!associate.email.trim() || !EMAIL_RE.test(associate.email.trim())) {
+      return `A valid email is required for ${who}.`;
+    }
+    if (!associate.phoneNumber.trim() || !E164_RE.test(associate.phoneNumber.trim())) {
+      return `Phone for ${who} must be E.164 format, e.g. +254700000000.`;
+    }
+    const ownership = Number(associate.ownershipPercentage);
+    if (!Number.isInteger(ownership) || ownership < KYB_MIN_UBO_OWNERSHIP || ownership > 100) {
+      return `Ownership for ${who} must be a whole number from ${KYB_MIN_UBO_OWNERSHIP} to 100 (UBOs own ${KYB_MIN_UBO_OWNERSHIP}%+).`;
+    }
+    ownershipSum += ownership;
+    if (!isValidIsoCountryCode(associate.country || draft.addressCountry)) {
+      return `Select a valid tax residence country for ${who}.`;
+    }
+    if (!associate.street.trim() || associate.street.trim().length < 3) {
+      return `Residential street address is required for ${who}.`;
+    }
+    if (!associate.city.trim()) {
+      return `Residential city is required for ${who}.`;
+    }
+    if (!associate.postCode.trim()) {
+      return `Residential post code is required for ${who}.`;
+    }
   }
-  const age = ageYearsUtc(dob);
-  if (age < 18) return "Beneficial owner must be at least 18 years old.";
-  if (age > 120) return "Check the beneficial owner date of birth.";
-  if (!associate.email.trim() || !EMAIL_RE.test(associate.email.trim())) {
-    return "A valid beneficial owner email is required.";
+  if (ownershipSum > 100) {
+    return `Ownership percentages add up to ${ownershipSum}% — total cannot exceed 100%.`;
   }
-  if (!associate.phoneNumber.trim() || !E164_RE.test(associate.phoneNumber.trim())) {
-    return "Phone must be E.164 format, e.g. +254700000000.";
+  if (ownershipSum < 100 && !draft.ownershipRemainderNote.trim()) {
+    return `Ownership adds up to ${ownershipSum}%. Explain who holds the remaining ${100 - ownershipSum}% (e.g. persons under 25%, a trust, or corporate owners).`;
   }
-  const ownership = Number(associate.ownershipPercentage);
-  if (!Number.isInteger(ownership) || ownership < 1 || ownership > 100) {
-    return "Ownership must be a whole number between 1 and 100.";
-  }
-  if (!isValidIsoCountryCode(associate.country || draft.addressCountry)) {
-    return "Select a valid tax residence country for the beneficial owner.";
+  return null;
+}
+
+export function validateSubmitStep(draft: KybWizardProfileDraft): string | null {
+  if (!draft.attestedAccurate) {
+    return "Confirm the attestation before submitting for review.";
   }
   return null;
 }
@@ -568,10 +750,26 @@ export function validateProfileDraft(draft: KybWizardProfileDraft): string | nul
   return validateBusinessStep(draft) ?? validateAddressUboStep(draft);
 }
 
+export function validateKybDocumentFile(file: File): string | null {
+  if (file.size <= 0) return "Uploaded file is empty.";
+  if (file.size > KYB_MAX_DOCUMENT_BYTES) {
+    return "Document exceeds the 10 MB limit.";
+  }
+  const type = (file.type || "").toLowerCase();
+  const name = file.name.toLowerCase();
+  const okType =
+    KYB_ALLOWED_DOCUMENT_TYPES.has(type) ||
+    name.endsWith(".pdf") ||
+    name.endsWith(".jpg") ||
+    name.endsWith(".jpeg") ||
+    name.endsWith(".png");
+  if (!okType) {
+    return "Use a PDF, JPEG, or PNG file.";
+  }
+  return null;
+}
+
 export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInput {
-  const associate = draft.associates[0];
-  const dob = normalizeDateOfBirth(associate.dateOfBirth) || associate.dateOfBirth.trim();
-  const taxCountry = (associate.country || draft.addressCountry).trim().toUpperCase();
   const registered_address: BusinessAddress = {
     street: draft.street.trim(),
     street2: draft.street2.trim() || undefined,
@@ -580,10 +778,15 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
     state: draft.state.trim() || undefined,
     country: draft.addressCountry.trim().toUpperCase(),
   };
-  const associates: AssociateInput[] = [
-    {
+  const associates: AssociateInput[] = draft.associates.map((associate, index) => {
+    const dob = normalizeDateOfBirth(associate.dateOfBirth) || associate.dateOfBirth.trim();
+    const taxCountry = (associate.country || draft.addressCountry).trim().toUpperCase();
+    // First UBO is also the primary Representative / control contact for vault docs.
+    const relationship_types: AssociateInput["relationship_types"] =
+      index === 0 ? ["UBO", "Representative", "Director"] : ["UBO"];
+    return {
       id: associate.id,
-      relationship_types: ["UBO", "Representative"],
+      relationship_types,
       full_name: {
         first_name: associate.firstName.trim(),
         last_name: associate.lastName.trim(),
@@ -592,9 +795,17 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
       email: associate.email.trim() || undefined,
       phone_number: associate.phoneNumber.trim() || undefined,
       tax_residence_country: taxCountry,
+      residential_address: {
+        street: associate.street.trim(),
+        street2: associate.street2.trim() || undefined,
+        city: associate.city.trim(),
+        post_code: associate.postCode.trim(),
+        state: associate.state.trim() || undefined,
+        country: taxCountry,
+      },
       ubo: { ownership_percentage: Number(associate.ownershipPercentage) },
-    },
-  ];
+    };
+  });
   const incorporationDate =
     normalizeDateOfBirth(draft.incorporationDate) || draft.incorporationDate.trim();
   return {
@@ -673,6 +884,29 @@ export const kybApi = {
     apiEnvelope<KybDocumentList>("GET", businessPath(businessId, "/documents")),
   uploadDocument: (businessId: number, formData: FormData) =>
     apiUpload<KybDocument>("POST", businessPath(businessId, "/documents"), formData),
+  /** Stream submitted document bytes (view / download). */
+  downloadDocument: async (businessId: number, docId: number) => {
+    const { blob, filename } = await apiDownloadBlob(
+      businessPath(businessId, `/documents/${docId}/content`),
+    );
+    return { blob, filename };
+  },
+  openDocument: async (businessId: number, docId: number, mode: "view" | "download" = "view") => {
+    const { blob, filename } = await kybApi.downloadDocument(businessId, docId);
+    const url = URL.createObjectURL(blob);
+    if (mode === "download") {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || `kyb-document-${docId}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
   submitDocument: (businessId: number, docId: number, idempotencyKey?: string) =>
     apiEnvelope<unknown>(
       "POST",
@@ -680,6 +914,8 @@ export const kybApi = {
       { doc_id: docId },
       idempotencyHeaders(idempotencyKey),
     ),
+  deleteDocument: (businessId: number, docId: number) =>
+    apiEnvelope<unknown>("DELETE", businessPath(businessId, `/documents/${docId}`)),
   listShareholders: (businessId: number) =>
     apiEnvelope<KybShareholderList>("GET", businessPath(businessId, "/shareholders")),
   addShareholder: (businessId: number, shareholder: Record<string, unknown>) =>

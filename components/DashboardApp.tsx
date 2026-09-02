@@ -218,7 +218,7 @@ import VerificationScreen from "@/components/verification/VerificationScreen";
 import KybWizardModal from "@/components/verification/KybWizardModal";
 import KybGateBanner from "@/components/verification/KybGateBanner";
 import { useKybWizard } from "@/lib/hooks/useKybWizard";
-import { canOpenKybWizard, describeKybStatus, isKybApproved, kybTierDisplay, mergeKybSummaryCache } from "@/lib/services/kyb";
+import { canOpenKybWizard, describeKybStatus, isKybApproved, mergeKybSummaryCache } from "@/lib/services/kyb";
 
 type Props = {
   boostDarkContrast?: boolean;
@@ -380,6 +380,7 @@ export default function DashboardApp(props: Props = {}) {
     businessId,
     kybSummary: meQuery.data?.kyb_summary,
     business: meQuery.data?.business,
+    kybStatus: meKybStatus,
     enabled: state.modal === "kyb",
     onSubmitted: () => {
       queryClient.invalidateQueries({ queryKey: ["auth-me"] });
@@ -1400,9 +1401,17 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
-  const openModalTier = () => setState({ modal: "tier", tierDone: false });
-  const openModalKyb = () => setState({ modal: "kyb" });
   const goVerification = () => setState({ screen: "verification", sidebarOpen: false, moreOpen: false });
+  const openModalKyb = () => {
+    if (meQuery.isLoading || meQuery.isPending) return;
+    const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    // One live submission at a time — don't reopen the wizard while in review / already verified.
+    if (!canOpenKybWizard(status)) {
+      goVerification();
+      return;
+    }
+    setState({ modal: "kyb" });
+  };
   const guardMoneyModal = (name: string) => () => {
     // Wait for /auth/me before treating KYB as pending — otherwise approved
     // businesses get bounced to verification while the profile is still loading.
@@ -2257,8 +2266,6 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const uploadTierDoc = () => {};
-  const submitTier = () => setState({ tierDone: true });
   const setBalanceView = (v) => () => setState({ balanceView: v });
   const setDisplayCurrency = (currency: string) => {
     const code = currency.trim().toUpperCase();
@@ -2318,7 +2325,7 @@ export default function DashboardApp(props: Props = {}) {
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
       invoices: ["Invoices", "Request and track incoming payments"],
       reports: ["Reports", "Volume, corridors, and settlement performance"],
-      verification: ["Verification", "Higher tiers unlock higher limits"],
+      verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
       send: ["Send money", "Pick a method, recipient, and amount"],
@@ -2970,20 +2977,18 @@ export default function DashboardApp(props: Props = {}) {
 
   // Reports screen is waitlisted — keep nav entry, skip derived report metrics.
 
-  // Tier 1 reflects real account/email verification. Tier 2 is the real Mboka
-  // KYB wizard (`/api/businesses/{id}/kyb/*`). Tier 3 has no backend yet.
-  const emailVerified = !!meQuery.data?.user.email_verified;
-  const tier2Display = kybStatusLoading
-    ? { label: "Loading…", color: "var(--muted)", soft: "var(--surface2)" }
-    : kybTierDisplay(kybStatus);
-  const tier2Approved = kybApproved;
+  // Single KYB case — no tier ladder. Submit once; then show clear compliance feedback.
   const hasKybProfile = !!meQuery.data?.kyb_summary?.profile;
-  const kybActionLabel = hasKybProfile ? "Continue verification" : "Start verification";
-  const tiers = [
-        { num: "TIER 1", title: "Basic", reqs: ["Business email verified","Director ID verified","Phone linked"], limit: "Limit · $1,000 / day", statusLabel: emailVerified ? "Complete" : "Pending", statusColor: emailVerified ? "var(--indigo-text)" : "var(--muted)", statusSoft: emailVerified ? "var(--indigo-tint)" : "var(--surface2)", locked: false },
-        { num: "TIER 2", title: "Registered Business", reqs: ["Business profile & address","Beneficial owner (UBO)","Supporting documents"], limit: "Limit · $25,000 / day", statusLabel: tier2Display.label, statusColor: tier2Display.color, statusSoft: tier2Display.soft, locked: false, showKybAction: !kybStatusLoading && canOpenKybWizard(kybStatus), kybActionLabel },
-        { num: "TIER 3", title: "Institutional", reqs: ["Audited financials","AML/CFT policy","Beneficial ownership"], limit: "Limit · $250,000 / day", statusLabel: kybStatusLoading ? "…" : !tier2Approved ? "Requires Tier 2" : s.tierDone ? "In review" : "Locked", statusColor: s.tierDone ? "var(--amber)" : "var(--muted)", statusSoft: s.tierDone ? "var(--amber-tint)" : "var(--surface2)", locked: !tier2Approved || !s.tierDone },
-      ];
+  const kybReviewerNotes =
+    typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string"
+      ? meQuery.data.kyb_summary.profile.reviewer_notes
+      : null;
+  const kybActionLabel =
+    kybStatus === "rejected" || kybStatus === "expired"
+      ? "Fix and resubmit"
+      : hasKybProfile
+        ? "Continue verification"
+        : "Start verification";
   // The backend only ever returns the full plaintext key once, in the
   // create/rotate response — list/detail always return it masked. So
   // "Reveal"/"Copy" on the secret-key row can only do something real for a
@@ -3079,7 +3084,7 @@ export default function DashboardApp(props: Props = {}) {
         remove: removeMember(m.id),
       }));
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", tier: "Upgrade to Tier 3", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isSendFlow = s.modal === "send";
@@ -3095,7 +3100,6 @@ export default function DashboardApp(props: Props = {}) {
   const isModalCardDetail = s.modal === "cardDetail";
   const isModalNewCard = s.modal === "newCard";
   const isModalInvoice = s.modal === "invoice";
-  const isModalTier = s.modal === "tier";
   const isModalKyb = s.modal === "kyb";
   const isModalFundCard = s.modal === "fundCard";
   const sendIsCountry = s.sendGroup === "country";
@@ -3537,9 +3541,6 @@ export default function DashboardApp(props: Props = {}) {
   const invoiceDone = s.invoiceDone;
   const invoiceError = s.invoiceError;
   const invoiceSubmitting = s.invoiceSubmitting;
-  const tierDocs = ["Audited financial statements","AML/CFT policy document","Beneficial ownership register"];
-  const tierNotDone = !s.tierDone;
-  const tierDone = s.tierDone;
 
 
   return (
@@ -3642,7 +3643,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 
 {!kybStatusLoading && !kybApproved ? (
-<KybGateBanner verificationStatus={describeKybStatus(kybStatus)} reviewerNotes={typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string" ? meQuery.data.kyb_summary.profile.reviewer_notes : null} showAction={canOpenKybWizard(kybStatus)} actionLabel={kybActionLabel} onStartVerification={() => { goVerification(); openModalKyb(); }} />
+<KybGateBanner verificationStatus={kybStatus} reviewerNotes={kybReviewerNotes} showAction={canOpenKybWizard(kybStatus)} actionLabel={kybActionLabel} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
 <div className="ep-home__qa-row" aria-label="Quick actions">
@@ -3886,7 +3887,15 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isVerification) ? (<>
-<VerificationScreen tiers={tiers} onUpgradeTier3={openModalTier} onStartKyb={openModalKyb} reviewerNotes={kybStatus === "rejected" && typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string" ? meQuery.data.kyb_summary.profile.reviewer_notes : null} />
+<VerificationScreen
+  status={kybStatus}
+  loading={kybStatusLoading}
+  onStartKyb={openModalKyb}
+  actionLabel={kybActionLabel}
+  reviewerNotes={kybReviewerNotes}
+  submittedAt={typeof meQuery.data?.kyb_summary?.profile?.submitted_at === "string" ? meQuery.data.kyb_summary.profile.submitted_at : null}
+  reviewedAt={typeof meQuery.data?.kyb_summary?.profile?.reviewed_at === "string" ? meQuery.data.kyb_summary.profile.reviewed_at : null}
+/>
 </>) : null}
 
 {(isTeam) ? (<>
@@ -4566,43 +4575,26 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 <KybWizardModal
   step={kybWizard.step}
   stepDots={kybWizard.stepDots}
+  stepLabels={kybWizard.stepLabels}
   draft={kybWizard.draft}
   patchDraft={kybWizard.patchDraft}
   patchAssociate={kybWizard.patchAssociate}
+  setUboCount={kybWizard.setUboCount}
   error={kybWizard.error}
   busy={kybWizard.busy}
   docRows={kybWizard.docRows}
   setDocumentFile={kybWizard.setDocumentFile}
   uploadDocumentRow={kybWizard.uploadDocumentRow}
+  openDocument={kybWizard.openDocument}
+  replaceDocumentRow={kybWizard.replaceDocumentRow}
   docsComplete={kybWizard.docsComplete}
+  docsUploading={kybWizard.docsUploading}
   submitted={kybWizard.submitted}
+  submitOutcome={kybWizard.submitOutcome}
   nextStep={kybWizard.nextStep}
   backStep={kybWizard.backStep}
   closeModal={closeModal}
 />
-</>) : null}
-
-{(isModalTier) ? (<>
-{(tierNotDone) ? (<>
-<div className="ep-cards__tier">
-<p className="ep-cards__tier-intro">Upload three documents. Review usually takes 1–2 business days.</p>
-{(tierDocs || []).map((d: any, __i2: number) => (
-<div key={__i2} className="ep-cards__tier-doc">
-<span className="ep-cards__tier-doc-title">{d}</span>
-<button type="button" onClick={uploadTierDoc} className="ep-cards__tier-upload">Upload</button>
-</div>
-))}
-<button type="button" onClick={submitTier} className="ep-cards__submit">Submit for review</button>
-</div>
-</>) : null}
-{(tierDone) ? (<>
-<div className="ep-cards__success">
-<span className="ep-cards__success-icon" aria-hidden>✓</span>
-<span className="ep-cards__success-title">Documents submitted</span>
-<span className="ep-cards__success-text">Compliance will follow up within 1–2 business days.</span>
-<button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
-</div>
-</>) : null}
 </>) : null}
 
 {(isModalCreateAccount) ? (<>
