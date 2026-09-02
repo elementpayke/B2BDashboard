@@ -657,6 +657,29 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                 onChange={(code) => p.patchAssociate(index, { country: code })}
                 required
               />
+              <SelectField
+                label="Government ID type"
+                value={associate.idType}
+                onChange={(v) =>
+                  p.patchAssociate(index, {
+                    idType: v as KybWizardProfileDraft["associates"][0]["idType"],
+                  })
+                }
+                options={[
+                  { value: "Passport", label: "Passport" },
+                  { value: "NationalIDCard", label: "National ID" },
+                  { value: "DrivingLicense", label: "Driver’s license" },
+                  { value: "ResidencePermit", label: "Residence permit" },
+                ]}
+                placeholder="Select ID type…"
+              />
+              <TextField
+                label="Government ID number"
+                value={associate.idNumber}
+                onChange={(v) => p.patchAssociate(index, { idNumber: v })}
+                placeholder="A1234567"
+                hint="Required for the customer vault officer package"
+              />
               <TextField
                 label="Residential street"
                 value={associate.street}

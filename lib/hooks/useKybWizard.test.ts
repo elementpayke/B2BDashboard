@@ -78,6 +78,13 @@ const completePendingProfile = {
         post_code: "00100",
         country: "KE",
       },
+      identities: [
+        {
+          issuing_country: "KE",
+          id_type: "Passport",
+          id_number: "A1234567",
+        },
+      ],
       ubo: { ownership_percentage: 100 },
     },
   ],
