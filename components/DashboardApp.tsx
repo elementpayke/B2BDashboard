@@ -3012,6 +3012,7 @@ export default function DashboardApp(props: Props = {}) {
     };
   });
   const cardsLoading = usdFundingQuery.isLoading || issuedCardsQuery.isLoading;
+  const cardsMissingUsd = !usdFunding && !usdFundingQuery.isLoading && !usdFundingQuery.isError;
   const cardsError =
     usdFundingQuery.isError || issuedCardsQuery.isError
       ? (usdFundingQuery.error instanceof Error
@@ -3019,9 +3020,10 @@ export default function DashboardApp(props: Props = {}) {
           : issuedCardsQuery.error instanceof Error
             ? issuedCardsQuery.error.message
             : "Couldn't load cards.")
-      : !usdFunding && !usdFundingQuery.isLoading
+      : cardsMissingUsd
         ? "Open an active USD deposit account to issue cards."
         : "";
+  const cardsErrorBadge = cardsMissingUsd ? "USD required" : "Error";
   const cardsFundingHint = describeUsdFunding(usdFunding);
   const txFilters = PRIMARY_TX_FILTERS.map((filter) => ({
     key: filter.key,
@@ -3902,7 +3904,7 @@ export default function DashboardApp(props: Props = {}) {
 <p className="ep-cards__funding-hint">{cardsFundingHint}</p>
 {cardsError ? (
   <div className="ep-cards__preview" role="alert">
-    <span className="ep-cards__preview-badge">USD required</span>
+    <span className="ep-cards__preview-badge">{cardsErrorBadge}</span>
     <span className="ep-cards__preview-text">{cardsError}</span>
   </div>
 ) : null}

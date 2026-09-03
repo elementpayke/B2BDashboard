@@ -21,6 +21,7 @@ export type NavigationItem = {
 export const DASHBOARD_NAV_ITEMS: NavigationItem[] = [
   { key: "home", label: "Home", icon: "⌂", group: "Overview", mobilePrimary: true },
   { key: "wallets", label: "Accounts", icon: "▦", group: "Money", mobilePrimary: true },
+  { key: "cards", label: "Cards", icon: "▰", group: "Money", mobilePrimary: true },
   {
     key: "transactions",
     label: "Transactions",
@@ -28,12 +29,11 @@ export const DASHBOARD_NAV_ITEMS: NavigationItem[] = [
     group: "Money",
     mobilePrimary: true,
   },
-  { key: "invoices", label: "Invoices", icon: "▤", group: "Commerce", mobilePrimary: true },
+  { key: "invoices", label: "Invoices", icon: "▤", group: "Commerce" },
   { key: "reports", label: "Reports", icon: "↗", group: "Insights" },
   { key: "verification", label: "Verification", icon: "✓", group: "Workspace" },
   { key: "team", label: "Team", icon: "◉", group: "Workspace" },
   { key: "developer", label: "Developers", icon: "⌘", group: "Workspace" },
-  { key: "cards", label: "Cards", icon: "▰", group: "Workspace" },
 ];
 
 export const DESKTOP_NAV_GROUPS = [
