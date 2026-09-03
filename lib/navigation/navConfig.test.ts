@@ -12,16 +12,17 @@ describe("dashboard navigation contract", () => {
     expect(MOBILE_PRIMARY_NAV_ITEMS.map((item) => item.label)).toEqual([
       "Home",
       "Accounts",
+      "Cards",
       "Transactions",
-      "Invoices",
     ]);
-    expect(MOBILE_PRIMARY_NAV_ITEMS.some((item) => item.key === "cards")).toBe(false);
+    expect(MOBILE_PRIMARY_NAV_ITEMS.some((item) => item.key === "invoices")).toBe(false);
   });
 
   it("moves secondary workspace destinations into More", () => {
     expect(MOBILE_MORE_NAV_ITEMS.map((item) => item.key)).toEqual(
-      expect.arrayContaining(["reports", "cards", "verification", "team", "developer"]),
+      expect.arrayContaining(["reports", "invoices", "verification", "team", "developer"]),
     );
+    expect(MOBILE_MORE_NAV_ITEMS.some((item) => item.key === "cards")).toBe(false);
   });
 
   it("marks account detail as part of Accounts", () => {
@@ -29,9 +30,17 @@ describe("dashboard navigation contract", () => {
   });
 
   it("keeps More selected on secondary destinations after the sheet closes", () => {
-    expect(isMoreNavigationActive("cards", false)).toBe(true);
+    expect(isMoreNavigationActive("invoices", false)).toBe(true);
+    expect(isMoreNavigationActive("cards", false)).toBe(false);
     expect(isMoreNavigationActive("home", false)).toBe(false);
     expect(isMoreNavigationActive("home", true)).toBe(true);
+  });
+
+  it("places Cards next to Accounts under Money", () => {
+    const moneyKeys = DASHBOARD_NAV_ITEMS.filter((item) => item.group === "Money").map(
+      (item) => item.key,
+    );
+    expect(moneyKeys).toEqual(["wallets", "cards", "transactions"]);
   });
 
   it("assigns every destination to one desktop group", () => {

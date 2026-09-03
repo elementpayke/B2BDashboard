@@ -18,8 +18,8 @@ describe("compact navigation", () => {
 
     expect(
       screen.getAllByRole("button").map((button) => button.textContent?.trim()),
-    ).toEqual(["⌂Home", "▦Accounts", "≣Transactions", "▤Invoices", "⋯More"]);
-    expect(screen.queryByRole("button", { name: /cards/i })).not.toBeInTheDocument();
+    ).toEqual(["⌂Home", "▦Accounts", "▰Cards", "≣Transactions", "⋯More"]);
+    expect(screen.queryByRole("button", { name: /invoices/i })).not.toBeInTheDocument();
   });
 
   it("keeps secondary destinations in More without embedding live rates", () => {
@@ -40,12 +40,13 @@ describe("compact navigation", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "More" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /cards/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /invoices/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cards/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /bulk payouts/i })).toBeInTheDocument();
     expect(screen.queryByText(/live rates/i)).not.toBeInTheDocument();
   });
 
-  it("marks More as the current destination on secondary screens", () => {
+  it("marks Cards as the current destination on the cards screen", () => {
     render(
       <MobileBottomNav
         screen="cards"
@@ -55,7 +56,8 @@ describe("compact navigation", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /more/i })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: /cards/i })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: /more/i })).toHaveAttribute("data-active", "false");
     expect(screen.getByRole("button", { name: /home/i })).toHaveAttribute("data-active", "false");
   });
 });
