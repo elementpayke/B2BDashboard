@@ -34,11 +34,18 @@ describe("buildStablecoinOpenPayload", () => {
   it("rejects unsupported asset / network", () => {
     expect(() =>
       buildStablecoinOpenPayload({
-        currency: "USDT",
+        currency: "DAI",
         network: "BASE",
         displayName: "x",
       }),
-    ).toThrow(/USDC/);
+    ).toThrow(/USDC or USDT/);
+    expect(() =>
+      buildStablecoinOpenPayload({
+        currency: "USDT",
+        network: "STELLAR",
+        displayName: "x",
+      }),
+    ).toThrow(/USDT is not available on Stellar/);
     expect(() =>
       buildStablecoinOpenPayload({
         currency: "USDC",
@@ -46,6 +53,21 @@ describe("buildStablecoinOpenPayload", () => {
         displayName: "x",
       }),
     ).toThrow(/Base, Polygon, or Stellar/);
+  });
+
+  it("opens USDT on Base and Polygon", () => {
+    expect(
+      buildStablecoinOpenPayload({
+        currency: "usdt",
+        network: "POLYGON",
+        displayName: "Ops USDT",
+      }),
+    ).toEqual({
+      asset_type: "stablecoin",
+      currency: "USDT",
+      network: "Polygon",
+      display_name: "Ops USDT",
+    });
   });
 });
 
@@ -86,8 +108,8 @@ describe("listed vs sendable stablecoin accounts", () => {
 });
 
 describe("occupiedStablecoinNetworkCodes", () => {
-  it("marks supported USDC network slots once when accounts exist", async () => {
-    const { occupiedStablecoinNetworkCodes, isStablecoinNetworkOccupied } =
+  it("marks supported network slots per currency", async () => {
+    const { occupiedStablecoinNetworkCodes, occupiedStablecoinSlots, isStablecoinNetworkOccupied } =
       await import("./entities");
     const base = normalizeFinancialAccount(
       {
@@ -102,6 +124,8 @@ describe("occupiedStablecoinNetworkCodes", () => {
     expect([...occupiedStablecoinNetworkCodes([base])]).toEqual(["BASE"]);
     expect(isStablecoinNetworkOccupied([base], "BASE")).toBe(true);
     expect(isStablecoinNetworkOccupied([base], "POLYGON")).toBe(false);
+    expect(isStablecoinNetworkOccupied([base], "BASE", "USDT")).toBe(false);
+    expect([...occupiedStablecoinSlots([base])]).toEqual(["USDC:BASE"]);
 
     const stellar = normalizeFinancialAccount(
       {
@@ -113,9 +137,22 @@ describe("occupiedStablecoinNetworkCodes", () => {
       },
       "ent_1",
     )!;
+    const usdtPoly = normalizeFinancialAccount(
+      {
+        id: "a3",
+        asset_type: "stablecoin",
+        currency: "USDT",
+        network: "Polygon",
+        status: "active",
+      },
+      "ent_1",
+    )!;
     expect([...occupiedStablecoinNetworkCodes([base, stellar])]).toEqual([
       "BASE",
       "STELLAR",
+    ]);
+    expect([...occupiedStablecoinNetworkCodes([base, usdtPoly], "USDT")]).toEqual([
+      "POLYGON",
     ]);
   });
 });

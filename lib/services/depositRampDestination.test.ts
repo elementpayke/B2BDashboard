@@ -326,6 +326,28 @@ describe("resolveStablecoinPickerDestination", () => {
     expect(dest.createNetwork).toBe("STELLAR");
   });
 
+  it("offers create for Polygon USDT when no matching account or treasury exists", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [baseUsdc],
+      asset: "usdt",
+      networkKey: "polygon",
+    });
+    expect(dest.address).toBeNull();
+    expect(dest.offerCreate).toBe(true);
+    expect(dest.createNetwork).toBe("POLYGON");
+    expect(dest.emptyMessage).toMatch(/No USDT wallet/i);
+  });
+
+  it("does not offer Stellar create for USDT", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [],
+      asset: "usdt",
+      networkKey: "stellar",
+    });
+    expect(dest.offerCreate).toBe(false);
+    expect(dest.emptyMessage).toMatch(/USDT is not available on Stellar/i);
+  });
+
   it("does not invent a Stellar address from a pending account", () => {
     const dest = resolveStablecoinPickerDestination({
       accounts: [acct({ ...stellarUsdc, status: "pending" })],

@@ -87,12 +87,13 @@ export function validateSendAddress(address: string, networkKey: string): string
   throw new Error("Sends support Base, Polygon, and Stellar only.");
 }
 
-/** Min 1.00 USDC per Phase 4 / partner contract. */
-export function validateSendAmount(amount: string): string {
+/** Min 1.00 per Phase 4 / partner contract (USDC or USDT). */
+export function validateSendAmount(amount: string, currency = "USDC"): string {
   const trimmed = amount.trim().replace(/,/g, "");
   const n = Number(trimmed);
+  const label = (currency || "USDC").trim().toUpperCase() || "USDC";
   if (!Number.isFinite(n) || n < MIN_AMOUNT) {
-    throw new Error(`Minimum send amount is ${MIN_AMOUNT.toFixed(2)} USDC.`);
+    throw new Error(`Minimum send amount is ${MIN_AMOUNT.toFixed(2)} ${label}.`);
   }
   // Keep a plain decimal string for the backend Decimal field.
   return trimmed;
@@ -104,6 +105,8 @@ export function buildSendPreviewPayload(params: {
   networkKey: string;
   /** Account's API network so stellar_testnet is not rewritten as Stellar. */
   accountNetwork?: string;
+  /** Display currency for min-amount errors (USDC / USDT). */
+  currency?: string;
 }): AccountSendPreviewIn {
   const network = toAssetNetwork(params.accountNetwork || params.networkKey);
   if (!toPartnerNetwork(network)) {
@@ -111,7 +114,7 @@ export function buildSendPreviewPayload(params: {
   }
   return {
     to_address: validateSendAddress(params.toAddress, params.networkKey),
-    amount: validateSendAmount(params.amount),
+    amount: validateSendAmount(params.amount, params.currency),
     network,
   };
 }

@@ -68,16 +68,21 @@ export type StablecoinPickerDestination = {
   emptyMessage: string;
   /**
    * When true, Receive / Top-up may offer Create Account for this rail
-   * (Base / Polygon / Stellar USDC with no listed account yet).
+   * (Base / Polygon USDC|USDT, or Stellar USDC, with no listed account yet).
    */
   offerCreate: boolean;
   /** Partner network code for pre-filling Create Account (`STELLAR`, …). */
   createNetwork?: string | null;
 };
 
-function isCreatableUsdcNetwork(networkKey: string): boolean {
+function isCreatableStablecoinNetwork(networkKey: string, currency: string): boolean {
   const partner = toPartnerNetwork(networkKey);
-  return partner === "Base" || partner === "Polygon" || partner === "Stellar";
+  if (!partner) return false;
+  if (currency === "USDT") return partner === "Base" || partner === "Polygon";
+  if (currency === "USDC") {
+    return partner === "Base" || partner === "Polygon" || partner === "Stellar";
+  }
+  return false;
 }
 
 /**
@@ -94,8 +99,7 @@ export function resolveStablecoinPickerDestination(input: {
   const stellar = isStellarNetworkKey(input.networkKey);
   const accounts = input.accounts ?? [];
   const createNetwork = toPartnerNetwork(input.networkKey)?.toUpperCase() ?? null;
-  const canCreate =
-    currency === "USDC" && isCreatableUsdcNetwork(input.networkKey);
+  const canCreate = isCreatableStablecoinNetwork(input.networkKey, currency);
 
   if (stellar && currency !== "USDC") {
     return {

@@ -57,7 +57,8 @@ import {
   currencyLabel,
   occupiedFiatCurrencyCodes,
   SUPPORTED_IBAN_CURRENCIES,
-  SUPPORTED_STABLECOIN_NETWORKS,
+  allSupportedStablecoinSlots,
+  networksForStablecoin,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -101,6 +102,7 @@ import {
   isFundableStablecoinAccount,
   isSendableStablecoinAccount,
   occupiedStablecoinNetworkCodes,
+  occupiedStablecoinSlots,
   isClosedStatus,
   isCloseableStablecoinAccount,
   stablecoinStatusTone,
@@ -858,8 +860,8 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertError: "",
     }));
 
-  // Ready USDC Base/Polygon FinancialAccounts for the Stablecoin send tab
-  // (Phase 4 `/v1/accounts/{id}/sends`). Fetched when the Send screen opens.
+  // Ready USDC/USDT Base/Polygon (and Stellar USDC) FinancialAccounts for the
+  // Stablecoin send tab (Phase 4 `/v1/accounts/{id}/sends`). Fetched when Send opens.
   const sendableAccountsQuery = useQuery({
     queryKey: ["sendable-stablecoin-accounts"],
     queryFn: listSendableStablecoinAccounts,
@@ -927,16 +929,20 @@ export default function DashboardApp(props: Props = {}) {
       });
       return;
     }
-    // Stablecoin tab step 1 → 2: require a ready USDC account on the chosen
-    // network before collecting the recipient (Phase 4).
+    // Stablecoin tab step 1 → 2: require a ready account for the chosen
+    // asset + network before collecting the recipient (Phase 4).
     if (state.sendStep === 1 && state.sendGroup === "crypto") {
       const accounts = sendableAccountsQuery.data ?? [];
-      const account = accountForNetwork(accounts, state.sendChain);
+      const assetCode = (state.sendAsset || "usdc").trim().toUpperCase() || "USDC";
+      const account = accountForNetwork(accounts, state.sendChain, assetCode);
       if (!account) {
+        const chainLabel =
+          SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label ||
+          state.sendChain;
         setState({
           sendQuoteError: sendableAccountsQuery.isLoading
-            ? "Loading your USDC accounts…"
-            : `No ready USDC account on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label || state.sendChain}. Open a Base, Polygon, or Stellar USDC account first.`,
+            ? `Loading your ${assetCode} accounts…`
+            : `No ready ${assetCode} account on ${chainLabel}. Open a ${assetCode} account on this network first.`,
         });
         return;
       }
@@ -1066,11 +1072,15 @@ export default function DashboardApp(props: Props = {}) {
           ...(sendableAccountsQuery.data ?? []),
           ...resolvedStablecoinAccounts.filter(isSendableStablecoinAccount),
         ];
+        const assetCode = (state.sendAsset || "usdc").trim().toUpperCase() || "USDC";
         const account =
-          accounts.find((a) => a.id === state.sendAccountId) ||
-          accountForNetwork(accounts, state.sendChain);
+          accounts.find(
+            (a) =>
+              a.id === state.sendAccountId &&
+              a.currency.trim().toUpperCase() === assetCode,
+          ) || accountForNetwork(accounts, state.sendChain, assetCode);
         if (!account) {
-          throw new Error("No ready USDC account on this network.");
+          throw new Error(`No ready ${assetCode} account on this network.`);
         }
         // Prefer bootstrap/list balance when the dedicated sendable fetch is
         // stale or Horizon briefly reported zeros while the account page shows funds.
@@ -1079,13 +1089,14 @@ export default function DashboardApp(props: Props = {}) {
         assertSufficientBalance({
           amount: state.sendAmount.trim(),
           balance: balanceAccount.balance ?? account.balance,
-          currency: account.currency || "USDC",
+          currency: account.currency || assetCode,
         });
         const payload = buildSendPreviewPayload({
           toAddress: state.sendRecipient.trim(),
           amount: state.sendAmount.trim(),
           networkKey: state.sendChain,
           accountNetwork: account.network,
+          currency: account.currency || assetCode,
         });
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({
@@ -1749,8 +1760,28 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const setSendAsset = (k) => () => setState({ sendAsset: k, sendPreview: null, sendQuoteError: "" });
-  const setSendChain = (k) => () => setState({ sendChain: k, sendPreview: null, sendAccountId: "", sendQuoteError: "" });
+  const setSendAsset = (k) => () => {
+    const nextChain =
+      k === "usdt" && state.sendChain === "stellar" ? "base" : state.sendChain;
+    setState({
+      sendAsset: k,
+      sendChain: nextChain,
+      sendAccountId: "",
+      sendPreview: null,
+      sendQuoteError: "",
+    });
+  };
+  const setSendChain = (k) => () => {
+    const nextAsset =
+      k === "stellar" && state.sendAsset === "usdt" ? "usdc" : state.sendAsset;
+    setState({
+      sendChain: k,
+      sendAsset: nextAsset,
+      sendPreview: null,
+      sendAccountId: "",
+      sendQuoteError: "",
+    });
+  };
   const setDepositAsset = (k) => () => {
     const nextNetwork =
       k === "usdt" && state.depositNetwork === "stellar" ? "base" : state.depositNetwork;
@@ -1985,37 +2016,49 @@ export default function DashboardApp(props: Props = {}) {
   // Add Account: a small menu that branches into two create modals.
   const toggleAddAccountMenu = () => setState(s => ({ addAccountMenu: !s.addAccountMenu }));
   const closeAddAccountMenu = () => setState({ addAccountMenu: false });
-  const openCreateAccount = (kind: string, preferredNetwork?: string) => () => {
-    const stableOccupied = occupiedStablecoinNetworkCodes(resolvedStablecoinAccounts);
+  const openCreateAccount = (
+    kind: string,
+    preferredNetwork?: string,
+    preferredCurrency?: string,
+  ) => () => {
+    const slots = occupiedStablecoinSlots(resolvedStablecoinAccounts);
     const fiatOccupied = occupiedFiatCurrencyCodes(
       bootstrapReady
         ? (bootstrapQuery.data?.fiatAccounts ?? [])
         : (depositAccountsQuery.data?.accounts ?? []),
     );
     if (kind === "stablecoin") {
-      const available = SUPPORTED_STABLECOIN_NETWORKS.filter(
-        (code) => !stableOccupied.has(code),
-      );
+      const preferredAsset = (preferredCurrency || "USDC").trim().toUpperCase() || "USDC";
       const preferred = typeof preferredNetwork === "string"
         ? preferredNetwork.trim().toUpperCase()
         : "";
+      const preferredNetworks = networksForStablecoin(preferredAsset);
       const preferredOk =
-        preferred && available.includes(preferred as (typeof SUPPORTED_STABLECOIN_NETWORKS)[number])
+        preferred &&
+        preferredNetworks.includes(preferred) &&
+        !slots.has(`${preferredAsset}:${preferred}`)
           ? preferred
           : "";
+      const availableForPreferred = preferredNetworks.filter(
+        (code) => !slots.has(`${preferredAsset}:${code}`),
+      );
+      const anyOpen = allSupportedStablecoinSlots().some(
+        (slot) => !slots.has(`${slot.currency}:${slot.network}`),
+      );
       setState({
         modal: "createAccount",
         addAccountMenu: false,
         createAccountKind: "stablecoin",
-        createAccountName: preferredOk === "STELLAR" ? "Stellar USDC" : "",
+        createAccountName:
+          preferredOk === "STELLAR" && preferredAsset === "USDC" ? "Stellar USDC" : "",
         createAccountCurrency: "",
-        createAccountStablecoin: available.length > 0 ? "USDC" : "",
+        createAccountStablecoin: anyOpen ? preferredAsset : "",
         createAccountNetwork:
-          preferredOk || (available.length === 1 ? available[0] : ""),
-        createAccountError:
-          available.length === 0
-            ? "You already have a USDC account on every available network."
-            : "",
+          preferredOk ||
+          (availableForPreferred.length === 1 ? availableForPreferred[0] : ""),
+        createAccountError: anyOpen
+          ? ""
+          : "You already have a stablecoin account on every available asset and network.",
       });
       return;
     }
@@ -2038,7 +2081,20 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setCreateAccountName = (e) => setState({ createAccountName: e.target.value });
   const setCreateAccountCurrency = (e) => setState({ createAccountCurrency: e.target.value, createAccountError: "" });
-  const setCreateAccountStablecoin = (e) => setState({ createAccountStablecoin: e.target.value, createAccountError: "" });
+  const setCreateAccountStablecoin = (e) => {
+    const next = e.target.value;
+    const allowed = networksForStablecoin(next);
+    const keepNetwork =
+      state.createAccountNetwork &&
+      allowed.includes(state.createAccountNetwork.trim().toUpperCase())
+        ? state.createAccountNetwork
+        : "";
+    setState({
+      createAccountStablecoin: next,
+      createAccountNetwork: keepNetwork,
+      createAccountError: "",
+    });
+  };
   const setCreateAccountNetwork = (e) => setState({ createAccountNetwork: e.target.value, createAccountError: "" });
 
   const copyField = (fieldKey, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedField: fieldKey }); };
@@ -2253,15 +2309,17 @@ export default function DashboardApp(props: Props = {}) {
       if (!state.createAccountStablecoin || !state.createAccountNetwork) {
         return setState({ createAccountError: "Choose a stablecoin and a network." });
       }
+      const currency = state.createAccountStablecoin.trim().toUpperCase();
       const occupied = occupiedStablecoinNetworkCodes(
         bootstrapReady
           ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
           : (stablecoinAccountsQuery.data ?? []),
+        currency,
       );
       if (occupied.has(state.createAccountNetwork.trim().toUpperCase())) {
         return setState({
           createAccountError:
-            "You already have a USDC account on this network.",
+            `You already have a ${currency} account on this network.`,
         });
       }
       setState({ createAccountSaving: true, createAccountError: "" });
@@ -3383,11 +3441,12 @@ export default function DashboardApp(props: Props = {}) {
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
-  // Phase 4: USDC only (USDT has no account-send path).
-  const sendAssets = ["usdc"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), selected: s.sendAsset === k, bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const sendChains = SEND_STABLECOIN_NETWORKS.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), selected: s.sendChain === n.key, bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  // USDC + USDT on Base/Polygon; Stellar is USDC-only (chip snaps chain away).
+  const sendAssets = ["usdc", "usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), selected: s.sendAsset === k, bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
+  const sendChainOptions = stablecoinNetworksForAsset(SEND_STABLECOIN_NETWORKS, s.sendAsset);
+  const sendChains = sendChainOptions.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), selected: s.sendChain === n.key, bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
   const sendAssetCode = s.sendAsset.toUpperCase();
-  const sendChainLabel = SEND_STABLECOIN_NETWORKS.find(n => n.key === s.sendChain)?.label || s.sendChain;
+  const sendChainLabel = sendChainOptions.find(n => n.key === s.sendChain)?.label || s.sendChain;
   const sendDestinationSummary = buildSendDestinationSummary({
     sendGroup: s.sendGroup,
     sendAsset: s.sendAsset,
@@ -3401,7 +3460,7 @@ export default function DashboardApp(props: Props = {}) {
   // Fee in both currencies, converted at the *quote's* rate so it lines up
   // with the figures beside it rather than with a rate that has since moved.
   const sendFeeText = s.sendGroup === "crypto"
-    ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} USDC` : "Fee from preview")
+    ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} ${sendPreview.currency || sendAssetCode}` : "Fee from preview")
     : sendQuote
       ? formatFeeDual(
           formatQuoteFees(sendQuote.amounts.fees),
@@ -3415,7 +3474,7 @@ export default function DashboardApp(props: Props = {}) {
   // own `user_pays`, never the raw input — which may have been typed in the
   // destination currency and must not be re-labelled as dollars.
   const sendYouPayText = s.sendGroup === "crypto"
-    ? `${s.sendAmount} USDC`
+    ? `${s.sendAmount} ${sendPreview?.currency || sendAssetCode}`
     : sendQuote
       ? `${sendQuote.amounts.user_pays.amount} ${sendQuote.amounts.user_pays.currency}`
       : `${s.sendAmount} ${sendAmountCurrency}`;
@@ -3433,7 +3492,7 @@ export default function DashboardApp(props: Props = {}) {
       ? `Quote valid until ${new Date(sendQuote.expires_at).toLocaleTimeString()}`
       : sendRail.arrival;
   const sendQuoteRateText = s.sendGroup === "crypto"
-    ? (sendPreview?.receive_amount != null ? `${sendPreview.receive_amount} ${sendPreview.currency || "USDC"}` : null)
+    ? (sendPreview?.receive_amount != null ? `${sendPreview.receive_amount} ${sendPreview.currency || sendAssetCode}` : null)
     : sendQuote?.amounts.rate
       ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}`
       : null;
@@ -3558,7 +3617,11 @@ export default function DashboardApp(props: Props = {}) {
   const receiveAddressEmptyMessage = receivePickerDest.emptyMessage;
   const receiveCreateAccount =
     receivePickerDest.offerCreate && receivePickerDest.createNetwork
-      ? openCreateAccount("stablecoin", receivePickerDest.createNetwork)
+      ? openCreateAccount(
+          "stablecoin",
+          receivePickerDest.createNetwork,
+          receiveAssetCode,
+        )
       : null;
   const receiveCreateAccountLabel = receivePickerDest.createNetwork
     ? `Create ${receiveAssetCode} on ${receiveNetworkLabel}`
@@ -3803,8 +3866,8 @@ export default function DashboardApp(props: Props = {}) {
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
   canCreateStablecoin={
-    occupiedStablecoinNetworkCodes(stablecoinAccountsList).size <
-    SUPPORTED_STABLECOIN_NETWORKS.length
+    occupiedStablecoinSlots(stablecoinAccountsList).size <
+    allSupportedStablecoinSlots().length
   }
   canCreateBank={
     occupiedFiatCurrencyCodes(depositAccountsList).size <
@@ -4737,7 +4800,7 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   setCreateAccountNetwork={setCreateAccountNetwork}
   createAccountError={s.createAccountError}
   createAccountSaving={s.createAccountSaving}
-  occupiedNetworks={[...occupiedStablecoinNetworkCodes(stablecoinAccountsList)]}
+  occupiedSlots={[...occupiedStablecoinSlots(stablecoinAccountsList)]}
   occupiedCurrencies={[...occupiedFiatCurrencyCodes(depositAccountsList)]}
   closeModal={closeModal}
   submitCreateAccount={submitCreateAccount}

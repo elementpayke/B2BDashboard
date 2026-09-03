@@ -214,4 +214,30 @@ describe("sendable account discovery helpers", () => {
     expect(accountForNetwork([stellar], "stellar")?.id).toBe("acct_xlm");
     expect(accountForNetwork([stellar], "stellar_public")).toBeUndefined();
   });
+
+  it("matches sendable accounts by network and currency", () => {
+    const usdc = normalizeFinancialAccount(
+      {
+        id: "acct_usdc",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Polygon",
+        status: "ready",
+      },
+      "ent_1",
+    )!;
+    const usdt = normalizeFinancialAccount(
+      {
+        id: "acct_usdt",
+        asset_type: "stablecoin",
+        currency: "USDT",
+        network: "Polygon",
+        status: "ready",
+      },
+      "ent_1",
+    )!;
+    expect(isSendableStablecoinAccount(usdt)).toBe(true);
+    expect(accountForNetwork([usdc, usdt], "polygon", "USDT")?.id).toBe("acct_usdt");
+    expect(accountForNetwork([usdc, usdt], "polygon", "USDC")?.id).toBe("acct_usdc");
+  });
 });
