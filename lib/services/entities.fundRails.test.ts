@@ -44,12 +44,14 @@ describe("stablecoin account predicates", () => {
     expect(isFundableStablecoinAccount(acct({ walletAddress: null }))).toBe(false);
   });
 
-  it("keeps Phase 4 sendable limited to USDC Base/Polygon/Stellar", () => {
+  it("allows USDC on Base/Polygon/Stellar and USDT on Base/Polygon", () => {
     expect(isSendableStablecoinAccount(acct({ network: "Base" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "Stellar" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_testnet" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_public" }))).toBe(true);
-    expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Base" }))).toBe(false);
+    expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Base" }))).toBe(true);
+    expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Polygon" }))).toBe(true);
+    expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Stellar" }))).toBe(false);
     expect(isSendableStablecoinAccount(acct({ network: "Ethereum" }))).toBe(false);
   });
 });

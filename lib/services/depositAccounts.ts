@@ -85,8 +85,8 @@ export const STABLECOIN_OPTIONS: StablecoinOption[] = [
   { code: "USDT", label: "Tether (USDT)" },
 ];
 
-/** Phase 4 create/send only support USDC today. */
-export const SUPPORTED_STABLECOINS = ["USDC"] as const;
+/** Custodial create/send: USDC on Base/Polygon/Stellar; USDT on Base/Polygon only. */
+export const SUPPORTED_STABLECOINS = ["USDC", "USDT"] as const;
 
 export function isStablecoinSupported(code: string): boolean {
   return (SUPPORTED_STABLECOINS as readonly string[]).includes(
@@ -101,13 +101,35 @@ export const NETWORK_OPTIONS: NetworkOption[] = [
   { code: "ETHEREUM", label: "Ethereum" },
 ];
 
-/** Networks currently available for custodial USDC account creation. */
+/** Networks currently available for custodial stablecoin account creation. */
 export const SUPPORTED_STABLECOIN_NETWORKS = ["BASE", "POLYGON", "STELLAR"] as const;
+
+/** EVM networks that support both USDC and USDT. Stellar is USDC-only. */
+export const EVM_STABLECOIN_NETWORKS = ["BASE", "POLYGON"] as const;
 
 export function isStablecoinNetworkSupported(code: string): boolean {
   return (SUPPORTED_STABLECOIN_NETWORKS as readonly string[]).includes(
     code.trim().toUpperCase(),
   );
+}
+
+/** Networks allowed for a given stablecoin when creating/sending. */
+export function networksForStablecoin(currency: string): readonly string[] {
+  const code = currency.trim().toUpperCase();
+  if (code === "USDT") return EVM_STABLECOIN_NETWORKS;
+  if (code === "USDC") return SUPPORTED_STABLECOIN_NETWORKS;
+  return [];
+}
+
+/** Every creatable (currency, network) slot. */
+export function allSupportedStablecoinSlots(): { currency: string; network: string }[] {
+  return SUPPORTED_STABLECOINS.flatMap((currency) =>
+    networksForStablecoin(currency).map((network) => ({ currency, network })),
+  );
+}
+
+export function isStablecoinSlotSupported(currency: string, network: string): boolean {
+  return networksForStablecoin(currency).includes(network.trim().toUpperCase());
 }
 
 /**

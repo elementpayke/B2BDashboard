@@ -81,6 +81,7 @@ export async function resolvePrimaryEntityId(): Promise<string> {
 /**
  * Build a Phase 4–compatible open-account body from Create Account UI values.
  * UI network codes are `BASE` / `POLYGON`; partner expects `Base` / `Polygon`.
+ * USDC: Base / Polygon / Stellar. USDT: Base / Polygon only.
  */
 export function buildStablecoinOpenPayload(input: {
   currency: string;
@@ -88,12 +89,15 @@ export function buildStablecoinOpenPayload(input: {
   displayName: string;
 }): AccountOpenPayload {
   const currency = input.currency.trim().toUpperCase();
-  if (currency !== "USDC") {
-    throw new Error("Only USDC stablecoin accounts can be opened.");
+  if (currency !== "USDC" && currency !== "USDT") {
+    throw new Error("Only USDC or USDT stablecoin accounts can be opened.");
   }
   const network = toPartnerNetwork(input.network);
   if (!network) {
     throw new Error("Choose Base, Polygon, or Stellar.");
+  }
+  if (currency === "USDT" && network === "Stellar") {
+    throw new Error("USDT is not available on Stellar. Choose Base or Polygon.");
   }
   return {
     asset_type: "stablecoin",
@@ -201,19 +205,36 @@ export function formatNetworkLabel(network: string | null | undefined): string {
 }
 
 /**
- * UI network codes (`BASE` / `POLYGON`) already held as listed **USDC** accounts
- * for Phase 4 create uniqueness. Other assets/networks from the API do not
- * consume these create slots.
+ * Slot keys (`USDC:BASE`, `USDT:POLYGON`) already held as listed stablecoin
+ * accounts for create uniqueness. One account per currency × network.
  */
-export function occupiedStablecoinNetworkCodes(
+export function occupiedStablecoinSlots(
   accounts: FinancialAccount[],
 ): Set<string> {
   const occupied = new Set<string>();
   for (const account of accounts) {
     if (account.assetType.toLowerCase() !== "stablecoin") continue;
-    if (account.currency !== "USDC") continue;
+    const currency = account.currency.trim().toUpperCase();
+    if (currency !== "USDC" && currency !== "USDT") continue;
     const partner = toPartnerNetwork(account.network);
-    if (partner) occupied.add(partner.toUpperCase());
+    if (partner) occupied.add(`${currency}:${partner.toUpperCase()}`);
+  }
+  return occupied;
+}
+
+/**
+ * UI network codes already held for a given currency (`USDC` default).
+ * Pass `currency` when creating USDT so USDC rails do not block the same chain.
+ */
+export function occupiedStablecoinNetworkCodes(
+  accounts: FinancialAccount[],
+  currency: string = "USDC",
+): Set<string> {
+  const want = currency.trim().toUpperCase() || "USDC";
+  const occupied = new Set<string>();
+  for (const slot of occupiedStablecoinSlots(accounts)) {
+    const [slotCurrency, network] = slot.split(":");
+    if (slotCurrency === want && network) occupied.add(network);
   }
   return occupied;
 }
@@ -221,10 +242,11 @@ export function occupiedStablecoinNetworkCodes(
 export function isStablecoinNetworkOccupied(
   accounts: FinancialAccount[],
   networkCode: string,
+  currency: string = "USDC",
 ): boolean {
   const partner = toPartnerNetwork(networkCode);
   if (!partner) return false;
-  return occupiedStablecoinNetworkCodes(accounts).has(partner.toUpperCase());
+  return occupiedStablecoinNetworkCodes(accounts, currency).has(partner.toUpperCase());
 }
 
 export function isReadyStatus(status: string | null | undefined): boolean {
@@ -322,13 +344,21 @@ export function isFundableStablecoinAccount(account: FinancialAccount): boolean 
   );
 }
 
-/** Phase 4 sendable: ready USDC on Base, Polygon, or Stellar. */
+/**
+ * Phase 4 sendable: ready USDC on Base/Polygon/Stellar, or ready USDT on
+ * Base/Polygon (Stellar has no USDT rail).
+ */
 export function isSendableStablecoinAccount(account: FinancialAccount): boolean {
   if (!isListedStablecoinAccount(account)) return false;
-  if (account.currency !== "USDC") return false;
+  const currency = account.currency.trim().toUpperCase();
   const partner = toPartnerNetwork(account.network);
   if (!partner || !SEND_PARTNER_NETWORKS.has(partner)) return false;
-  return isReadyStatus(account.status);
+  if (currency === "USDC") return isReadyStatus(account.status);
+  if (currency === "USDT") {
+    if (partner === "Stellar") return false;
+    return isReadyStatus(account.status);
+  }
+  return false;
 }
 
 async function collectStablecoinAccounts(
@@ -366,7 +396,7 @@ async function collectStablecoinAccounts(
 }
 
 /**
- * Resolve every sendable USDC account for the authenticated principal by
+ * Resolve every sendable stablecoin account for the authenticated principal by
  * walking `GET /v1/entities` → `GET /v1/entities/{id}/accounts`.
  */
 export async function listSendableStablecoinAccounts(): Promise<FinancialAccount[]> {
@@ -464,12 +494,21 @@ export type FundStablecoinRail = {
   checkoutUrl: string | null;
 };
 
-/** Pick the account matching the UI chain key (`base` / `polygon` / `stellar`). */
+/**
+ * Pick the account matching the UI chain key (`base` / `polygon` / `stellar`).
+ * When `currency` is set, also require that asset (USDC / USDT).
+ */
 export function accountForNetwork(
   accounts: FinancialAccount[],
   networkKey: string,
+  currency?: string | null,
 ): FinancialAccount | undefined {
-  return accounts.find((a) => networksCompatible(a.network, networkKey));
+  const want = (currency || "").trim().toUpperCase();
+  return accounts.find((a) => {
+    if (!networksCompatible(a.network, networkKey)) return false;
+    if (want && a.currency.trim().toUpperCase() !== want) return false;
+    return true;
+  });
 }
 
 /** UI deposit-network key from a partner/API network spelling. */

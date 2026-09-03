@@ -4,11 +4,11 @@ import {
   CURRENCY_OPTIONS,
   STABLECOIN_OPTIONS,
   NETWORK_OPTIONS,
-  SUPPORTED_STABLECOIN_NETWORKS,
   SUPPORTED_IBAN_CURRENCIES,
   isCurrencySupported,
   isStablecoinSupported,
   isStablecoinNetworkSupported,
+  networksForStablecoin,
 } from "@/lib/services/depositAccounts";
 
 export type CreateAccountModalProps = {
@@ -23,37 +23,54 @@ export type CreateAccountModalProps = {
   setCreateAccountNetwork: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   createAccountError: string;
   createAccountSaving: boolean;
-  /** UI network codes already held (e.g. BASE, POLYGON). */
-  occupiedNetworks?: readonly string[];
+  /**
+   * Occupied (currency, network) slots as `USDC:BASE` / `USDT:POLYGON`.
+   * Networks for the selected stablecoin are derived from this.
+   */
+  occupiedSlots?: readonly string[];
   /** ISO currencies already held (e.g. USD, EUR). */
   occupiedCurrencies?: readonly string[];
   closeModal: () => void;
   submitCreateAccount: () => void;
 };
 
+function slotKey(currency: string, network: string): string {
+  return `${currency.trim().toUpperCase()}:${network.trim().toUpperCase()}`;
+}
+
 export default function CreateAccountModal(p: CreateAccountModalProps) {
   const isStablecoin = p.createAccountKind === "stablecoin";
-  const occupiedNetworks = new Set(
-    (p.occupiedNetworks ?? []).map((n) => n.trim().toUpperCase()),
+  const occupiedSlots = new Set(
+    (p.occupiedSlots ?? []).map((s) => s.trim().toUpperCase()),
   );
   const occupiedCurrencies = new Set(
     (p.occupiedCurrencies ?? []).map((c) => c.trim().toUpperCase()),
   );
 
-  const availableNetworks = SUPPORTED_STABLECOIN_NETWORKS.filter(
-    (code) => !occupiedNetworks.has(code),
+  const selectedCurrency = (p.createAccountStablecoin || "USDC").trim().toUpperCase();
+  const networksForAsset = networksForStablecoin(selectedCurrency);
+  const availableNetworks = networksForAsset.filter(
+    (code) => !occupiedSlots.has(slotKey(selectedCurrency, code)),
   );
   const availableCurrencies = SUPPORTED_IBAN_CURRENCIES.filter(
     (code) => !occupiedCurrencies.has(code),
   );
 
+  const anyStablecoinSlotOpen = STABLECOIN_OPTIONS.some((o) => {
+    if (!isStablecoinSupported(o.code)) return false;
+    return networksForStablecoin(o.code).some(
+      (net) => !occupiedSlots.has(slotKey(o.code, net)),
+    );
+  });
+
   const slotsFull = isStablecoin
-    ? availableNetworks.length === 0
+    ? !anyStablecoinSlotOpen
     : availableCurrencies.length === 0;
 
   const selectedSlotTaken = isStablecoin
     ? Boolean(p.createAccountNetwork) &&
-      occupiedNetworks.has(p.createAccountNetwork.trim().toUpperCase())
+      Boolean(p.createAccountStablecoin) &&
+      occupiedSlots.has(slotKey(p.createAccountStablecoin, p.createAccountNetwork))
     : Boolean(p.createAccountCurrency) &&
       occupiedCurrencies.has(p.createAccountCurrency.trim().toUpperCase());
 
@@ -75,7 +92,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
       {slotsFull ? (
         <div className="ep-wallets-create__error" role="status">
           {isStablecoin
-            ? "You already have a USDC account on every available network."
+            ? "You already have a stablecoin account on every available asset and network."
             : "You already have fiat accounts for every supported currency (USD and EUR)."}
         </div>
       ) : null}
@@ -142,8 +159,12 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             >
               <option value="">Select network</option>
               {NETWORK_OPTIONS.map((o) => {
-                const supported = isStablecoinNetworkSupported(o.code);
-                const taken = occupiedNetworks.has(o.code.trim().toUpperCase());
+                const supported =
+                  isStablecoinNetworkSupported(o.code) &&
+                  networksForAsset.includes(o.code);
+                const taken =
+                  Boolean(p.createAccountStablecoin) &&
+                  occupiedSlots.has(slotKey(selectedCurrency, o.code));
                 return (
                   <option
                     key={o.code}
@@ -152,7 +173,9 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
                   >
                     {o.label}
                     {!supported
-                      ? " — not available yet"
+                      ? p.createAccountStablecoin === "USDT" && o.code === "STELLAR"
+                        ? " — USDT not on Stellar"
+                        : " — not available yet"
                       : taken
                         ? " — already open"
                         : ""}
@@ -161,8 +184,8 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               })}
             </select>
             <div className="ep-wallets-create__hint">
-              One USDC account per network (Base, Polygon, and Stellar). Re-opening an existing
-              slot refreshes it instead of creating another.
+              One account per asset and network. USDC on Base, Polygon, and Stellar; USDT on
+              Base and Polygon only.
             </div>
           </div>
         </>

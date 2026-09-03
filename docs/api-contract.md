@@ -35,11 +35,11 @@ the exact failure mode). See
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status`; full KYB wizard via `GET/POST/PATCH /api/businesses/{id}/kyb/*` | **Customer-vault semantics (partner `/partner/customers*` upstream):** requirements → profile → docs → `POST …/kyb/submit` → poll. Status stays **`pending`** through initiate/profile/docs (vault `incomplete`); only final submit flips to **`submitted`** (vault `pending_review` / “In review”). After submit, FE calls `POST …/kyb/status/poll` (sync from vault) and may use `GET …/kyb/status` for cached reads. Money CTAs and deposit-account creation stay gated until `kyb_status === "approved"`. Multipart uploads go through `/api/mboka/...`. |
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Add Account → Bank Account | `POST /v1/iban/accounts` | Issues IBAN/bank deposit coordinates. Backend accepts **EUR and USD only**; the design's other 9 currencies render disabled rather than failing after a click. The **Account Name** field is collected but *not sent* — `DepositAccountCreateIn` has no name field and Pydantic would silently drop it, so it is deliberately omitted until the API adds one. Currently gated behind KYB approval. |
-| Add Account → Stablecoin Account | `GET /v1/entities`, `POST /v1/entities/{id}/accounts` | Opens a partner FinancialAccount (`asset_type: stablecoin`). **USDC on Base, Polygon, and Stellar**. USDT and Ethereum render disabled. Uses the first linked entity; fails closed with a clear message when none exist. `display_name` is sent from the Account name field. |
+| Add Account → Stablecoin Account | `GET /v1/entities`, `POST /v1/entities/{id}/accounts` | Opens a partner FinancialAccount (`asset_type: stablecoin`). **USDC on Base, Polygon, and Stellar**; **USDT on Base and Polygon**. Ethereum renders disabled. One account per currency × network. Uses the first linked entity; fails closed with a clear message when none exist. `display_name` is sent from the Account name field. |
 | Wallets screen — currency account list | `GET /v1/iban/accounts/eligibility`, `GET /v1/iban/accounts`, `GET /v1/entities` → `GET /v1/entities/{id}/accounts` | Eligibility is checked first so an unverified business sees a "Verification required" banner instead of a raw 400 from the list call (`list_accounts` requires KYB/KYC approval — see `app/controllers/deposit_accounts.py`). The IBAN list call only runs once eligibility confirms `eligible: true`. Cards merge fiat IBAN accounts with partner stablecoin accounts (USDC on Base, Polygon, and Stellar, including pending). **Balances** come from partner `balance.{available,current}` when present (fiat via IBAN list; USDC via entity accounts). |
 | Balances (per-account + Home) | `GET /v1/iban/accounts`, `GET /v1/entities/{id}/accounts`, `GET /v1/exchange-rates` | Partner `balance.available` (fallback `current`) on fiat IBAN and entity stablecoin accounts, formatted through `lib/services/balances.ts`. A missing balance renders `—` — never invented. Convert and USDC Send refuse amounts above the known available. Home hero **aggregates** those balances into one display-currency total using live `GET /v1/exchange-rates` ∪ summary `fx_rates`. Same rates power the rates marquee and Send quotes. |
 | Send money ("by country" tab) | `POST /v1/orders/quote`, `POST /v1/orders/{quote_id}/accept`, `GET /v1/supported/catalog` | OffRamp payout flow. See mapping notes below. |
-| Send money ("Stablecoin" tab) | `GET /v1/entities`, `GET /v1/entities/{id}/accounts`, `POST /v1/accounts/{account_id}/sends/preview`, `POST /v1/accounts/{account_id}/sends` | Phase 4 account-native USDC send (Base/Polygon/Stellar). Preview → confirm with **required** `Idempotency-Key`. Stellar uses a `G…` public key, not EVM `0x`. Not Privy wallet transfer. See Account-send mapping notes below. |
+| Send money ("Stablecoin" tab) | `GET /v1/entities`, `GET /v1/entities/{id}/accounts`, `POST /v1/accounts/{account_id}/sends/preview`, `POST /v1/accounts/{account_id}/sends` | Phase 4 account-native send: **USDC** on Base/Polygon/Stellar, **USDT** on Base/Polygon. Preview → confirm with **required** `Idempotency-Key`. Stellar uses a `G…` public key, not EVM `0x`. Not Privy wallet transfer. See Account-send mapping notes below. |
 | Deposit / Top up ("by country" tab) | `POST /v1/orders/quote` (`order_type: OnRamp`), `POST /v1/orders/{quote_id}/accept` | Fiat-in top-up to the business treasury wallet. Shows `payment_instructions` after accept (momo STK prompt or bank coordinates). Reuses `GET /v1/supported/catalog` for OnRamp provider `networkId`, `useOrderStatus` for post-accept polling, and `Idempotency-Key` on quote. See OnRamp mapping notes below. |
 | Convert (intra FX) | `POST /v1/conversions/quote`, `POST /v1/conversions/{quote_id}/accept`, `GET /v1/conversions/{id}` | Ledger FX between owned deposit accounts: **EUR/GBP/USD ↔ USDC**. Fiat↔fiat (e.g. EUR→USD) is **not** a single rail — UI runs two hops via a ready USDC account (`components/convert/ConvertFlow.tsx`, `lib/services/conversions.ts`). Min amount **1.00**. Requires synced local FinancialAccount ids from IBAN list / entity accounts. |
 | Cards | `GET/POST /v1/entities/{entity_id}/accounts/{account_id}/cards`, freeze/unfreeze | **Active fiat USD only** — every card is linked to that funding account and spends its balance (not a separate card wallet). PAN/CVV returned once on create. `lib/services/cards.ts` + Cards screen. |
@@ -63,27 +63,28 @@ the exact failure mode). See
 
 - Uses Phase 4 partner accounts — **not** the Privy treasury wallet on
   dashboard summary. Source accounts come from `GET /v1/entities` →
-  `GET /v1/entities/{id}/accounts`, filtered to ready `stablecoin` / `USDC`
-  on **Base**, **Polygon**, or **Stellar** (`lib/services/entities.ts`).
+  `GET /v1/entities/{id}/accounts`, filtered to ready `stablecoin` rails:
+  **USDC** on Base / Polygon / Stellar, **USDT** on Base / Polygon
+  (`lib/services/entities.ts`). Stellar has no USDT send path.
 - Create Account → Stablecoin opens the same surface via
   `POST /v1/entities/{id}/accounts` with
-  `{ asset_type: "stablecoin", currency: "USDC", network: "Base"|"Polygon"|"Stellar", display_name }`
-  (`buildStablecoinOpenPayload` / `entitiesApi.openAccount`).
+  `{ asset_type: "stablecoin", currency: "USDC"|"USDT", network: "Base"|"Polygon"|"Stellar", display_name }`
+  (`buildStablecoinOpenPayload` / `entitiesApi.openAccount`). USDT + Stellar is rejected in the UI.
 - Preview: `POST /v1/accounts/{account_id}/sends/preview` with
   `{ to_address, amount, network }`. On Base/Polygon, `to_address` must be a
   20-byte `0x` EVM address (ENS / `.eth` rejected). On Stellar it must be a
-  56-character `G…` public key. Min amount **1.00 USDC**. The dashboard does
+  56-character `G…` public key. Min amount **1.00** (USDC or USDT). The dashboard does
   **not** rewrite a Stellar key as EVM.
 - Confirm: `POST /v1/accounts/{account_id}/sends` with `{ preview_token }`
   and a required `Idempotency-Key` header (8–64 chars). The dashboard mints
   a fresh UUID per confirm attempt.
-- Stellar account-sends are supported end-to-end: Mboka accepts `G…` +
+- Stellar account-sends are supported end-to-end for **USDC**: Mboka accepts `G…` +
   `network: Stellar`, and the aggregator pays Circle USDC on Horizon from the
   Element-custodial wallet (same path OffRamp auto-send uses). Destination must
   be funded on-network with a Circle USDC trustline.
-- USDT / Ethereum / Solana chips are intentionally not offered — the backend
-  rejects them (`assert_stablecoin_account`).
-- If no ready account exists for the chosen network, the Stablecoin tab
+- Ethereum / Solana chips are intentionally not offered for custodial send —
+  those rails are receive/top-up only where applicable.
+- If no ready account exists for the chosen **asset + network**, the Stablecoin tab
   fails closed with a clear message rather than simulating a send.
 
 ## OnRamp (deposit) mapping notes (`lib/services/orders.ts`)
