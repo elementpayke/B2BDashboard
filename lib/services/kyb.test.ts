@@ -75,6 +75,8 @@ function validDraft(): KybWizardProfileDraft {
   draft.associates[0].street = "12 Owner Road";
   draft.associates[0].city = "Nairobi";
   draft.associates[0].postCode = "00100";
+  draft.associates[0].idType = "Passport";
+  draft.associates[0].idNumber = "A1234567";
   draft.ownershipRemainderNote = "Remaining 40% held by minority shareholders under 25% each";
   draft.attestedAccurate = true;
   return draft;
@@ -208,6 +210,8 @@ describe("validateProfileDraft", () => {
       street: "5 Side Street",
       city: "Nairobi",
       postCode: "00200",
+      idType: "NationalIDCard",
+      idNumber: "12345678",
     };
     expect(validateAddressUboStep(draft)).toMatch(/100%/);
   });
@@ -231,9 +235,18 @@ describe("validateProfileDraft", () => {
       street: "5 Side Street",
       city: "Nairobi",
       postCode: "00200",
+      idType: "Passport",
+      idNumber: "B9876543",
     };
     draft.ownershipRemainderNote = "Remaining 25% held by a family trust";
     expect(validateAddressUboStep(draft)).toBeNull();
+  });
+
+  it("requires a government ID for each UBO", () => {
+    const draft = validDraft();
+    draft.associates[0].idType = "";
+    draft.associates[0].idNumber = "";
+    expect(validateAddressUboStep(draft)).toMatch(/government ID/i);
   });
 
   it("requires a remainder note when UBO ownership is under 100%", () => {
@@ -470,6 +483,11 @@ describe("buildProfilePayload", () => {
     expect(payload.associates?.[0].relationship_types).toContain("Representative");
     expect(payload.associates?.[0].relationship_types).toContain("Director");
     expect(payload.associates?.[0].ubo?.ownership_percentage).toBe(60);
+    expect(payload.associates?.[0].identities?.[0]).toEqual({
+      issuing_country: "KE",
+      id_type: "Passport",
+      id_number: "A1234567",
+    });
   });
 
   it("marks only the first UBO as Representative and Director when multiple owners exist", () => {
@@ -491,6 +509,8 @@ describe("buildProfilePayload", () => {
       street: "5 Side Street",
       city: "Nairobi",
       postCode: "00200",
+      idType: "Passport",
+      idNumber: "B9876543",
     };
     const payload = buildProfilePayload(draft);
     expect(payload.associates).toHaveLength(2);

@@ -174,6 +174,9 @@ export type KybDocumentRequirements = {
   corridor: string | null;
   business_documents: KybRequiredDocument[];
   shareholder_documents: KybRequiredDocument[];
+  required_fields?: string[];
+  conditional_fields?: Record<string, unknown>[];
+  package_notes?: string | null;
   disclaimer: string | null;
 };
 
@@ -482,6 +485,9 @@ export type KybWizardAssociateDraft = {
   city: string;
   postCode: string;
   state: string;
+  /** Government ID for vault officers[].identity_document */
+  idType: AssociateIdentity["id_type"] | "";
+  idNumber: string;
 };
 
 export type KybWizardProfileDraft = {
@@ -535,6 +541,8 @@ export function emptyAssociateDraft(defaultCountry = "KE"): KybWizardAssociateDr
     city: "",
     postCode: "",
     state: "",
+    idType: "",
+    idNumber: "",
   };
 }
 
@@ -615,6 +623,7 @@ export function profileDraftFromSummary(
   if (associates.length > 0) {
     draft.associates = associates.slice(0, KYB_MAX_UBOS).map((a) => {
       const ra = a.residential_address;
+      const identity = Array.isArray(a.identities) && a.identities[0] ? a.identities[0] : null;
       return {
         id: a.id || newAssociateId(),
         firstName: a.full_name?.first_name || "",
@@ -629,6 +638,8 @@ export function profileDraftFromSummary(
         city: ra?.city || "",
         postCode: ra?.post_code || "",
         state: ra?.state || "",
+        idType: (identity?.id_type as KybWizardAssociateDraft["idType"]) || "",
+        idNumber: identity?.id_number || "",
       };
     });
   }
@@ -729,6 +740,12 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
     if (!associate.postCode.trim()) {
       return `Residential post code is required for ${who}.`;
     }
+    if (!associate.idType) {
+      return `Select a government ID type for ${who} (passport, national ID, or license).`;
+    }
+    if (!associate.idNumber.trim() || associate.idNumber.trim().length < 4) {
+      return `Enter a valid government ID number for ${who}.`;
+    }
   }
   if (ownershipSum > 100) {
     return `Ownership percentages add up to ${ownershipSum}% — total cannot exceed 100%.`;
@@ -803,6 +820,16 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
         state: associate.state.trim() || undefined,
         country: taxCountry,
       },
+      identities:
+        associate.idType && associate.idNumber.trim()
+          ? [
+              {
+                issuing_country: taxCountry,
+                id_type: associate.idType,
+                id_number: associate.idNumber.trim(),
+              },
+            ]
+          : undefined,
       ubo: { ownership_percentage: Number(associate.ownershipPercentage) },
     };
   });
