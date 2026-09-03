@@ -165,6 +165,74 @@ export type DepositAccount = {
   balance?: DepositAccountBalance | null;
 };
 
+function nonEmpty(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** Flatten a partner bank_address object into one display line; omit if empty. */
+export function formatBankAddress(
+  address: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!address || typeof address !== "object") return null;
+  const preferred = [
+    "line1",
+    "line2",
+    "street",
+    "address",
+    "city",
+    "state",
+    "region",
+    "postal_code",
+    "postcode",
+    "zip",
+    "country",
+  ];
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const key of preferred) {
+    const value = nonEmpty(address[key]);
+    if (!value) continue;
+    const norm = value.toLowerCase();
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    parts.push(value);
+  }
+  if (!parts.length) {
+    for (const value of Object.values(address)) {
+      const text = nonEmpty(value);
+      if (!text) continue;
+      const norm = text.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      parts.push(text);
+    }
+  }
+  return parts.length ? parts.join(", ") : null;
+}
+
+/**
+ * Overlay a fuller `GET /v1/iban/accounts` row onto a bootstrap stub.
+ * Non-empty overlay fields win; missing overlay fields keep the stub.
+ */
+export function mergeDepositAccount(
+  stub: DepositAccount | null | undefined,
+  overlay: DepositAccount | null | undefined,
+): DepositAccount | null {
+  if (!stub && !overlay) return null;
+  if (!overlay) return stub ?? null;
+  if (!stub) return overlay;
+  const merged: DepositAccount = { ...stub };
+  (Object.keys(overlay) as (keyof DepositAccount)[]).forEach((key) => {
+    const next = overlay[key];
+    if (next == null) return;
+    if (typeof next === "string" && !next.trim()) return;
+    (merged as Record<string, unknown>)[key as string] = next;
+  });
+  return merged;
+}
+
 export type DepositAccountListResult = {
   accounts: DepositAccount[];
   /** Present once Mboka soft-fails KYB on the list endpoint (HTTP 200). */
@@ -274,14 +342,20 @@ export type DepositAccountDetailRow = {
  */
 export function buildDepositAccountDetailRows(account: DepositAccount): DepositAccountDetailRow[] {
   const rows: DepositAccountDetailRow[] = [];
-  if (account.iban) rows.push({ label: "IBAN", value: account.iban, copyValue: account.iban });
-  if (account.bic) rows.push({ label: "BIC / SWIFT", value: account.bic, copyValue: account.bic });
-  if (account.bank_name) rows.push({ label: "Bank", value: account.bank_name });
-  if (account.account_holder_name) {
-    rows.push({ label: "Account name", value: account.account_holder_name });
-  }
-  if (account.reference) {
-    rows.push({ label: "Reference", value: account.reference, copyValue: account.reference });
+  const iban = nonEmpty(account.iban);
+  const bic = nonEmpty(account.bic);
+  const bankName = nonEmpty(account.bank_name);
+  const holder = nonEmpty(account.account_holder_name);
+  const reference = nonEmpty(account.reference);
+  const wallet = nonEmpty(account.destination_wallet);
+  const bankAddress = formatBankAddress(account.bank_address);
+  if (iban) rows.push({ label: "IBAN", value: iban, copyValue: iban });
+  if (bic) rows.push({ label: "BIC / SWIFT", value: bic, copyValue: bic });
+  if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
+  if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+  if (holder) rows.push({ label: "Account name", value: holder, copyValue: holder });
+  if (reference) {
+    rows.push({ label: "Reference", value: reference, copyValue: reference });
   }
   // Format through the shared helper so the detail row and the card view
   // never disagree (raw `25` vs formatted `25.00`) on the same account.
@@ -291,15 +365,17 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
       value: `${formatAccountBalance(account.balance)} ${account.balance?.currency || account.currency}`,
     });
   }
-  if (account.destination_wallet) {
+  if (wallet) {
     rows.push({
       label: "Settles to wallet",
-      value: account.destination_wallet,
-      copyValue: account.destination_wallet,
+      value: wallet,
+      copyValue: wallet,
     });
   }
-  if (account.destination_asset || account.destination_network) {
-    const parts = [account.destination_asset, account.destination_network].filter(Boolean);
+  const asset = nonEmpty(account.destination_asset);
+  const network = nonEmpty(account.destination_network);
+  if (asset || network) {
+    const parts = [asset, network].filter((part): part is string => Boolean(part));
     rows.push({ label: "Settlement asset", value: parts.join(" · ") });
   }
   return rows;

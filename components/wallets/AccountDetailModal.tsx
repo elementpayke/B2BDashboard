@@ -17,7 +17,7 @@ export type AccountDetailModalProps = {
   acctDetail: {
     currency: string;
     name: string;
-    /** Legal / beneficiary account holder when available */
+    /** Legal / beneficiary account holder from the API — never a currency label. */
     beneficiary?: string | null;
     rows: AccountDetailRow[];
     sections?: AccountDetailSection[];
@@ -36,10 +36,10 @@ export type AccountDetailModalProps = {
 };
 
 /** Display-only IBAN grouping — copy still uses the raw `copyValue`. */
-function formatSensitiveValue(label: string, value: string): string {
+export function formatSensitiveValue(label: string, value: string): string {
   const clean = value.replace(/\s+/g, "");
-  const isIban = /iban/i.test(label) || /^[A-Z]{2}\d{2}/i.test(clean);
-  if (isIban && clean.length > 8) {
+  const isIban = /iban/i.test(label) && /^[A-Z]{2}\d{2}/i.test(clean) && clean.length >= 15;
+  if (isIban) {
     return clean.replace(/(.{4})/g, "$1 ").trim().toUpperCase();
   }
   return value;
@@ -65,7 +65,7 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
 }
 
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
-  const beneficiary = acctDetail.beneficiary || acctDetail.name;
+  const beneficiary = acctDetail.beneficiary?.trim() || null;
   openBrandedDocument(
     {
       fileTitle: `Mboka — ${acctDetail.currency} bank letter`,
@@ -77,7 +77,7 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
           rows: [
             { label: "Account", value: acctDetail.name },
             { label: "Rail", value: acctDetail.railLabel ?? acctDetail.currency },
-            { label: "Beneficiary", value: beneficiary },
+            ...(beneficiary ? [{ label: "Beneficiary", value: beneficiary }] : []),
           ],
         },
         {
@@ -94,21 +94,26 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
   );
 }
 
-function DetailRow({
-  row,
+function DetailField({
+  label,
+  value,
+  copyValue,
   copiedField,
   copyField,
 }: {
-  row: AccountDetailRow;
+  label: string;
+  value: string;
+  copyValue?: string;
   copiedField: string;
   copyField: (fieldKey: string, value: string) => () => void;
 }) {
-  const copied = copiedField === row.label;
-  const display = formatSensitiveValue(row.label, row.value);
-  const isIban = /iban/i.test(row.label);
+  const copied = copiedField === label;
+  const display = formatSensitiveValue(label, value);
+  const isIban = /iban/i.test(label);
+  const canCopy = Boolean(copyValue);
   return (
     <div className="ep-wallets-detail__row">
-      <span className="ep-wallets-detail__label">{row.label}</span>
+      <span className="ep-wallets-detail__label">{label}</span>
       <span
         className={
           isIban
@@ -118,13 +123,13 @@ function DetailRow({
       >
         {display}
       </span>
-      {row.copyValue ? (
+      {canCopy ? (
         <button
           type="button"
-          onClick={copyField(row.label, row.copyValue)}
+          onClick={copyField(label, copyValue as string)}
           className="ep-wallets-detail__copy"
           data-copied={copied ? "true" : "false"}
-          aria-label={copied ? `${row.label} copied` : `Copy ${row.label}`}
+          aria-label={copied ? `${label} copied` : `Copy ${label}`}
         >
           {copied ? "Copied" : "Copy"}
         </button>
@@ -142,9 +147,22 @@ export default function AccountDetailModal({
 }: AccountDetailModalProps) {
   if (!acctDetail) return null;
 
-  const sections =
-    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows);
-  const beneficiary = acctDetail.beneficiary || acctDetail.name;
+  const beneficiary = acctDetail.beneficiary?.trim() || null;
+  const bankRows = (acctDetail.sections?.length
+    ? acctDetail.sections
+    : defaultSections(acctDetail.rows)
+  )
+    .map((sec) =>
+      beneficiary
+        ? {
+            ...sec,
+            rows: sec.rows.filter(
+              (row) => row.label.toLowerCase() !== "account name" || row.value.trim() !== beneficiary,
+            ),
+          }
+        : sec,
+    )
+    .filter((sec) => sec.rows.length > 0);
   const showLetter = acctDetail.showDownloadLetter === true && acctDetail.rows.length > 0;
   const isFund = intent === "fund";
 
@@ -156,31 +174,44 @@ export default function AccountDetailModal({
             Transfer {acctDetail.currency} to these bank details
           </div>
           <p className="ep-wallets-detail__fund-hint-body">
-            Send a bank transfer in <strong>{acctDetail.currency}</strong> using the beneficiary
-            and coordinates below. Funds credit when the inbound payment settles
+            Send a bank transfer in <strong>{acctDetail.currency}</strong>
+            {beneficiary ? (
+              <>
+                {" "}
+                to <strong>{beneficiary}</strong>
+              </>
+            ) : null}{" "}
+            using the coordinates below. Funds credit when the inbound payment settles
             {acctDetail.instructions ? ` — ${acctDetail.instructions}` : "."} This is not the
             African momo/bank OnRamp top-up flow.
           </p>
         </div>
       ) : null}
 
-      <div className="ep-wallets-detail__section">
-        <div className="ep-wallets-detail__section-title">Beneficiary details</div>
-        <div className="ep-wallets-detail__beneficiary">
-          <span className="ep-wallets-detail__label">Name</span>
-          <span className="ep-wallets-detail__beneficiary-name">{beneficiary}</span>
+      {beneficiary ? (
+        <div className="ep-wallets-detail__section">
+          <div className="ep-wallets-detail__section-title">Beneficiary</div>
+          <DetailField
+            label="Name"
+            value={beneficiary}
+            copyValue={beneficiary}
+            copiedField={copiedField}
+            copyField={copyField}
+          />
         </div>
-      </div>
+      ) : null}
 
       {acctDetail.rows.length ? (
-        sections.map((sec) => (
+        bankRows.map((sec) => (
           <div key={sec.title} className="ep-wallets-detail__section">
             <div className="ep-wallets-detail__section-title">{sec.title}</div>
             <div className="ep-wallets-detail__rows" aria-label={sec.title}>
               {sec.rows.map((row) => (
-                <DetailRow
+                <DetailField
                   key={row.label}
-                  row={row}
+                  label={row.label}
+                  value={row.value}
+                  copyValue={row.copyValue}
                   copiedField={copiedField}
                   copyField={copyField}
                 />

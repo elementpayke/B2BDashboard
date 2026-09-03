@@ -5,9 +5,11 @@ import {
   currencyIso,
   currencyLabel,
   describeDepositAccountStatus,
+  formatBankAddress,
   isCurrencySupported,
   mapDepositAccountToCardView,
   maskAccountIdentifier,
+  mergeDepositAccount,
   type DepositAccount,
 } from "./depositAccounts";
 
@@ -189,6 +191,26 @@ describe("buildDepositAccountDetailRows", () => {
       { label: "Settlement asset", value: "USDC · Polygon" },
     ]);
   });
+
+  it("copies bank name and account holder, and omits blank strings", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "  ",
+      bank_name: "CROSS RIVER BANK",
+      account_holder_name: "Elementpay LTD",
+      bank_address: { city: "New York", country: "US", street: "885 3rd Ave" },
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
+      {
+        label: "Bank address",
+        value: "885 3rd Ave, New York, US",
+        copyValue: "885 3rd Ave, New York, US",
+      },
+      { label: "Account name", value: "Elementpay LTD", copyValue: "Elementpay LTD" },
+    ]);
+  });
 });
 
 describe("buildCreateBankAccountPayload", () => {
@@ -235,5 +257,57 @@ describe("buildDepositAccountDetailRows — balance row", () => {
     expect(
       buildDepositAccountDetailRows(account).some((r) => r.label === "Available balance"),
     ).toBe(false);
+  });
+});
+
+describe("formatBankAddress", () => {
+  it("joins known address keys and skips empty values", () => {
+    expect(
+      formatBankAddress({
+        street: "885 3rd Ave",
+        city: "New York",
+        country: "US",
+        extra: "",
+      }),
+    ).toBe("885 3rd Ave, New York, US");
+  });
+
+  it("returns null when the partner sent no address text", () => {
+    expect(formatBankAddress(null)).toBeNull();
+    expect(formatBankAddress({})).toBeNull();
+  });
+});
+
+describe("mergeDepositAccount", () => {
+  it("lets a full IBAN list row fill coordinates missing from bootstrap", () => {
+    const stub: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      account_holder_name: "Elementpay LTD",
+    };
+    const overlay: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "US123456789012345678",
+      bic: "021214891",
+      bank_name: "CROSS RIVER BANK",
+    };
+    expect(mergeDepositAccount(stub, overlay)).toMatchObject({
+      account_holder_name: "Elementpay LTD",
+      iban: "US123456789012345678",
+      bic: "021214891",
+      bank_name: "CROSS RIVER BANK",
+    });
+  });
+
+  it("does not overlay blank strings onto a stub", () => {
+    const stub: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+    };
+    expect(
+      mergeDepositAccount(stub, { currency: "EUR", status: "active", iban: "  " })?.iban,
+    ).toBe("FR7630006000011234567890189");
   });
 });

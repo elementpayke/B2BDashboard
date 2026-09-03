@@ -53,6 +53,7 @@ import {
   depositAccountsApi,
   mapDepositAccountToCardView,
   buildDepositAccountDetailRows,
+  mergeDepositAccount,
   currencyIso,
   currencyLabel,
   occupiedFiatCurrencyCodes,
@@ -611,16 +612,22 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     enabled: bootstrapFailed,
   });
+  const needsFullFiatCoords =
+    state.selectedAcctKind === "fiat" &&
+    (state.modal === "acctDetail" ||
+      state.modal === "receive" ||
+      state.screen === "accountDetail");
   const depositAccountsQuery = useQuery({
     queryKey: ["deposit-accounts"],
     queryFn: depositAccountsApi.list,
     retry: false,
     enabled:
-      bootstrapFailed &&
-      (depositEligibilityQuery.data?.eligible === true ||
-        (meKybApproved && depositEligibilityQuery.data?.eligible !== false) ||
-        // Soft-fail list: try directly once eligibility isn't known false.
-        depositEligibilityQuery.isFetched),
+      needsFullFiatCoords ||
+      (bootstrapFailed &&
+        (depositEligibilityQuery.data?.eligible === true ||
+          (meKybApproved && depositEligibilityQuery.data?.eligible !== false) ||
+          // Soft-fail list: try directly once eligibility isn't known false.
+          depositEligibilityQuery.isFetched)),
   });
   const stablecoinAccountsQuery = useQuery({
     queryKey: ["stablecoin-accounts"],
@@ -2647,12 +2654,20 @@ export default function DashboardApp(props: Props = {}) {
     const stablecoinAccountsList = bootstrapReady
       ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
       : (stablecoinAccountsQuery.data ?? []);
-    const selectedDepositAccount =
+    const selectedFiatCurrency =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
-        ? depositAccountsList.find(
-            (a) => a.currency.toUpperCase() === s.selectedAcctKey.slice("fiat:".length),
-          ) ?? null
+        ? s.selectedAcctKey.slice("fiat:".length)
         : null;
+    const selectedDepositAccount = selectedFiatCurrency
+      ? mergeDepositAccount(
+          depositAccountsList.find(
+            (a) => a.currency.toUpperCase() === selectedFiatCurrency,
+          ) ?? null,
+          (depositAccountsQuery.data?.accounts ?? []).find(
+            (a) => a.currency.toUpperCase() === selectedFiatCurrency,
+          ) ?? null,
+        )
+      : null;
     const selectedStablecoinAccount =
       s.selectedAcctKind === "stablecoin" && s.selectedAcctKey.startsWith("stablecoin:")
         ? stablecoinAccountsList.find(
@@ -2723,7 +2738,7 @@ export default function DashboardApp(props: Props = {}) {
           return {
             currency: view.currency,
             name: view.name,
-            beneficiary: selectedDepositAccount.account_holder_name || view.name,
+            beneficiary: selectedDepositAccount.account_holder_name?.trim() || null,
             flagUrl: view.iso ? flagUrl(view.iso) : null,
             statusLabel: view.statusLabel,
             statusColor,
@@ -2750,7 +2765,7 @@ export default function DashboardApp(props: Props = {}) {
             return {
               currency: selectedStablecoinAccount.currency,
               name: `${selectedStablecoinAccount.currency} · ${networkLabel}`,
-              beneficiary: `${selectedStablecoinAccount.currency} · ${networkLabel}`,
+              beneficiary: null as string | null,
               flagUrl: null as string | null,
               statusLabel: describeStablecoinAccountStatus(selectedStablecoinAccount.status),
               statusColor,
