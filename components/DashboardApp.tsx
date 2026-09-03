@@ -110,6 +110,8 @@ import {
   toUiNetworkKey,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
+import { registerOrderWatch, useOrderWatchIds } from "@/lib/hooks/orderWatchRegistry";
+import { orderIdOnWatchStream, useOrderWatchStream } from "@/lib/hooks/useOrderWatchStream";
 import {
   offRampProvidersForRail,
   onRampProvidersForRail,
@@ -479,23 +481,38 @@ export default function DashboardApp(props: Props = {}) {
       parseOnchainTxDetailId(state.selectedTxId) == null,
     retry: false,
   });
-  // Live order-status tracking with tiered HTTP polling fallback.
-  // Account-credit rows (`acr_…`) are not merchant_orders — skip order polling.
+  // Live order-status tracking via SSE watch stream (cookie-auth BFF) with
+  // tiered HTTP polling fallback. Account-credit rows (`acr_…`) are not
+  // merchant_orders — skip order polling.
+  const watchIds = useOrderWatchIds();
+  const { streamConnected, backupPollIntervalMs } = useOrderWatchStream(watchIds);
   const selectedTxIsMerchantOrder =
     state.selectedTxId != null && typeof state.selectedTxId === "number";
   const txStatusQuery = useOrderStatus(state.selectedTxId, {
     enabled: state.modal === "txDetail" && selectedTxIsMerchantOrder,
+    streamActive: orderIdOnWatchStream(state.selectedTxId, watchIds, streamConnected),
+    backupPollIntervalMs,
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
+    streamActive: orderIdOnWatchStream(state.sendAccept?.merchant_order_id, watchIds, streamConnected),
+    backupPollIntervalMs,
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
     enabled:
       (state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
       state.depositDone &&
       !!state.depositAccept,
+    streamActive: orderIdOnWatchStream(state.depositAccept?.merchant_order_id, watchIds, streamConnected),
+    backupPollIntervalMs,
   });
+  useEffect(() => {
+    if (state.modal === "txDetail" && selectedTxIsMerchantOrder && state.selectedTxId != null) {
+      registerOrderWatch(state.selectedTxId);
+    }
+  }, [state.modal, state.selectedTxId, selectedTxIsMerchantOrder]);
   const orderTrackingActive =
+    watchIds.length > 0 ||
     (state.modal === "send" &&
       state.sendDone &&
       !!state.sendAccept &&
@@ -1681,6 +1698,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ sendAccepting: true, sendAcceptError: "" });
     try {
       const accepted = await ordersApi.accept(state.sendQuote.quote_id);
+      registerOrderWatch(accepted.merchant_order_id);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -1747,6 +1765,7 @@ export default function DashboardApp(props: Props = {}) {
         undefined,
         state.depositQuote.quote_id,
       );
+      registerOrderWatch(accepted.merchant_order_id);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       const isMobile = rail.type === "mobile";
