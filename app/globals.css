@@ -5717,21 +5717,28 @@ body {
 }
 
 .ep-wallets-detail__beneficiary {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label copy"
+    "value copy";
+  column-gap: 10px;
+  row-gap: 4px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--surface2);
 }
 
 .ep-wallets-detail__beneficiary-name {
+  grid-area: value;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  text-align: right;
-  overflow-wrap: anywhere;
+  text-align: left;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.35;
 }
 
 .ep-wallets-detail__head {
@@ -5787,31 +5794,39 @@ body {
 }
 
 .ep-wallets-detail__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label copy"
+    "value copy";
+  column-gap: 10px;
+  row-gap: 4px;
   align-items: center;
-  gap: 10px;
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--surface2);
 }
 
 .ep-wallets-detail__label {
+  grid-area: label;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
-  flex-shrink: 0;
-  width: 120px;
 }
 
 .ep-wallets-detail__value {
+  grid-area: value;
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 0.01em;
-  word-break: break-all;
-  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
   color: var(--ink);
-  flex: 1;
   min-width: 0;
 }
 
@@ -5822,6 +5837,8 @@ body {
 }
 
 .ep-wallets-detail__copy {
+  grid-area: copy;
+  align-self: center;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -5908,18 +5925,6 @@ body {
 }
 
 @media (max-width: 640px) {
-  .ep-wallets-detail__row {
-    flex-wrap: wrap;
-  }
-
-  .ep-wallets-detail__label {
-    width: 100%;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
   .ep-wallets-detail__copy {
     min-height: 44px;
   }
