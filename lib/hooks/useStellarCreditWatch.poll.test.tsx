@@ -30,8 +30,8 @@ vi.mock("@/lib/services/transactions", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/hooks/useOrderStatus", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/hooks/useOrderStatus")>();
+vi.mock("@/lib/orderStatusPolling", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/orderStatusPolling")>();
   return {
     ...actual,
     nextPollIntervalMs: () => 1,

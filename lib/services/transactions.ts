@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { apiEnvelope } from "@/lib/apiClient";
 import { ordersApi, type Order, type OrderStatus } from "./orders";
 
@@ -129,6 +130,30 @@ export function paymentFromOrderMetadata(
  * shape and the list endpoint's filter/pagination support differ. See
  * docs/api-contract.md "Transaction history filters & pagination".
  */
+/** Push a polled order row into React Query caches so lists/detail update without waiting for a refetch. */
+export function patchTransactionCachesFromOrder(queryClient: QueryClient, order: Order): void {
+  const tx = mapOrderToTransaction(order);
+  queryClient.setQueryData<Transaction | null>(["transaction", order.id], (prev) =>
+    prev ? { ...prev, ...tx } : tx,
+  );
+  queryClient.setQueryData<TransactionList>(["transactions"], (prev) => {
+    if (!prev?.items?.length) return prev;
+    const idx = prev.items.findIndex((row) => row.id === order.id);
+    if (idx < 0) return prev;
+    const items = prev.items.slice();
+    items[idx] = { ...items[idx], ...tx };
+    return { ...prev, items };
+  });
+  queryClient.setQueriesData<TransactionPage>({ queryKey: ["transactions-page"] }, (prev) => {
+    if (!prev?.items?.length) return prev;
+    const idx = prev.items.findIndex((row) => row.id === order.id);
+    if (idx < 0) return prev;
+    const items = prev.items.slice();
+    items[idx] = { ...items[idx], ...tx };
+    return { ...prev, items };
+  });
+}
+
 export function mapOrderToTransaction(order: Order): Transaction {
   return {
     id: order.id,

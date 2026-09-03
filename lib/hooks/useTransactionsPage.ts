@@ -18,7 +18,7 @@ export const TRANSACTIONS_PAGE_SIZE = 10;
 
 export function useTransactionsPage(
   statusFilter: TransactionStatus | "all",
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false },
 ) {
   const [offset, setOffset] = useState(0);
   const status = statusFilter === "all" ? undefined : statusFilter;
@@ -38,7 +38,11 @@ export function useTransactionsPage(
     enabled,
     // Poll only while the Transactions screen is mounted/active — Home no
     // longer pays for a second 15s orders stream on every dashboard visit.
-    refetchInterval: enabled ? 15_000 : false,
+    // Boost to 5s while an in-flight order is being tracked elsewhere.
+    refetchInterval:
+      options?.refetchIntervalMs === false
+        ? false
+        : (options?.refetchIntervalMs ?? (enabled ? 15_000 : false)),
     retry: false,
   });
 

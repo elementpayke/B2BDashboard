@@ -463,20 +463,10 @@ export default function DashboardApp(props: Props = {}) {
     // Skip when bootstrap already supplied usable FX.
     enabled: !bootstrapQuery.data?.fxRates,
   });
-  const transactionsQuery = useQuery({
-    queryKey: ["transactions"],
-    queryFn: transactionsApi.list,
-    retry: false,
-    enabled: needsActivityFeed,
-    refetchInterval: activityPoll ? 15_000 : false,
-  });
   const txFilterStatus =
     state.txFilter === "processing" || state.txFilter === "failed"
       ? state.txFilter
       : "all";
-  const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
-    enabled: screen === "transactions",
-  });
   // Tx detail modal fetches by id, not by list index/position — the list can
   // reorder or refetch (15s poll above) while the modal is open, and an
   // index would silently point at a different transaction.
@@ -489,10 +479,7 @@ export default function DashboardApp(props: Props = {}) {
       parseOnchainTxDetailId(state.selectedTxId) == null,
     retry: false,
   });
-  // Live order-status polling (backoff) for whichever order is currently
-  // in view: the tx detail modal, or the send modal's just-accepted order.
-  // See lib/hooks/useOrderStatus.ts for why this polls rather than using
-  // the backend's WebSocket (which requires a JWT in the browser).
+  // Live order-status tracking with tiered HTTP polling fallback.
   // Account-credit rows (`acr_…`) are not merchant_orders — skip order polling.
   const selectedTxIsMerchantOrder =
     state.selectedTxId != null && typeof state.selectedTxId === "number";
@@ -507,6 +494,30 @@ export default function DashboardApp(props: Props = {}) {
       (state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
       state.depositDone &&
       !!state.depositAccept,
+  });
+  const orderTrackingActive =
+    (state.modal === "send" &&
+      state.sendDone &&
+      !!state.sendAccept &&
+      !sendStatusQuery.isTerminal) ||
+    (state.modal === "txDetail" &&
+      selectedTxIsMerchantOrder &&
+      !txStatusQuery.isTerminal) ||
+    ((state.modal === "deposit" || !!state.fundAfricanTargetCurrency) &&
+      state.depositDone &&
+      !!state.depositAccept &&
+      !depositStatusQuery.isTerminal);
+  const activityPollMs = activityPoll ? (orderTrackingActive ? 5_000 : 15_000) : false;
+  const transactionsQuery = useQuery({
+    queryKey: ["transactions"],
+    queryFn: transactionsApi.list,
+    retry: false,
+    enabled: needsActivityFeed,
+    refetchInterval: activityPollMs,
+  });
+  const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
+    enabled: screen === "transactions",
+    refetchIntervalMs: orderTrackingActive ? 5_000 : 15_000,
   });
   const invoicesQuery = useQuery({
     queryKey: ["invoices"],

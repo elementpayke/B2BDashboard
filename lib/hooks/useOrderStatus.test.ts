@@ -3,8 +3,8 @@ import {
   TERMINAL_ORDER_STATUSES,
   isTerminalOrderStatus,
   isPollingHaltStatus,
-  nextPollIntervalMs,
-} from "./useOrderStatus";
+} from "@/lib/services/orderStatus";
+import { nextPollIntervalMs, FROZEN_POLL_MS } from "@/lib/orderStatusPolling";
 
 describe("isTerminalOrderStatus", () => {
   it("treats completed/failed/refunded/canceled as terminal", () => {
@@ -38,8 +38,8 @@ describe("isPollingHaltStatus", () => {
     }
   });
 
-  it("halts on frozen even though frozen isn't terminal", () => {
-    expect(isPollingHaltStatus("frozen")).toBe(true);
+  it("keeps polling on frozen so a later resolution is picked up", () => {
+    expect(isPollingHaltStatus("frozen")).toBe(false);
   });
 
   it("keeps polling while processing", () => {
@@ -52,29 +52,36 @@ describe("isPollingHaltStatus", () => {
 });
 
 describe("nextPollIntervalMs", () => {
-  it("starts at the base interval on the first attempt", () => {
-    expect(nextPollIntervalMs(1)).toBe(2_000);
+  it("starts at the fast interval on the first attempt", () => {
+    expect(nextPollIntervalMs(1)).toBe(1_000);
   });
 
-  it("doubles each attempt", () => {
-    expect(nextPollIntervalMs(2)).toBe(4_000);
-    expect(nextPollIntervalMs(3)).toBe(8_000);
-    expect(nextPollIntervalMs(4)).toBe(16_000);
+  it("stays fast through the first tier", () => {
+    expect(nextPollIntervalMs(30)).toBe(1_000);
   });
 
-  it("caps at the max interval", () => {
-    expect(nextPollIntervalMs(5)).toBe(30_000);
-    expect(nextPollIntervalMs(10)).toBe(30_000);
+  it("uses the medium interval in the second tier", () => {
+    expect(nextPollIntervalMs(31)).toBe(2_000);
+    expect(nextPollIntervalMs(60)).toBe(2_000);
   });
 
-  it("treats attempt 0 (or negative) as the base interval, never zero", () => {
-    expect(nextPollIntervalMs(0)).toBe(2_000);
-    expect(nextPollIntervalMs(-1)).toBe(2_000);
+  it("caps at the max interval after the medium tier", () => {
+    expect(nextPollIntervalMs(61)).toBe(5_000);
+    expect(nextPollIntervalMs(100)).toBe(5_000);
   });
 
-  it("honors custom base/max options", () => {
-    expect(nextPollIntervalMs(1, { baseMs: 1_000, maxMs: 5_000 })).toBe(1_000);
-    expect(nextPollIntervalMs(3, { baseMs: 1_000, maxMs: 5_000 })).toBe(4_000);
-    expect(nextPollIntervalMs(4, { baseMs: 1_000, maxMs: 5_000 })).toBe(5_000);
+  it("treats attempt 0 (or negative) as the fast interval, never zero", () => {
+    expect(nextPollIntervalMs(0)).toBe(1_000);
+    expect(nextPollIntervalMs(-1)).toBe(1_000);
+  });
+
+  it("honors custom tier options", () => {
+    expect(nextPollIntervalMs(1, { fastMs: 500, mediumMs: 1_000, maxMs: 3_000, fastUntil: 2, mediumUntil: 4 })).toBe(500);
+    expect(nextPollIntervalMs(3, { fastMs: 500, mediumMs: 1_000, maxMs: 3_000, fastUntil: 2, mediumUntil: 4 })).toBe(1_000);
+    expect(nextPollIntervalMs(5, { fastMs: 500, mediumMs: 1_000, maxMs: 3_000, fastUntil: 2, mediumUntil: 4 })).toBe(3_000);
+  });
+
+  it("exposes a slower frozen poll interval constant", () => {
+    expect(FROZEN_POLL_MS).toBe(10_000);
   });
 });
