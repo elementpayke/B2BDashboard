@@ -14,7 +14,7 @@ import {
   type AccountCredit,
 } from "@/lib/services/accountCredits";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
-import { nextPollIntervalMs } from "@/lib/hooks/useOrderStatus";
+import { nextPollIntervalMs } from "@/lib/orderStatusPolling";
 
 export type CreditWatchPhase = "submitted" | "credited" | "timed_out";
 

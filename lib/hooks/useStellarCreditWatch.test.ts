@@ -6,7 +6,7 @@ import {
   nextCreditWatchPhase,
   type CreditWatchPhase,
 } from "./useStellarCreditWatch";
-import { nextPollIntervalMs } from "./useOrderStatus";
+import { nextPollIntervalMs } from "@/lib/orderStatusPolling";
 import type { AccountCredit } from "@/lib/services/accountCredits";
 import type { Transaction } from "@/lib/services/transactions";
 
@@ -144,9 +144,9 @@ describe("creditWatchStatusMessage", () => {
 });
 
 describe("credit watch backoff", () => {
-  it("reuses order-status exponential backoff", () => {
-    expect(nextPollIntervalMs(1)).toBe(2_000);
-    expect(nextPollIntervalMs(5)).toBe(30_000);
+  it("reuses order-status tiered polling intervals", () => {
+    expect(nextPollIntervalMs(1)).toBe(1_000);
+    expect(nextPollIntervalMs(61)).toBe(5_000);
   });
 });
 
