@@ -132,11 +132,13 @@ import { useViewport } from "@/lib/responsive";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlySendAcceptError,
   friendlySendQuoteError,
   railIndexForMethod,
   sendRailBlockedByMissingNetworkId,
   sendRailHasChoice as railHasChoice,
 } from "@/lib/hooks/sendFlowHelpers";
+import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
 import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
@@ -908,17 +910,17 @@ export default function DashboardApp(props: Props = {}) {
         });
         return;
       }
-      // OffRamp quotes need a refund wallet — pick one the user can see/change.
-      const preferred =
-        fundableRefundWallets.find((a) => a.id === state.sendAccountId) ||
-        fundableRefundWallets.find((a) => a.currency.trim().toUpperCase() === "USDC") ||
-        fundableRefundWallets[0] ||
-        null;
+      // OffRamp quotes need a refund wallet — prefer Polygon USDT (funded
+      // treasury rail) over Base USDC leftovers.
+      const preferred = preferCountryOfframpWallet(
+        fundableRefundWallets,
+        state.sendAccountId,
+      );
       setState({
         sendStep: 2,
         sendQuoteError: preferred
           ? ""
-          : "No ready stablecoin wallet to refund from. Open a USDC account and wait until it is active.",
+          : "No ready stablecoin wallet to refund from. Open a USDT account on Polygon and wait until it is active.",
         sendAccountId: preferred?.id || "",
         sendChain: preferred ? toUiNetworkKey(preferred.network) || state.sendChain : state.sendChain,
         sendAsset: preferred
@@ -1697,9 +1699,21 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({
         sendAccepting: false,
-        sendAcceptError: err instanceof ApiRequestError
-          ? friendlySendQuoteError(err.message)
-          : "Couldn't send the payment. Try again.",
+        sendAcceptError:
+          err instanceof ApiRequestError
+            ? friendlySendAcceptError(
+                err.message,
+                err.data && typeof err.data === "object"
+                  ? (err.data as {
+                      code?: string;
+                      available?: string | number | null;
+                      amount?: string | number | null;
+                      currency?: string | null;
+                      network?: string | null;
+                    })
+                  : null,
+              )
+            : "Couldn't send the payment. Try again.",
       });
     }
   };
@@ -4341,12 +4355,17 @@ export default function DashboardApp(props: Props = {}) {
   onSaveRecipientDetails={saveCurrentRecipientDetails}
   saveRecipientBusy={saveRecipientBusy}
   saveRecipientMessage={saveRecipientMessage}
-  sendRefundWalletOptions={fundableRefundWallets.map((a) => ({
-    value: a.id,
-    label: `${a.currency} · ${formatNetworkLabel(a.network)}${
-      a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
-    }`,
-  }))}
+  sendRefundWalletOptions={fundableRefundWallets.map((a) => {
+    const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
+    const balPart =
+      bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
+    return {
+      value: a.id,
+      label: `${a.currency} · ${formatNetworkLabel(a.network)}${balPart}${
+        a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
+      }`,
+    };
+  })}
   sendRefundWalletId={s.sendAccountId || ""}
   selectSendRefundWallet={(accountId) => {
     const account = fundableRefundWallets.find((row) => row.id === accountId);

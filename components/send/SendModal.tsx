@@ -547,8 +547,8 @@ export default function SendModal(p: SendModalProps) {
                       />
                     ) : (
                       <p className="ep-money-hint">
-                        No ready stablecoin wallet yet. Open a USDC account under Accounts and wait
-                        until it is active with a deposit address.
+                        No ready stablecoin wallet yet. Open a USDT account on Polygon under Accounts
+                        and wait until it is active with a deposit address.
                       </p>
                     )}
                     <div className="ep-money-field">

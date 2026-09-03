@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlySendAcceptError,
   friendlySendQuoteError,
   sendRailBlockedByMissingNetworkId,
   railIndexForMethod,
@@ -140,5 +141,33 @@ describe("friendlySendQuoteError", () => {
     expect(friendlySendQuoteError("Amount is below the minimum for this corridor.")).toBe(
       "Amount is below the minimum for this corridor.",
     );
+  });
+});
+
+describe("friendlySendAcceptError", () => {
+  it("maps insufficient_balance to need/available copy", () => {
+    const out = friendlySendAcceptError("Insufficient balance to fund this payment.", {
+      code: "insufficient_balance",
+      available: "0.25",
+      amount: "1.00",
+      currency: "USDT",
+      network: "Polygon",
+    });
+    expect(out).toMatch(/Insufficient funds/i);
+    expect(out).toMatch(/1(?:\.0+)? USDT on Polygon/);
+    expect(out).toMatch(/Available 0\.25/);
+  });
+
+  it("maps below_minimum and asset_mismatch", () => {
+    expect(
+      friendlySendAcceptError("too small", {
+        code: "below_minimum",
+        amount: "0.25",
+        currency: "USDT",
+      }),
+    ).toMatch(/Amount too small/i);
+    expect(
+      friendlySendAcceptError("mismatch", { code: "asset_mismatch" }),
+    ).toMatch(/Settlement asset mismatch/i);
   });
 });

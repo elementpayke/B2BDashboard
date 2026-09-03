@@ -66,6 +66,62 @@ export function friendlySendQuoteError(message: string): string {
   return message;
 }
 
+type AcceptErrorData = {
+  code?: string;
+  available?: string | number | null;
+  amount?: string | number | null;
+  currency?: string | null;
+  network?: string | null;
+};
+
+function formatMoney(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function networkLabel(network: string | null | undefined): string | null {
+  if (!network) return null;
+  const compact = network.replace(/[^a-zA-Z]/g, "").toLowerCase();
+  if (compact.startsWith("polygon")) return "Polygon";
+  if (compact.startsWith("base")) return "Base";
+  if (compact.startsWith("stellar")) return "Stellar";
+  return network;
+}
+
+/**
+ * Accept-time fund failures (Mboka ValidationError `data.code`).
+ * Prefer structured envelope fields over raw aggregator prose.
+ */
+export function friendlySendAcceptError(
+  message: string,
+  data?: AcceptErrorData | null,
+): string {
+  if (data?.code === "insufficient_balance") {
+    const currency = (data.currency || "USDT").toString().toUpperCase();
+    const network = networkLabel(data.network ? String(data.network) : null);
+    const need = formatMoney(data.amount);
+    const available = formatMoney(data.available);
+    const needPart = need
+      ? `${need} ${currency}${network ? ` on ${network}` : ""}`
+      : `${currency}${network ? ` on ${network}` : ""}`;
+    const availablePart = available != null ? ` Available ${available}.` : "";
+    return `Insufficient funds — you need ${needPart}.${availablePart} Top up your ${currency} balance and try again.`;
+  }
+  if (data?.code === "below_minimum") {
+    const currency = (data.currency || "USDT").toString().toUpperCase();
+    const amount = formatMoney(data.amount);
+    return amount
+      ? `Amount too small — the minimum send is higher than ${amount} ${currency}. Increase the amount and try again.`
+      : `Amount too small for ${currency}. Increase the amount and try again.`;
+  }
+  if (data?.code === "asset_mismatch") {
+    return "Settlement asset mismatch — this corridor can't settle on the selected crypto rail. Choose USDT on Polygon and try again.";
+  }
+  return friendlySendQuoteError(message);
+}
+
 /** The four entry points on the Send method chooser. `internal` has no
  *  backend yet, so it is presented disabled rather than omitted. */
 export type SendMethod = "bank" | "mobile" | "crypto" | "internal";
