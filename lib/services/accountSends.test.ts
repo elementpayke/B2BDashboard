@@ -6,6 +6,10 @@ import {
   buildSendPreviewPayload,
   explainAccountSendError,
   formatSendAmountDisplay,
+  mergeSendableAccounts,
+  resolveSendStablecoinSelection,
+  sendableAssetsFromAccounts,
+  sendableChainsForAsset,
   sendCryptoRecipientPlaceholder,
   validateEvmAddress,
   validateSendAddress,
@@ -239,5 +243,59 @@ describe("sendable account discovery helpers", () => {
     expect(isSendableStablecoinAccount(usdt)).toBe(true);
     expect(accountForNetwork([usdc, usdt], "polygon", "USDT")?.id).toBe("acct_usdt");
     expect(accountForNetwork([usdc, usdt], "polygon", "USDC")?.id).toBe("acct_usdc");
+  });
+});
+
+describe("sendable asset/chain picker from backend wallets", () => {
+  const baseUsdc = normalizeFinancialAccount(
+    {
+      id: "base_usdc",
+      asset_type: "stablecoin",
+      currency: "USDC",
+      network: "Base",
+      status: "ready",
+      wallet_address: "0x1111111111111111111111111111111111111111",
+    },
+    "ent_1",
+  )!;
+  const polyUsdt = normalizeFinancialAccount(
+    {
+      id: "poly_usdt",
+      asset_type: "stablecoin",
+      currency: "USDT",
+      network: "Polygon",
+      status: "ready",
+      wallet_address: "0x2222222222222222222222222222222222222222",
+    },
+    "ent_1",
+  )!;
+
+  it("lists only assets and chains the user can send from", () => {
+    const accounts = mergeSendableAccounts([baseUsdc, polyUsdt]);
+    expect(sendableAssetsFromAccounts(accounts)).toEqual(["usdc", "usdt"]);
+    expect(sendableChainsForAsset(accounts, "usdc", { accountsReady: true }).map((n) => n.key)).toEqual([
+      "base",
+    ]);
+    expect(sendableChainsForAsset(accounts, "usdt", { accountsReady: true }).map((n) => n.key)).toEqual([
+      "polygon",
+    ]);
+  });
+
+  it("snaps Stellar leftovers onto a wallet the user actually has", () => {
+    const next = resolveSendStablecoinSelection({
+      accounts: [baseUsdc, polyUsdt],
+      asset: "usdc",
+      chain: "stellar",
+      accountsReady: true,
+    });
+    expect(next).toMatchObject({
+      asset: "usdc",
+      chain: "base",
+      accountId: "base_usdc",
+    });
+  });
+
+  it("returns no chain chips when accounts are ready but empty for that asset", () => {
+    expect(sendableChainsForAsset([polyUsdt], "usdc", { accountsReady: true })).toEqual([]);
   });
 });

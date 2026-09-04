@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
-  flagUrl, COUNTRIES, MOBILE_CURRENCIES, BANK_CURRENCIES,
-  DEPOSIT_NETWORKS, ACCOUNTS,
+  flagUrl,
+  ACCOUNTS,
   CORRIDORS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
@@ -79,6 +79,10 @@ import {
   buildSendExplorerUrl,
   buildSendPreviewPayload,
   explainAccountSendError,
+  mergeSendableAccounts,
+  resolveSendStablecoinSelection,
+  sendableAssetsFromAccounts,
+  sendableChainsForAsset,
   sendCryptoRecipientPlaceholder,
   SEND_STABLECOIN_NETWORKS,
 } from "@/lib/services/accountSends";
@@ -112,10 +116,13 @@ import {
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import {
+  offRampCountriesFromCatalog,
   offRampProvidersForRail,
+  onRampCountriesFromCatalog,
   onRampProvidersForRail,
   networkIdForProvider,
   providerNamesFromCatalog,
+  type CatalogCorridorCountry,
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
 import {
@@ -220,6 +227,8 @@ import {
   planAfricanFundOrchestration,
 } from "@/lib/services/fundOrchestration";
 import {
+  coerceStablecoinNetworkKey,
+  DEPOSIT_STABLECOIN_NETWORKS,
   describeMissingOnRampDestination,
   pickFundableWalletForRail,
   resolveAfricanFundOpenIntent,
@@ -551,14 +560,17 @@ export default function DashboardApp(props: Props = {}) {
       !!state.fundAfricanTargetCurrency,
   });
 
-  // Settled once the first catalog fetch finishes (success or error). Until
-  // then, Send provider chips must not fall back to hardcoded rail.options.
+  // Settled once the first catalog fetch finishes (success or error).
   const sendCatalogSettled = sendCatalogQuery.isFetched;
+  // Live corridors only — never the hardcoded mock COUNTRIES list.
+  const sendCountries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+  const depositCountries = onRampCountriesFromCatalog(sendCatalogQuery.data);
 
   // When the catalog (or corridor) changes the provider list, clamp the
   // selection so sendProviderIdx never points past the active options.
   useEffect(() => {
-    const country = COUNTRIES[state.sendCountryIdx];
+    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    const country = countries[state.sendCountryIdx];
     if (!country) return;
     const rail = country.rails[state.sendRailIdx] || country.rails[0];
     if (!rail) return;
@@ -568,20 +580,24 @@ export default function DashboardApp(props: Props = {}) {
       rail.type,
       country.code,
     );
-    const options = providerNamesFromCatalog(
-      catalogProviders,
-      rail.options,
-      sendCatalogSettled,
-    );
+    const options = providerNamesFromCatalog(catalogProviders);
     if (!options.length) return;
     setState((s: any) => {
       if (s.sendProviderIdx < options.length) return {};
       return { sendProviderIdx: options.length - 1 };
     });
-  }, [sendCatalogQuery.data, sendCatalogSettled, state.sendCountryIdx, state.sendRailIdx, setState]);
+  }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
 
   useEffect(() => {
-    const country = COUNTRIES[state.depositCountryIdx];
+    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    if (!countries.length) return;
+    if (state.sendCountryIdx < countries.length) return;
+    setState({ sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0 });
+  }, [sendCatalogQuery.data, state.sendCountryIdx, setState]);
+
+  useEffect(() => {
+    const countries = onRampCountriesFromCatalog(sendCatalogQuery.data);
+    const country = countries[state.depositCountryIdx];
     if (!country) return;
     if (state.depositRailIdx < 0 || !state.depositProviderName) return;
     const rail = country.rails[state.depositRailIdx] || country.rails[0];
@@ -592,10 +608,7 @@ export default function DashboardApp(props: Props = {}) {
       rail.type,
       country.code,
     );
-    const options =
-      catalogProviders && catalogProviders.length > 0
-        ? catalogProviders.map((p) => p.name)
-        : rail.options;
+    const options = providerNamesFromCatalog(catalogProviders);
     if (!options.length) return;
     const resolvedIdx = indexOfProviderName(options, state.depositProviderName);
     setState((s: any) => {
@@ -906,7 +919,13 @@ export default function DashboardApp(props: Props = {}) {
     // backend rejects that payload outright. Stop here rather than collect a
     // recipient and an amount first and fail at the quote.
     if (state.sendStep === 1 && state.sendGroup === "country") {
-      const country = COUNTRIES[state.sendCountryIdx];
+      const country = sendCountries[state.sendCountryIdx];
+      if (!country) {
+        setState({
+          sendQuoteError: friendlySendQuoteError("network_id is required"),
+        });
+        return;
+      }
       const rail = country.rails[state.sendRailIdx] || country.rails[0];
       const providers = offRampProvidersForRail(
         sendCatalogQuery.data,
@@ -914,7 +933,7 @@ export default function DashboardApp(props: Props = {}) {
         rail.type,
         country.code,
       );
-      const options = providerNamesFromCatalog(providers, rail.options, sendCatalogSettled);
+      const options = providerNamesFromCatalog(providers);
       const name = options[Math.min(state.sendProviderIdx, Math.max(0, options.length - 1))] || "";
       if (
         sendRailBlockedByMissingNetworkId({
@@ -952,23 +971,33 @@ export default function DashboardApp(props: Props = {}) {
     // Stablecoin tab step 1 → 2: require a ready account for the chosen
     // asset + network before collecting the recipient (Phase 4).
     if (state.sendStep === 1 && state.sendGroup === "crypto") {
-      const accounts = sendableAccountsQuery.data ?? [];
-      const assetCode = (state.sendAsset || "usdc").trim().toUpperCase() || "USDC";
-      const account = accountForNetwork(accounts, state.sendChain, assetCode);
-      if (!account) {
-        const chainLabel =
-          SEND_STABLECOIN_NETWORKS.find((n) => n.key === state.sendChain)?.label ||
-          state.sendChain;
+      const accounts = mergeSendableAccounts(
+        sendableAccountsQuery.data,
+        resolvedStablecoinAccounts,
+      );
+      const selection = resolveSendStablecoinSelection({
+        accounts,
+        asset: state.sendAsset,
+        chain: state.sendChain,
+        preferredAccountId: state.sendAccountId,
+        accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+      });
+      if (!selection.accountId) {
         setState({
+          sendAsset: selection.asset,
+          sendChain: selection.chain,
+          sendAccountId: "",
           sendQuoteError: sendableAccountsQuery.isLoading
-            ? `Loading your ${assetCode} accounts…`
-            : `No ready ${assetCode} account on ${chainLabel}. Open a ${assetCode} account on this network first.`,
+            ? `Loading your ${selection.asset.toUpperCase()} accounts…`
+            : `No ready ${selection.asset.toUpperCase()} account on ${selection.chainLabel}. Open a ${selection.asset.toUpperCase()} account on this network first.`,
         });
         return;
       }
       setState({
         sendStep: 2,
-        sendAccountId: account.id,
+        sendAsset: selection.asset,
+        sendChain: selection.chain,
+        sendAccountId: selection.accountId,
         sendQuoteError: "",
         sendPreview: null,
         sendAcceptError: "",
@@ -987,7 +1016,7 @@ export default function DashboardApp(props: Props = {}) {
       );
       const amountRate = indicativeRate(
         amountRates?.rates,
-        COUNTRIES[state.sendCountryIdx].code,
+        sendCountries[state.sendCountryIdx]?.code,
       );
       const usdAmount = toPayloadUsdAmount(state.sendAmount, {
         currency: amountRate ? state.sendAmountCurrency : "USD",
@@ -1020,27 +1049,20 @@ export default function DashboardApp(props: Props = {}) {
           );
         }
         const refundAddress = rampDest.walletAddress;
-        const country = COUNTRIES[state.sendCountryIdx];
+        const country = sendCountries[state.sendCountryIdx];
+        if (!country) {
+          throw new Error("Supported corridors are still loading. Try again in a moment.");
+        }
         const rail = country.rails[state.sendRailIdx] || country.rails[0];
-        // Real catalog providers for this corridor, when available, carry
-        // the aggregator's networkId — falling back to the hardcoded
-        // option list (and no networkId, same as pre-catalog behavior)
-        // when the catalog has no match yet. Must mirror the same lookup
-        // used to build the provider chips below so the id sent on quote
-        // always matches what the user actually selected.
         const catalogProviders = offRampProvidersForRail(
           sendCatalogQuery.data,
           country.iso,
           rail.type,
           country.code,
         );
-        const providerOptions = providerNamesFromCatalog(
-          catalogProviders,
-          rail.options,
-          sendCatalogSettled,
-        );
+        const providerOptions = providerNamesFromCatalog(catalogProviders);
         if (!providerOptions.length) {
-          throw new Error("Providers are still loading. Try again in a moment.");
+          throw new Error("No live providers for this corridor. Pick another destination or try again shortly.");
         }
         const providerIdx =
           providerOptions.length === 0
@@ -1217,7 +1239,10 @@ export default function DashboardApp(props: Props = {}) {
           );
         }
         const walletAddress = rampDest.walletAddress;
-        const country = COUNTRIES[state.depositCountryIdx];
+        const country = depositCountries[state.depositCountryIdx];
+        if (!country) {
+          throw new Error("Supported corridors are still loading. Try again in a moment.");
+        }
         const rail = country.rails[state.depositRailIdx] || country.rails[0];
         const catalogProviders = onRampProvidersForRail(
           sendCatalogQuery.data,
@@ -1225,10 +1250,7 @@ export default function DashboardApp(props: Props = {}) {
           rail.type,
           country.code,
         );
-        const providerOptions =
-          catalogProviders && catalogProviders.length > 0
-            ? catalogProviders.map((p) => p.name)
-            : rail.options;
+        const providerOptions = providerNamesFromCatalog(catalogProviders);
         const providerName = resolveQuotedProviderName(
           providerOptions,
           state.depositProviderName,
@@ -1508,7 +1530,7 @@ export default function DashboardApp(props: Props = {}) {
   const selectSendCountry = (i) => () =>
     setState((prev: any) => ({
       sendCountryIdx: i,
-      sendRailIdx: railIndexForMethod(COUNTRIES[i].rails, prev.sendMethod),
+      sendRailIdx: railIndexForMethod(sendCountries[i]?.rails, prev.sendMethod),
       sendProviderIdx: 0,
     }));
   const selectSendRail = (i) => () => setState({ sendRailIdx: i, sendProviderIdx: 0 });
@@ -1539,7 +1561,8 @@ export default function DashboardApp(props: Props = {}) {
   const normalizeSendRecipientPhone = (e?: React.FocusEvent<HTMLInputElement>) => {
     setState((prev: any) => {
       if (prev.sendGroup !== "country") return {};
-      const country = COUNTRIES[prev.sendCountryIdx] || COUNTRIES[0];
+      const country = sendCountries[prev.sendCountryIdx] || sendCountries[0];
+      if (!country) return {};
       const rail = country.rails[prev.sendRailIdx] || country.rails[0];
       const isMobile = prev.sendMethod === "mobile" || rail?.type === "mobile";
       if (!isMobile || !country.dialCode) return {};
@@ -1559,7 +1582,7 @@ export default function DashboardApp(props: Props = {}) {
     };
     let countryIdx = state.sendCountryIdx;
     if (state.sendGroup === "country" && (r.countryCode || r.currency)) {
-      const match = COUNTRIES.findIndex((c) => {
+      const match = sendCountries.findIndex((c) => {
         if (r.countryCode && c.iso.toUpperCase() === String(r.countryCode).toUpperCase()) return true;
         if (r.currency && c.code.toUpperCase() === String(r.currency).toUpperCase()) return true;
         return false;
@@ -1567,11 +1590,15 @@ export default function DashboardApp(props: Props = {}) {
       if (match >= 0) {
         countryIdx = match;
         patch.sendCountryIdx = match;
-        patch.sendRailIdx = railIndexForMethod(COUNTRIES[match].rails, state.sendMethod);
+        patch.sendRailIdx = railIndexForMethod(sendCountries[match].rails, state.sendMethod);
         patch.sendProviderIdx = 0;
       }
     }
-    const country = COUNTRIES[countryIdx] || COUNTRIES[0];
+    const country = sendCountries[countryIdx] || sendCountries[0];
+    if (!country) {
+      setState(patch);
+      return;
+    }
     const railIdx =
       typeof patch.sendRailIdx === "number" ? (patch.sendRailIdx as number) : state.sendRailIdx;
     const rail = country.rails[railIdx] || country.rails[0];
@@ -1587,11 +1614,7 @@ export default function DashboardApp(props: Props = {}) {
         rail.type,
         country.code,
       );
-      const options = providerNamesFromCatalog(
-        catalogProviders,
-        rail.options,
-        sendCatalogSettled,
-      );
+      const options = providerNamesFromCatalog(catalogProviders);
       const idx = options.findIndex(
         (name) => name.toLowerCase() === String(r.provider).toLowerCase(),
       );
@@ -1609,7 +1632,8 @@ export default function DashboardApp(props: Props = {}) {
         : state.sendMethod === "mobile"
           ? "mobile"
           : "bank";
-    const country = COUNTRIES[state.sendCountryIdx] || COUNTRIES[0];
+    const country = sendCountries[state.sendCountryIdx] || sendCountries[0];
+    if (!country) return;
     if (rail === "mobile" && country.dialCode) {
       account = toE164(account, country.dialCode);
       if (account !== state.sendRecipient.trim()) setState({ sendRecipient: account });
@@ -1621,11 +1645,7 @@ export default function DashboardApp(props: Props = {}) {
       countryRail.type,
       country.code,
     );
-    const providerOptions = providerNamesFromCatalog(
-      catalogProviders,
-      countryRail.options,
-      sendCatalogSettled,
-    );
+    const providerOptions = providerNamesFromCatalog(catalogProviders);
     const provider =
       state.sendGroup === "country"
         ? providerOptions[Math.min(state.sendProviderIdx, Math.max(0, providerOptions.length - 1))] ||
@@ -1745,7 +1765,8 @@ export default function DashboardApp(props: Props = {}) {
   const submitDeposit = async () => {
     if (state.depositGroup !== "country") return;
     if (!state.depositQuote) return;
-    const country = COUNTRIES[state.depositCountryIdx];
+    const country = depositCountries[state.depositCountryIdx];
+    if (!country) return;
     const rail = country.rails[state.depositRailIdx] || country.rails[0];
     setState({ depositAccepting: true, depositAcceptError: "" });
     try {
@@ -1793,30 +1814,47 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const setSendAsset = (k) => () => {
-    const nextChain =
-      k === "usdt" && state.sendChain === "stellar" ? "base" : state.sendChain;
+    const accounts = mergeSendableAccounts(
+      sendableAccountsQuery.data,
+      resolvedStablecoinAccounts,
+    );
+    const next = resolveSendStablecoinSelection({
+      accounts,
+      asset: k,
+      chain: state.sendChain,
+      preferredAccountId: state.sendAccountId,
+      accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+    });
     setState({
-      sendAsset: k,
-      sendChain: nextChain,
-      sendAccountId: "",
+      sendAsset: next.asset,
+      sendChain: next.chain,
+      sendAccountId: next.accountId,
       sendPreview: null,
       sendQuoteError: "",
     });
   };
   const setSendChain = (k) => () => {
-    const nextAsset =
-      k === "stellar" && state.sendAsset === "usdt" ? "usdc" : state.sendAsset;
+    const accounts = mergeSendableAccounts(
+      sendableAccountsQuery.data,
+      resolvedStablecoinAccounts,
+    );
+    const next = resolveSendStablecoinSelection({
+      accounts,
+      asset: state.sendAsset,
+      chain: k,
+      preferredAccountId: state.sendAccountId,
+      accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+    });
     setState({
-      sendChain: k,
-      sendAsset: nextAsset,
+      sendChain: next.chain,
+      sendAsset: next.asset,
+      sendAccountId: next.accountId,
       sendPreview: null,
-      sendAccountId: "",
       sendQuoteError: "",
     });
   };
   const setDepositAsset = (k) => () => {
-    const nextNetwork =
-      k === "usdt" && state.depositNetwork === "stellar" ? "base" : state.depositNetwork;
+    const nextNetwork = coerceStablecoinNetworkKey(state.depositNetwork, k);
     const match = pickFundableWalletForRail({
       accounts: resolvedStablecoinAccounts,
       networkKey: nextNetwork,
@@ -1835,14 +1873,15 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const setDepositNetwork = (k) => () => {
+    const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset);
     const match = pickFundableWalletForRail({
       accounts: resolvedStablecoinAccounts,
-      networkKey: k,
+      networkKey: nextNetwork,
       currency: state.depositAsset,
       preferredAccountId: state.fundTargetAccountId,
     });
     setState({
-      depositNetwork: k,
+      depositNetwork: nextNetwork,
       fundTargetAccountId: match?.id ?? null,
       depositAsset: match
         ? match.currency.trim().toLowerCase() || state.depositAsset
@@ -1860,11 +1899,14 @@ export default function DashboardApp(props: Props = {}) {
   const setReceiveAsset = (k) => () =>
     setState({
       receiveAsset: k,
-      receiveNetwork:
-        k === "usdt" && state.receiveNetwork === "stellar" ? "base" : state.receiveNetwork,
+      receiveNetwork: coerceStablecoinNetworkKey(state.receiveNetwork, k),
       copiedKey: "",
     });
-  const setReceiveNetwork = (k) => () => setState({ receiveNetwork: k, copiedKey: "" });
+  const setReceiveNetwork = (k) => () =>
+    setState({
+      receiveNetwork: coerceStablecoinNetworkKey(k, state.receiveAsset),
+      copiedKey: "",
+    });
   const copyReceiveField = (key, val) => async () => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
@@ -2465,13 +2507,13 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
     const prefer = m === "mobile" ? "mobile" : "bank";
-    const countryIdx = COUNTRIES.findIndex((c) => c.rails.some((r) => r.type === prefer));
+    const countryIdx = sendCountries.findIndex((c) => c.rails.some((r) => r.type === prefer));
     const idx = countryIdx >= 0 ? countryIdx : 0;
     setState({
       ...common,
       sendGroup: "country",
       sendCountryIdx: idx,
-      sendRailIdx: railIndexForMethod(COUNTRIES[idx].rails, m),
+      sendRailIdx: railIndexForMethod(sendCountries[idx]?.rails, m),
     });
   };
 
@@ -2504,7 +2546,13 @@ export default function DashboardApp(props: Props = {}) {
     };
     const [currentTitle, currentSubtitle] = titles[s.screen] || titles.wallets;
 
-    const sendCountryChips = COUNTRIES.map((c, i) => ({
+    const emptyCorridor: CatalogCorridorCountry = {
+      code: "",
+      name: "",
+      iso: "",
+      rails: [],
+    };
+    const sendCountryChips = sendCountries.map((c, i) => ({
       idx: i,
       flagUrl: flagUrl(c.iso), name: c.name, code: c.code, select: selectSendCountry(i),
       bg: i === s.sendCountryIdx ? "var(--indigo-tint)" : "var(--surface2)", border: i === s.sendCountryIdx ? "var(--indigo)" : "transparent",
@@ -2515,24 +2563,23 @@ export default function DashboardApp(props: Props = {}) {
       if (s.sendMethod === "bank") return c._rails.some((r) => r.type === "bank");
       return true;
     });
-    const sendCountry = COUNTRIES[s.sendCountryIdx];
+    const sendCountry = sendCountries[s.sendCountryIdx] || sendCountries[0] || emptyCorridor;
     const sendRailChips = sendCountry.rails.map((r, i) => ({ label: r.label, select: selectSendRail(i), selected: i === s.sendRailIdx, bg: i === s.sendRailIdx ? "var(--ink)" : "var(--surface2)", color: i === s.sendRailIdx ? "var(--bg)" : "var(--ink)" }));
-    const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0];
-    // Real catalog providers for this corridor when the aggregator has one
-    // (carries a real networkId — see sendNext). While the first catalog
-    // fetch is in flight, show no chips (not hardcoded fallback); after
-    // settle with no match, fall back so un-onboarded corridors still render.
+    const sendRail = sendCountry.rails[s.sendRailIdx] || sendCountry.rails[0] || {
+      type: "bank" as const,
+      label: "Bank transfer",
+      options: [] as string[],
+      field: "Recipient account number",
+      placeholder: "Account number",
+      arrival: "Arrives within minutes",
+    };
     const sendCatalogProviders = offRampProvidersForRail(
       sendCatalogQuery.data,
       sendCountry.iso,
       sendRail.type,
       sendCountry.code,
     );
-    const sendProviderOptions = providerNamesFromCatalog(
-      sendCatalogProviders,
-      sendRail.options,
-      sendCatalogSettled,
-    );
+    const sendProviderOptions = providerNamesFromCatalog(sendCatalogProviders);
     const sendCatalogLoading = !sendCatalogSettled;
     const sendProviderIdx =
       sendProviderOptions.length === 0
@@ -2546,25 +2593,29 @@ export default function DashboardApp(props: Props = {}) {
       border: i === sendProviderIdx ? "var(--indigo)" : "transparent",
     }));
 
-    const depositCountryPicked = s.depositCountryIdx >= 0 && Boolean(COUNTRIES[s.depositCountryIdx]);
-    const depositCountry = COUNTRIES[s.depositCountryIdx] || COUNTRIES[0];
-    const depositRail = depositCountry.rails[s.depositRailIdx] || depositCountry.rails[0];
+    const depositCountryPicked = s.depositCountryIdx >= 0 && Boolean(depositCountries[s.depositCountryIdx]);
+    const depositCountry = depositCountries[s.depositCountryIdx] || depositCountries[0] || emptyCorridor;
+    const depositRail = depositCountry.rails[s.depositRailIdx] || depositCountry.rails[0] || {
+      type: "bank" as const,
+      label: "Bank transfer",
+      options: [] as string[],
+      field: "Recipient account number",
+      placeholder: "Account number",
+      arrival: "Arrives within minutes",
+    };
     const depositCatalogProviders = onRampProvidersForRail(
       sendCatalogQuery.data,
       depositCountry.iso,
       depositRail.type,
       depositCountry.code,
     );
-    const depositProviderOptions =
-      depositCatalogProviders && depositCatalogProviders.length > 0
-        ? depositCatalogProviders.map((p) => p.name)
-        : depositRail.options;
+    const depositProviderOptions = providerNamesFromCatalog(depositCatalogProviders);
     const depositProvider = resolveQuotedProviderName(
       depositProviderOptions,
       s.depositProviderName,
     );
     const depositProviderIdx = indexOfProviderName(depositProviderOptions, s.depositProviderName);
-    const depositCountryRows = COUNTRIES.map((c, i) => {
+    const depositCountryRows = depositCountries.map((c, i) => {
       const extraNames = c.rails.flatMap((rail) => {
         const catalog = onRampProvidersForRail(
           sendCatalogQuery.data,
@@ -2593,9 +2644,7 @@ export default function DashboardApp(props: Props = {}) {
             depositCountry.code,
           );
           const options = ensureSelectedProvider(
-            catalogProviders && catalogProviders.length > 0
-              ? catalogProviders.map((p) => p.name)
-              : rail.options,
+            providerNamesFromCatalog(catalogProviders),
             s.depositRailIdx === railIdx ? s.depositProviderName : "",
           );
           return {
@@ -2613,7 +2662,7 @@ export default function DashboardApp(props: Props = {}) {
         })
       : [];
 
-    const bulkCountryChips = COUNTRIES.slice(0, 10).map((c, i) => ({
+    const bulkCountryChips = sendCountries.slice(0, 10).map((c, i) => ({
       flagUrl: flagUrl(c.iso), code: c.code, toggleBulk: toggleBulkCountry(i),
       bulkBg: s.bulkSelected.includes(i) ? "var(--indigo-tint)" : "var(--surface2)",
       bulkBorder: s.bulkSelected.includes(i) ? "var(--indigo)" : "transparent",
@@ -3390,19 +3439,55 @@ export default function DashboardApp(props: Props = {}) {
       : sendRail.type === "mobile" && sendCountry.dialCode
         ? `+${sendCountry.dialCode}712345678`
         : sendRail.placeholder;
+  // USDC + USDT chips and Base/Polygon/Stellar chains come from live sendable
+  // wallets (bootstrap + /entities accounts) — never mock Ethereum/Solana.
+  const sendableAccountsForPicker = mergeSendableAccounts(
+    sendableAccountsQuery.data,
+    resolvedStablecoinAccounts,
+  );
+  const sendAccountsReady =
+    sendableAccountsQuery.isFetched || bootstrapReady || resolvedStablecoinAccounts.length > 0;
+  const sendSelection = resolveSendStablecoinSelection({
+    accounts: sendableAccountsForPicker,
+    asset: s.sendAsset,
+    chain: s.sendChain,
+    preferredAccountId: s.sendAccountId,
+    accountsReady: sendAccountsReady,
+  });
+  const sendAssetKeys =
+    sendableAssetsFromAccounts(sendableAccountsForPicker).length > 0
+      ? sendableAssetsFromAccounts(sendableAccountsForPicker)
+      : (["usdc", "usdt"] as const);
+  const sendAssets = sendAssetKeys.map((k) => ({
+    key: k,
+    label: k.toUpperCase(),
+    select: setSendAsset(k),
+    selected: sendSelection.asset === k,
+    bg: sendSelection.asset === k ? "var(--ink)" : "var(--surface2)",
+    color: sendSelection.asset === k ? "var(--bg)" : "var(--ink)",
+  }));
+  const sendChainOptions = sendableChainsForAsset(
+    sendableAccountsForPicker,
+    sendSelection.asset,
+    { accountsReady: sendAccountsReady },
+  );
+  const sendChains = sendChainOptions.map((n) => ({
+    key: n.key,
+    label: n.label,
+    select: setSendChain(n.key),
+    selected: sendSelection.chain === n.key,
+    bg: sendSelection.chain === n.key ? "var(--indigo-tint)" : "var(--surface2)",
+    border: sendSelection.chain === n.key ? "var(--indigo)" : "transparent",
+    color: sendSelection.chain === n.key ? "var(--indigo-text)" : "var(--ink)",
+  }));
+  const sendAssetCode = sendSelection.asset.toUpperCase();
+  const sendChainLabel = sendSelection.chainLabel;
   const sendCorridorText = s.sendGroup === "crypto"
-    ? `Sends USDC on ${SEND_STABLECOIN_NETWORKS.find((n) => n.key === s.sendChain)?.label || "Base, Polygon, or Stellar"} via account send — min 1.00 USDC.`
+    ? `Sends ${sendAssetCode} on ${sendChainLabel} via account send — min 1.00 ${sendAssetCode}.`
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money network" : "Bank account";
-  // The catalog settled with no live provider for this corridor, so the chips
-  // came from the hardcoded standby list (see providerNamesFromCatalog). The
-  // corridor still works — traffic is just not on a live-listed provider —
-  // which is the product's one real "rerouting" state.
-  const sendProvidersAreFallback =
-    sendCatalogSettled &&
-    (sendCatalogProviders?.length ?? 0) === 0 &&
-    sendProviderOptions.length > 0;
+  const sendProvidersAreFallback = false;
   // Bank rails can't be quoted without the aggregator's institution id, which
   // only the catalog carries — so this corridor is a dead end until it loads.
   // Dual-currency amount entry. The toggle only appears for corridors the
@@ -3456,8 +3541,20 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
-  const depositNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.depositAsset);
-  const depositNetworks = depositNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setDepositNetwork(n.key), bg: s.depositNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.depositNetwork === n.key ? "var(--indigo)" : "transparent", color: s.depositNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const depositNetworkOptions = stablecoinNetworksForAsset(
+    DEPOSIT_STABLECOIN_NETWORKS,
+    s.depositAsset,
+  );
+  const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset);
+  const depositNetworks = depositNetworkOptions.map((n) => ({
+    key: n.key,
+    label: n.label,
+    select: setDepositNetwork(n.key),
+    selected: depositNetworkUiKey === n.key,
+    bg: depositNetworkUiKey === n.key ? "var(--indigo-tint)" : "var(--surface2)",
+    border: depositNetworkUiKey === n.key ? "var(--indigo)" : "transparent",
+    color: depositNetworkUiKey === n.key ? "var(--indigo-text)" : "var(--ink)",
+  }));
   const treasuryWalletAddress = resolveTreasuryWalletAddress({
     summaryWallet:
       bootstrapQuery.data?.treasuryWallet ??
@@ -3468,7 +3565,7 @@ export default function DashboardApp(props: Props = {}) {
   const pinnedOnRampDest = resolveOnRampDestination({
     accounts: stablecoinAccountsList,
     selectedAccountId: s.fundTargetAccountId,
-    depositNetworkKey: s.depositNetwork,
+    depositNetworkKey: depositNetworkUiKey,
     depositAsset: s.depositAsset,
     fundAfricanTargetCurrency: s.fundAfricanTargetCurrency,
     summaryWallet:
@@ -3481,15 +3578,9 @@ export default function DashboardApp(props: Props = {}) {
   const sendStepIs1 = s.sendStep === 1;
   const sendStepIs2 = s.sendStep === 2;
   const sendStepIs3 = s.sendStep === 3;
-  // USDC + USDT on Base/Polygon; Stellar is USDC-only (chip snaps chain away).
-  const sendAssets = ["usdc", "usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setSendAsset(k), selected: s.sendAsset === k, bg: s.sendAsset === k ? "var(--ink)" : "var(--surface2)", color: s.sendAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const sendChainOptions = stablecoinNetworksForAsset(SEND_STABLECOIN_NETWORKS, s.sendAsset);
-  const sendChains = sendChainOptions.map(n => ({ key: n.key, label: n.label, select: setSendChain(n.key), selected: s.sendChain === n.key, bg: s.sendChain === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.sendChain === n.key ? "var(--indigo)" : "transparent", color: s.sendChain === n.key ? "var(--indigo-text)" : "var(--ink)" }));
-  const sendAssetCode = s.sendAsset.toUpperCase();
-  const sendChainLabel = sendChainOptions.find(n => n.key === s.sendChain)?.label || s.sendChain;
   const sendDestinationSummary = buildSendDestinationSummary({
     sendGroup: s.sendGroup,
-    sendAsset: s.sendAsset,
+    sendAsset: sendSelection.asset,
     sendChainLabel,
     countryName: sendCountry.name,
     channelLabel: channelLabelForRail(sendRail.type),
@@ -3543,14 +3634,14 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs3 = s.depositStep === 3;
   const depositNetworkLabel = pinnedOnRampDest
     ? formatNetworkLabel(pinnedOnRampDest.asset.network)
-    : depositNetworkOptions.find((n) => n.key === s.depositNetwork)?.label ||
-      formatNetworkLabel(s.depositNetwork);
+    : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
+      formatNetworkLabel(depositNetworkUiKey);
   const depositNetworkKey =
-    pinnedOnRampDest?.asset.network || s.depositNetwork;
+    pinnedOnRampDest?.asset.network || depositNetworkUiKey;
   const depositPickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
-    networkKey: s.depositNetwork,
+    networkKey: depositNetworkUiKey,
     treasuryWallet: treasuryWalletAddress,
   });
   const depositAddress = s.fundTargetAccountId
@@ -3562,6 +3653,19 @@ export default function DashboardApp(props: Props = {}) {
         summaryFailed: summaryQuery.isError,
       })
     : depositPickerDest.emptyMessage;
+  const depositCreateAccount =
+    !s.fundTargetAccountId &&
+    depositPickerDest.offerCreate &&
+    depositPickerDest.createNetwork
+      ? openCreateAccount(
+          "stablecoin",
+          depositPickerDest.createNetwork,
+          depositAssetCode,
+        )
+      : null;
+  const depositCreateAccountLabel = depositPickerDest.createNetwork
+    ? `Create ${depositAssetCode} on ${depositNetworkLabel}`
+    : "Create stablecoin account";
   const depositWalletOptions = fundableRefundWallets.map((a) => ({
     value: a.id,
     label: `${a.currency} · ${formatNetworkLabel(a.network)}${
@@ -3640,17 +3744,29 @@ export default function DashboardApp(props: Props = {}) {
       ? "Issue a currency account from Accounts to receive bank transfers."
       : "—";
   const receiveAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setReceiveAsset(k), bg: s.receiveAsset === k ? "var(--ink)" : "var(--surface2)", color: s.receiveAsset === k ? "var(--bg)" : "var(--ink)" }));
-  const receiveNetworkOptions = stablecoinNetworksForAsset(DEPOSIT_NETWORKS, s.receiveAsset);
-  const receiveNetworks = receiveNetworkOptions.map(n => ({ key: n.key, label: n.label, select: setReceiveNetwork(n.key), bg: s.receiveNetwork === n.key ? "var(--indigo-tint)" : "var(--surface2)", border: s.receiveNetwork === n.key ? "var(--indigo)" : "transparent", color: s.receiveNetwork === n.key ? "var(--indigo-text)" : "var(--ink)" }));
+  const receiveNetworkOptions = stablecoinNetworksForAsset(
+    DEPOSIT_STABLECOIN_NETWORKS,
+    s.receiveAsset,
+  );
+  const receiveNetworkUiKey = coerceStablecoinNetworkKey(s.receiveNetwork, s.receiveAsset);
+  const receiveNetworks = receiveNetworkOptions.map((n) => ({
+    key: n.key,
+    label: n.label,
+    select: setReceiveNetwork(n.key),
+    selected: receiveNetworkUiKey === n.key,
+    bg: receiveNetworkUiKey === n.key ? "var(--indigo-tint)" : "var(--surface2)",
+    border: receiveNetworkUiKey === n.key ? "var(--indigo)" : "transparent",
+    color: receiveNetworkUiKey === n.key ? "var(--indigo-text)" : "var(--ink)",
+  }));
   const receiveNetworkLabel =
-    receiveNetworkOptions.find((n) => n.key === s.receiveNetwork)?.label ||
-    formatNetworkLabel(s.receiveNetwork);
-  const receiveNetworkKey = s.receiveNetwork;
+    receiveNetworkOptions.find((n) => n.key === receiveNetworkUiKey)?.label ||
+    formatNetworkLabel(receiveNetworkUiKey);
+  const receiveNetworkKey = receiveNetworkUiKey;
   const receiveAssetCode = s.receiveAsset.toUpperCase();
   const receivePickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.receiveAsset,
-    networkKey: s.receiveNetwork,
+    networkKey: receiveNetworkUiKey,
     treasuryWallet: treasuryWalletAddress,
   });
   const receiveAddress = receivePickerDest.address || "—";
@@ -4483,6 +4599,8 @@ export default function DashboardApp(props: Props = {}) {
   depositNetworkLabel={depositNetworkLabel}
   depositAddress={depositAddress}
   depositAddressEmptyMessage={depositAddressEmptyMessage}
+  depositCreateAccount={depositCreateAccount}
+  depositCreateAccountLabel={depositCreateAccountLabel}
   closeModal={closeModal}
   fundTargetCurrency={s.fundAfricanTargetCurrency}
   fundConvertStatus={s.fundConvertStatus}

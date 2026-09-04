@@ -1,6 +1,7 @@
 
 
 export const flagUrl = (iso) => iso ? `https://flagcdn.com/w40/${iso}.png` : null;
+/** @deprecated Marketing / story fixtures only. Send & Deposit corridors come from `GET /v1/supported/catalog` via `offRampCountriesFromCatalog` / `onRampCountriesFromCatalog`. */
 export const COUNTRIES = [
   {code:"KES",name:"Kenya",iso:"ke",dialCode:"254",rails:[
     {type:"mobile",label:"Mobile money",options:["M-Pesa (Safaricom)","Airtel Money"],field:"Recipient phone number",placeholder:"0712 345 678",arrival:"Arrives in seconds"},
@@ -43,11 +44,10 @@ export const MOBILE_CURRENCIES = COUNTRIES.filter(c=>c.rails.some(r=>r.type==="m
 export const BANK_CURRENCIES = COUNTRIES;
 export const DEPOSIT_NETWORKS = [
   {key:"base",label:"Base"},
-  {key:"ethereum",label:"Ethereum"},
   {key:"polygon",label:"Polygon"},
-  {key:"solana",label:"Solana"},
   {key:"stellar",label:"Stellar"},
 ];
+/** @deprecated Mock addresses — live deposit uses entity wallet / treasury from the API. */
 export const DEPOSIT_ADDRESSES = {base:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",ethereum:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",polygon:"0x9F2c4a8b1E5d7a3c91F0bD2e4cAb7fE6Dd31B0c4a",solana:"8f6QeR3v2N4pXo1WkYtLc9Zb5jHs7DrMnA2VuT3xPqK"};
 export const ACCOUNTS = [
   {code:"KES",iso:"ke",name:"Kenyan Shilling",balance:"2,481,300.00",rail:"Mobile money",detail:"Paybill 400200",receiveLines:[["Paybill number","400200"],["Account name","Mboka Business Ltd"]]},

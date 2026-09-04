@@ -1,6 +1,19 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 import { newIdempotencyKey } from "@/lib/services/orders";
-import { toAssetNetwork, toPartnerNetwork } from "@/lib/services/entities";
+import {
+  accountForNetwork,
+  formatNetworkLabel,
+  isSendableStablecoinAccount,
+  networksCompatible,
+  toAssetNetwork,
+  toPartnerNetwork,
+  toUiNetworkKey,
+  type FinancialAccount,
+} from "@/lib/services/entities";
+import {
+  coerceStablecoinNetworkKey,
+  stablecoinNetworksForAsset,
+} from "@/lib/services/depositRampDestination";
 import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 import { StrKey } from "@stellar/stellar-sdk";
 
@@ -26,6 +39,126 @@ export const SEND_STABLECOIN_NETWORKS = [
 ] as const;
 
 export type SendStablecoinNetworkKey = (typeof SEND_STABLECOIN_NETWORKS)[number]["key"];
+
+export type SendStablecoinNetworkOption = {
+  key: string;
+  label: string;
+};
+
+/** Dedupe sendable accounts from dedicated fetch + bootstrap/list. */
+export function mergeSendableAccounts(
+  ...lists: Array<FinancialAccount[] | null | undefined>
+): FinancialAccount[] {
+  const found: FinancialAccount[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    for (const account of list ?? []) {
+      if (!isSendableStablecoinAccount(account) || seen.has(account.id)) continue;
+      seen.add(account.id);
+      found.push(account);
+    }
+  }
+  return found;
+}
+
+/** Asset chips the user can actually send from (backend-ready wallets). */
+export function sendableAssetsFromAccounts(
+  accounts: FinancialAccount[],
+): Array<"usdc" | "usdt"> {
+  const have = new Set<string>();
+  for (const account of accounts) {
+    const currency = account.currency.trim().toLowerCase();
+    if (currency === "usdc" || currency === "usdt") have.add(currency);
+  }
+  return (["usdc", "usdt"] as const).filter((key) => have.has(key));
+}
+
+/**
+ * Chain chips for the selected asset.
+ * When sendable wallets are known, only list rails the user can send from —
+ * never invent Ethereum/Solana or empty Base/Stellar stubs.
+ * While accounts are still loading, fall back to the catalog filtered by asset.
+ */
+export function sendableChainsForAsset(
+  accounts: FinancialAccount[],
+  asset: string | null | undefined,
+  opts: { accountsReady?: boolean } = {},
+): SendStablecoinNetworkOption[] {
+  const catalog = stablecoinNetworksForAsset(SEND_STABLECOIN_NETWORKS, asset).map((n) => ({
+    key: n.key,
+    label: n.label,
+  }));
+  const currency = (asset || "usdc").trim().toUpperCase() || "USDC";
+  const fromAccounts = catalog.filter((network) =>
+    accounts.some(
+      (account) =>
+        account.currency.trim().toUpperCase() === currency &&
+        networksCompatible(account.network, network.key),
+    ),
+  );
+  if (fromAccounts.length > 0) return fromAccounts;
+  if (opts.accountsReady) return [];
+  return catalog;
+}
+
+/** Pick a coherent asset + chain + account id from live sendable wallets. */
+export function resolveSendStablecoinSelection(input: {
+  accounts: FinancialAccount[];
+  asset?: string | null;
+  chain?: string | null;
+  preferredAccountId?: string | null;
+  accountsReady?: boolean;
+}): {
+  asset: string;
+  chain: string;
+  accountId: string;
+  chainLabel: string;
+} {
+  const accounts = input.accounts;
+  const assets = sendableAssetsFromAccounts(accounts);
+  const requestedAsset = coerceAssetFallback(input.asset);
+  const asset =
+    assets.length === 0
+      ? requestedAsset
+      : assets.includes(requestedAsset as "usdc" | "usdt")
+        ? requestedAsset
+        : assets[0]!;
+
+  const chains = sendableChainsForAsset(accounts, asset, {
+    accountsReady: input.accountsReady,
+  });
+  let chain = coerceStablecoinNetworkKey(input.chain, asset, SEND_STABLECOIN_NETWORKS);
+  if (chains.length && !chains.some((c) => c.key === chain)) {
+    chain = chains[0]!.key;
+  }
+
+  const preferredId = (input.preferredAccountId || "").trim();
+  const preferred =
+    (preferredId &&
+      accounts.find(
+        (account) =>
+          account.id === preferredId &&
+          account.currency.trim().toUpperCase() === asset.toUpperCase() &&
+          networksCompatible(account.network, chain),
+      )) ||
+    null;
+  const account =
+    preferred || accountForNetwork(accounts, chain, asset.toUpperCase()) || null;
+
+  return {
+    asset,
+    chain: account ? toUiNetworkKey(account.network) || chain : chain,
+    accountId: account?.id || "",
+    chainLabel:
+      chains.find((c) => c.key === chain)?.label ||
+      formatNetworkLabel(account?.network || chain),
+  };
+}
+
+function coerceAssetFallback(asset: string | null | undefined): string {
+  const raw = (asset || "usdc").trim().toLowerCase();
+  return raw === "usdt" ? "usdt" : "usdc";
+}
 
 export type AccountSend = {
   id: string;

@@ -34,10 +34,9 @@ export function buildSendStepDots(sendStep: number, total = 3): { on: boolean }[
  * `momo` account types alike, so when the catalog is unavailable there is no
  * payload that can succeed.
  *
- * `providerNamesFromCatalog` still falls back to a hardcoded display list in
- * that case, which is fine for rendering the corridor but cannot carry an id
- * — so the flow has to stop at step 1 rather than let someone fill in a
- * recipient and an amount and only fail at the quote.
+ * `providerNamesFromCatalog` returns only live catalog names — never a
+ * hardcoded standby list — so when the catalog is unavailable there is no
+ * provider chip that can carry an id.
  */
 export function sendRailBlockedByMissingNetworkId(input: {
   sendGroup: string;

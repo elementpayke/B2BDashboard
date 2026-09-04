@@ -8,8 +8,9 @@ import { catalogApi, type SupportedCatalogData } from "@/lib/services/catalog";
  * see `docs/CATALOG_CACHE.md` in Mboka-Backend). Callers should wait for
  * `isFetched` before falling back to hardcoded corridor options — while the
  * first fetch is in flight, `offRampProvidersForRail` returns `null` and
- * `providerNamesFromCatalog(..., catalogSettled=false)` yields `[]` so the
- * provider chips do not flash stale names.
+ * `providerNamesFromCatalog(...)` yields `[]` so the Send modal does not
+ * flash stale provider names. Countries and rails themselves also come from
+ * the catalog (`offRampCountriesFromCatalog`) — never a hardcoded list.
  */
 export function useSendCatalog(options?: { enabled?: boolean }) {
   return useQuery<SupportedCatalogData>({

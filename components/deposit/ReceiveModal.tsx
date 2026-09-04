@@ -148,10 +148,11 @@ export default function ReceiveModal(p: ReceiveModalProps) {
             >
               {(p.receiveNetworks || []).map((net: any, i: number) => (
                 <button
-                  key={i}
+                  key={net.key || i}
                   type="button"
                   onClick={net.select}
                   className="ep-money-network"
+                  aria-pressed={Boolean(net.selected)}
                   style={{
                     borderColor: net.border,
                     background: net.bg,

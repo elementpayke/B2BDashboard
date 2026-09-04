@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FinancialAccount } from "./entities";
 import { buildDepositQuotePayload } from "./orders";
 import {
+  coerceStablecoinNetworkKey,
   describeMissingOnRampDestination,
   pickFundableWalletForRail,
   resolveAfricanFundOpenIntent,
@@ -283,6 +284,21 @@ describe("stablecoinNetworksForAsset", () => {
       "base",
       "polygon",
     ]);
+  });
+});
+
+describe("coerceStablecoinNetworkKey", () => {
+  it("keeps a supported key", () => {
+    expect(coerceStablecoinNetworkKey("polygon", "usdc")).toBe("polygon");
+  });
+
+  it("snaps ethereum/solana leftovers onto Base", () => {
+    expect(coerceStablecoinNetworkKey("ethereum", "usdc")).toBe("base");
+    expect(coerceStablecoinNetworkKey("solana", "usdt")).toBe("base");
+  });
+
+  it("snaps Stellar away when the asset is USDT", () => {
+    expect(coerceStablecoinNetworkKey("stellar", "usdt")).toBe("base");
   });
 });
 
