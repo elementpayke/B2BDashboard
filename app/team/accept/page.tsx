@@ -44,7 +44,7 @@ function AcceptInviteForm() {
         if (isSessionExpiredError(err)) {
           setNeedsLogin(true);
           setError(
-            "Sign in with the invited email (use the temporary password from your invite email if this is your first login), then open this link again.",
+            "Sign in with the invited email and the temporary password from your invite email (change it after sign-in). Signing in joins the team automatically.",
           );
         } else if (err instanceof ApiRequestError) {
           setError(err.message);
@@ -80,6 +80,8 @@ function AcceptInviteForm() {
     );
   }
 
+  const loginHref = `/login?next=${encodeURIComponent(`/team/accept?token=${token}`)}`;
+
   return (
     <div style={authPageStyle}>
       <div style={authCardStyle}>
@@ -91,13 +93,7 @@ function AcceptInviteForm() {
         ) : null}
         {error ? <p style={authErrorStyle}>{error}</p> : null}
         {needsLogin ? (
-          <button
-            style={authButtonStyle}
-            type="button"
-            onClick={() =>
-              router.push(`/login?next=${encodeURIComponent(`/team/accept?token=${token}`)}`)
-            }
-          >
+          <button style={authButtonStyle} type="button" onClick={() => router.push(loginHref)}>
             Sign in to continue
           </button>
         ) : null}

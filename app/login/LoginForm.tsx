@@ -24,7 +24,7 @@ import {
 import AuthBrand from "@/components/brand/AuthBrand";
 
 /** Only same-origin relative paths; blocks open redirects via `//…` or absolute URLs. */
-function safeNextPath(raw: string | null): string {
+export function safeNextPath(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
     return "/dashboard";
   }
@@ -78,7 +78,7 @@ export default function LoginForm() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const errorId = useId();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => (searchParams.get("email") || "").trim());
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
