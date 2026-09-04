@@ -5,7 +5,19 @@
 export const MBOKA_LETTERHEAD = {
   product: "Mboka",
   tagline: "Business payments",
-  lines: ["Nairobi, Kenya", "support@mboka.africa"],
+  lines: [
+    "United States",
+    "Elementpay Inc.",
+    "1007 N Orange St, 4th Floor",
+    "Ste 1382, Wilmington, DE 19801",
+    "",
+    "Kenya",
+    "Elementpay Inc.",
+    "Fedha Plaza, Parklands Road",
+    "Nairobi, Kenya",
+    "",
+    "info@elementpay.net",
+  ],
 } as const;
 
 /** Full wordmark (mark + “Mboka”) — inline so saved/printed files never lose the asset. */
