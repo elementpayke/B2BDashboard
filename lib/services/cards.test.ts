@@ -6,6 +6,9 @@ import {
   describeUsdFundingIssueNote,
   formatCardExpiry,
   formatCardPan,
+  formatMaskedPan,
+  detectCardBrand,
+  resolveCardBrand,
   isActiveUsdFundingAccount,
   isValidCardE164,
   isValidCardholderEmail,
@@ -178,5 +181,17 @@ describe("formatCardPan / formatCardExpiry", () => {
     expect(formatCardPan("")).toBe("");
     expect(formatCardExpiry("12", "2030")).toBe("12/2030");
     expect(formatCardExpiry("", "2030")).toBeNull();
+  });
+});
+
+describe("resolveCardBrand / formatMaskedPan", () => {
+  it("detects brand from BIN and never invents last-four", () => {
+    expect(detectCardBrand("5567666029351204")).toBe("mastercard");
+    expect(detectCardBrand("4111111111111111")).toBe("visa");
+    expect(resolveCardBrand({ brand: "MasterCard" })).toBe("mastercard");
+    expect(resolveCardBrand({ number: "5567" })).toBe("mastercard");
+    expect(formatMaskedPan("1204")).toBe("•••• •••• •••• 1204");
+    expect(formatMaskedPan(null)).toBe("•••• •••• •••• ••••");
+    expect(formatMaskedPan("----")).toBe("•••• •••• •••• ••••");
   });
 });
