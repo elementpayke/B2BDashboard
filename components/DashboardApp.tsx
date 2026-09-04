@@ -4353,7 +4353,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 {inviteError ? <p role="alert" style={{ color: "var(--danger, #b42318)", fontSize: "13px" }}>{inviteError}</p> : null}
 <p className="ep-team__invite-hint">
-We&apos;ll email them an invite link and, if they&apos;re new, a temporary password to change after signing in.
+We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary password. Signing in joins the team automatically.
 </p>
 <button type="button" onClick={submitInvite} disabled={inviteCannotSubmit} className="ep-team__invite-submit">
 {inviteBusy ? "Sending…" : "Send invite"}
