@@ -13,7 +13,8 @@ import { formatAccountBalance } from "@/lib/services/balances";
 /**
  * Card issuing — every card is linked to an **active fiat USD** funding account
  * (`POST /v1/entities/{entity_id}/accounts/{account_id}/cards`).
- * PAN/CVV appear only on successful create.
+ * PAN/CVV appear on create and on explicit
+ * `GET …/cards/{card_id}/credentials` reveal — never on list/GET.
  */
 
 /** Partner cardholder phone: E.164 (`+` + country + subscriber). */
@@ -202,6 +203,23 @@ export function describeCardStatus(status: string | null | undefined): string {
   return status || "Unknown";
 }
 
+/** Group PAN digits as `4111 1111 1111 1111` for display. */
+export function formatCardPan(number: string | null | undefined): string {
+  const digits = String(number || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
+export function formatCardExpiry(
+  month: string | null | undefined,
+  year: string | null | undefined,
+): string | null {
+  const mm = String(month || "").trim();
+  const yy = String(year || "").trim();
+  if (!mm || !yy) return null;
+  return `${mm}/${yy}`;
+}
+
 export function cardPlasticBg(index: number): string {
   return index % 2 === 0 ? "#131126" : "#3B2ED3";
 }
@@ -263,6 +281,18 @@ export const cardsApi = {
     return apiEnvelope(
       "GET",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards/${encodeURIComponent(cardId)}`,
+    );
+  },
+
+  /** Explicit PAN/CVV reveal — never persist; call only on user action. */
+  credentials(
+    entityId: string,
+    accountId: string,
+    cardId: string,
+  ): Promise<IssuedCard> {
+    return apiEnvelope(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards/${encodeURIComponent(cardId)}/credentials`,
     );
   },
 

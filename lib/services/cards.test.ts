@@ -4,6 +4,8 @@ import {
   describeCardStatus,
   describeUsdFunding,
   describeUsdFundingIssueNote,
+  formatCardExpiry,
+  formatCardPan,
   isActiveUsdFundingAccount,
   isValidCardE164,
   isValidCardholderEmail,
@@ -166,5 +168,15 @@ describe("resolveUsdFundingAccount", () => {
       entities: [{ id: "19" }, { id: "20" }] as never,
     });
     expect(funding).toMatchObject({ entityId: "20", accountId: "77" });
+  });
+});
+
+describe("formatCardPan / formatCardExpiry", () => {
+  it("groups PAN digits and formats expiry", () => {
+    expect(formatCardPan("4111111111119314")).toBe("4111 1111 1111 9314");
+    expect(formatCardPan("4111-1111-1111-9314")).toBe("4111 1111 1111 9314");
+    expect(formatCardPan("")).toBe("");
+    expect(formatCardExpiry("12", "2030")).toBe("12/2030");
+    expect(formatCardExpiry("", "2030")).toBeNull();
   });
 });
