@@ -285,6 +285,8 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       : "";
   const partyName =
     typeof txDetail.partyName === "string" ? txDetail.partyName.trim() : "";
+  const accountName =
+    typeof txDetail.accountName === "string" ? txDetail.accountName.trim() : "";
   const accountNumber =
     typeof txDetail.accountNumber === "string" ? txDetail.accountNumber.trim() : "";
 
@@ -298,6 +300,12 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     rows.push({
       label: receiptPartyLabel(txDetail.direction || ""),
       value: partyName,
+    });
+  }
+  if (accountName && accountName.toLowerCase() !== partyName.toLowerCase()) {
+    rows.push({
+      label: "Account name",
+      value: accountName,
     });
   }
   if (accountNumber) {

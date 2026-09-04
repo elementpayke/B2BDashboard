@@ -6,7 +6,7 @@ vi.mock("@/lib/apiClient", () => ({
 }));
 
 import { apiEnvelope } from "@/lib/apiClient";
-import { mapOrderToTransaction, transactionsApi } from "./transactions";
+import { mapOrderToTransaction, paymentFromOrderMetadata, transactionsApi } from "./transactions";
 
 const mockedApiEnvelope = vi.mocked(apiEnvelope);
 
@@ -68,6 +68,47 @@ describe("mapOrderToTransaction", () => {
     expect(mapOrderToTransaction(order({ order_type: "" as never, client_metadata: null })).direction).toBe(
       "unknown",
     );
+  });
+
+  it("maps client_metadata.payment including account_name-only snapshots", () => {
+    const tx = mapOrderToTransaction(
+      order({
+        client_metadata: {
+          payment: {
+            account_name: "Chidi Okonkwo",
+            account_number: "0123456789",
+            account_kind: "bank_account",
+          },
+        },
+      }),
+    );
+    expect(tx.payment).toMatchObject({
+      account_name: "Chidi Okonkwo",
+      account_number: "0123456789",
+      account_kind: "bank_account",
+    });
+  });
+});
+
+describe("paymentFromOrderMetadata", () => {
+  it("keeps a payment object when only account_name is present", () => {
+    expect(
+      paymentFromOrderMetadata({
+        payment: { account_name: "Ada Lovelace" },
+      }),
+    ).toEqual({
+      party_name: null,
+      account_name: "Ada Lovelace",
+      account_number: null,
+      account_kind: null,
+      method_type: null,
+      network_id: null,
+      network_name: null,
+    });
+  });
+
+  it("returns null when payment has no identifying fields", () => {
+    expect(paymentFromOrderMetadata({ payment: { network_id: "x" } })).toBeNull();
   });
 });
 
