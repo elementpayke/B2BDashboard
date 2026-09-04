@@ -118,16 +118,19 @@ describe("transactionsApi.listPage", () => {
   });
 
   it("sources pages from GET /v1/orders and maps each row to Transaction", async () => {
-    mockedApiEnvelope.mockResolvedValueOnce({
-      items: [order({ id: 1, order_type: "OnRamp" }), order({ id: 2, order_type: "OffRamp" })],
-      total: 25,
-      limit: 10,
-      offset: 10,
-    });
+    mockedApiEnvelope
+      .mockResolvedValueOnce({
+        items: [order({ id: 1, order_type: "OnRamp" }), order({ id: 2, order_type: "OffRamp" })],
+        total: 25,
+        limit: 10,
+        offset: 10,
+      })
+      .mockResolvedValueOnce({ items: [], total: 0 });
 
     const page = await transactionsApi.listPage({ status: "processing", limit: 10, offset: 10 });
 
     expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/orders?status=processing&limit=10&offset=10");
+    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/transactions");
     expect(page.total).toBe(25);
     expect(page.limit).toBe(10);
     expect(page.offset).toBe(10);
@@ -167,12 +170,14 @@ describe("transactionsApi.listPage", () => {
           },
         ],
         total: 1,
-      });
+      })
+      .mockResolvedValueOnce({ items: [], total: 0 });
 
     const page = await transactionsApi.listPage({ limit: 10, offset: 0 });
 
     expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/orders?limit=10&offset=0");
     expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/account-credits");
+    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/transactions");
     expect(page.items.some((row) => row.id === "acr_7")).toBe(true);
     expect(page.items.find((row) => row.id === "acr_7")?.tx_hash).toBe("deadbeef");
     expect(page.total).toBe(2);
@@ -214,7 +219,8 @@ describe("transactionsApi.listPage", () => {
           },
         ],
         total: 1,
-      });
+      })
+      .mockResolvedValueOnce({ items: [], total: 0 });
 
     const page = await transactionsApi.listPage({ limit: 2, offset: 0 });
 
@@ -225,14 +231,18 @@ describe("transactionsApi.listPage", () => {
   });
 
   it("does not merge credits onto non-completed status pages", async () => {
-    mockedApiEnvelope.mockResolvedValueOnce({
-      items: [order({ id: 1, order_type: "OnRamp", status: "processing" })],
-      total: 1,
-      limit: 10,
-      offset: 0,
-    });
+    mockedApiEnvelope
+      .mockResolvedValueOnce({
+        items: [order({ id: 1, order_type: "OnRamp", status: "processing" })],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      })
+      .mockResolvedValueOnce({ items: [], total: 0 });
     const page = await transactionsApi.listPage({ status: "processing", limit: 10, offset: 0 });
-    expect(mockedApiEnvelope).toHaveBeenCalledTimes(1);
+    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/orders?status=processing&limit=10&offset=0");
+    expect(mockedApiEnvelope).toHaveBeenCalledWith("GET", "/v1/transactions");
+    expect(mockedApiEnvelope).not.toHaveBeenCalledWith("GET", "/v1/account-credits");
     expect(page.items).toHaveLength(1);
     expect(page.total).toBe(1);
   });

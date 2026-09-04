@@ -131,18 +131,32 @@ export function paymentFromOrderMetadata(
  * shape and the list endpoint's filter/pagination support differ. See
  * docs/api-contract.md "Transaction history filters & pagination".
  */
+/**
+ * Order status polls often omit `client_metadata.payment` even when
+ * `GET /v1/transactions` already resolved the counterparty. Prefer the
+ * richer existing snapshot so activity/detail names do not disappear.
+ */
+export function mergeTransactionPreferPayment(
+  previous: Transaction | undefined,
+  next: Transaction,
+): Transaction {
+  if (!previous?.payment) return next;
+  if (next.payment?.party_name || next.payment?.account_name) return next;
+  return { ...next, payment: previous.payment };
+}
+
 /** Push a polled order row into React Query caches so lists/detail update without waiting for a refetch. */
 export function patchTransactionCachesFromOrder(queryClient: QueryClient, order: Order): void {
   const tx = mapOrderToTransaction(order);
   queryClient.setQueryData<Transaction | null>(["transaction", order.id], (prev) =>
-    prev ? { ...prev, ...tx } : tx,
+    prev ? mergeTransactionPreferPayment(prev, { ...prev, ...tx }) : tx,
   );
   queryClient.setQueryData<TransactionList>(["transactions"], (prev) => {
     if (!prev?.items?.length) return prev;
     const idx = prev.items.findIndex((row) => row.id === order.id);
     if (idx < 0) return prev;
     const items = prev.items.slice();
-    items[idx] = { ...items[idx], ...tx };
+    items[idx] = mergeTransactionPreferPayment(items[idx], { ...items[idx], ...tx });
     return { ...prev, items };
   });
   queryClient.setQueriesData<TransactionPage>({ queryKey: ["transactions-page"] }, (prev) => {
@@ -150,7 +164,7 @@ export function patchTransactionCachesFromOrder(queryClient: QueryClient, order:
     const idx = prev.items.findIndex((row) => row.id === order.id);
     if (idx < 0) return prev;
     const items = prev.items.slice();
-    items[idx] = { ...items[idx], ...tx };
+    items[idx] = mergeTransactionPreferPayment(items[idx], { ...items[idx], ...tx });
     return { ...prev, items };
   });
 }
@@ -373,6 +387,27 @@ export const transactionsApi = {
         }
       } catch {
         // Endpoint missing / unauthorized — keep orders-only page.
+      }
+    }
+
+    // Orders list does not run quote/aggregator payment backfill — only the
+    // stored `client_metadata.payment` snapshot. Enrich from /v1/transactions
+    // so paginated history shows the same recipient names as Home.
+    if (items.some((row) => !row.payment?.party_name && !row.payment?.account_name)) {
+      try {
+        const feed = await transactionsApi.list();
+        const paymentById = new Map(
+          feed.items
+            .filter((row) => row.payment)
+            .map((row) => [String(row.id), row.payment!] as const),
+        );
+        items = items.map((row) => {
+          if (row.payment?.party_name || row.payment?.account_name) return row;
+          const payment = paymentById.get(String(row.id));
+          return payment ? { ...row, payment } : row;
+        });
+      } catch {
+        // Feed unavailable — keep orders-only page.
       }
     }
 
