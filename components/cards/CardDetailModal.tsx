@@ -49,9 +49,15 @@ function formatExpiryFace(
 
 function MastercardMark() {
   return (
-    <span className="ep-card-face__scheme" aria-hidden>
-      <span className="ep-card-face__scheme-dot ep-card-face__scheme-dot--left" />
-      <span className="ep-card-face__scheme-dot ep-card-face__scheme-dot--right" />
+    <span className="ep-card-face__scheme" aria-label="Mastercard" role="img">
+      <svg viewBox="0 0 48 30" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+        <circle cx="18" cy="15" r="12" fill="#EB001B" />
+        <circle cx="30" cy="15" r="12" fill="#F79E1B" />
+        <path
+          fill="#FF5F00"
+          d="M24 5.05A11.95 11.95 0 0 0 16.9 15 11.95 11.95 0 0 0 24 24.95 11.95 11.95 0 0 0 31.1 15 11.95 11.95 0 0 0 24 5.05z"
+        />
+      </svg>
     </span>
   );
 }

@@ -3159,6 +3159,11 @@ button.ep-home__stat:focus-visible {
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+  /* Tall dialogs (card credentials) must scroll inside the overlay, not clip */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   animation: ep-modal-overlay-in 180ms ease-out both;
 }
 
@@ -3166,7 +3171,9 @@ button.ep-home__stat:focus-visible {
   width: 100%;
   max-width: 480px;
   max-height: min(92vh, 92dvh);
-  overflow: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   /* Opaque panel — no glass/blur so background UI never bleeds through */
   background: var(--modal-bg);
   border: 1px solid var(--glass-border);
@@ -3193,6 +3200,7 @@ button.ep-home__stat:focus-visible {
   justify-content: center;
   padding: 2px 0 4px;
   margin: 0 0 -4px;
+  flex-shrink: 0;
 }
 
 .ep-modal__grabber-bar {
@@ -3204,14 +3212,16 @@ button.ep-home__stat:focus-visible {
 
 @media (min-width: 1024px) {
   .ep-modal-overlay {
-    align-items: center;
-    padding: 20px;
+    align-items: safe center;
+    justify-content: center;
+    padding: 24px 20px;
   }
 
   .ep-modal {
     border-radius: 28px;
     padding: 22px;
-    max-height: 88vh;
+    max-height: calc(100dvh - 48px);
+    margin: auto;
     animation-name: ep-modal-card-in;
     animation-duration: 200ms;
   }
@@ -3222,6 +3232,14 @@ button.ep-home__stat:focus-visible {
 
   .ep-modal:has(.ep-flow--sheet) {
     max-width: 520px;
+  }
+}
+
+@supports not (align-items: safe center) {
+  @media (min-width: 1024px) {
+    .ep-modal-overlay {
+      align-items: center;
+    }
   }
 }
 
@@ -3238,6 +3256,7 @@ button.ep-home__stat:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .ep-modal__title {
@@ -8236,8 +8255,48 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__modal--detail {
-  gap: 16px;
+  gap: 14px;
+  min-height: 0;
 }
+
+@media (max-height: 820px) {
+  .ep-modal:has(.ep-cards__modal--detail) {
+    gap: 12px;
+  }
+
+  .ep-cards__modal--detail {
+    gap: 12px;
+  }
+
+  .ep-card-face {
+    max-width: min(100%, 360px);
+    padding: 16px 18px 14px;
+  }
+
+  .ep-card-face__secret {
+    font-size: clamp(14px, 3.6vw, 17px);
+    letter-spacing: 0.1em;
+  }
+
+  .ep-card-face__meta .ep-card-face__secret {
+    font-size: 13px;
+  }
+
+  .ep-card-face__actions {
+    gap: 14px;
+    padding: 0;
+  }
+
+  .ep-card-face__action {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ep-card-meta__row {
+    padding: 11px 2px;
+  }
+}
+
 
 .ep-cards__modal-plastic {
   aspect-ratio: 1.586;
@@ -8318,29 +8377,17 @@ select.ep-wallets-create__control {
 }
 
 .ep-card-face__scheme {
-  position: relative;
-  width: 42px;
-  height: 26px;
   flex-shrink: 0;
+  width: 44px;
+  height: 28px;
+  display: block;
+  color: transparent;
 }
 
-.ep-card-face__scheme-dot {
-  position: absolute;
-  top: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-}
-
-.ep-card-face__scheme-dot--left {
-  left: 0;
-  background: #eb001b;
-}
-
-.ep-card-face__scheme-dot--right {
-  right: 0;
-  background: #f79e1b;
-  mix-blend-mode: multiply;
+.ep-card-face__scheme svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .ep-card-face__pan-wrap {
