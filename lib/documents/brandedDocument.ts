@@ -303,8 +303,9 @@ export function renderBrandedDocument(
   }
   .letterhead__addr {
     text-align:right; font-size:12px; line-height:1.55; color:var(--muted);
-    min-width:140px;
+    min-width:200px; max-width:260px;
   }
+  .letterhead__addr div:empty { height:0.55em; }
   h1 {
     font-family:'Space Grotesk', system-ui, sans-serif; font-size:26px; font-weight:700;
     letter-spacing:-0.03em; margin:22px 0 8px;
