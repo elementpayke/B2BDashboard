@@ -478,7 +478,7 @@ export default function SendModal(p: SendModalProps) {
                     >
                       {(p.sendChains || []).map((ch: any, i: number) => (
                         <button
-                          key={i}
+                          key={ch.key || i}
                           type="button"
                           onClick={ch.select}
                           className="ep-money-network"
@@ -489,10 +489,17 @@ export default function SendModal(p: SendModalProps) {
                         </button>
                       ))}
                     </div>
-                    <div className="ep-money-banner ep-money-banner--warn">
-                      Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
-                      sending to the wrong network can lose funds.
-                    </div>
+                    {(p.sendChains || []).length === 0 ? (
+                      <div className="ep-money-banner ep-money-banner--danger" role="status">
+                        No ready {p.sendAssetCode} wallet to send from. Open a {p.sendAssetCode}{" "}
+                        account on Base, Polygon, or Stellar first.
+                      </div>
+                    ) : (
+                      <div className="ep-money-banner ep-money-banner--warn">
+                        Double-check the recipient accepts {p.sendAssetCode} on {p.sendChainLabel} —
+                        sending to the wrong network can lose funds.
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -507,7 +514,11 @@ export default function SendModal(p: SendModalProps) {
                 type="button"
                 className="ep-btn-primary"
                 onClick={p.sendNext}
-                disabled={catalogBusy || p.sendBlockedNoNetworkId}
+                disabled={
+                  catalogBusy ||
+                  p.sendBlockedNoNetworkId ||
+                  (p.sendIsCrypto && !(p.sendChains || []).length)
+                }
                 aria-busy={catalogBusy || undefined}
               >
                 {catalogBusy ? "Loading providers…" : "Continue"}

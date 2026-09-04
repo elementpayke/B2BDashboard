@@ -86,6 +86,9 @@ export type DepositModalProps = {
   depositNetworkLabel: string;
   depositAddress: string;
   depositAddressEmptyMessage?: string;
+  /** Offer Create Account when this rail has no ready wallet yet. */
+  depositCreateAccount?: (() => void) | null;
+  depositCreateAccountLabel?: string;
   closeModal: () => void;
   /** When funding a fiat account via African OnRamp → USDC (best-effort convert). */
   fundTargetCurrency?: string | null;
@@ -391,10 +394,11 @@ export default function DepositModal(p: DepositModalProps) {
                     >
                       {(p.depositNetworks || []).map((net: any, i: number) => (
                         <button
-                          key={i}
+                          key={net.key || i}
                           type="button"
                           onClick={net.select}
                           className="ep-money-network"
+                          aria-pressed={Boolean(net.selected)}
                           style={{
                             borderColor: net.border,
                             background: net.bg,
@@ -555,6 +559,16 @@ export default function DepositModal(p: DepositModalProps) {
                 <div className="ep-money-empty" role="status">
                   {p.depositAddressEmptyMessage ||
                     "Deposit address unavailable. Open a ready wallet on this network or try again later."}
+                  {p.depositCreateAccount ? (
+                    <button
+                      type="button"
+                      className="ep-btn-primary"
+                      style={{ marginTop: 12 }}
+                      onClick={p.depositCreateAccount}
+                    >
+                      {p.depositCreateAccountLabel || "Create stablecoin account"}
+                    </button>
+                  ) : null}
                 </div>
               )}
 

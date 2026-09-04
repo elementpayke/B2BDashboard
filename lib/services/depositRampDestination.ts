@@ -51,7 +51,21 @@ function isStellarNetworkKey(networkKey: string): boolean {
   return toPartnerNetwork(networkKey) === "Stellar";
 }
 
-/** Stellar USDC is live; Stellar USDT is not offered. Ethereum/Solana stay listed for receive/top-up. */
+/**
+ * Custodial deposit / receive network chips — mirrors Mboka creatable rails
+ * (`networksForStablecoin` / SEND). Never list Ethereum or Solana here; those
+ * were mock-only and cannot receive ElementPay custodial deposits.
+ */
+export const DEPOSIT_STABLECOIN_NETWORKS = [
+  { key: "base", label: "Base" },
+  { key: "polygon", label: "Polygon" },
+  { key: "stellar", label: "Stellar" },
+] as const;
+
+export type DepositStablecoinNetworkKey =
+  (typeof DEPOSIT_STABLECOIN_NETWORKS)[number]["key"];
+
+/** Stellar USDC is live; Stellar USDT is not offered. */
 export function stablecoinNetworksForAsset<T extends { key: string }>(
   networks: readonly T[],
   asset: string | null | undefined,
@@ -61,6 +75,18 @@ export function stablecoinNetworksForAsset<T extends { key: string }>(
     return networks.filter((n) => !isStellarNetworkKey(n.key));
   }
   return [...networks];
+}
+
+/** Snap a leftover UI network key onto a chip that exists for this asset. */
+export function coerceStablecoinNetworkKey(
+  networkKey: string | null | undefined,
+  asset: string | null | undefined,
+  networks: readonly { key: string }[] = DEPOSIT_STABLECOIN_NETWORKS,
+): string {
+  const options = stablecoinNetworksForAsset(networks, asset);
+  const want = (networkKey || "").trim().toLowerCase();
+  if (want && options.some((n) => n.key === want)) return want;
+  return options[0]?.key ?? "base";
 }
 
 export type StablecoinPickerDestination = {

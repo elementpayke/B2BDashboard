@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  offRampCountriesFromCatalog,
   offRampProvidersForRail,
+  onRampCountriesFromCatalog,
   onRampProvidersForRail,
   networkIdForProvider,
   providerNamesFromCatalog,
@@ -233,20 +235,42 @@ describe("providerNamesFromCatalog", () => {
   const catalogProviders = [
     { code: "M PESA", name: "Mobile Wallet (M-PESA)", enabled: true, id: "yc-mpesa-id" },
   ];
-  const fallback = ["M-Pesa (Safaricom)", "Airtel Money"];
 
   it("uses catalog names when providers are present", () => {
-    expect(providerNamesFromCatalog(catalogProviders, fallback, false)).toEqual([
+    expect(providerNamesFromCatalog(catalogProviders)).toEqual([
       "Mobile Wallet (M-PESA)",
     ]);
   });
 
-  it("returns empty while catalog is still loading", () => {
-    expect(providerNamesFromCatalog(null, fallback, false)).toEqual([]);
+  it("returns empty when catalog has no match (no hardcoded fallback)", () => {
+    expect(providerNamesFromCatalog(null)).toEqual([]);
+    expect(providerNamesFromCatalog([])).toEqual([]);
+    expect(providerNamesFromCatalog(null, ["M-Pesa (Safaricom)"], true)).toEqual([]);
+  });
+});
+
+describe("offRampCountriesFromCatalog / onRampCountriesFromCatalog", () => {
+  it("builds offramp countries with only enabled methods that have providers", () => {
+    const countries = offRampCountriesFromCatalog(CATALOG);
+    expect(countries.map((c) => c.iso)).toEqual(["eu", "ke", "gb"]);
+    const ke = countries.find((c) => c.iso === "ke")!;
+    expect(ke.rails.map((r) => r.type)).toEqual(["mobile", "bank"]);
+    expect(ke.rails[0].options).toEqual(["Mobile Wallet (M-PESA)"]);
+    expect(ke.dialCode).toBe("254");
   });
 
-  it("falls back to hardcoded options after catalog settles with no match", () => {
-    expect(providerNamesFromCatalog(null, fallback, true)).toEqual(fallback);
-    expect(providerNamesFromCatalog([], fallback, true)).toEqual(fallback);
+  it("omits disabled countries and empty mobile methods", () => {
+    const countries = offRampCountriesFromCatalog(CATALOG);
+    expect(countries.find((c) => c.iso === "ng")).toBeUndefined();
+  });
+
+  it("builds onramp countries from onramp + intl onramp currencies", () => {
+    const countries = onRampCountriesFromCatalog(CATALOG);
+    expect(countries.map((c) => c.code).sort()).toEqual(["EUR", "KES", "USD"]);
+  });
+
+  it("returns empty when catalog is missing", () => {
+    expect(offRampCountriesFromCatalog(null)).toEqual([]);
+    expect(onRampCountriesFromCatalog(undefined)).toEqual([]);
   });
 });

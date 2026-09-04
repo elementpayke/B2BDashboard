@@ -34,10 +34,9 @@ export function buildSendStepDots(sendStep: number, total = 3): { on: boolean }[
  * `momo` account types alike, so when the catalog is unavailable there is no
  * payload that can succeed.
  *
- * `providerNamesFromCatalog` still falls back to a hardcoded display list in
- * that case, which is fine for rendering the corridor but cannot carry an id
- * — so the flow has to stop at step 1 rather than let someone fill in a
- * recipient and an amount and only fail at the quote.
+ * `providerNamesFromCatalog` returns only live catalog names — never a
+ * hardcoded standby list — so when the catalog is unavailable there is no
+ * provider chip that can carry an id.
  */
 export function sendRailBlockedByMissingNetworkId(input: {
   sendGroup: string;
@@ -53,15 +52,126 @@ export function sendRailBlockedByMissingNetworkId(input: {
 
 /**
  * Human copy for the quote failures whose raw backend message is a field
- * path or an internal integration detail. Everything else passes through —
- * the backend's own wording is usually better than a substitute.
+ * path or an internal integration detail. Prefer a useful upstream message
+ * from `data.upstream` when Mboka only wraps it as
+ * "Aggregator returned 400 for /partner/orders/quote".
  */
-export function friendlySendQuoteError(message: string): string {
-  if (/network_id is required/i.test(message)) {
+export type SendQuoteErrorData = {
+  upstream?: unknown;
+  field?: string;
+  code?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+function isInternalIntegrationMessage(message: string): boolean {
+  return (
+    /aggregator returned\s+\d+/i.test(message) ||
+    /\/partner\//i.test(message) ||
+    /upstream request (timed out|failed)/i.test(message) ||
+    /^HTTP\s+\d+$/i.test(message.trim())
+  );
+}
+
+function extractUpstreamMessage(data: SendQuoteErrorData | null | undefined): string | null {
+  if (!data || typeof data !== "object") return null;
+  const upstream = data.upstream;
+  if (!upstream || typeof upstream !== "object") return null;
+  const body = upstream as Record<string, unknown>;
+  const direct = body.message ?? body.error ?? body.detail;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const nested = body.data;
+  if (nested && typeof nested === "object") {
+    const nestedMsg = (nested as Record<string, unknown>).message;
+    if (typeof nestedMsg === "string" && nestedMsg.trim()) return nestedMsg.trim();
+  }
+  return null;
+}
+
+function humanizeQuoteDetail(message: string): string | null {
+  if (/insufficient/i.test(message)) {
+    return "Insufficient funds to price this payout. Top up your wallet and try again.";
+  }
+  if (/below.{0,24}min|minimum\s+amount|min(?:imum)?\s+(?:send|transfer|amount)|amount too small/i.test(message)) {
+    return "Amount too small for this corridor. Increase the amount and try again.";
+  }
+  if (/above.?max|maximum\s+amount|amount too (?:large|high)|limit exceeded/i.test(message)) {
+    return "Amount too large for this corridor. Lower the amount and try again.";
+  }
+  if (/invalid.*account|account.*(invalid|not found|does not exist)|unknown account/i.test(message)) {
+    return "That recipient account number doesn't look valid for the selected bank. Check it and try again.";
+  }
+  if (/invalid.*phone|phone.*(invalid|not found)|msisdn/i.test(message)) {
+    return "That phone number isn't valid for this corridor. Check the number and try again.";
+  }
+  if (/network.?id|payment_method/i.test(message)) {
     return "This corridor can't be priced right now — our provider list is unavailable, so we can't route the payment. Please try again shortly.";
   }
-  if (/invalid or revoked api key|aggregator returned 401/i.test(message)) {
+  if (/customer\.name|first and last name|recipient name/i.test(message)) {
+    return "Enter the account holder's full name (first and last), then try again.";
+  }
+  if (/additional.?id|nigeria additional/i.test(message)) {
+    return "This Nigeria payout needs extra ID details we don't collect yet. Try another corridor or contact support.";
+  }
+  if (/rate|fx|price|pricing|quote/i.test(message) && /unavail|unable|fail|error/i.test(message)) {
+    return "We couldn't lock a rate for this corridor right now. Please try again shortly.";
+  }
+  return null;
+}
+
+export function friendlySendQuoteError(
+  message: string,
+  data?: SendQuoteErrorData | null,
+  status?: number,
+): string {
+  const upstreamMsg = extractUpstreamMessage(data);
+  const candidates = [upstreamMsg, message].filter(
+    (m): m is string => typeof m === "string" && m.trim().length > 0,
+  );
+
+  for (const candidate of candidates) {
+    if (/network_id is required/i.test(candidate)) {
+      return "This corridor can't be priced right now — our provider list is unavailable, so we can't route the payment. Please try again shortly.";
+    }
+    if (/invalid or revoked api key|aggregator returned 401/i.test(candidate)) {
+      return "Payouts are temporarily unavailable — our payment partner rejected the connection. This is on us, not your details.";
+    }
+    const humanized = humanizeQuoteDetail(candidate);
+    if (humanized) return humanized;
+  }
+
+  // Prefer a concrete upstream reason when it isn't an internal path/status string.
+  if (upstreamMsg && !isInternalIntegrationMessage(upstreamMsg)) {
+    return upstreamMsg;
+  }
+
+  if (
+    status === 401 ||
+    /aggregator returned 401/i.test(message) ||
+    /invalid or revoked api key/i.test(message)
+  ) {
     return "Payouts are temporarily unavailable — our payment partner rejected the connection. This is on us, not your details.";
+  }
+  if (status === 504 || /aggregator timed out|upstream request timed out|aggregator returned 504/i.test(message)) {
+    return "Pricing timed out — our payment partner took too long to respond. Please try again in a moment.";
+  }
+  if (
+    status === 502 ||
+    status === 503 ||
+    /aggregator returned 50[23]|upstream request failed|aggregator transport|aggregator is not configured/i.test(
+      message,
+    )
+  ) {
+    return "Payouts are temporarily unavailable — our payment partner is having trouble. Please try again shortly.";
+  }
+  if (status === 422 || /aggregator returned 422/i.test(message)) {
+    return "Some payout details need fixing before we can quote. Check the recipient, bank, and amount, then try again.";
+  }
+  if (status === 400 || /aggregator returned 400/i.test(message)) {
+    return "We couldn't price this payout — check the recipient account, bank, and amount, then try again.";
+  }
+  if (isInternalIntegrationMessage(message)) {
+    return "We couldn't get a price for this payout right now. Please try again shortly.";
   }
   return message;
 }
@@ -119,7 +229,10 @@ export function friendlySendAcceptError(
   if (data?.code === "asset_mismatch") {
     return "Settlement asset mismatch — this corridor can't settle on the selected crypto rail. Choose USDT on Polygon and try again.";
   }
-  return friendlySendQuoteError(message);
+  return friendlySendQuoteError(
+    message,
+    data && typeof data === "object" ? (data as SendQuoteErrorData) : null,
+  );
 }
 
 /** The four entry points on the Send method chooser. `internal` has no
