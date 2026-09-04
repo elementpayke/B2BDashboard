@@ -71,10 +71,58 @@ describe("presentTransaction", () => {
       }),
     );
     expect(view.partyName).toBe("Jane Wanjiku");
+    expect(view.client).toBe("Jane Wanjiku");
+    expect(view.meta).toContain("Payout · KES");
+    expect(view.meta).toContain("Ref YC-90de94");
+    expect(view.accountName).toBeNull();
     expect(view.accountNumber).toBe("+254712345678");
     expect(view.accountKind).toBe("phone");
     expect(view.networkName).toBe("M-PESA");
     expect(view.railType).toBe("mobile");
+  });
+
+  it("uses payment.account_name as list title when party_name is missing", () => {
+    const view = presentTransaction(
+      transaction({
+        payment: {
+          account_name: "Chidi Okonkwo",
+          account_number: "0123456789",
+          account_kind: "bank_account",
+          method_type: "bank",
+        },
+      }),
+    );
+    expect(view.partyName).toBe("Chidi Okonkwo");
+    expect(view.client).toBe("Chidi Okonkwo");
+    expect(view.accountName).toBeNull();
+  });
+
+  it("prefers party_name and keeps a distinct account_name as Account name", () => {
+    const view = presentTransaction(
+      transaction({
+        payment: {
+          party_name: "Jane Wanjiku",
+          account_name: "JANE W KCB",
+          account_number: "+254712345678",
+          account_kind: "phone",
+        },
+      }),
+    );
+    expect(view.partyName).toBe("Jane Wanjiku");
+    expect(view.accountName).toBe("JANE W KCB");
+  });
+
+  it("collapses matching party_name and account_name into one display name", () => {
+    const view = presentTransaction(
+      transaction({
+        payment: {
+          party_name: "Jane Wanjiku",
+          account_name: "jane wanjiku",
+        },
+      }),
+    );
+    expect(view.partyName).toBe("Jane Wanjiku");
+    expect(view.accountName).toBeNull();
   });
   it("prefers tx_hash then credit id for inbound Stellar deposits", () => {
     const hash =

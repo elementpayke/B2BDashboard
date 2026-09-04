@@ -13,6 +13,10 @@ import {
   liveRateRowsFromSummary,
   mergeExchangeRates,
 } from "@/lib/services/dashboard";
+import {
+  formatHomeCashFlowUsd,
+  moneyFlowFromTransactions,
+} from "@/lib/services/homeCashFlow";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
@@ -3014,19 +3018,54 @@ export default function DashboardApp(props: Props = {}) {
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
-  const totals = summaryQuery.data?.totals;
   const liveRates = liveRateRowsFromSummary(homeFxRates);
-  const fmtUsd = (v: string | number | undefined) => {
-    if (v == null) return "—";
-    const amount = Number(v);
-    return Number.isFinite(amount)
-      ? `$${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-      : "—";
-  };
+  // Money in/out: FX-convert completed Mboka txs (last 30d). Do not use raw
+  // summary totals — those sum mixed fiats and were shown as fake-looking `$`.
+  const homeMoneyFlow = transactionsQuery.isSuccess
+    ? moneyFlowFromTransactions(transactionsQuery.data?.items ?? [], homeFxRates)
+    : { moneyInUsd: null, moneyOutUsd: null };
+  const goTxCashFlow = (
+    filter: PrimaryTransactionFilter,
+    dateRange: "all" | "7d" | "30d" = "30d",
+  ) =>
+    () =>
+      setState({
+        screen: "transactions",
+        sidebarOpen: false,
+        moreOpen: false,
+        txFilter: filter,
+        txDateRange: dateRange,
+        txSearch: "",
+        txCurrency: "all",
+      });
   const homeStats = [
-        { label: "Money in · 30 days", value: fmtUsd(totals?.money_in_30d), icon: "↑", iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
-        { label: "Money out · 30 days", value: fmtUsd(totals?.money_out_30d), icon: "↓", iconBg: "var(--surface3)", iconColor: "var(--muted)" },
-        { label: "Awaiting settlement", value: awaitingSettlementLabel, icon: "◔", iconBg: "var(--amber-tint)", iconColor: "var(--amber)" },
+        {
+          label: "Money in · 30 days",
+          value: formatHomeCashFlowUsd(homeMoneyFlow.moneyInUsd),
+          icon: "↑",
+          iconBg: "var(--indigo-tint)",
+          iconColor: "var(--indigo-text)",
+          onOpen: goTxCashFlow("incoming", "30d"),
+          ariaLabel: "View incoming transactions for the last 30 days",
+        },
+        {
+          label: "Money out · 30 days",
+          value: formatHomeCashFlowUsd(homeMoneyFlow.moneyOutUsd),
+          icon: "↓",
+          iconBg: "var(--surface3)",
+          iconColor: "var(--muted)",
+          onOpen: goTxCashFlow("outgoing", "30d"),
+          ariaLabel: "View outgoing transactions for the last 30 days",
+        },
+        {
+          label: "Awaiting settlement",
+          value: awaitingSettlementLabel,
+          icon: "◔",
+          iconBg: "var(--amber-tint)",
+          iconColor: "var(--amber)",
+          onOpen: goTxCashFlow("processing", "all"),
+          ariaLabel: "View pending transactions awaiting settlement",
+        },
       ];
   const homeBalanceSub = !homeCurrencyChips.length
     ? "Balance not yet available"
@@ -4005,10 +4044,16 @@ export default function DashboardApp(props: Props = {}) {
 
 <div className="ep-home__stats-desktop" aria-label="Cash flow">
 {(homeStats || []).map((hs: any, __i1: number) => (
-<div key={__i1} className="ep-home__stat">
-<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}}>{hs.icon}</span>
+<button
+  key={__i1}
+  type="button"
+  className="ep-home__stat"
+  onClick={hs.onOpen}
+  aria-label={hs.ariaLabel}
+>
+<span className="ep-home__stat-icon" style={{background: (hs.iconBg), color: (hs.iconColor)}} aria-hidden>{hs.icon}</span>
 <div><div className="ep-home__stat-label">{hs.label}</div><div className="ep-home__stat-value">{hs.value}</div></div>
-</div>
+</button>
 ))}
 </div>
 </div>

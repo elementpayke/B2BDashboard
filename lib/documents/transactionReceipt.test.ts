@@ -99,6 +99,21 @@ describe("buildTransactionReceipt", () => {
     expect(doc.amountCaption).toBe("Amount received");
   });
 
+  it("shows a distinct Account name when it differs from Recipient", () => {
+    const doc = buildTransactionReceipt({
+      ...settledPayout,
+      partyName: "Jane Wanjiku",
+      accountName: "JANE W KCB",
+    });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([
+        { label: "Recipient", value: "Jane Wanjiku" },
+        { label: "Account name", value: "JANE W KCB" },
+      ]),
+    );
+  });
+
   it("omits payment reference when the PSP id is missing", () => {
     const doc = buildTransactionReceipt({
       id: 7,

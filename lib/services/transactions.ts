@@ -114,6 +114,7 @@ export function paymentFromOrderMetadata(
   };
   if (
     !out.party_name &&
+    !out.account_name &&
     !out.account_number &&
     !out.method_type &&
     !out.network_name

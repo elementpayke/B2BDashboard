@@ -32,6 +32,11 @@ export type ReceiptTransaction = {
   client?: string | null;
   /** Recipient (payout) or payer (deposit). */
   partyName?: string | null;
+  /**
+   * Account-holder name when distinct from `partyName`
+   * (quote `destination.accountName` / `payment.account_name`).
+   */
+  accountName?: string | null;
   /** Bank account or M-Pesa / mobile-money number. */
   accountNumber?: string | null;
   accountKind?: "phone" | "bank_account" | string | null;
@@ -183,6 +188,10 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
   const partyName = tx.partyName?.trim();
   if (partyName) {
     paymentRows.push({ label: receiptPartyLabel(tx.direction), value: partyName });
+  }
+  const accountName = tx.accountName?.trim();
+  if (accountName && accountName.toLowerCase() !== (partyName || "").toLowerCase()) {
+    paymentRows.push({ label: "Account name", value: accountName });
   }
   const accountNumber = tx.accountNumber?.trim();
   if (accountNumber) {

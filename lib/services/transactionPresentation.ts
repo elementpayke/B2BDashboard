@@ -18,8 +18,13 @@ export type TransactionPresentation = Transaction & {
   statusColor: string;
   statusSoft: string;
   flagUrl: null;
-  /** Flattened for modal + PDF receipt. */
+  /** Flattened for modal + PDF receipt. Recipient (out) / payer (in). */
   partyName: string | null;
+  /**
+   * Account-holder name when present and distinct from `partyName`
+   * (send quote stores recipient as `payment.account_name`).
+   */
+  accountName: string | null;
   accountNumber: string | null;
   accountKind: string | null;
   networkName: string | null;
@@ -30,6 +35,22 @@ export type TransactionPresentation = Transaction & {
   /** Human network label for detail rows (e.g. Stellar). */
   cryptoNetworkLabel: string | null;
 };
+
+/** Receiver/payer display name: party_name preferred, else account_name (quote destination). */
+export function resolvePartyDisplayName(payment: Transaction["payment"]): {
+  partyName: string | null;
+  accountName: string | null;
+} {
+  const party = payment?.party_name?.trim() || null;
+  const account = payment?.account_name?.trim() || null;
+  if (party && account && party.toLowerCase() !== account.toLowerCase()) {
+    return { partyName: party, accountName: account };
+  }
+  return {
+    partyName: party || account,
+    accountName: null,
+  };
+}
 
 function typeLabel(transaction: Transaction): string {
   if (isInboundStellarDeposit(transaction)) return "Stellar deposit";
@@ -108,6 +129,12 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   const ref = transactionReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
   const payment = transaction.payment;
+  const { partyName, accountName } = resolvePartyDisplayName(payment);
+  const workflowLabel = transactionPartyLabel({
+    direction: transaction.direction,
+    currency: transaction.currency,
+    provider: transaction.provider,
+  });
   const explorerUrl = buildSendExplorerUrl({
     txHash: transaction.tx_hash,
     network: transaction.crypto_network,
@@ -116,25 +143,29 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     ? formatNetworkLabel(transaction.crypto_network)
     : null;
 
+  // List title: prefer recipient/payer name when Mboka sent payment details.
+  // Fallback stays workflow · currency (never partner brands).
+  const client = partyName || workflowLabel;
+  const meta = partyName
+    ? `${workflowLabel} · ${dateLabel} · Ref ${shortReference(ref)}`
+    : `${dateLabel} · Ref ${shortReference(ref)}`;
+
   return {
     ...transaction,
-    client: transactionPartyLabel({
-      direction: transaction.direction,
-      currency: transaction.currency,
-      provider: transaction.provider,
-    }),
+    client,
     type: kind,
     amount: `${sign}${formattedAmount} ${currency}`,
     amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
     ref,
-    meta: `${dateLabel} · Ref ${shortReference(ref)}`,
+    meta,
     dateLabel,
     statusLabel: status.label,
     statusIcon: status.icon,
     statusColor: status.color,
     statusSoft: status.soft,
     flagUrl: null,
-    partyName: payment?.party_name?.trim() || null,
+    partyName,
+    accountName,
     accountNumber: payment?.account_number?.trim() || null,
     accountKind: payment?.account_kind?.trim() || null,
     networkName: payment?.network_name?.trim() || null,

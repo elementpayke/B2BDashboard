@@ -102,6 +102,7 @@ export function presentOnchainWalletPayment(
     statusSoft: status.soft,
     flagUrl: null,
     partyName: null,
+    accountName: null,
     accountNumber: null,
     accountKind: null,
     networkName: null,

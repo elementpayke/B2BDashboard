@@ -103,6 +103,58 @@ describe("TxDetailModal Stellar inbound rows", () => {
   });
 });
 
+describe("TxDetailModal payout receiver", () => {
+  it("shows Recipient when partyName is set", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          type: "Payout",
+          client: "Payout · NGN",
+          amount: "−2,720.00 NGN",
+          currency: "NGN",
+          amount_fiat: "2720.00",
+          direction: "out",
+          amountColor: "var(--ink)",
+          partyName: "Chidi Okonkwo",
+          accountName: null,
+          accountNumber: "0123456789",
+          accountKind: "bank_account",
+          railType: "bank",
+          hideReceipt: false,
+        })}
+      />,
+    );
+    expect(screen.getByText("Recipient")).toBeInTheDocument();
+    expect(screen.getByText("Chidi Okonkwo")).toBeInTheDocument();
+  });
+
+  it("shows Account name when distinct from Recipient", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          type: "Payout",
+          client: "Payout · KES",
+          amount: "−100.00 KES",
+          currency: "KES",
+          amount_fiat: "100.00",
+          direction: "out",
+          partyName: "Jane Wanjiku",
+          accountName: "JANE W KCB",
+          accountNumber: "+254712345678",
+          accountKind: "phone",
+          railType: "mobile",
+          networkName: "M-PESA",
+          hideReceipt: false,
+        })}
+      />,
+    );
+    expect(screen.getByText("Recipient")).toBeInTheDocument();
+    expect(screen.getByText("Jane Wanjiku")).toBeInTheDocument();
+    expect(screen.getByText("Account name")).toBeInTheDocument();
+    expect(screen.getByText("JANE W KCB")).toBeInTheDocument();
+  });
+});
+
 describe("TxDetailModal receipt share sheet", () => {
   it("opens an opaque share sheet with a dismiss backdrop", async () => {
     const { fireEvent } = await import("@testing-library/react");
