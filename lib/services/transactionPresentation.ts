@@ -145,10 +145,12 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
 
   // List title: prefer recipient/payer name when Mboka sent payment details.
   // Fallback stays workflow · currency (never partner brands).
+  const accountNumber = payment?.account_number?.trim() || null;
   const client = partyName || workflowLabel;
-  const meta = partyName
-    ? `${workflowLabel} · ${dateLabel} · Ref ${shortReference(ref)}`
-    : `${dateLabel} · Ref ${shortReference(ref)}`;
+  const metaParts = partyName
+    ? [workflowLabel, accountNumber, dateLabel, `Ref ${shortReference(ref)}`]
+    : [dateLabel, `Ref ${shortReference(ref)}`];
+  const meta = metaParts.filter(Boolean).join(" · ");
 
   return {
     ...transaction,
@@ -166,7 +168,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     flagUrl: null,
     partyName,
     accountName,
-    accountNumber: payment?.account_number?.trim() || null,
+    accountNumber,
     accountKind: payment?.account_kind?.trim() || null,
     networkName: payment?.network_name?.trim() || null,
     methodType: payment?.method_type?.trim() || null,

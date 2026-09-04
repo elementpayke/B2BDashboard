@@ -73,6 +73,7 @@ describe("presentTransaction", () => {
     expect(view.partyName).toBe("Jane Wanjiku");
     expect(view.client).toBe("Jane Wanjiku");
     expect(view.meta).toContain("Payout · KES");
+    expect(view.meta).toContain("+254712345678");
     expect(view.meta).toContain("Ref YC-90de94");
     expect(view.accountName).toBeNull();
     expect(view.accountNumber).toBe("+254712345678");

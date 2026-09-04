@@ -2793,10 +2793,15 @@ export default function DashboardApp(props: Props = {}) {
     });
     // Paginated All page 1: include Horizon-only rows without changing order offsets.
     // Pending/Failed pages stay ElementPay-only. Local filters merge into latest-50 mode.
+    // Prefer the /v1/transactions feed (includes payment backfill) over the
+    // paginated /v1/orders page when both cover the same first-page rows.
     const filteredTransactions = txUsesLatestFifty
       ? mergePresentedActivityRows(latestFiftyMatches, filteredOnchainRows)
       : s.txFilter === "all" && transactionsPageQuery.pageNumber === 1
-        ? mergePresentedActivityRows(pageTransactions, unmatchedOnchainRows)
+        ? mergePresentedActivityRows(
+            decoratedAll.length ? decoratedAll : pageTransactions,
+            unmatchedOnchainRows,
+          )
         : pageTransactions;
     // Fetched by id (txDetailQuery), independent of the list above — see
     // openTxDetail. Falls back to the list's cached copy while the detail
