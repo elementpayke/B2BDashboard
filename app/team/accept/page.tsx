@@ -43,7 +43,9 @@ function AcceptInviteForm() {
         if (cancelled) return;
         if (isSessionExpiredError(err)) {
           setNeedsLogin(true);
-          setError("Sign in with the invited email, then open this link again.");
+          setError(
+            "Sign in with the invited email (use the temporary password from your invite email if this is your first login), then open this link again.",
+          );
         } else if (err instanceof ApiRequestError) {
           setError(err.message);
         } else {

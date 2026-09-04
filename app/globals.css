@@ -8679,6 +8679,60 @@ select.ep-wallets-create__control {
   cursor: not-allowed;
 }
 
+.ep-team__invite-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ep-team__confirm-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.ep-team__confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ep-team__confirm-cancel,
+.ep-team__confirm-danger {
+  flex: 1;
+  border-radius: 14px;
+  padding: 13px 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.ep-team__confirm-cancel {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+}
+
+.ep-team__confirm-cancel:disabled,
+.ep-team__confirm-danger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ep-team__confirm-danger {
+  border: none;
+  background: var(--red);
+  color: #fff;
+}
+
+.ep-team__confirm-danger:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
 /* ── Developer (secondary screen) ─────────────────────────────── */
 
 .ep-developer {

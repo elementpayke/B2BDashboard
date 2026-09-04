@@ -314,6 +314,8 @@ export default function DashboardApp(props: Props = {}) {
     createAccountSaving: false, createAccountError: "",
     inviteOpen: false, inviteEmail: "", inviteRole: "operator" as MembershipRole,
     inviteBusy: false, inviteError: "", teamActionError: "",
+    teamConfirm: null as null | { kind: "revoke" | "remove"; id: number; label: string },
+    teamConfirmBusy: false,
     newCardLabel: "",
     newCardFirstName: "",
     newCardLastName: "",
@@ -2349,27 +2351,40 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const removeMember = (userId: number) => async () => {
-    if (!isTeamAdmin || typeof businessId !== "number") return;
-    setState({ teamActionError: "" });
+  const askRemoveMember = (userId: number, label: string) => () =>
+    setState({
+      teamConfirm: { kind: "remove", id: userId, label },
+      teamConfirmBusy: false,
+      teamActionError: "",
+    });
+  const askRevokeInvite = (inviteId: number, label: string) => () =>
+    setState({
+      teamConfirm: { kind: "revoke", id: inviteId, label },
+      teamConfirmBusy: false,
+      teamActionError: "",
+    });
+  const closeTeamConfirm = () => setState({ teamConfirm: null, teamConfirmBusy: false, teamActionError: "" });
+  const confirmTeamAction = async () => {
+    if (!isTeamAdmin || typeof businessId !== "number" || !state.teamConfirm) return;
+    const { kind, id } = state.teamConfirm;
+    setState({ teamConfirmBusy: true, teamActionError: "" });
     try {
-      await teamApi.remove(businessId, userId);
+      if (kind === "remove") {
+        await teamApi.remove(businessId, id);
+      } else {
+        await teamApi.revokeInvite(businessId, id);
+      }
       await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      setState({ teamConfirm: null, teamConfirmBusy: false });
     } catch (err) {
       setState({
-        teamActionError: err instanceof ApiRequestError ? err.message : "Couldn't remove the member.",
-      });
-    }
-  };
-  const revokeInvite = (inviteId: number) => async () => {
-    if (!isTeamAdmin || typeof businessId !== "number") return;
-    setState({ teamActionError: "" });
-    try {
-      await teamApi.revokeInvite(businessId, inviteId);
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
-    } catch (err) {
-      setState({
-        teamActionError: err instanceof ApiRequestError ? err.message : "Couldn't revoke the invite.",
+        teamConfirmBusy: false,
+        teamActionError:
+          err instanceof ApiRequestError
+            ? err.message
+            : kind === "remove"
+              ? "Couldn't remove the member."
+              : "Couldn't revoke the invite.",
       });
     }
   };
@@ -3343,7 +3358,7 @@ export default function DashboardApp(props: Props = {}) {
       roleLabel: roleLabel(m.role),
       roleOptions: MEMBERSHIP_ROLES,
       setRole: setMemberRole(m.user_id),
-      remove: removeMember(m.user_id),
+      remove: askRemoveMember(m.user_id, name),
       isSelf: m.user_id === myUserId,
     };
   });
@@ -3361,10 +3376,12 @@ export default function DashboardApp(props: Props = {}) {
       statusColor: "var(--amber)",
       statusSoft: "var(--amber-tint)",
       roleLabel: roleLabel(inv.role),
-      revoke: revokeInvite(inv.id),
+      revoke: askRevokeInvite(inv.id, inv.email),
     };
   });
   const allTeamRows = [...teamRows, ...inviteRows];
+  const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
+  const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
@@ -4262,7 +4279,7 @@ export default function DashboardApp(props: Props = {}) {
 <span className="ep-team__preview-text">Only admins can invite or change roles.</span>
 )}
 </div>
-{(teamLoadError || teamActionError) ? (
+{(teamLoadError || (teamActionError && !teamConfirm)) ? (
 <p className="ep-team__preview-text" role="alert" style={{ color: "var(--danger, #b42318)" }}>
 {teamLoadError || teamActionError}
 </p>
@@ -4335,9 +4352,37 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 </div>
 {inviteError ? <p role="alert" style={{ color: "var(--danger, #b42318)", fontSize: "13px" }}>{inviteError}</p> : null}
+<p className="ep-team__invite-hint">
+We&apos;ll email them an invite link and, if they&apos;re new, a temporary password to change after signing in.
+</p>
 <button type="button" onClick={submitInvite} disabled={inviteCannotSubmit} className="ep-team__invite-submit">
 {inviteBusy ? "Sending…" : "Send invite"}
 </button>
+</div>
+</div>
+</>) : null}
+
+{(teamConfirm) ? (<>
+<div className="ep-team__invite-overlay" onClick={teamConfirmBusy ? undefined : closeTeamConfirm} role="presentation">
+<div className="ep-team__invite ep-team__confirm" onClick={stopClick} role="dialog" aria-modal="true" aria-labelledby="ep-team-confirm-title">
+<div className="ep-team__invite-head">
+<h3 id="ep-team-confirm-title" className="ep-team__invite-title">
+{teamConfirm.kind === "revoke" ? "Revoke invite?" : "Remove member?"}
+</h3>
+<button type="button" onClick={closeTeamConfirm} className="ep-team__invite-close" aria-label="Cancel" disabled={teamConfirmBusy}>✕</button>
+</div>
+<p className="ep-team__confirm-body">
+{teamConfirm.kind === "revoke"
+  ? <>This cancels the pending invite for <strong>{teamConfirm.label}</strong>. They won&apos;t be able to join with the old link.</>
+  : <>Remove <strong>{teamConfirm.label}</strong> from this business? They&apos;ll lose access immediately.</>}
+</p>
+{teamActionError ? <p role="alert" style={{ color: "var(--danger, #b42318)", fontSize: "13px" }}>{teamActionError}</p> : null}
+<div className="ep-team__confirm-actions">
+<button type="button" onClick={closeTeamConfirm} className="ep-team__confirm-cancel" disabled={teamConfirmBusy}>Cancel</button>
+<button type="button" onClick={confirmTeamAction} className="ep-team__confirm-danger" disabled={teamConfirmBusy}>
+{teamConfirmBusy ? "Working…" : teamConfirm.kind === "revoke" ? "Revoke invite" : "Remove member"}
+</button>
+</div>
 </div>
 </div>
 </>) : null}
