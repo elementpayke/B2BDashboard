@@ -185,6 +185,8 @@ import {
   describeCardStatus,
   describeUsdFunding,
   describeUsdFundingIssueNote,
+  formatCardExpiry,
+  formatCardPan,
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
@@ -331,6 +333,9 @@ export default function DashboardApp(props: Props = {}) {
     newlyIssuedCard: null as IssuedCard | null,
     cardFreezeBusy: false,
     cardFreezeError: "",
+    cardSecrets: null as null | { number: string; cvv: string },
+    cardSecretsBusy: false,
+    cardSecretsError: "",
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
@@ -1350,6 +1355,9 @@ export default function DashboardApp(props: Props = {}) {
       fundTargetAccountId: null,
       fundConvertStatus: "",
       fundConvertError: "",
+      cardSecrets: null,
+      cardSecretsBusy: false,
+      cardSecretsError: "",
     });
   };
   const closeModalRef = useRef(closeModal);
@@ -1484,7 +1492,16 @@ export default function DashboardApp(props: Props = {}) {
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
   const openCardDetail = (cardId: string) => () =>
-    setState({ modal: "cardDetail", selectedCardId: cardId, cardFreezeBusy: false, cardFreezeError: "" });
+    setState({
+      modal: "cardDetail",
+      selectedCardId: cardId,
+      cardFreezeBusy: false,
+      cardFreezeError: "",
+      cardSecrets: null,
+      cardSecretsBusy: false,
+      cardSecretsError: "",
+      copiedField: "",
+    });
   const openNewCard = () => {
     const prefill = cardholderPrefillFromKybProfile(
       meQuery.data?.kyb_summary?.profile ?? null,
@@ -2295,18 +2312,56 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
+  const revealCardSecrets = async () => {
+    const funding = usdFundingQuery.data;
+    const cardId = state.selectedCardId;
+    if (!funding || !cardId) return;
+    setState({ cardSecretsBusy: true, cardSecretsError: "", copiedField: "" });
+    try {
+      const revealed = await cardsApi.credentials(
+        funding.entityId,
+        funding.accountId,
+        cardId,
+      );
+      const number = String(revealed.number || "").trim();
+      const cvv = String(revealed.cvv || "").trim();
+      if (!number || !cvv) {
+        setState({
+          cardSecretsBusy: false,
+          cardSecretsError: "Card details aren't available right now.",
+        });
+        return;
+      }
+      setState({
+        cardSecretsBusy: false,
+        cardSecrets: { number, cvv },
+        cardSecretsError: "",
+      });
+    } catch (err) {
+      setState({
+        cardSecretsBusy: false,
+        cardSecretsError:
+          err instanceof Error ? err.message : "Couldn't load card details.",
+      });
+    }
+  };
+  const hideCardSecrets = () =>
+    setState({ cardSecrets: null, cardSecretsError: "", copiedField: "" });
   const fundCard = () =>
     setState({
       modal: "acctDetail",
       acctDetailIntent: "fund",
       selectedAcctKind: "fiat",
       selectedAcctKey: "fiat:USD",
+      cardSecrets: null,
+      cardSecretsError: "",
     });
   const openFundCardDirect = (_cardId: string) => (e) => {
     e.stopPropagation();
     fundCard();
   };
-  const terminateCard = () => setState({ modal: null });
+  const terminateCard = () =>
+    setState({ modal: null, cardSecrets: null, cardSecretsError: "" });
 
   const openInvite = () =>
     setState({
@@ -3933,9 +3988,8 @@ export default function DashboardApp(props: Props = {}) {
         freezeTrack: cardIsFrozen ? "var(--indigo)" : "var(--surface3)",
         freezeKnobLeft: cardIsFrozen ? "23px" : "3px",
         exp:
-          cardSel.expiration_month && cardSel.expiration_year
-            ? `${cardSel.expiration_month}/${cardSel.expiration_year}`
-            : null,
+          formatCardExpiry(cardSel.expiration_month, cardSel.expiration_year) ||
+          null,
       }
     : {};
   const newCardLabel = s.newCardLabel;
@@ -3950,6 +4004,19 @@ export default function DashboardApp(props: Props = {}) {
   const newlyIssuedCard = s.newlyIssuedCard as IssuedCard | null;
   const cardFreezeBusy = s.cardFreezeBusy;
   const cardFreezeError = s.cardFreezeError;
+  const cardSecrets = s.cardSecrets as null | { number: string; cvv: string };
+  const cardSecretsBusy = s.cardSecretsBusy;
+  const cardSecretsError = s.cardSecretsError;
+  const cardSecretsRevealed = Boolean(cardSecrets?.number && cardSecrets?.cvv);
+  const cardPanDisplay = cardSecretsRevealed
+    ? formatCardPan(cardSecrets!.number)
+    : `•••• •••• •••• ${cardDetail.last4 || "————"}`;
+  const newlyIssuedExp = newlyIssuedCard
+    ? formatCardExpiry(
+        newlyIssuedCard.expiration_month,
+        newlyIssuedCard.expiration_year,
+      )
+    : null;
   const invClient = s.invClient;
   const invAmount = s.invAmount;
   const invoiceNotDone = !s.invoiceDone;
@@ -4926,18 +4993,86 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <div className="ep-cards__modal">
 <div className="ep-cards__modal-plastic" style={{background: cardDetail.bg}}>
 <span className="ep-cards__plastic-label">{cardDetail.label}</span>
-<span className="ep-cards__plastic-pan">•••• •••• •••• {cardDetail.last4}</span>
+<span className="ep-cards__plastic-pan">{cardPanDisplay}</span>
 </div>
 <div className="ep-cards__modal-row">
 <span>Linked USD available</span>
 <b className="ep-mono">{cardDetail.balance}</b>
 </div>
-{cardDetail.exp ? (
+{cardDetail.exp && !cardSecretsRevealed ? (
 <div className="ep-cards__modal-row">
 <span>Expires</span>
 <b className="ep-mono">{cardDetail.exp}</b>
 </div>
 ) : null}
+<div className="ep-cards__secrets" role="group" aria-label="Card credentials">
+{cardSecretsRevealed ? (
+  <>
+    <div className="ep-cards__note">Tap Copy on any field. Hide when you are done.</div>
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">Number</span>
+      <b className="ep-cards__secret-value ep-mono">{formatCardPan(cardSecrets!.number)}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "card:number" ? "true" : "false"}
+        onClick={copyField("card:number", cardSecrets!.number.replace(/\s+/g, ""))}
+        aria-label={s.copiedField === "card:number" ? "Number copied" : "Copy number"}
+      >
+        {s.copiedField === "card:number" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">CVV</span>
+      <b className="ep-cards__secret-value ep-mono">{cardSecrets!.cvv}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "card:cvv" ? "true" : "false"}
+        onClick={copyField("card:cvv", cardSecrets!.cvv)}
+        aria-label={s.copiedField === "card:cvv" ? "CVV copied" : "Copy CVV"}
+      >
+        {s.copiedField === "card:cvv" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    {cardDetail.exp ? (
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">Expires</span>
+      <b className="ep-cards__secret-value ep-mono">{cardDetail.exp}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "card:exp" ? "true" : "false"}
+        onClick={copyField("card:exp", cardDetail.exp)}
+        aria-label={s.copiedField === "card:exp" ? "Expiry copied" : "Copy expiry"}
+      >
+        {s.copiedField === "card:exp" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    ) : null}
+    <button type="button" onClick={hideCardSecrets} className="ep-cards__modal-secondary">
+      Hide details
+    </button>
+  </>
+) : (
+  <>
+    <div className="ep-cards__note">
+      Card number and CVV stay hidden until you reveal them.
+    </div>
+    <button
+      type="button"
+      onClick={() => void revealCardSecrets()}
+      className="ep-cards__modal-secondary"
+      disabled={cardSecretsBusy || !usdFunding}
+    >
+      {cardSecretsBusy ? "Loading…" : "Show number & CVV"}
+    </button>
+  </>
+)}
+{cardSecretsError ? (
+  <div className="ep-cards__note" role="alert" style={{color: "var(--red)"}}>{cardSecretsError}</div>
+) : null}
+</div>
 <div className="ep-cards__note">Cards spend against your linked USD deposit account — not a separate card wallet.</div>
 <div className="ep-cards__modal-actions">
 <button type="button" onClick={fundCard} className="ep-cards__modal-primary">Fund USD account</button>
@@ -5014,11 +5149,52 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 {newlyIssuedCard?.number ? (
   <div className="ep-cards__secrets" role="status">
     <div className="ep-cards__note">PAN and CVV are shown once — copy them now.</div>
-    <div className="ep-cards__modal-row"><span>Number</span><b className="ep-mono">{newlyIssuedCard.number}</b></div>
-    <div className="ep-cards__modal-row"><span>CVV</span><b className="ep-mono">{newlyIssuedCard.cvv}</b></div>
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">Number</span>
+      <b className="ep-cards__secret-value ep-mono">{formatCardPan(newlyIssuedCard.number)}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "newcard:number" ? "true" : "false"}
+        onClick={copyField("newcard:number", String(newlyIssuedCard.number).replace(/\s+/g, ""))}
+        aria-label={s.copiedField === "newcard:number" ? "Number copied" : "Copy number"}
+      >
+        {s.copiedField === "newcard:number" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    {newlyIssuedCard.cvv ? (
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">CVV</span>
+      <b className="ep-cards__secret-value ep-mono">{newlyIssuedCard.cvv}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "newcard:cvv" ? "true" : "false"}
+        onClick={copyField("newcard:cvv", String(newlyIssuedCard.cvv))}
+        aria-label={s.copiedField === "newcard:cvv" ? "CVV copied" : "Copy CVV"}
+      >
+        {s.copiedField === "newcard:cvv" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    ) : null}
+    {newlyIssuedExp ? (
+    <div className="ep-cards__secret-row">
+      <span className="ep-cards__secret-label">Expires</span>
+      <b className="ep-cards__secret-value ep-mono">{newlyIssuedExp}</b>
+      <button
+        type="button"
+        className="ep-cards__copy"
+        data-copied={s.copiedField === "newcard:exp" ? "true" : "false"}
+        onClick={copyField("newcard:exp", newlyIssuedExp)}
+        aria-label={s.copiedField === "newcard:exp" ? "Expiry copied" : "Copy expiry"}
+      >
+        {s.copiedField === "newcard:exp" ? "Copied" : "Copy"}
+      </button>
+    </div>
+    ) : null}
   </div>
 ) : (
-  <div className="ep-cards__note">Credentials were not returned (same reference replay). Use Manage to view last four.</div>
+  <div className="ep-cards__note">Credentials were not returned (same reference replay). Use Manage → Show number &amp; CVV.</div>
 )}
 <button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
 </div>

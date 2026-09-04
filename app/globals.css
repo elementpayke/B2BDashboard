@@ -7821,6 +7821,63 @@ select.ep-wallets-create__control {
   box-sizing: border-box;
 }
 
+.ep-cards__secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label copy"
+    "value copy";
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.ep-cards__secret-label {
+  grid-area: label;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-cards__secret-value {
+  grid-area: value;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.ep-cards__copy {
+  grid-area: copy;
+  align-self: center;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 64px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: none;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-cards__copy[data-copied="true"] {
+  background: var(--indigo);
+  color: var(--indigo-on);
+}
+
 .ep-cards__preview,
 .ep-team__preview {
   display: flex;
