@@ -76,9 +76,10 @@ describe("buildTransactionReceipt", () => {
     expect(html).not.toContain("USDC");
     expect(html).toContain("Download PDF");
     expect(html).toContain("Nairobi, Kenya");
-    expect(html).toContain("Wilmington, DE 19801");
     expect(html).toContain("info@elementpay.net");
     expect(html).not.toContain("support@mboka.africa");
+    expect(html).not.toContain("Wilmington, DE 19801");
+    expect(html).not.toContain("Fedha Plaza");
     expect(html).toContain('aria-label="Mboka"');
     expect(html).toContain("Recipient");
     expect(html).toContain("+254712345678");
@@ -87,7 +88,9 @@ describe("buildTransactionReceipt", () => {
     expect(html).toContain("WhatsApp");
     expect(html).toContain("Messages / SMS");
     expect(html).toContain("Telegram");
-    expect(html).toContain("Copy details");
+    expect(html).toContain("Share PDF");
+    expect(html).not.toContain("Copy details");
+    expect(html).not.toContain("Save as file");
   });
 
   it("labels an inbound order as a deposit", () => {
