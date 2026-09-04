@@ -145,6 +145,7 @@ import {
   railIndexForMethod,
   sendRailBlockedByMissingNetworkId,
   sendRailHasChoice as railHasChoice,
+  type SendQuoteErrorData,
 } from "@/lib/hooks/sendFlowHelpers";
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
 import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
@@ -1099,9 +1100,17 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteLoading: false,
           sendQuoteError:
-            err instanceof ApiRequestError || err instanceof Error
-              ? friendlySendQuoteError(err.message)
-              : "Couldn't get a quote. Try again.",
+            err instanceof ApiRequestError
+              ? friendlySendQuoteError(
+                  err.message,
+                  err.data && typeof err.data === "object"
+                    ? (err.data as SendQuoteErrorData)
+                    : null,
+                  err.status,
+                )
+              : err instanceof Error
+                ? friendlySendQuoteError(err.message)
+                : "Couldn't get a quote. Try again.",
         });
       }
       return;
@@ -1151,9 +1160,17 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteLoading: false,
           sendQuoteError:
-            err instanceof ApiRequestError || err instanceof Error
-              ? friendlySendQuoteError(explainAccountSendError(err.message, state.sendChain))
-              : "Couldn't preview this send. Try again.",
+            err instanceof ApiRequestError
+              ? friendlySendQuoteError(
+                  explainAccountSendError(err.message, state.sendChain),
+                  err.data && typeof err.data === "object"
+                    ? (err.data as SendQuoteErrorData)
+                    : null,
+                  err.status,
+                )
+              : err instanceof Error
+                ? friendlySendQuoteError(explainAccountSendError(err.message, state.sendChain))
+                : "Couldn't preview this send. Try again.",
         });
       }
       return;
@@ -1284,9 +1301,17 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           depositQuoteLoading: false,
           depositQuoteError:
-            err instanceof ApiRequestError || err instanceof Error
-              ? err.message
-              : "Couldn't get a quote. Try again.",
+            err instanceof ApiRequestError
+              ? friendlySendQuoteError(
+                  err.message,
+                  err.data && typeof err.data === "object"
+                    ? (err.data as SendQuoteErrorData)
+                    : null,
+                  err.status,
+                )
+              : err instanceof Error
+                ? friendlySendQuoteError(err.message)
+                : "Couldn't get a quote. Try again.",
         });
       }
       return;

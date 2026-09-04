@@ -137,9 +137,34 @@ describe("friendlySendQuoteError", () => {
     expect(out).toMatch(/not your details/i);
   });
 
-  it("passes an ordinary backend message through untouched", () => {
-    expect(friendlySendQuoteError("Amount is below the minimum for this corridor.")).toBe(
-      "Amount is below the minimum for this corridor.",
+  it("maps a bare aggregator 400 into actionable recipient/amount copy", () => {
+    const out = friendlySendQuoteError("Aggregator returned 400 for /partner/orders/quote", null, 400);
+    expect(out).not.toMatch(/Aggregator|\/partner\//i);
+    expect(out).toMatch(/couldn't price this payout/i);
+  });
+
+  it("prefers a concrete upstream message over the aggregator wrapper", () => {
+    const out = friendlySendQuoteError(
+      "Aggregator returned 400 for /partner/orders/quote",
+      { upstream: { message: "Invalid account number for this bank" } },
+      400,
+    );
+    expect(out).toMatch(/account number/i);
+    expect(out).not.toMatch(/Aggregator returned/i);
+  });
+
+  it("humanizes an upstream minimum-amount rejection", () => {
+    const out = friendlySendQuoteError(
+      "Aggregator returned 400 for /partner/orders/quote",
+      { upstream: { message: "Amount is below minimum amount for this corridor" } },
+      400,
+    );
+    expect(out).toMatch(/Amount too small/i);
+  });
+
+  it("humanizes a plain minimum-amount backend message", () => {
+    expect(friendlySendQuoteError("Amount is below the minimum for this corridor.")).toMatch(
+      /Amount too small/i,
     );
   });
 });
