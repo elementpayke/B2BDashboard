@@ -34,8 +34,12 @@ export type IssuedCard = {
   expiration_year?: string | null;
   number?: string | null;
   cvv?: string | null;
+  /** visa | mastercard | amex | discover — from partner or BIN */
+  brand?: string | null;
   created_at?: string | null;
 };
+
+export type CardBrand = "visa" | "mastercard" | "amex" | "discover" | "unknown";
 
 export type CardholderIn = {
   first_name: string;
@@ -199,8 +203,47 @@ export function describeCardStatus(status: string | null | undefined): string {
   if (key === "active" || key === "open") return "Active";
   if (key === "frozen" || key === "blocked") return "Frozen";
   if (key === "pending") return "Pending";
-  if (key === "closed" || key === "terminated") return "Closed";
+  if (key === "failed") return "Failed";
+  if (key === "closed" || key === "terminated" || key === "deleted") return "Closed";
   return status || "Unknown";
+}
+
+/** IIN/BIN → scheme. Returns unknown when digits are missing or unrecognized. */
+export function detectCardBrand(pan: string | null | undefined): CardBrand {
+  const digits = String(pan || "").replace(/\D/g, "");
+  if (!digits) return "unknown";
+  if (digits.startsWith("4")) return "visa";
+  if (digits.startsWith("34") || digits.startsWith("37")) return "amex";
+  const two = Number(digits.slice(0, 2));
+  if (two >= 51 && two <= 55) return "mastercard";
+  if (digits.length >= 4) {
+    const iin = Number(digits.slice(0, 4));
+    if (iin >= 2221 && iin <= 2720) return "mastercard";
+    if (digits.startsWith("6011") || digits.startsWith("65")) return "discover";
+  }
+  return "unknown";
+}
+
+export function resolveCardBrand(card: {
+  brand?: string | null;
+  number?: string | null;
+}): CardBrand {
+  const explicit = String(card.brand || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]/g, "");
+  if (explicit.includes("master") || explicit === "mc") return "mastercard";
+  if (explicit.includes("visa")) return "visa";
+  if (explicit.includes("amex") || explicit.includes("americanexpress")) return "amex";
+  if (explicit.includes("discover")) return "discover";
+  return detectCardBrand(card.number);
+}
+
+/** Masked PAN for plastic faces — never invent last-four digits. */
+export function formatMaskedPan(lastFour: string | null | undefined): string {
+  const digits = String(lastFour || "").replace(/\D/g, "");
+  if (digits.length >= 4) return `•••• •••• •••• ${digits.slice(-4)}`;
+  return "•••• •••• •••• ••••";
 }
 
 /** Group PAN digits as `4111 1111 1111 1111` for display. */

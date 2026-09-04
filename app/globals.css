@@ -8123,6 +8123,51 @@ select.ep-wallets-create__control {
   gap: 10px;
 }
 
+.ep-cards__plastic-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ep-card-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.ep-card-brand svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ep-cards__plastic-brand {
+  width: 42px;
+  height: 26px;
+}
+
+.ep-cards__plastic-brand.ep-card-brand--visa,
+.ep-cards__plastic-brand.ep-card-brand--amex,
+.ep-cards__plastic-brand.ep-card-brand--discover {
+  width: 48px;
+  height: 16px;
+}
+
+.ep-card-face__scheme.ep-card-brand {
+  width: 44px;
+  height: 28px;
+}
+
+.ep-card-face__scheme.ep-card-brand--visa,
+.ep-card-face__scheme.ep-card-brand--amex,
+.ep-card-face__scheme.ep-card-brand--discover {
+  width: 52px;
+  height: 18px;
+}
+
 .ep-cards__plastic-label {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 16px;
@@ -8438,6 +8483,7 @@ select.ep-wallets-create__control {
 .ep-card-face__copied {
   position: absolute;
   left: 50%;
+  top: auto;
   bottom: calc(100% + 6px);
   transform: translateX(-50%) translateY(4px);
   padding: 4px 8px;
@@ -8453,10 +8499,22 @@ select.ep-wallets-create__control {
   pointer-events: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
   box-shadow: 0 8px 16px -10px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+.ep-card-face__meta .ep-card-face__copied {
+  /* Keep toast inside the plastic face so it isn't clipped by overflow:hidden */
+  bottom: auto;
+  top: calc(100% + 4px);
+  transform: translateX(-50%) translateY(-4px);
 }
 
 .ep-card-face__secret--copy[data-copied="true"] .ep-card-face__copied {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ep-card-face__meta .ep-card-face__secret--copy[data-copied="true"] .ep-card-face__copied {
   transform: translateX(-50%) translateY(0);
 }
 
