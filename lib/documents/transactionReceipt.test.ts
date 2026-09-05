@@ -40,10 +40,11 @@ describe("isReceiptable", () => {
 });
 
 describe("receiptPaymentMethod", () => {
-  it("surfaces M-Pesa and bank rails without aggregator brands", () => {
+  it("surfaces institution names and bank rails without aggregator brands", () => {
     expect(receiptPaymentMethod("M-Pesa")).toBe("M-Pesa");
     expect(receiptPaymentMethod("yellowcard")).toBe("Local transfer");
-    expect(receiptPaymentMethod("yellowcard", null, "M-PESA")).toBe("M-Pesa");
+    expect(receiptPaymentMethod("yellowcard", null, "M-PESA")).toBe("M-PESA");
+    expect(receiptPaymentMethod("yellowcard", "bank", "Access Bank")).toBe("Access Bank");
     expect(receiptPaymentMethod("NCBA Bank Kenya")).toBe("Bank transfer");
     expect(receiptPaymentMethod(null, "mobile")).toBe("Mobile money");
   });
@@ -61,14 +62,14 @@ describe("buildTransactionReceipt", () => {
     const payment = doc.sections.find((s) => s.title === "Payment");
     expect(payment?.rows).toEqual(
       expect.arrayContaining([
-        { label: "Payment method", value: "M-Pesa" },
+        { label: "Payment method", value: "M-PESA" },
         { label: "Currency", value: "KES" },
         { label: "Recipient", value: "Jane Wanjiku" },
-        { label: "Network", value: "M-PESA" },
         { label: "M-Pesa number", value: "+254712345678", mono: true },
         { label: "M-Pesa reference", value: "QJH7K2M0X1", mono: true },
       ]),
     );
+    expect(payment?.rows.some((row) => row.label === "Network")).toBe(false);
 
     const html = renderBrandedDocument(doc);
     expect(html).not.toContain("Wallet");

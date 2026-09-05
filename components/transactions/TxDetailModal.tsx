@@ -311,7 +311,10 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   }
   const institution =
     typeof txDetail.networkName === "string" ? txDetail.networkName.trim() : "";
-  if (institution) {
+  const methodIsInstitution =
+    Boolean(institution) &&
+    institution.toLowerCase() === paymentMethod.toLowerCase();
+  if (institution && !methodIsInstitution) {
     rows.push({
       label: receiptInstitutionLabel(
         txDetail.railType,
