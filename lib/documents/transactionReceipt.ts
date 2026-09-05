@@ -90,14 +90,18 @@ function railFromPayment(tx: ReceiptTransaction): RailKind | null {
 }
 
 /**
- * Customer-facing payment method. Never surfaces aggregator slugs.
- * Prefers M-Pesa when the network / provider string mentions it.
+ * Customer-facing payment method. Prefer the catalog / PSP institution name
+ * (M-PESA, Access Bank) when known; never surface aggregator slugs.
  */
 export function receiptPaymentMethod(
   provider?: string | null,
   railType?: RailKind | null,
   networkName?: string | null,
 ): string {
+  const institution = networkName?.trim() || "";
+  if (institution && !isInternalProviderName(institution)) {
+    return institution;
+  }
   const hint = `${networkName || ""} ${provider || ""}`.trim();
   const lower = hint.toLowerCase();
   if (/\bm-?pesa\b/.test(lower)) return "M-Pesa";
@@ -211,7 +215,10 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
     paymentRows.push({ label: "Account name", value: accountName });
   }
   const institution = tx.networkName?.trim();
-  if (institution) {
+  const methodIsInstitution =
+    Boolean(institution) &&
+    institution!.toLowerCase() === method.toLowerCase();
+  if (institution && !methodIsInstitution) {
     paymentRows.push({
       label: receiptInstitutionLabel(rail, tx.accountKind, institution, tx.provider),
       value: institution,

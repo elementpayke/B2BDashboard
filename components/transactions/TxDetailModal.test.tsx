@@ -129,8 +129,9 @@ describe("TxDetailModal payout receiver", () => {
     );
     expect(screen.getByText("Recipient")).toBeInTheDocument();
     expect(screen.getByText("Chidi Okonkwo")).toBeInTheDocument();
-    expect(screen.getByText("Bank")).toBeInTheDocument();
+    expect(screen.getByText("Payment method")).toBeInTheDocument();
     expect(screen.getByText("Access Bank")).toBeInTheDocument();
+    expect(screen.queryByText("Bank")).not.toBeInTheDocument();
     expect(screen.getByText("Bank account")).toBeInTheDocument();
     expect(screen.getByText("0123456789")).toBeInTheDocument();
     // Fiat bank payouts must not show crypto settlement rails.

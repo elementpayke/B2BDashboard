@@ -114,6 +114,19 @@ function railTypeFromPayment(transaction: Transaction): "mobile" | "bank" | null
   return null;
 }
 
+/** Customer-facing bank / M-Pesa confirmation when present on a fiat rail. */
+export function fiatPaymentReference(transaction: Transaction): string | null {
+  const rail = railTypeFromPayment(transaction);
+  if (rail !== "bank" && rail !== "mobile") return null;
+  const psp = transaction.psp_transaction_id?.trim() || "";
+  if (!psp) return null;
+  const lower = psp.toLowerCase();
+  if (lower.startsWith("partner_send:")) return null;
+  if (lower.startsWith("0x") && psp.length >= 42) return null;
+  if (psp.length === 64 && /^[a-f0-9]+$/i.test(psp)) return null;
+  return psp;
+}
+
 export function presentTransaction(transaction: Transaction): TransactionPresentation {
   const status = describeTransactionStatus(transaction.status);
   const kind = typeLabel(transaction);
@@ -127,6 +140,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
       }).format(numericAmount)
     : transaction.amount_fiat;
   const ref = transactionReference(transaction);
+  const paymentRef = fiatPaymentReference(transaction);
   const dateLabel = formatTransactionDate(transaction.created_at);
   const payment = transaction.payment;
   const { partyName, accountName } = resolvePartyDisplayName(payment);
@@ -146,10 +160,13 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   // List title: prefer recipient/payer name when Mboka sent payment details.
   // Fallback stays workflow · currency (never partner brands).
   const accountNumber = payment?.account_number?.trim() || null;
+  const networkName = payment?.network_name?.trim() || null;
   const client = partyName || workflowLabel;
   const metaParts = partyName
-    ? [workflowLabel, accountNumber, dateLabel, `Ref ${shortReference(ref)}`]
-    : [dateLabel, `Ref ${shortReference(ref)}`];
+    ? [workflowLabel, networkName, accountNumber, dateLabel]
+    : [dateLabel];
+  // Prefer the PSP confirmation code on fiat rails; else the order reference.
+  metaParts.push(`Ref ${shortReference(paymentRef || ref)}`);
   const meta = metaParts.filter(Boolean).join(" · ");
 
   return {
@@ -170,7 +187,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     accountName,
     accountNumber,
     accountKind: payment?.account_kind?.trim() || null,
-    networkName: payment?.network_name?.trim() || null,
+    networkName,
     methodType: payment?.method_type?.trim() || null,
     railType: railTypeFromPayment(transaction),
     explorerUrl,
