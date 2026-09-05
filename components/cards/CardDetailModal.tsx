@@ -3,8 +3,11 @@
 import {
   formatCardExpiry,
   formatCardPan,
+  formatMaskedPan,
+  resolveCardBrand,
   type IssuedCard,
 } from "@/lib/services/cards";
+import CardBrandMark from "@/components/cards/CardBrandMark";
 import type { BusinessAddress } from "@/lib/services/kyb";
 
 export type CardBillingAddress = {
@@ -45,15 +48,6 @@ function formatExpiryFace(
   const [mm, yy] = full.split("/");
   if (!mm || !yy) return full;
   return `${mm.padStart(2, "0").slice(-2)}/${yy.slice(-2)}`;
-}
-
-function MastercardMark() {
-  return (
-    <span className="ep-card-face__scheme" aria-hidden>
-      <span className="ep-card-face__scheme-dot ep-card-face__scheme-dot--left" />
-      <span className="ep-card-face__scheme-dot ep-card-face__scheme-dot--right" />
-    </span>
-  );
 }
 
 function IconEye({ open }: { open: boolean }) {
@@ -167,14 +161,18 @@ export default function CardDetailModal({
   onClose,
 }: Props) {
   const revealed = Boolean(secrets?.number && secrets?.cvv);
-  const last4 = card.last_four || "————";
-  const panMasked = `.... .... .... ${last4}`;
+  const last4 = card.last_four || "";
+  const panMasked = formatMaskedPan(last4).replace(/•/g, ".");
   const expFace = formatExpiryFace(
     card.expiration_month,
     card.expiration_year,
   );
   const isFrozen = (card.status || "").toLowerCase() === "frozen";
-  const brand = cardholderName || "Elementpay";
+  const cardholderLabel = cardholderName || "—";
+  const scheme = resolveCardBrand({
+    brand: card.brand,
+    number: secrets?.number || card.number,
+  });
 
   const copyable = (
     field: string,
@@ -217,7 +215,7 @@ export default function CardDetailModal({
             VIRTUAL
             <span className="ep-card-face__kind-chip">Virtual</span>
           </span>
-          <MastercardMark />
+          <CardBrandMark brand={scheme} className="ep-card-face__scheme" />
         </div>
 
         <div className="ep-card-face__pan-wrap">
@@ -243,7 +241,7 @@ export default function CardDetailModal({
                 : copyable("card:cvv", "...", "CVV")}
             </div>
           </div>
-          <span className="ep-card-face__brand">{brand}</span>
+          <span className="ep-card-face__brand">{cardholderLabel}</span>
         </div>
       </div>
 
@@ -297,7 +295,7 @@ export default function CardDetailModal({
       <div className="ep-card-meta">
         <div className="ep-card-meta__row">
           <span>Cardholder</span>
-          <b>{cardholderName || "—"}</b>
+          <b>{cardholderLabel}</b>
         </div>
         <div className="ep-card-meta__row">
           <span>Account</span>

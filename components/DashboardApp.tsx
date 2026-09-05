@@ -187,9 +187,11 @@ import {
   describeUsdFundingIssueNote,
   formatCardExpiry,
   formatCardPan,
+  formatMaskedPan,
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
+  resolveCardBrand,
   resolveUsdFundingAccount,
   type IssuedCard,
   type UsdFundingAccount,
@@ -197,6 +199,7 @@ import {
 import CardDetailModal, {
   billingAddressFromKyb,
 } from "@/components/cards/CardDetailModal";
+import CardBrandMark from "@/components/cards/CardBrandMark";
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
@@ -2222,7 +2225,15 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setCreateAccountNetwork = (e) => setState({ createAccountNetwork: e.target.value, createAccountError: "" });
 
-  const copyField = (fieldKey, val) => () => { if (navigator.clipboard) navigator.clipboard.writeText(val).catch(()=>{}); setState({ copiedField: fieldKey }); };
+  const copyField = (fieldKey, val) => () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(val).catch(() => {});
+    setState({ copiedField: fieldKey });
+    window.setTimeout(() => {
+      setState((s: { copiedField?: string }) =>
+        s.copiedField === fieldKey ? { copiedField: "" } : {},
+      );
+    }, 1500);
+  };
   const toggleRevealKey = (id) => () => setState(s => ({ apiKeyRevealed: { ...s.apiKeyRevealed, [id]: !s.apiKeyRevealed[id] } }));
   const toggleRevealSecret = (id) => () => setState(s => ({ secretRevealed: { ...s.secretRevealed, [id]: !s.secretRevealed[id] } }));
 
@@ -2340,6 +2351,8 @@ export default function DashboardApp(props: Props = {}) {
         cardSecrets: { number, cvv },
         cardSecretsError: "",
       });
+      // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
+      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
     } catch (err) {
       setState({
         cardSecretsBusy: false,
@@ -3293,10 +3306,13 @@ export default function DashboardApp(props: Props = {}) {
       }));
   const cards = issuedCardsList.map((c, i) => {
     const frozen = (c.status || "").toLowerCase() === "frozen";
+    const brand = resolveCardBrand(c);
     return {
       id: c.id,
-      label: c.card_name || `Card ···· ${c.last_four || ""}`,
-      last4: c.last_four || "————",
+      label: c.card_name || (c.last_four ? `Card ···· ${c.last_four}` : "Virtual card"),
+      last4: c.last_four || "",
+      panMasked: formatMaskedPan(c.last_four),
+      brand,
       balance: usdSpendLabel,
       bg: cardPlasticBg(i),
       status: frozen ? "frozen" : "active",
@@ -3986,7 +4002,7 @@ export default function DashboardApp(props: Props = {}) {
     ? {
         id: cardSel.id,
         label: cardSel.card_name || `Card ···· ${cardSel.last_four || ""}`,
-        last4: cardSel.last_four || "————",
+        last4: cardSel.last_four || "",
         balance: usdSpendLabel,
         bg: cardPlasticBg(
           Math.max(
@@ -4313,12 +4329,17 @@ export default function DashboardApp(props: Props = {}) {
 <button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
 <div className="ep-cards__plastic-top">
 <span className="ep-cards__plastic-label">{c.label}</span>
-<span className="ep-cards__plastic-status">{c.statusLabel}</span>
+<div className="ep-cards__plastic-top-right">
+{c.statusLabel && c.statusLabel !== "Active" ? (
+  <span className="ep-cards__plastic-status">{c.statusLabel}</span>
+) : null}
+<CardBrandMark brand={c.brand} className="ep-cards__plastic-brand" />
+</div>
 </div>
 <div className="ep-cards__plastic-body">
 <span className="ep-cards__plastic-eyebrow">Linked USD available</span>
 <span className="ep-cards__plastic-balance">{c.balance}</span>
-<span className="ep-cards__plastic-pan">•••• •••• •••• {c.last4}</span>
+<span className="ep-cards__plastic-pan">{c.panMasked}</span>
 </div>
 </button>
 <div className="ep-cards__actions">
@@ -5078,7 +5099,8 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 <span className="ep-cards__success-icon" aria-hidden>✓</span>
 <span className="ep-cards__success-title">Card issued</span>
 <span className="ep-cards__success-text">
-{newlyIssuedCard?.card_name || "Virtual card"} ···· {newlyIssuedCard?.last_four || "————"}
+{newlyIssuedCard?.card_name || "Virtual card"}
+{newlyIssuedCard?.last_four ? ` ···· ${newlyIssuedCard.last_four}` : ""}
 </span>
 {newlyIssuedCard?.number ? (
   <div className="ep-cards__secrets" role="status">
