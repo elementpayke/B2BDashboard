@@ -22,6 +22,7 @@ import {
   isReceiptable,
   receiptAccountLabel,
   receiptFilename,
+  receiptInstitutionLabel,
   receiptPartyLabel,
   receiptPaymentMethod,
   receiptPaymentRefLabel,
@@ -308,6 +309,19 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       value: accountName,
     });
   }
+  const institution =
+    typeof txDetail.networkName === "string" ? txDetail.networkName.trim() : "";
+  if (institution) {
+    rows.push({
+      label: receiptInstitutionLabel(
+        txDetail.railType,
+        txDetail.accountKind,
+        institution,
+        txDetail.provider,
+      ),
+      value: institution,
+    });
+  }
   if (accountNumber) {
     rows.push({
       label: receiptAccountLabel(
@@ -333,11 +347,19 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     });
   }
 
+  // Fiat bank / mobile payouts should not surface crypto settlement rails.
+  const isFiatRail =
+    txDetail.railType === "bank" ||
+    txDetail.railType === "mobile" ||
+    txDetail.railType === "momo" ||
+    (txDetail.accountKind || "").toLowerCase() === "bank_account" ||
+    (txDetail.accountKind || "").toLowerCase() === "phone";
+
   const txHash =
     typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
   const explorerUrl =
     typeof txDetail.explorerUrl === "string" ? txDetail.explorerUrl.trim() : "";
-  if (txHash) {
+  if (txHash && !isFiatRail) {
     rows.push({
       label: "Tx hash",
       mono: true,
@@ -360,7 +382,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     (typeof txDetail.crypto_network === "string" && txDetail.crypto_network.trim()
       ? txDetail.crypto_network.trim()
       : "");
-  if (cryptoNetworkLabel) {
+  if (cryptoNetworkLabel && !isFiatRail) {
     // Prefer human label when present (e.g. "Stellar" over stellar_testnet).
     const networkDisplay =
       typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()
@@ -371,13 +393,13 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
 
   const fromAddress =
     typeof txDetail.from_address === "string" ? txDetail.from_address.trim() : "";
-  if (fromAddress) {
+  if (fromAddress && !isFiatRail) {
     rows.push({ label: "From", value: fromAddress, mono: true });
   }
 
   const toAddress =
     typeof txDetail.to_address === "string" ? txDetail.to_address.trim() : "";
-  if (toAddress) {
+  if (toAddress && !isFiatRail) {
     rows.push({ label: "To", value: toAddress, mono: true });
   }
 

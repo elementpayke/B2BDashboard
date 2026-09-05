@@ -1110,6 +1110,7 @@ export default function DashboardApp(props: Props = {}) {
           // Mobile rails need E.164; the field's placeholder is local format.
           dialCode: country.dialCode,
           networkId,
+          networkName: providerName?.trim() || undefined,
         });
         const quote = await ordersApi.quote(payload);
         setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
@@ -1306,6 +1307,7 @@ export default function DashboardApp(props: Props = {}) {
           asset: rampDest.asset,
           dialCode: country.dialCode,
           networkId,
+          networkName: providerName?.trim() || undefined,
         });
         const quote = await ordersApi.quote(payload, idempotencyKey);
         setState({
