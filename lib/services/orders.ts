@@ -5,6 +5,8 @@ export type AccountBlock = {
   accountNumber: string;
   accountName: string;
   networkId?: string;
+  /** Human institution label (bank / M-Pesa) for payment snapshots. */
+  networkName?: string;
   countryCode?: string;
 };
 
@@ -282,6 +284,11 @@ export function buildSendQuotePayload(params: {
    * own default provider for the rail, same as before this was wired up.
    */
   networkId?: string;
+  /**
+   * Human institution label from the catalog provider chip (e.g. bank name
+   * or M-Pesa). Snapshotted onto `payment.network_name` for receipts.
+   */
+  networkName?: string;
   asset?: RampAsset;
 }): OffRampQuoteIn {
   const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
@@ -292,6 +299,7 @@ export function buildSendQuotePayload(params: {
     params.railType === "mobile"
       ? toE164(params.recipientAccountNumber, params.dialCode)
       : params.recipientAccountNumber;
+  const networkName = params.networkName?.trim() || undefined;
   return {
     order_type: "OffRamp",
     currency: params.currency.toUpperCase(),
@@ -305,6 +313,7 @@ export function buildSendQuotePayload(params: {
       accountName: params.recipientName,
       countryCode: params.countryIso.toUpperCase(),
       ...(params.networkId ? { networkId: params.networkId } : {}),
+      ...(networkName ? { networkName } : {}),
     },
   };
 }
@@ -330,6 +339,8 @@ export function buildDepositQuotePayload(params: {
   dialCode?: string;
   /** Aggregator provider/institution id, see `buildSendQuotePayload`. */
   networkId?: string;
+  /** Human institution label for payment snapshots. */
+  networkName?: string;
   asset?: RampAsset;
 }): OnRampQuoteIn {
   const accountType = RAIL_TYPE_TO_ACCOUNT_TYPE[params.railType];
@@ -340,6 +351,7 @@ export function buildDepositQuotePayload(params: {
     params.railType === "mobile"
       ? toE164(params.payerAccountNumber, params.dialCode)
       : params.payerAccountNumber;
+  const networkName = params.networkName?.trim() || undefined;
   return {
     order_type: "OnRamp",
     currency: params.currency.toUpperCase(),
@@ -353,6 +365,7 @@ export function buildDepositQuotePayload(params: {
       accountName: params.payerName,
       countryCode: params.countryIso.toUpperCase(),
       ...(params.networkId ? { networkId: params.networkId } : {}),
+      ...(networkName ? { networkName } : {}),
     },
   };
 }

@@ -155,6 +155,23 @@ export function receiptAccountLabel(
   return direction === "out" ? "Destination account" : "Source account";
 }
 
+/** Label for the bank / mobile-money institution (catalog provider name). */
+export function receiptInstitutionLabel(
+  railType?: RailKind | null,
+  accountKind?: string | null,
+  networkName?: string | null,
+  provider?: string | null,
+): string {
+  const method = receiptPaymentMethod(provider, railType, networkName).toLowerCase();
+  const kind = (accountKind || "").toLowerCase();
+  if (kind === "bank_account" || method.includes("bank")) return "Bank";
+  if (method.includes("m-pesa") || method.includes("airtel") || method.includes("mobile")) {
+    return "Network";
+  }
+  if (kind === "phone") return "Network";
+  return "Institution";
+}
+
 /** Primary customer-facing receipt / order number. */
 export function receiptNumber(tx: ReceiptTransaction): string {
   return (
@@ -192,6 +209,13 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
   const accountName = tx.accountName?.trim();
   if (accountName && accountName.toLowerCase() !== (partyName || "").toLowerCase()) {
     paymentRows.push({ label: "Account name", value: accountName });
+  }
+  const institution = tx.networkName?.trim();
+  if (institution) {
+    paymentRows.push({
+      label: receiptInstitutionLabel(rail, tx.accountKind, institution, tx.provider),
+      value: institution,
+    });
   }
   const accountNumber = tx.accountNumber?.trim();
   if (accountNumber) {

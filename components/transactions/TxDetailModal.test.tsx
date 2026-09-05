@@ -119,13 +119,22 @@ describe("TxDetailModal payout receiver", () => {
           accountName: null,
           accountNumber: "0123456789",
           accountKind: "bank_account",
+          networkName: "Access Bank",
           railType: "bank",
+          crypto_network: "polygon",
+          cryptoNetworkLabel: "Polygon",
           hideReceipt: false,
         })}
       />,
     );
     expect(screen.getByText("Recipient")).toBeInTheDocument();
     expect(screen.getByText("Chidi Okonkwo")).toBeInTheDocument();
+    expect(screen.getByText("Bank")).toBeInTheDocument();
+    expect(screen.getByText("Access Bank")).toBeInTheDocument();
+    expect(screen.getByText("Bank account")).toBeInTheDocument();
+    expect(screen.getByText("0123456789")).toBeInTheDocument();
+    // Fiat bank payouts must not show crypto settlement rails.
+    expect(screen.queryByText("Polygon")).not.toBeInTheDocument();
   });
 
   it("shows Account name when distinct from Recipient", () => {

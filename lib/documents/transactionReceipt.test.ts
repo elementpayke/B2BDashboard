@@ -64,6 +64,7 @@ describe("buildTransactionReceipt", () => {
         { label: "Payment method", value: "M-Pesa" },
         { label: "Currency", value: "KES" },
         { label: "Recipient", value: "Jane Wanjiku" },
+        { label: "Network", value: "M-PESA" },
         { label: "M-Pesa number", value: "+254712345678", mono: true },
         { label: "M-Pesa reference", value: "QJH7K2M0X1", mono: true },
       ]),

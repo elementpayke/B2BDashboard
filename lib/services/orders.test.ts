@@ -66,6 +66,16 @@ describe("buildSendQuotePayload", () => {
     expect(payload.destination.networkId).toBe("7ea6df5c-6bba-46b2-a7e6-f511959e7edb");
   });
 
+  it("includes destination.networkName for receipt bank/network labels", () => {
+    const payload = buildSendQuotePayload({
+      ...baseParams,
+      railType: "bank",
+      networkId: "bank-uuid",
+      networkName: "Access Bank",
+    });
+    expect(payload.destination.networkName).toBe("Access Bank");
+  });
+
   it("omits destination.networkId rather than sending an empty string when the catalog has no match", () => {
     const payload = buildSendQuotePayload({ ...baseParams, railType: "mobile" });
     expect(payload.destination).not.toHaveProperty("networkId");
