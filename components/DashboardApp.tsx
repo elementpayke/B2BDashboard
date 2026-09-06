@@ -1072,11 +1072,30 @@ export default function DashboardApp(props: Props = {}) {
           fundableRefundWallets.find((a) => a.id === state.sendAccountId) ||
           preferCountryOfframpWallet(fundableRefundWallets, state.sendAccountId);
         if (refundWallet) {
-          assertSufficientBalance({
-            amount: usdAmount,
-            balance: refundWallet.balance,
-            currency: refundWallet.currency || rampDest.asset?.currency || "USDT",
-          });
+          const settleCcy = (
+            refundWallet.currency ||
+            rampDest.asset?.currency ||
+            "USDT"
+          ).toUpperCase();
+          try {
+            assertSufficientBalance({
+              amount: usdAmount,
+              balance: refundWallet.balance,
+              currency: settleCcy,
+            });
+          } catch (balanceErr) {
+            if (!(balanceErr instanceof Error)) throw balanceErr;
+            const typed = state.sendAmount.trim();
+            const typedCcy = amountRate ? state.sendAmountCurrency : "USD";
+            // When the box is in local fiat, usdAmount is converted — don't
+            // say "you entered 10" if they typed 1,300 KES.
+            if (typedCcy !== "USD" && typed && typed !== usdAmount) {
+              throw new Error(
+                `Insufficient ${settleCcy} balance. Available ${formatAccountBalance(refundWallet.balance)}; ${typed} ${typedCcy} needs about ${usdAmount} ${settleCcy}.`,
+              );
+            }
+            throw balanceErr;
+          }
         }
         const refundAddress = rampDest.walletAddress;
         const country = sendCountries[state.sendCountryIdx];

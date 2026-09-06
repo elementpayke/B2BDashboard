@@ -124,8 +124,10 @@ function formatLimitAmount(value: string | number | undefined, currency?: string
 function humanizeQuoteField(
   field: string,
   data?: SendQuoteErrorData | null,
+  messageHint?: string | null,
 ): string | null {
   const normalized = field.trim().toLowerCase();
+  const hint = (messageHint || "").trim();
   const example =
     typeof data?.example === "string" && data.example.trim() ? data.example.trim() : null;
   const currency =
@@ -136,7 +138,15 @@ function humanizeQuoteField(
   const max = formatLimitAmount(data?.max_amount, currency);
 
   if (normalized === "payment_method.network_id" || normalized.endsWith(".network_id")) {
-    return "This payout rail isn't available right now. Pick another bank or mobile operator, or try again shortly.";
+    // Mboka missing-id: "…network_id is required…" — providers unavailable.
+    // Partner invalid-id: "Invalid payment method network…" — pick another rail.
+    if (/required/i.test(hint)) {
+      return "This corridor can't be priced right now — our provider list is unavailable, so we can't route the payment. Please try again shortly.";
+    }
+    if (/invalid|unknown|not (?:found|supported)|unavailable/i.test(hint)) {
+      return "This payout rail isn't available right now. Pick another bank or mobile operator, or try again shortly.";
+    }
+    return "This corridor can't be priced right now — our provider list is unavailable, so we can't route the payment. Please try again shortly.";
   }
   if (
     normalized === "payment_method.phone_number" ||
@@ -194,7 +204,7 @@ function humanizeQuoteDetail(message: string): string | null {
     return "Insufficient funds to price this payout. Top up your wallet and try again.";
   }
   if (/no active payment channel|no.*channel matched/i.test(message)) {
-    return "This bank can't accept that amount right now. Try a different amount or another bank.";
+    return "No payout channel matched this destination and amount. Try a different amount, bank, or mobile operator.";
   }
   if (/business registration details are required|business email is required/i.test(message)) {
     return "Business verification details are incomplete for this payout. Finish Verification, then try again.";
@@ -236,7 +246,10 @@ export function friendlySendQuoteError(
 ): string {
   const upstreamMsg = extractUpstreamMessage(data);
   const field = extractErrorField(data);
-  const fieldCopy = field ? humanizeQuoteField(field, data) : null;
+  const messageHint = [upstreamMsg, message].find(
+    (m): m is string => typeof m === "string" && m.trim().length > 0,
+  );
+  const fieldCopy = field ? humanizeQuoteField(field, data, messageHint) : null;
   if (fieldCopy) return fieldCopy;
 
   // Amount limits may arrive without a recognizable message (thin partner payload).

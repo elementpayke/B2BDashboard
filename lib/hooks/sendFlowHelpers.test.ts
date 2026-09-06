@@ -170,12 +170,22 @@ describe("friendlySendQuoteError", () => {
 
   it("maps structured data.field from partner preflight", () => {
     const out = friendlySendQuoteError(
-      "Invalid request for this corridor",
+      "Invalid payment method network for this corridor",
       { field: "payment_method.network_id" },
       422,
     );
-    expect(out).toMatch(/payout rail isn't available|bank isn't available/i);
-    expect(out).not.toMatch(/Invalid request|Aggregator/i);
+    expect(out).toMatch(/payout rail isn't available/i);
+    expect(out).not.toMatch(/Invalid payment method|Aggregator/i);
+  });
+
+  it("keeps provider-unavailable copy when network_id is required with data.field", () => {
+    const out = friendlySendQuoteError(
+      "payment_method.network_id is required for this rail",
+      { field: "payment_method.network_id" },
+      400,
+    );
+    expect(out).toMatch(/provider list is unavailable|can't be priced right now/i);
+    expect(out).not.toMatch(/Pick another bank/i);
   });
 
   it("surfaces corridor min amount from thin partner payload", () => {
@@ -193,7 +203,7 @@ describe("friendlySendQuoteError", () => {
       null,
       422,
     );
-    expect(out).toMatch(/can't accept that amount/i);
+    expect(out).toMatch(/No payout channel matched/i);
     expect(out).not.toMatch(/Some payout details need fixing/i);
   });
 
