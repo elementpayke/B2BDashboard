@@ -1066,6 +1066,18 @@ export default function DashboardApp(props: Props = {}) {
             }),
           );
         }
+        // Catch overdraft before the partner quote — country OffRamp settles
+        // from the selected stablecoin wallet (crypto_amount ≈ USD 1:1).
+        const refundWallet =
+          fundableRefundWallets.find((a) => a.id === state.sendAccountId) ||
+          preferCountryOfframpWallet(fundableRefundWallets, state.sendAccountId);
+        if (refundWallet) {
+          assertSufficientBalance({
+            amount: usdAmount,
+            balance: refundWallet.balance,
+            currency: refundWallet.currency || rampDest.asset?.currency || "USDT",
+          });
+        }
         const refundAddress = rampDest.walletAddress;
         const country = sendCountries[state.sendCountryIdx];
         if (!country) {

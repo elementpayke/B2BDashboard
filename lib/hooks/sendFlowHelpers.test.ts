@@ -167,6 +167,41 @@ describe("friendlySendQuoteError", () => {
       /Amount too small/i,
     );
   });
+
+  it("maps structured data.field from partner preflight", () => {
+    const out = friendlySendQuoteError(
+      "Invalid request for this corridor",
+      { field: "payment_method.network_id" },
+      422,
+    );
+    expect(out).toMatch(/payout rail isn't available|bank isn't available/i);
+    expect(out).not.toMatch(/Invalid request|Aggregator/i);
+  });
+
+  it("surfaces corridor min amount from thin partner payload", () => {
+    const out = friendlySendQuoteError("Aggregator returned 422 for /partner/orders/quote", {
+      field: "amount",
+      min_amount: 50,
+      currency: "KES",
+    }, 422);
+    expect(out).toMatch(/minimum of 50 KES/i);
+  });
+
+  it("keeps a concrete partner message instead of the generic 422 banner", () => {
+    const out = friendlySendQuoteError(
+      "No active payment channel matched this corridor and amount",
+      null,
+      422,
+    );
+    expect(out).toMatch(/can't accept that amount/i);
+    expect(out).not.toMatch(/Some payout details need fixing/i);
+  });
+
+  it("preserves client balance checks that already name available funds", () => {
+    const raw =
+      "Insufficient USDT balance. Available 0.85; you entered 10.";
+    expect(friendlySendQuoteError(raw)).toBe(raw);
+  });
 });
 
 describe("friendlySendAcceptError", () => {
