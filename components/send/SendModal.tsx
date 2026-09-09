@@ -121,6 +121,8 @@ export type SendModalProps = {
   /** Live order status (polled via lib/hooks/useOrderStatus), null for the simulated stablecoin tab. */
   sendLiveStatus: { label: string; color: string; soft: string; isSettling: boolean } | null;
   closeModal: () => void;
+  /** Opens Help when an error tells the user to contact support. */
+  onContactSupport?: () => void;
 };
 
 function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string }) {
@@ -506,7 +508,16 @@ export default function SendModal(p: SendModalProps) {
 
               {p.sendQuoteError && !p.sendBlockedNoNetworkId ? (
                 <div className="ep-money-banner ep-money-banner--danger" role="alert">
-                  {p.sendQuoteError}
+                  <div>{p.sendQuoteError}</div>
+                  {p.onContactSupport && /contact support/i.test(p.sendQuoteError) ? (
+                    <button
+                      type="button"
+                      className="ep-support-inline-cta"
+                      onClick={p.onContactSupport}
+                    >
+                      Get help
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -690,7 +701,16 @@ export default function SendModal(p: SendModalProps) {
                   className="ep-money-banner ep-money-banner--danger"
                   role="alert"
                 >
-                  {p.sendQuoteError}
+                  <div>{p.sendQuoteError}</div>
+                  {p.onContactSupport && /contact support/i.test(p.sendQuoteError) ? (
+                    <button
+                      type="button"
+                      className="ep-support-inline-cta"
+                      onClick={p.onContactSupport}
+                    >
+                      Get help
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
