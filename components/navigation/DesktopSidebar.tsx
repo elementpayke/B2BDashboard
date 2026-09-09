@@ -14,6 +14,7 @@ type DesktopSidebarProps = {
   themeIcon: string;
   onHome: () => void;
   onNavigate: (screen: string) => void;
+  onOpenHelp: () => void;
   onToggleTheme: () => void;
   onLogout: () => void;
 };
@@ -25,6 +26,7 @@ export default function DesktopSidebar({
   themeIcon,
   onHome,
   onNavigate,
+  onOpenHelp,
   onToggleTheme,
   onLogout,
 }: DesktopSidebarProps) {
@@ -63,6 +65,19 @@ export default function DesktopSidebar({
             </div>
           );
         })}
+        <div className="ep-sidebar__section">
+          <div className="ep-sidebar__group">Support</div>
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            className="ep-sidebar__nav-btn"
+          >
+            <span className="ep-sidebar__nav-icon" aria-hidden>
+              ?
+            </span>
+            <span>Help</span>
+          </button>
+        </div>
       </nav>
 
       <div className="ep-sidebar__profile">

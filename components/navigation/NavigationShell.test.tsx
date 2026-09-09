@@ -33,6 +33,7 @@ describe("compact navigation", () => {
         onClose={vi.fn()}
         onNavigate={vi.fn()}
         onOpenBulk={vi.fn()}
+        onOpenHelp={vi.fn()}
         onOpenTopUp={vi.fn()}
         onToggleTheme={vi.fn()}
         onLogout={vi.fn()}
@@ -43,6 +44,7 @@ describe("compact navigation", () => {
     expect(screen.getByRole("button", { name: /invoices/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cards/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /bulk payouts/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^help$/i })).toBeInTheDocument();
     expect(screen.queryByText(/live rates/i)).not.toBeInTheDocument();
   });
 

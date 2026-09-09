@@ -14,6 +14,7 @@ type MoreSheetProps = {
   themeIcon: string;
   onClose: () => void;
   onNavigate: (screen: string) => void;
+  onOpenHelp: () => void;
   onOpenBulk: () => void;
   onOpenTopUp: () => void;
   onToggleTheme: () => void;
@@ -28,6 +29,7 @@ export default function MoreSheet({
   themeIcon,
   onClose,
   onNavigate,
+  onOpenHelp,
   onOpenBulk,
   onOpenTopUp,
   onToggleTheme,
@@ -128,6 +130,11 @@ export default function MoreSheet({
             <span aria-hidden>⇉</span>
             <span>Bulk payouts</span>
             <span className="ep-more-sheet__soon">Soon</span>
+          </button>
+          <button type="button" className="ep-more-sheet__item" onClick={onOpenHelp}>
+            <span aria-hidden>?</span>
+            <span>Help</span>
+            <span aria-hidden>›</span>
           </button>
         </div>
 

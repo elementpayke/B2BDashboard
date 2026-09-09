@@ -215,6 +215,8 @@ import DesktopSidebar from "@/components/navigation/DesktopSidebar";
 import HeaderRates from "@/components/navigation/HeaderRates";
 import MobileBottomNav from "@/components/navigation/MobileBottomNav";
 import MoreSheet from "@/components/navigation/MoreSheet";
+import SupportHelpModal from "@/components/support/SupportHelpModal";
+import type { SupportCategory } from "@/lib/services/support";
 import TransactionsScreen from "@/components/transactions/TransactionsScreen";
 import TxDetailModal from "@/components/transactions/TxDetailModal";
 import WalletsScreen from "@/components/wallets/WalletsScreen";
@@ -346,6 +348,8 @@ export default function DashboardApp(props: Props = {}) {
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
     displayCurrency: DEFAULT_DISPLAY_CURRENCY as DisplayCurrency,
+    supportCategory: "other" as SupportCategory,
+    supportReferenceId: "",
   }));
   const setState = useCallback((update: any) => {
     setStateRaw((prev: any) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
@@ -888,6 +892,16 @@ export default function DashboardApp(props: Props = {}) {
     sidebarOpen: false,
     ...moneyFlowReset,
   });
+  const openHelp = (opts?: { category?: SupportCategory; referenceId?: string }) => {
+    setState({
+      modal: "support",
+      supportCategory: opts?.category ?? "other",
+      supportReferenceId: opts?.referenceId ?? "",
+      moreOpen: false,
+      sidebarOpen: false,
+      ...moneyFlowReset,
+    });
+  };
   const isMoneyFlowScreen = (screen: string) =>
     screen === "send" || screen === "deposit" || screen === "receive" || screen === "convert";
   /** Money moves open as bottom sheets (compact) / centered dialogs (desktop). */
@@ -3542,8 +3556,10 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+    support: "Help",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
+  const isModalSupport = s.modal === "support";
   const isSendFlow = s.modal === "send";
   const isDepositFlow = s.modal === "deposit";
   const isReceiveFlow = s.modal === "receive";
@@ -4102,6 +4118,7 @@ export default function DashboardApp(props: Props = {}) {
   themeIcon={themeIcon}
   onHome={() => navigateToScreen("home")}
   onNavigate={navigateToScreen}
+  onOpenHelp={() => openHelp()}
   onToggleTheme={toggleTheme}
   onLogout={logout}
 />
@@ -4676,6 +4693,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   themeIcon={themeIcon}
   onClose={closeMore}
   onNavigate={navigateToScreen}
+  onOpenHelp={() => openHelp()}
   onOpenBulk={guardMoneyModal("bulk")}
   onOpenTopUp={guardMoneyModal("deposit")}
   onToggleTheme={toggleTheme}
@@ -4802,6 +4820,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendExplorerUrl={sendExplorerUrl}
   sendLiveStatus={sendLiveStatus}
   closeModal={closeModal}
+  onContactSupport={() => openHelp({ category: "payout" })}
 />
 </section>) : null}
 
@@ -5281,6 +5300,18 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 <button type="button" onClick={submitApiKey} disabled={apiKeyCreating} className="ep-developer__submit">{apiKeyCreating ? "Creating…" : "Create key"}</button>
 </div>
 </>) : null}
+
+{(isModalSupport) ? (
+  <SupportHelpModal
+    key={`${s.supportCategory}:${s.supportReferenceId}`}
+    businessName={meQuery.data?.business?.name || ""}
+    userEmail={meQuery.data?.user?.email || ""}
+    screen={s.screen}
+    initialCategory={s.supportCategory}
+    initialReferenceId={s.supportReferenceId}
+    onDone={closeModal}
+  />
+) : null}
 
 </div>
 </div>
