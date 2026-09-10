@@ -46,6 +46,7 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
     selectSendProvider: noop,
     sendProviderIdx: 0,
     sendIsBankRail: false,
+    sendIsMobileRail: false,
     sendProvidersAreFallback: false,
     sendBlockedNoNetworkId: false,
     sendAmountCurrency: "USD",

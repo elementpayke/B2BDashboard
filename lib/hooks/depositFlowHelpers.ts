@@ -7,7 +7,7 @@ export type DepositDestinationInput = {
   depositAsset: string;
   depositNetworkLabel: string;
   countryName: string;
-  /** Brand-neutral channel label (e.g. "Mobile money"), never a partner name. */
+  /** Brand-neutral rail label, or a selected mobile-money operator (e.g. "M-Pesa"). */
   channelLabel: string;
 };
 

@@ -154,6 +154,10 @@ import {
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
 import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
+import {
+  isMobileMoneyRail,
+  mobileMoneyDisplayLabel,
+} from "@/lib/services/mobileMoneyBrands";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
@@ -2993,6 +2997,9 @@ export default function DashboardApp(props: Props = {}) {
             label: rail.label,
             providers: options.map((name, providerIdx) => ({
               name,
+              displayLabel: isMobileMoneyRail(rail.type)
+                ? mobileMoneyDisplayLabel(name)
+                : name,
               selected:
                 s.depositRailIdx === railIdx &&
                 indexOfProviderName([name], s.depositProviderName) === 0,
@@ -3880,6 +3887,9 @@ export default function DashboardApp(props: Props = {}) {
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money network" : "Bank account";
+  // Prefer a clearer label when we already know the operator brand.
+  const sendProviderPickerLabel =
+    sendRail.type === "mobile" ? "Mobile money provider" : sendProviderLabel;
   const sendProvidersAreFallback = false;
   // Bank rails can't be quoted without the aggregator's institution id, which
   // only the catalog carries — so this corridor is a dead end until it loads.
@@ -3914,7 +3924,10 @@ export default function DashboardApp(props: Props = {}) {
   const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = depositRail.type === "mobile";
   const depositIsBankRail = depositRail.type === "bank";
-  const depositChannelLabel = channelLabelForRail(depositRail.type);
+  const depositChannelLabel =
+    depositRail.type === "mobile" || depositRail.type === "momo"
+      ? mobileMoneyDisplayLabel(depositProvider) || channelLabelForRail(depositRail.type)
+      : channelLabelForRail(depositRail.type);
   const depositOperator = depositChannelLabel;
   const depositMobileCode = depositCountry.code;
   const depositPhone = s.depositPhone;
@@ -3976,7 +3989,10 @@ export default function DashboardApp(props: Props = {}) {
     sendAsset: sendSelection.asset,
     sendChainLabel,
     countryName: sendCountry.name,
-    channelLabel: channelLabelForRail(sendRail.type),
+    channelLabel:
+      sendRail.type === "mobile" || sendRail.type === "momo"
+        ? mobileMoneyDisplayLabel(sendProvider) || channelLabelForRail(sendRail.type)
+        : channelLabelForRail(sendRail.type),
   });
   // OffRamp quote (by country) or account-send preview (stablecoin).
   const sendQuote = s.sendQuote;
@@ -4939,11 +4955,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendCurrencyName={currencyLabel(sendCountry.code)}
   sendCountryIdx={s.sendCountryIdx}
   selectSendCountry={(i) => selectSendCountry(i)()}
-  sendProviderLabel={sendProviderLabel}
+  sendProviderLabel={sendProviderPickerLabel}
   sendProviderOptions={sendProviderOptions}
   selectSendProvider={pickSendProvider}
   sendProviderIdx={sendProviderIdx}
   sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
+  sendIsMobileRail={sendIsCountry && sendRail.type === "mobile"}
   sendProvidersAreFallback={sendProvidersAreFallback}
   sendBlockedNoNetworkId={sendBlockedNoNetworkId}
   sendAmountCurrency={sendAmountCurrency}
