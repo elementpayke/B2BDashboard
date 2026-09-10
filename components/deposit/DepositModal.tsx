@@ -217,8 +217,9 @@ export default function DepositModal(p: DepositModalProps) {
           {p.fundTargetCurrency ? (
             <>
               <div className="ep-money-banner ep-money-banner--info" role="note">
-                Paying African fiat → USDT, then we convert to {p.fundTargetCurrency} in the background
-                (may take 1–2 min while USDT reflects).
+                Paying African fiat → {p.depositAssetCode || "stablecoin"}, then we convert to{" "}
+                {p.fundTargetCurrency} in the background (may take 1–2 min while{" "}
+                {p.depositAssetCode || "stablecoin"} reflects).
                 {p.fundConvertStatus ? ` ${p.fundConvertStatus}` : ""}
               </div>
               {p.fundConvertError ? (

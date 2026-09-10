@@ -818,76 +818,92 @@ export default function DashboardApp(props: Props = {}) {
     setState,
   ]);
 
-  // Register / advance Africa → fiat VA background fund after OnRamp completes.
+  // Register / advance Africa → fiat VA background fund after OnRamp accept.
+  // Polling is keyed by africaFundId so closing the deposit modal does not abort it.
   useEffect(() => {
     const order = depositStatusQuery.data;
     const targetFiat = state.fundAfricanTargetCurrency;
     const fiatAccountId = state.fundFiatAccountId;
     const stableAccountId = state.fundTargetAccountId;
-    if (!targetFiat || !fiatAccountId || !stableAccountId) return;
-    if (!AFRICAN_FUND_FIAT_CURRENCIES.includes(targetFiat.trim().toUpperCase() as (typeof AFRICAN_FUND_FIAT_CURRENCIES)[number])) {
-      return;
-    }
-    if (!order?.id && !state.depositAccept?.merchant_order_id) return;
+    const existingFundId = state.africaFundId;
 
     let cancelled = false;
-    const merchantOrderId = Number(
-      order?.id ?? state.depositAccept?.merchant_order_id,
-    );
-    if (!Number.isFinite(merchantOrderId) || merchantOrderId <= 0) return;
+
+    const pollFund = async (fundId: string) => {
+      for (let i = 0; i < 36 && !cancelled; i++) {
+        const fund = await fundsApi.get(fundId);
+        if (cancelled) return;
+        const terminal = isAfricaFundTerminal(fund.status);
+        setState({
+          africaFundStatus: fund.status,
+          fundConvertStatus: terminal
+            ? fund.status === "completed"
+              ? "completed"
+              : `failed: ${fund.failure_reason || fund.status}`
+            : `processing: ${fund.status}`,
+          fundConvertError: fund.failure_reason || "",
+          ...(terminal
+            ? {
+                africaFundId: null,
+                africaFundStatus: "",
+              }
+            : {}),
+        });
+        if (terminal) {
+          queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+          queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+          queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+          return;
+        }
+        if (!isAfricaFundProcessing(fund.status)) return;
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    };
 
     const run = async () => {
       try {
-        let fundId = state.africaFundId;
-        if (!fundId) {
-          const registered = await fundsApi.registerAfricaToFiat({
-            destination_account_id: fiatAccountId,
-            stable_account_id: stableAccountId,
-            onramp_merchant_order_id: merchantOrderId,
-            source_currency: order?.currency_code || undefined,
-            source_amount: order?.amount_fiat || state.depositAmount || undefined,
-            stable_currency:
-              String(
-                (stablecoinAccountsQuery.data ?? []).find((a) => a.id === stableAccountId)
-                  ?.currency || "USDT",
-              ).toUpperCase() === "USDC"
-                ? "USDC"
-                : "USDT",
-          });
-          if (cancelled) return;
-          fundId = registered.id;
-          setState({
-            africaFundId: registered.id,
-            africaFundStatus: registered.status,
-            fundConvertStatus: `processing: ${registered.status}`,
-            fundConvertError: "",
-          });
+        if (existingFundId) {
+          await pollFund(existingFundId);
+          return;
         }
 
-        if (!fundId) return;
-        // Poll until terminal (stable credit can take 1–2 min).
-        for (let i = 0; i < 36 && !cancelled; i++) {
-          const fund = await fundsApi.get(fundId);
-          if (cancelled) return;
-          setState({
-            africaFundStatus: fund.status,
-            fundConvertStatus: isAfricaFundTerminal(fund.status)
-              ? fund.status === "completed"
-                ? "completed"
-                : `failed: ${fund.failure_reason || fund.status}`
-              : `processing: ${fund.status}`,
-            fundConvertError: fund.failure_reason || "",
-          });
-          if (isAfricaFundTerminal(fund.status)) {
-            queryClient.invalidateQueries({ queryKey: ["transactions"] });
-            queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-            queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-            queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-            return;
-          }
-          if (!isAfricaFundProcessing(fund.status)) return;
-          await new Promise((r) => setTimeout(r, 5000));
+        if (!targetFiat || !fiatAccountId || !stableAccountId) return;
+        if (
+          !AFRICAN_FUND_FIAT_CURRENCIES.includes(
+            targetFiat.trim().toUpperCase() as (typeof AFRICAN_FUND_FIAT_CURRENCIES)[number],
+          )
+        ) {
+          return;
         }
+        if (!order?.id && !state.depositAccept?.merchant_order_id) return;
+
+        const merchantOrderId = Number(
+          order?.id ?? state.depositAccept?.merchant_order_id,
+        );
+        if (!Number.isFinite(merchantOrderId) || merchantOrderId <= 0) return;
+
+        const stableRow = resolvedStablecoinAccounts.find((a) => a.id === stableAccountId);
+        const stableCcy = String(stableRow?.currency || state.depositAsset || "USDT")
+          .trim()
+          .toUpperCase();
+        const registered = await fundsApi.registerAfricaToFiat({
+          destination_account_id: fiatAccountId,
+          stable_account_id: stableAccountId,
+          onramp_merchant_order_id: merchantOrderId,
+          source_currency: order?.currency_code || undefined,
+          source_amount: order?.amount_crypto || order?.amount_fiat || state.depositAmount || undefined,
+          stable_currency: stableCcy === "USDC" ? "USDC" : "USDT",
+        });
+        if (cancelled) return;
+        setState({
+          africaFundId: registered.id,
+          africaFundStatus: registered.status,
+          fundConvertStatus: `processing: ${registered.status}`,
+          fundConvertError: "",
+        });
+        await pollFund(registered.id);
       } catch (err) {
         if (cancelled) return;
         setState({
@@ -898,8 +914,7 @@ export default function DashboardApp(props: Props = {}) {
       }
     };
 
-    // Only start once OnRamp is accepted (processing or completed).
-    if (state.depositAccept || order) {
+    if (existingFundId || state.depositAccept || order) {
       void run();
     }
     return () => {
@@ -912,7 +927,10 @@ export default function DashboardApp(props: Props = {}) {
     state.fundAfricanTargetCurrency,
     state.fundFiatAccountId,
     state.fundTargetAccountId,
+    state.africaFundId,
     state.depositAccept?.merchant_order_id,
+    state.depositAsset,
+    resolvedStablecoinAccounts,
   ]);
 
   // The list endpoint deliberately omits webhook_url / webhook_secret
@@ -969,7 +987,9 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, africaFundId: null, africaFundStatus: "", fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
+    // africaFundId / africaFundStatus intentionally omitted — keep background
+    // polling alive after the deposit modal closes until the fund is terminal.
     depositAsset: "usdc", depositNetwork: "base",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
@@ -1006,13 +1026,11 @@ export default function DashboardApp(props: Props = {}) {
     setState((prev: any) => ({
       screen: prev.moneyFlowReturn || "home",
       moneyFlowReturn: null,
+      // Keep africaFundId / status / convert notes so background polling
+      // continues after the sheet closes until the fund is terminal.
       fundAfricanTargetCurrency: null,
       fundFiatAccountId: null,
       fundTargetAccountId: null,
-      africaFundId: null,
-      africaFundStatus: "",
-      fundConvertStatus: "",
-      fundConvertError: "",
     }));
 
   // Ready USDC/USDT Base/Polygon (and Stellar USDC) FinancialAccounts for the
@@ -1494,13 +1512,10 @@ export default function DashboardApp(props: Props = {}) {
     }
     setState({
       modal: null,
+      // Do not clear africaFundId here — polling must outlive the modal.
       fundAfricanTargetCurrency: null,
       fundFiatAccountId: null,
       fundTargetAccountId: null,
-      africaFundId: null,
-      africaFundStatus: "",
-      fundConvertStatus: "",
-      fundConvertError: "",
       cardSecrets: null,
       cardSecretsBusy: false,
       cardSecretsError: "",
@@ -1592,7 +1607,10 @@ export default function DashboardApp(props: Props = {}) {
   const openCloseAccountChooser = () =>
     setState({ modal: "closeAccount" });
   const openAfricanFundOnRamp = () => {
-    const fiatList = depositAccountsQuery.data?.accounts ?? [];
+    // Prefer bootstrap-backed lists — depositAccountsQuery / stablecoinAccountsQuery
+    // are disabled once bootstrap succeeds.
+    const fiatList = fundingDepositAccounts;
+    const stableList = resolvedStablecoinAccounts;
     const currencyKey =
       state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
         ? state.selectedAcctKey.slice("fiat:".length)
@@ -1603,22 +1621,22 @@ export default function DashboardApp(props: Props = {}) {
         : null;
     const selectedStablecoin =
       state.selectedAcctKind === "stablecoin" && state.selectedAcctKey.startsWith("stablecoin:")
-        ? (stablecoinAccountsQuery.data ?? []).find(
+        ? stableList.find(
             (a) => a.id === state.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
     const preferredUsdt =
-      (stablecoinAccountsQuery.data ?? []).find(
+      stableList.find(
         (a) =>
           isReadyStatus(a.status) &&
           a.currency === "USDT" &&
           /polygon/i.test(a.network || "") &&
           a.id,
       ) ??
-      (stablecoinAccountsQuery.data ?? []).find(
+      stableList.find(
         (a) => isReadyStatus(a.status) && a.currency === "USDT" && a.id,
       ) ??
-      (stablecoinAccountsQuery.data ?? []).find(
+      stableList.find(
         (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.id,
       ) ??
       null;
