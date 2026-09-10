@@ -2790,9 +2790,29 @@ export default function DashboardApp(props: Props = {}) {
     setState({ displayCurrency: code });
   };
   /** Send opens on a method chooser. Bank/mobile preselect that rail, then the
-   *  flow runs the design's three steps: destination → recipient → review. */
+   *  flow runs the design's three steps: destination → recipient → review.
+   *  Internal transfer jumps to Convert (USDC/USDT → fiat VA). */
+  const openInternalTransfer = () =>
+    setState({
+      ...moneyFlowReset,
+      modal: "convert",
+      moreOpen: false,
+      sidebarOpen: false,
+      convertMode: "stable_to_fiat",
+      convertSourceAccountId: "",
+      convertDestAccountId: "",
+      convertAmount: "",
+      convertQuote: null,
+      convertError: "",
+      convertHop: 1,
+      swapAccepted: false,
+      quoteSeconds: 0,
+    });
   const chooseSendMethod = (m) => () => {
-    if (m === "internal") return;
+    if (m === "internal") {
+      openInternalTransfer();
+      return;
+    }
     const common = {
       sendMethod: m,
       sendStep: 1,
@@ -3748,16 +3768,11 @@ export default function DashboardApp(props: Props = {}) {
       select: chooseSendMethod("crypto"),
     },
     {
-      // No account-to-account transfer endpoint exists yet — the backend has
-      // OffRamp orders and account-native sends only (docs/api-contract.md).
-      // Shown but disabled rather than hidden, so the option set still reads
-      // like the design and the reason is stated instead of guessed at.
+      // Account-to-account via Convert: USDC/USDT → EUR/USD/GBP deposit VAs.
       key: "internal",
       label: "Internal transfer",
-      desc: "Move funds between your own accounts",
-      disabled: true,
-      disabledReason: "Not available yet",
-      select: () => {},
+      desc: "Move USDC or USDT into your USD, EUR, or GBP accounts",
+      select: chooseSendMethod("internal"),
     },
   ];
   const sendRecipient = s.sendRecipient;
