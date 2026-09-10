@@ -420,21 +420,24 @@ export const transactionsApi = {
             { limit: 50 },
           );
           let cardTxs = cardPage.transactions.map(mapCardTransactionToTransaction);
-          if (status === "failed" || status === "declined") {
+          if (status === "failed") {
+            // Primary "Failed" chip includes declined card authorizations.
             cardTxs = cardTxs.filter(
               (row) => row.status === "declined" || row.status === "failed",
             );
+          } else if (status === "declined") {
+            cardTxs = cardTxs.filter((row) => row.status === "declined");
           } else if (status === "completed") {
             cardTxs = cardTxs.filter((row) => row.status === "completed");
           }
           const seen = new Set(items.map((row) => String(row.id)));
           const extras = cardTxs.filter((row) => !seen.has(String(row.id)));
           if (extras.length) {
-            items = [...extras, ...items]
-              .sort((a, b) =>
-                String(b.created_at).localeCompare(String(a.created_at)),
-              )
-              .slice(0, page.limit || limit);
+            // Prepend card rows without dropping this page's order rows (avoids
+            // offset drift on page 2 when cards displace orders from page 1).
+            items = [...extras, ...items].sort((a, b) =>
+              String(b.created_at).localeCompare(String(a.created_at)),
+            );
             total += extras.length;
           }
         }

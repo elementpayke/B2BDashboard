@@ -88,15 +88,16 @@ function toIsoCreatedAt(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number" && Number.isFinite(value)) {
     const ms = value > 1_000_000_000_000 ? value : value * 1000;
-    const iso = new Date(ms).toISOString();
-    return Number.isFinite(Date.parse(iso)) ? iso : null;
+    const date = new Date(ms);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
   }
   const text = String(value).trim();
   if (!text) return null;
   if (/^\d+$/.test(text)) return toIsoCreatedAt(Number(text));
   const parsed = Date.parse(text);
-  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
-  return null;
+  if (!Number.isFinite(parsed)) return null;
+  const date = new Date(parsed);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 export function mapCardTxnStatus(raw: string | null | undefined): TransactionStatus {

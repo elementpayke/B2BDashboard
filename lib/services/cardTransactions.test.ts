@@ -78,4 +78,16 @@ describe("cardTransactions", () => {
       }),
     ).toBeNull();
   });
+
+  it("skips out-of-range timestamps without throwing", () => {
+    expect(
+      normalizeCardTransaction({
+        transaction_id: "t",
+        card_id: "4",
+        account_id: "a",
+        amount: "1.00",
+        created_at: Number.MAX_SAFE_INTEGER * 1000,
+      }),
+    ).toBeNull();
+  });
 });

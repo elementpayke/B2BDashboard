@@ -791,6 +791,13 @@ export default function DashboardApp(props: Props = {}) {
     ),
     retry: false,
     staleTime: 15_000,
+    // Cards screen is outside activityPoll — still refresh authorizations/declines.
+    refetchInterval:
+      cardTxnSurfaceOpen || activityPoll
+        ? orderTrackingActive
+          ? 5_000
+          : 15_000
+        : false,
   });
 
   // Prefill convert accounts once lists load so the form isn't empty.
@@ -3596,9 +3603,10 @@ export default function DashboardApp(props: Props = {}) {
         convertNetworkId: null,
       })
     : null;
-  const cardsRecent: ActivityItem[] = decoratedAll
-    .filter((row) => isCardSpendTransaction(row))
-    .slice(0, 20);
+  const cardsSpendAll: ActivityItem[] = decoratedAll.filter((row) =>
+    isCardSpendTransaction(row),
+  );
+  const cardsRecent: ActivityItem[] = cardsSpendAll.slice(0, 20);
   const corridors = CORRIDORS.map(c => ({
         ...c,
         flagUrl: flagUrl(c.iso),
@@ -5358,9 +5366,11 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   cardholderName={cardholderDisplay}
   accountLabel={cardSel.card_name || `···· ${cardSel.last_four || ""}`}
   billing={cardBilling}
-  recent={cardsRecent.filter(
-    (row) => String((row as { card_id?: string | null }).card_id || "") === cardSel.id,
-  )}
+  recent={cardsSpendAll
+    .filter(
+      (row) => String((row as { card_id?: string | null }).card_id || "") === cardSel.id,
+    )
+    .slice(0, 20)}
   secrets={cardSecrets}
   secretsBusy={cardSecretsBusy}
   secretsError={cardSecretsError}
