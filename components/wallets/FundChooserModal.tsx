@@ -60,7 +60,9 @@ export default function FundChooserModal({
     {
       key: "stablecoin",
       label: "Stablecoin",
-      desc: "Fund via a USDC deposit address",
+      desc: isStablecoinAccount
+        ? `Show a ${currency} deposit address / QR for this wallet`
+        : "Deposit to a stablecoin account (address / QR) — does not credit this fiat VA directly",
       disabled: stablecoinDisabled,
       disabledReason: stablecoinDisabledReason,
     },
@@ -76,7 +78,7 @@ export default function FundChooserModal({
       label: "African mobile money / bank",
       desc: isStablecoinAccount
         ? `Pay with mobile money or bank. Credits ${currency}${networkLabel ? ` on ${networkLabel}` : ""}.`
-        : `Local fiat → USDC, then try auto-convert to ${currency}`,
+        : `Pay local fiat — we convert to ${currency} in the background (may take 1–2 min)`,
       disabled: africanDisabled,
       disabledReason: africanDisabledReason,
     },
