@@ -141,7 +141,7 @@ export function normalizeCardTransaction(raw: unknown): CardTransaction | null {
   const row = asRecord(raw);
   if (!row) return null;
 
-  const txnId = optionalString(row.transaction_id ?? row.id);
+  const txnId = optionalString(row.transaction_id ?? row.id ?? row._id);
   const amount = toAmount(row.amount ?? row.amount_fiat);
   const cardId = optionalString(row.card_id ?? row.cardId);
   const accountId = optionalString(
@@ -149,6 +149,10 @@ export function normalizeCardTransaction(raw: unknown): CardTransaction | null {
   );
   const createdAt = toIsoCreatedAt(row.created_at ?? row.createdAt ?? row.created);
   if (!txnId || !amount || !cardId || !accountId || !createdAt) return null;
+
+  const narration = optionalString(
+    row.narration ?? row.merchant_name ?? row.merchant,
+  );
 
   return {
     transaction_id: txnId,
@@ -159,7 +163,7 @@ export function normalizeCardTransaction(raw: unknown): CardTransaction | null {
     currency: (optionalString(row.currency) || "USD").toUpperCase(),
     status: optionalString(row.status)?.toLowerCase() || "pending",
     type: optionalString(row.type)?.toLowerCase() || "debit",
-    narration: optionalString(row.narration ?? row.merchant_name ?? row.merchant),
+    narration,
     created_at: createdAt,
     card_last_four: optionalString(row.card_last_four ?? row.last_four ?? row.last4),
     card_name: optionalString(row.card_name ?? row.cardName),

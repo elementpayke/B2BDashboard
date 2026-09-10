@@ -79,6 +79,20 @@ describe("cardTransactions", () => {
     ).toBeNull();
   });
 
+  it("accepts Nuvion-style _id when transaction_id/id are absent", () => {
+    const row = normalizeCardTransaction({
+      _id: "txn_01HXYZ",
+      card_id: "4",
+      account_id: "acct_usd",
+      amount: "12.50",
+      currency: "USD",
+      status: "completed",
+      type: "debit",
+      created_at: 1_700_000_000_000,
+    });
+    expect(row?.transaction_id).toBe("txn_01HXYZ");
+  });
+
   it("skips out-of-range timestamps without throwing", () => {
     expect(
       normalizeCardTransaction({
