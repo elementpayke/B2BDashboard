@@ -3886,10 +3886,8 @@ export default function DashboardApp(props: Props = {}) {
     ? `Sends ${sendAssetCode} on ${sendChainLabel} via account send — min 1.00 ${sendAssetCode}.`
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
-  const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money network" : "Bank account";
-  // Prefer a clearer label when we already know the operator brand.
   const sendProviderPickerLabel =
-    sendRail.type === "mobile" ? "Mobile money provider" : sendProviderLabel;
+    sendRail.type === "mobile" ? "Mobile money provider" : "Bank account";
   const sendProvidersAreFallback = false;
   // Bank rails can't be quoted without the aggregator's institution id, which
   // only the catalog carries — so this corridor is a dead end until it loads.

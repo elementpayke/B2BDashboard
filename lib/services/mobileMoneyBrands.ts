@@ -102,6 +102,13 @@ function normalizeProviderToken(value: string): string {
 }
 
 /**
+ * Compact form for catalog codes like AIRTELMONEYTZ / MPESATZ (no separators).
+ */
+function compactProviderToken(value: string): string {
+  return normalizeProviderToken(value).replace(/\s+/g, "");
+}
+
+/**
  * Map a catalog provider name/code to a known mobile-money brand.
  * Returns null when the string does not look like a mobile-money operator
  * (e.g. a bank legal name) so callers can fall back to rail labels.
@@ -112,17 +119,25 @@ export function resolveMobileMoneyBrand(
   const raw = providerName?.trim();
   if (!raw) return null;
   const n = normalizeProviderToken(raw);
+  const c = compactProviderToken(raw);
 
-  if (/\bm\s*pesa\b|\bsafaricom\b/.test(n)) return BRANDS.mpesa;
-  if (/\bairtel\b/.test(n)) return BRANDS.airtel;
-  if (/\bmtn\b|\bmomo\b/.test(n) && !/\bmoov\b/.test(n)) return BRANDS.mtn;
-  if (/\borange\b/.test(n)) return BRANDS.orange;
-  if (/\btigo\b/.test(n)) return BRANDS.tigo;
-  if (/\bopay\b/.test(n)) return BRANDS.opay;
-  if (/\bpalmpay\b|\bpalm pay\b/.test(n)) return BRANDS.palmpay;
-  if (/\bmoov\b/.test(n)) return BRANDS.moov;
-  if (/\bvodafone\b|\bvoda\b/.test(n)) return BRANDS.vodafone;
-  if (/\bmobile\b|\bwallet\b|\bmoney\b/.test(n)) {
+  // Prefer compact catalog codes (AIRTELMONEYTZ) then spaced display names.
+  if (/mpesa|safaricom/.test(c) || /\bm\s*pesa\b|\bsafaricom\b/.test(n)) {
+    return BRANDS.mpesa;
+  }
+  if (/airtel/.test(c) || /\bairtel\b/.test(n)) return BRANDS.airtel;
+  if ((/mtn|momo/.test(c) || /\bmtn\b|\bmomo\b/.test(n)) && !/moov/.test(c)) {
+    return BRANDS.mtn;
+  }
+  if (/orange/.test(c) || /\borange\b/.test(n)) return BRANDS.orange;
+  if (/tigo/.test(c) || /\btigo\b/.test(n)) return BRANDS.tigo;
+  if (/opay/.test(c) || /\bopay\b/.test(n)) return BRANDS.opay;
+  if (/palmpay/.test(c) || /\bpalmpay\b|\bpalm pay\b/.test(n)) return BRANDS.palmpay;
+  if (/moov/.test(c) || /\bmoov\b/.test(n)) return BRANDS.moov;
+  if (/vodafone|^voda/.test(c) || /\bvodafone\b|\bvoda\b/.test(n)) {
+    return BRANDS.vodafone;
+  }
+  if (/\bmobile\b|\bwallet\b|\bmoney\b/.test(n) || /mobile|wallet|money/.test(c)) {
     return { ...GENERIC, label: shortenGenericLabel(raw) };
   }
   return null;

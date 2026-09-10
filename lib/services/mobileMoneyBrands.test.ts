@@ -17,6 +17,13 @@ describe("resolveMobileMoneyBrand", () => {
     expect(resolveMobileMoneyBrand("MTN MoMo")?.key).toBe("mtn");
   });
 
+  it("maps compact catalog codes without separators", () => {
+    expect(resolveMobileMoneyBrand("AIRTELMONEYTZ")?.key).toBe("airtel");
+    expect(resolveMobileMoneyBrand("AIRTELMONEYTZ")?.label).toBe("Airtel Money");
+    expect(resolveMobileMoneyBrand("MPESATZ")?.key).toBe("mpesa");
+    expect(resolveMobileMoneyBrand("MTNMOMOUG")?.key).toBe("mtn");
+  });
+
   it("returns null for bank institution names", () => {
     expect(resolveMobileMoneyBrand("NATIONAL BANK OF KENYA")).toBeNull();
     expect(resolveMobileMoneyBrand("Equity Bank")).toBeNull();
@@ -26,6 +33,10 @@ describe("resolveMobileMoneyBrand", () => {
 describe("mobileMoneyDisplayLabel", () => {
   it("shortens M-Pesa catalog names", () => {
     expect(mobileMoneyDisplayLabel("Mobile Wallet (M-PESA)")).toBe("M-Pesa");
+  });
+
+  it("humanizes compact Airtel codes", () => {
+    expect(mobileMoneyDisplayLabel("AIRTELMONEYTZ")).toBe("Airtel Money");
   });
 });
 
