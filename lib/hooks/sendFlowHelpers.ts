@@ -371,8 +371,8 @@ export function friendlySendAcceptError(
   );
 }
 
-/** The four entry points on the Send method chooser. `internal` has no
- *  backend yet, so it is presented disabled rather than omitted. */
+/** The four entry points on the Send method chooser. `internal` opens
+ *  Convert in stablecoin → fiat mode (USDC/USDT into deposit VAs). */
 export type SendMethod = "bank" | "mobile" | "crypto" | "internal";
 
 /**
