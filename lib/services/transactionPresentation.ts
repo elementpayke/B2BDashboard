@@ -1,5 +1,6 @@
 import { buildSendExplorerUrl } from "./accountSends";
 import { isInboundStellarDeposit } from "./accountCredits";
+import { isCardSpendTransaction } from "./cardTransactions";
 import { transactionPartyLabel } from "./channelLabels";
 import { formatNetworkLabel } from "./entities";
 import type { Transaction } from "./transactions";
@@ -54,6 +55,13 @@ export function resolvePartyDisplayName(payment: Transaction["payment"]): {
 
 function typeLabel(transaction: Transaction): string {
   if (isInboundStellarDeposit(transaction)) return "Stellar deposit";
+  if (isCardSpendTransaction(transaction)) {
+    if (transaction.status === "refunded" || transaction.direction === "in") {
+      return "Card refund";
+    }
+    if (transaction.status === "declined") return "Card authorization";
+    return "Card spend";
+  }
   if (transaction.direction === "in") return "Deposit";
   if (transaction.direction === "out") return "Payout";
   return "Transaction";

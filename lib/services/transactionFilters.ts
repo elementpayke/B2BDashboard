@@ -7,7 +7,7 @@ import { describeTransactionStatus } from "./transactionStatus";
 // status can't silently become unreachable without a visible diff here.
 export const TX_FILTERS: { key: string; label: string; status: TransactionStatus | "all" }[] = [
   { key: "all", label: "All", status: "all" },
-  ...(["completed", "processing", "failed", "refunded", "canceled", "frozen"] as const).map(
+  ...(["completed", "processing", "failed", "declined", "refunded", "canceled", "frozen"] as const).map(
     (status) => ({
       key: status,
       label: describeTransactionStatus(status).label,
@@ -56,9 +56,13 @@ export function searchTransactions(
   return items.filter((transaction) => {
     if (criteria.primary === "incoming" && transaction.direction !== "in") return false;
     if (criteria.primary === "outgoing" && transaction.direction !== "out") return false;
+    if (criteria.primary === "processing" && transaction.status !== "processing") {
+      return false;
+    }
     if (
-      (criteria.primary === "processing" || criteria.primary === "failed") &&
-      transaction.status !== criteria.primary
+      criteria.primary === "failed" &&
+      transaction.status !== "failed" &&
+      transaction.status !== "declined"
     ) {
       return false;
     }
@@ -79,6 +83,10 @@ export function searchTransactions(
       transaction.provider,
       transaction.amount_fiat,
       transaction.currency,
+      transaction.payment?.party_name,
+      transaction.payment?.account_name,
+      transaction.memo,
+      transaction.card_id,
     ]
       .filter((value) => value != null)
       .some((value) => String(value).toLowerCase().includes(query));

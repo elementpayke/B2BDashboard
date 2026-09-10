@@ -42,7 +42,7 @@ the exact failure mode). See
 | Send money ("Stablecoin" tab) | `GET /v1/entities`, `GET /v1/entities/{id}/accounts`, `POST /v1/accounts/{account_id}/sends/preview`, `POST /v1/accounts/{account_id}/sends` | Phase 4 account-native send: **USDC** on Base/Polygon/Stellar, **USDT** on Base/Polygon. Preview → confirm with **required** `Idempotency-Key`. Stellar uses a `G…` public key, not EVM `0x`. Not Privy wallet transfer. See Account-send mapping notes below. |
 | Deposit / Top up ("by country" tab) | `POST /v1/orders/quote` (`order_type: OnRamp`), `POST /v1/orders/{quote_id}/accept` | Fiat-in top-up to the business treasury wallet. Shows `payment_instructions` after accept (momo STK prompt or bank coordinates). Reuses `GET /v1/supported/catalog` for OnRamp provider `networkId`, `useOrderStatus` for post-accept polling, and `Idempotency-Key` on quote. See OnRamp mapping notes below. |
 | Convert (intra FX) | `POST /v1/conversions/quote`, `POST /v1/conversions/{quote_id}/accept`, `GET /v1/conversions/{id}` | Ledger FX between owned deposit accounts: **EUR/GBP/USD ↔ USDC**. Fiat↔fiat (e.g. EUR→USD) is **not** a single rail — UI runs two hops via a ready USDC account (`components/convert/ConvertFlow.tsx`, `lib/services/conversions.ts`). Min amount **1.00**. Requires synced local FinancialAccount ids from IBAN list / entity accounts. |
-| Cards | `GET/POST /v1/entities/{entity_id}/accounts/{account_id}/cards`, freeze/unfreeze | **Active fiat USD only** — every card is linked to that funding account and spends its balance (not a separate card wallet). PAN/CVV returned once on create. `lib/services/cards.ts` + Cards screen. |
+| Cards | `GET/POST /v1/entities/{entity_id}/accounts/{account_id}/cards`, freeze/unfreeze, `GET …/cards/{card_id}/transactions`, `GET …/card-transactions` | **Active fiat USD only** — every card is linked to that funding account and spends its balance (not a separate card wallet). PAN/CVV returned once on create. Spend/authorizations (incl. declined) via Mboka card-transactions fan-out. `lib/services/cards.ts` + `lib/services/cardTransactions.ts` + Cards / Transactions screens. |
 | Support / Help | `POST /v1/support/issues` | Help modal (sidebar + More sheet) shows public channels `info@elementpay.net` and WhatsApp `+254 720 752314`, plus an authenticated issue form. Mboka emails `SUPPORT_ADMIN_EMAILS` (env, comma-separated) with session context and Reply-To set to the customer. |
 | Receive (fiat tab) | `GET /v1/iban/accounts` | Shows real IBAN/bank deposit coordinates from issued currency accounts (Track 3). No balances — coordinates only. |
 | Receive (stablecoin tab) | `GET /v1/entities/{id}/accounts` (+ summary treasury for EVM) | Network chips: Base, Ethereum, Polygon, Solana, and **Stellar** (Stellar hidden for USDT). Stellar shows the ready entity USDC deposit address (`G…`) — never the EVM treasury `0x`. Missing Stellar wallet fails closed with a clear message. Ethereum/Solana have no custodial account rail; they still show the EVM treasury when present. |
@@ -59,6 +59,8 @@ the exact failure mode). See
 
 > Team is live against Mboka membership APIs (`lib/services/team.ts`).
 > Cards issuing is live against active fiat USD (`lib/services/cards.ts`).
+> Card spend/authorizations (including declined) load via `…/card-transactions` (`lib/services/cardTransactions.ts`). Sandbox lists may still be empty when the partner does not simulate spend.
+> Card create / freeze / unfreeze / credentials require `money:write` (viewers can list/read only).
 
 ## Account-send mapping notes (`lib/services/accountSends.ts`)
 
@@ -299,7 +301,7 @@ list, that transaction's own detail query, and the dashboard summary.
    `/api/businesses/{id}/members*` + invite accept/revoke; dashboard
    `lib/services/team.ts` + Team screen (admin manage, members view) and
    `/team/accept`.
-2. **Cards**: ~~no data model exists~~ **Issuing wired** — virtual cards on active fiat USD via partner `…/cards` (`lib/services/cards.ts`). Card **funding** (acquiring charges) and spend transactions remain follow-ups; sandbox spend is empty per partner docs.
+2. **Cards**: ~~no data model exists~~ **Issuing + spend list wired** — virtual cards on active fiat USD via partner `…/cards` (`lib/services/cards.ts`); spend/authorizations via Mboka `…/card-transactions` and `…/cards/{id}/transactions` (`lib/services/cardTransactions.ts`). Card **funding** (acquiring charges) remain a follow-up; sandbox spend is often empty per partner docs.
 3. **KYB wizard**: ~~build the real multi-step business-verification form~~ **Done (Track 5)** — `components/verification/*` + `lib/services/kyb.ts` drive `POST/PATCH …/kyb/profile`, `PUT …/kyb/address`, `POST …/kyb/initiate` (status remains **pending** until final submit), multipart `POST …/kyb/documents`, `POST …/documents/submit`, `POST …/shareholders`, `POST …/shareholders/documents`, `POST …/kyb/submit` → **submitted**, then `POST …/kyb/status/poll`. Upstream is partner **customer vault** (`/partner/customers*`); Mboka paths stay `/api/businesses/{id}/kyb/*`. Tier 3 institutional upgrade modal remains simulated.
 4. **Send modal — Stablecoin tab**: ~~no backend endpoint for direct
    wallet-to-wallet transfers~~ **Done (Track 8)** — Phase 4

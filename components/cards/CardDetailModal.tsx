@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  describeCardStatus,
   formatCardExpiry,
   formatCardPan,
   formatMaskedPan,
+  isCardFrozenStatus,
   resolveCardBrand,
   type IssuedCard,
 } from "@/lib/services/cards";
 import CardBrandMark from "@/components/cards/CardBrandMark";
+import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import type { BusinessAddress } from "@/lib/services/kyb";
 
 export type CardBillingAddress = {
@@ -91,15 +94,14 @@ function IconSnowflake() {
   );
 }
 
-function IconTrash() {
+function IconClose() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M8 7l1 13h6l1-13"
+        d="M6 6l12 12M18 6L6 18"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -132,6 +134,7 @@ type Props = {
   cardholderName: string;
   accountLabel: string;
   billing: CardBillingAddress | null;
+  recent?: ActivityItem[];
   secrets: { number: string; cvv: string } | null;
   secretsBusy: boolean;
   secretsError: string;
@@ -149,6 +152,7 @@ export default function CardDetailModal({
   cardholderName,
   accountLabel,
   billing,
+  recent = [],
   secrets,
   secretsBusy,
   secretsError,
@@ -167,7 +171,8 @@ export default function CardDetailModal({
     card.expiration_month,
     card.expiration_year,
   );
-  const isFrozen = (card.status || "").toLowerCase() === "frozen";
+  const isFrozen = isCardFrozenStatus(card.status);
+  const statusLabel = describeCardStatus(card.status);
   const cardholderLabel = cardholderName || "—";
   const scheme = resolveCardBrand({
     brand: card.brand,
@@ -209,11 +214,19 @@ export default function CardDetailModal({
 
   return (
     <div className="ep-cards__modal ep-cards__modal--detail">
-      <div className="ep-card-face">
+      <div
+        className="ep-card-face"
+        style={isFrozen ? { filter: "saturate(0.25) opacity(0.75)" } : undefined}
+      >
         <div className="ep-card-face__top">
           <span className="ep-card-face__kind">
             VIRTUAL
             <span className="ep-card-face__kind-chip">Virtual</span>
+            {isFrozen ? (
+              <span className="ep-card-face__kind-chip" data-frozen="true">
+                {statusLabel}
+              </span>
+            ) : null}
           </span>
           <CardBrandMark brand={scheme} className="ep-card-face__scheme" />
         </div>
@@ -277,7 +290,7 @@ export default function CardDetailModal({
           aria-label="Close"
           title="Close"
         >
-          <IconTrash />
+          <IconClose />
         </button>
       </div>
 
@@ -332,6 +345,14 @@ export default function CardDetailModal({
           </p>
         </div>
       ) : null}
+
+      <ActivityList
+        title="Recent activity"
+        items={recent}
+        showHeader
+        forceCards
+        emptyLabel="No spend on this card yet. Declined and settled authorizations appear here after the card is used."
+      />
     </div>
   );
 }

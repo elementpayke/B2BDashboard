@@ -10,10 +10,12 @@ import {
   detectCardBrand,
   resolveCardBrand,
   isActiveUsdFundingAccount,
+  isCardFrozenStatus,
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
   resolveUsdFundingAccount,
+  stripCardSecrets,
 } from "./cards";
 
 // Stub only the network surface; the row/normalization helpers stay real.
@@ -124,8 +126,40 @@ describe("describeCardStatus", () => {
   it("maps partner statuses to UI labels", () => {
     expect(describeCardStatus("active")).toBe("Active");
     expect(describeCardStatus("frozen")).toBe("Frozen");
+    expect(describeCardStatus("blocked")).toBe("Frozen");
     expect(describeCardStatus("pending")).toBe("Pending");
     expect(describeCardStatus(null)).toBe("Unknown");
+  });
+});
+
+describe("isCardFrozenStatus", () => {
+  it("treats frozen and blocked as non-spendable", () => {
+    expect(isCardFrozenStatus("frozen")).toBe(true);
+    expect(isCardFrozenStatus("BLOCKED")).toBe(true);
+    expect(isCardFrozenStatus("active")).toBe(false);
+  });
+});
+
+describe("stripCardSecrets", () => {
+  it("nulls PAN and CVV without dropping other fields", () => {
+    expect(
+      stripCardSecrets({
+        id: "4",
+        account_id: "a",
+        entity_id: "e",
+        type: "virtual",
+        status: "active",
+        currency: "USD",
+        number: "4111111111111111",
+        cvv: "123",
+        last_four: "1111",
+      }),
+    ).toMatchObject({
+      id: "4",
+      last_four: "1111",
+      number: null,
+      cvv: null,
+    });
   });
 });
 
