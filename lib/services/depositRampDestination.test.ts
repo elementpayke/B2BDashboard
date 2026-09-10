@@ -240,7 +240,7 @@ describe("resolveAfricanFundOpenIntent", () => {
     });
   });
 
-  it("keeps fiat African fund on the fiat currency with no pinned stablecoin account", () => {
+  it("defaults fiat African fund to Polygon USDT when no preferred wallet is passed", () => {
     expect(
       resolveAfricanFundOpenIntent({
         selectedKind: "fiat",
@@ -249,8 +249,27 @@ describe("resolveAfricanFundOpenIntent", () => {
     ).toEqual({
       fundAfricanTargetCurrency: "EUR",
       fundTargetAccountId: null,
-      depositNetwork: "base",
-      depositAsset: "usdc",
+      depositNetwork: "polygon",
+      depositAsset: "usdt",
+    });
+  });
+
+  it("pins preferred Polygon USDT when funding a fiat VA", () => {
+    expect(
+      resolveAfricanFundOpenIntent({
+        selectedKind: "fiat",
+        selectedFiatCurrency: "USD",
+        preferredStableAccount: {
+          id: "poly-usdt",
+          currency: "USDT",
+          network: "Polygon",
+        },
+      }),
+    ).toEqual({
+      fundAfricanTargetCurrency: "USD",
+      fundTargetAccountId: "poly-usdt",
+      depositNetwork: "polygon",
+      depositAsset: "usdt",
     });
   });
 

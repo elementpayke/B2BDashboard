@@ -37,10 +37,11 @@ export type FundOrchestrationInputs = {
   fiatCurrency: string;
   fiatAccountId: string | null | undefined;
   entityId: string | null | undefined;
+  /** Intermediate USDC or USDT deposit account. */
   usdcAccountId: string | null | undefined;
   usdcWalletAddress: string | null | undefined;
   treasuryWalletAddress: string | null | undefined;
-  /** Ledger FX rail from catalog discovery; required for auto-convert. */
+  /** Legacy; background convert no longer requires client-side network_id. */
   convertNetworkId: string | null | undefined;
 };
 
@@ -69,10 +70,10 @@ export function planAfricanFundOrchestration(
 ): FundOrchestrationPlan {
   const blockers: string[] = [];
   const fiat = input.fiatCurrency.trim().toUpperCase();
-  const usdcTarget = isStablecoinOnRampTarget(fiat);
-  if (!usdcTarget && !isAfricanFundFiat(fiat)) {
+  const stableTarget = isStablecoinOnRampTarget(fiat);
+  if (!stableTarget && !isAfricanFundFiat(fiat)) {
     blockers.push(
-      `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts or USDC (got ${fiat || "—"}).`,
+      `Auto-fund only targets ${AFRICAN_FUND_FIAT_CURRENCIES.join(" / ")} deposit accounts or USDC/USDT (got ${fiat || "—"}).`,
     );
   }
 
@@ -81,30 +82,30 @@ export function planAfricanFundOrchestration(
     treasuryWalletAddress: input.treasuryWalletAddress,
   });
   if (!wallet.address) {
-    blockers.push("No USDC deposit wallet or treasury wallet to receive the OnRamp.");
+    blockers.push(
+      "No USDT/USDC deposit wallet or treasury wallet to receive the OnRamp. Open a Polygon USDT account first.",
+    );
   } else if (wallet.source === "treasury") {
     blockers.push(
-      "OnRamp will credit the treasury wallet — ledger convert needs USDC on the entity deposit account. Open a USDC account first for higher auto-convert odds.",
+      "OnRamp will credit the treasury wallet — open a Polygon USDT account so convert can run against your deposit balance.",
     );
   }
 
-  const canRunAfricanOnRamp = Boolean(wallet.address) && (usdcTarget || isAfricanFundFiat(fiat));
+  const canRunAfricanOnRamp = Boolean(wallet.address) && (stableTarget || isAfricanFundFiat(fiat));
 
   const missingConvert: string[] = [];
-  if (!usdcTarget) {
-    if (!input.entityId) missingConvert.push("entity");
-    if (!input.usdcAccountId) missingConvert.push("USDC account");
+  if (!stableTarget) {
+    if (!input.usdcAccountId) missingConvert.push("USDT/USDC account");
     if (!input.fiatAccountId) missingConvert.push(`${fiat} account`);
-    if (!input.convertNetworkId?.trim()) missingConvert.push("ledger FX network_id");
     if (missingConvert.length) {
-      blockers.push(`Auto-convert needs: ${missingConvert.join(", ")}.`);
+      blockers.push(`Background convert needs: ${missingConvert.join(", ")}.`);
     }
   }
 
   const canAttemptAutoConvert =
     canRunAfricanOnRamp &&
-    !usdcTarget &&
-    Boolean(input.entityId && input.usdcAccountId && input.fiatAccountId && input.convertNetworkId?.trim()) &&
+    !stableTarget &&
+    Boolean(input.usdcAccountId && input.fiatAccountId) &&
     wallet.source === "usdc_deposit";
 
   return {

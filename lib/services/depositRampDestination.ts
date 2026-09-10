@@ -324,12 +324,15 @@ export type AfricanFundOpenIntent = {
 
 /**
  * State patch when opening African OnRamp from the account Fund chooser.
- * Stablecoin wallets pin that rail; fiat accounts still land on USDC then convert.
+ * Stablecoin wallets pin that rail; fiat VAs land on Polygon USDT then
+ * background-convert into the VA.
  */
 export function resolveAfricanFundOpenIntent(input: {
   selectedKind: "fiat" | "stablecoin";
   selectedFiatCurrency?: string | null;
   selectedStablecoin?: { id: string; currency: string; network: string } | null;
+  /** Preferred intermediate for fiat VA funding (Polygon USDT). */
+  preferredStableAccount?: { id: string; currency: string; network: string } | null;
 }): AfricanFundOpenIntent {
   if (input.selectedKind === "stablecoin" && input.selectedStablecoin) {
     const currency = input.selectedStablecoin.currency.trim().toUpperCase() || "USDC";
@@ -341,10 +344,20 @@ export function resolveAfricanFundOpenIntent(input: {
     };
   }
   const fiat = (input.selectedFiatCurrency || "EUR").trim().toUpperCase() || "EUR";
+  const preferred = input.preferredStableAccount;
+  if (preferred?.id) {
+    const currency = preferred.currency.trim().toUpperCase() || "USDT";
+    return {
+      fundAfricanTargetCurrency: fiat,
+      fundTargetAccountId: preferred.id,
+      depositNetwork: toUiNetworkKey(preferred.network) || "polygon",
+      depositAsset: currency.toLowerCase(),
+    };
+  }
   return {
     fundAfricanTargetCurrency: fiat,
     fundTargetAccountId: null,
-    depositNetwork: "base",
-    depositAsset: "usdc",
+    depositNetwork: "polygon",
+    depositAsset: "usdt",
   };
 }

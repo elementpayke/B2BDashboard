@@ -242,6 +242,11 @@ import {
   planAfricanFundOrchestration,
 } from "@/lib/services/fundOrchestration";
 import {
+  fundsApi,
+  isAfricaFundProcessing,
+  isAfricaFundTerminal,
+} from "@/lib/services/funds";
+import {
   coerceStablecoinNetworkKey,
   DEPOSIT_STABLECOIN_NETWORKS,
   describeMissingOnRampDestination,
@@ -317,8 +322,12 @@ export default function DashboardApp(props: Props = {}) {
     acctDetailIntent: "details" as "details" | "fund",
     /** When set, Deposit OnRamp is funding this fiat or stablecoin account (African path). */
     fundAfricanTargetCurrency: null as string | null,
-    /** Stablecoin account to credit; pins asset/network so quotes are not Polygon USDT. */
+    /** Fiat VA FinancialAccount id when African-funding a deposit account. */
+    fundFiatAccountId: null as string | null,
+    /** Stablecoin account to credit via OnRamp (prefer Polygon USDT for fiat VA funds). */
     fundTargetAccountId: null as string | null,
+    africaFundId: null as string | null,
+    africaFundStatus: "" as string,
     fundConvertStatus: "" as string,
     fundConvertError: "" as string,
     apiKeyRevealed: {}, secretRevealed: {}, copiedField: "",
@@ -758,7 +767,19 @@ export default function DashboardApp(props: Props = {}) {
     )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
-    const usdc = (
+    const convertStables = (
+      bootstrapReady
+        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+        : (stablecoinAccountsQuery.data ?? [])
+    )
+      .filter(
+        (a) =>
+          (a.currency === "USDC" || a.currency === "USDT") &&
+          isReadyStatus(a.status) &&
+          a.id,
+      )
+      .map((a) => String(a.id));
+    const usdcBridge = (
       bootstrapReady
         ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
         : (stablecoinAccountsQuery.data ?? [])
@@ -768,16 +789,18 @@ export default function DashboardApp(props: Props = {}) {
     const mode = state.convertMode;
     const hop = state.convertHop;
     const sources =
-      mode === "stable_to_fiat" || (mode === "fiat_to_fiat" && hop === 2) ? usdc : fiat;
+      mode === "stable_to_fiat" || (mode === "fiat_to_fiat" && hop === 2)
+        ? convertStables
+        : fiat;
     const dests =
       mode === "fiat_to_stable"
-        ? usdc
+        ? convertStables
         : fiat.filter((id) => id !== (state.convertSourceAccountId || sources[0]));
     setState((s: any) => {
       const next: Record<string, string> = {};
       if (!s.convertSourceAccountId && sources[0]) next.convertSourceAccountId = sources[0];
       if (!s.convertDestAccountId && dests[0]) next.convertDestAccountId = dests[0];
-      if (!s.convertBridgeUsdcId && usdc[0]) next.convertBridgeUsdcId = usdc[0];
+      if (!s.convertBridgeUsdcId && usdcBridge[0]) next.convertBridgeUsdcId = usdcBridge[0];
       return Object.keys(next).length ? next : {};
     });
   }, [
@@ -795,38 +818,102 @@ export default function DashboardApp(props: Props = {}) {
     setState,
   ]);
 
-  // Best-effort post-OnRamp convert status (skipped until entity fiat id + FX network_id exist).
+  // Register / advance Africa → fiat VA background fund after OnRamp completes.
   useEffect(() => {
     const order = depositStatusQuery.data;
     const targetFiat = state.fundAfricanTargetCurrency;
-    if (!targetFiat || !order || order.status !== "completed") return;
-    if (state.fundConvertStatus) return;
+    const fiatAccountId = state.fundFiatAccountId;
+    const stableAccountId = state.fundTargetAccountId;
+    if (!targetFiat || !fiatAccountId || !stableAccountId) return;
+    if (!AFRICAN_FUND_FIAT_CURRENCIES.includes(targetFiat.trim().toUpperCase() as (typeof AFRICAN_FUND_FIAT_CURRENCIES)[number])) {
+      return;
+    }
+    if (!order?.id && !state.depositAccept?.merchant_order_id) return;
 
-    const usdcAccount =
-      (stablecoinAccountsQuery.data ?? []).find(
-        (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.walletAddress,
-      ) ??
-      (stablecoinAccountsQuery.data ?? []).find(
-        (a) => isReadyStatus(a.status) && a.currency === "USDC",
-      );
-    const plan = planAfricanFundOrchestration({
-      fiatCurrency: targetFiat,
-      fiatAccountId: null,
-      entityId: usdcAccount?.entityId ?? null,
-      usdcAccountId: usdcAccount?.id ?? null,
-      usdcWalletAddress: usdcAccount?.walletAddress ?? null,
-      treasuryWalletAddress: resolveTreasuryWalletAddress({
-        summaryWallet: summaryQuery.data?.totals.wallet_address,
-        stablecoinAccounts: stablecoinAccountsQuery.data,
-      }),
-      convertNetworkId: null,
-    });
-    setState({
-      fundConvertStatus: `skipped: ${plan.blockers[0] || "Auto-convert not ready"}`,
-      fundConvertError: plan.blockers.join(" "),
-    });
+    let cancelled = false;
+    const merchantOrderId = Number(
+      order?.id ?? state.depositAccept?.merchant_order_id,
+    );
+    if (!Number.isFinite(merchantOrderId) || merchantOrderId <= 0) return;
+
+    const run = async () => {
+      try {
+        let fundId = state.africaFundId;
+        if (!fundId) {
+          const registered = await fundsApi.registerAfricaToFiat({
+            destination_account_id: fiatAccountId,
+            stable_account_id: stableAccountId,
+            onramp_merchant_order_id: merchantOrderId,
+            source_currency: order?.currency_code || undefined,
+            source_amount: order?.amount_fiat || state.depositAmount || undefined,
+            stable_currency:
+              String(
+                (stablecoinAccountsQuery.data ?? []).find((a) => a.id === stableAccountId)
+                  ?.currency || "USDT",
+              ).toUpperCase() === "USDC"
+                ? "USDC"
+                : "USDT",
+          });
+          if (cancelled) return;
+          fundId = registered.id;
+          setState({
+            africaFundId: registered.id,
+            africaFundStatus: registered.status,
+            fundConvertStatus: `processing: ${registered.status}`,
+            fundConvertError: "",
+          });
+        }
+
+        if (!fundId) return;
+        // Poll until terminal (stable credit can take 1–2 min).
+        for (let i = 0; i < 36 && !cancelled; i++) {
+          const fund = await fundsApi.get(fundId);
+          if (cancelled) return;
+          setState({
+            africaFundStatus: fund.status,
+            fundConvertStatus: isAfricaFundTerminal(fund.status)
+              ? fund.status === "completed"
+                ? "completed"
+                : `failed: ${fund.failure_reason || fund.status}`
+              : `processing: ${fund.status}`,
+            fundConvertError: fund.failure_reason || "",
+          });
+          if (isAfricaFundTerminal(fund.status)) {
+            queryClient.invalidateQueries({ queryKey: ["transactions"] });
+            queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+            queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+            return;
+          }
+          if (!isAfricaFundProcessing(fund.status)) return;
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setState({
+          fundConvertStatus: "failed: could not start background convert",
+          fundConvertError:
+            err instanceof ApiRequestError ? err.message : "Background fund failed to register.",
+        });
+      }
+    };
+
+    // Only start once OnRamp is accepted (processing or completed).
+    if (state.depositAccept || order) {
+      void run();
+    }
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depositStatusQuery.data?.status, depositStatusQuery.data?.id, state.fundAfricanTargetCurrency, stablecoinAccountsQuery.data]);
+  }, [
+    depositStatusQuery.data?.status,
+    depositStatusQuery.data?.id,
+    state.fundAfricanTargetCurrency,
+    state.fundFiatAccountId,
+    state.fundTargetAccountId,
+    state.depositAccept?.merchant_order_id,
+  ]);
 
   // The list endpoint deliberately omits webhook_url / webhook_secret
   // (ApiKeyListOut); only the per-key detail endpoint returns them. Fetch
@@ -882,7 +969,7 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, africaFundId: null, africaFundStatus: "", fundConvertStatus: "", fundConvertError: "",
     depositAsset: "usdc", depositNetwork: "base",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
@@ -920,7 +1007,10 @@ export default function DashboardApp(props: Props = {}) {
       screen: prev.moneyFlowReturn || "home",
       moneyFlowReturn: null,
       fundAfricanTargetCurrency: null,
+      fundFiatAccountId: null,
       fundTargetAccountId: null,
+      africaFundId: null,
+      africaFundStatus: "",
       fundConvertStatus: "",
       fundConvertError: "",
     }));
@@ -1405,7 +1495,10 @@ export default function DashboardApp(props: Props = {}) {
     setState({
       modal: null,
       fundAfricanTargetCurrency: null,
+      fundFiatAccountId: null,
       fundTargetAccountId: null,
+      africaFundId: null,
+      africaFundStatus: "",
       fundConvertStatus: "",
       fundConvertError: "",
       cardSecrets: null,
@@ -1491,7 +1584,10 @@ export default function DashboardApp(props: Props = {}) {
       fundConvertStatus: "",
       fundConvertError: "",
       fundAfricanTargetCurrency: null,
+      fundFiatAccountId: null,
       fundTargetAccountId: null,
+      africaFundId: null,
+      africaFundStatus: "",
     });
   const openCloseAccountChooser = () =>
     setState({ modal: "closeAccount" });
@@ -1501,25 +1597,46 @@ export default function DashboardApp(props: Props = {}) {
       state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
         ? state.selectedAcctKey.slice("fiat:".length)
         : "";
+    const selectedFiat =
+      state.selectedAcctKind === "fiat"
+        ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey) ?? null
+        : null;
     const selectedStablecoin =
       state.selectedAcctKind === "stablecoin" && state.selectedAcctKey.startsWith("stablecoin:")
         ? (stablecoinAccountsQuery.data ?? []).find(
             (a) => a.id === state.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
+    const preferredUsdt =
+      (stablecoinAccountsQuery.data ?? []).find(
+        (a) =>
+          isReadyStatus(a.status) &&
+          a.currency === "USDT" &&
+          /polygon/i.test(a.network || "") &&
+          a.id,
+      ) ??
+      (stablecoinAccountsQuery.data ?? []).find(
+        (a) => isReadyStatus(a.status) && a.currency === "USDT" && a.id,
+      ) ??
+      (stablecoinAccountsQuery.data ?? []).find(
+        (a) => isReadyStatus(a.status) && a.currency === "USDC" && a.id,
+      ) ??
+      null;
     const intent = resolveAfricanFundOpenIntent({
       selectedKind: state.selectedAcctKind,
-      selectedFiatCurrency:
-        state.selectedAcctKind === "fiat"
-          ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey)?.currency ||
-            currencyKey ||
-            "EUR"
-          : null,
+      selectedFiatCurrency: selectedFiat?.currency || currencyKey || "EUR",
       selectedStablecoin: selectedStablecoin
         ? {
             id: selectedStablecoin.id,
             currency: selectedStablecoin.currency,
             network: selectedStablecoin.network,
+          }
+        : null,
+      preferredStableAccount: preferredUsdt
+        ? {
+            id: preferredUsdt.id,
+            currency: preferredUsdt.currency,
+            network: preferredUsdt.network,
           }
         : null,
     });
@@ -1536,9 +1653,12 @@ export default function DashboardApp(props: Props = {}) {
       depositQuoteError: "",
       depositAcceptError: "",
       fundAfricanTargetCurrency: intent.fundAfricanTargetCurrency,
+      fundFiatAccountId: selectedFiat?.id ? String(selectedFiat.id) : null,
       fundTargetAccountId: intent.fundTargetAccountId,
       depositNetwork: intent.depositNetwork,
       depositAsset: intent.depositAsset,
+      africaFundId: null,
+      africaFundStatus: "",
       fundConvertStatus: "",
       fundConvertError: "",
     });
@@ -3003,7 +3123,9 @@ export default function DashboardApp(props: Props = {}) {
               sections: [{ title: "Account", rows }],
               instructions: null as string | null,
               railLabel: `Stablecoin · ${networkLabel}`,
-              showConvert: false,
+              showConvert: ["USDC", "USDT"].includes(
+                String(selectedStablecoinAccount.currency || "").toUpperCase(),
+              ),
               showDownloadLetter: false,
             };
           })()
@@ -3319,6 +3441,15 @@ export default function DashboardApp(props: Props = {}) {
   const txDetail = onchainTxDetail ?? txDetailBase;
   const fundingUsdcAccount =
     stablecoinAccountsList.find(
+      (a) =>
+        isFundableStablecoinAccount(a) &&
+        a.currency === "USDT" &&
+        /polygon/i.test(a.network || ""),
+    ) ??
+    stablecoinAccountsList.find(
+      (a) => isFundableStablecoinAccount(a) && a.currency === "USDT",
+    ) ??
+    stablecoinAccountsList.find(
       (a) => isFundableStablecoinAccount(a) && a.currency === "USDC",
     ) ??
     stablecoinAccountsList.find((a) => isFundableStablecoinAccount(a)) ??
@@ -3332,7 +3463,7 @@ export default function DashboardApp(props: Props = {}) {
   const africanFundPlan = acctDetail
     ? planAfricanFundOrchestration({
         fiatCurrency: acctDetail.currency,
-        fiatAccountId: null,
+        fiatAccountId: selectedDepositAccount?.id ? String(selectedDepositAccount.id) : null,
         entityId: fundingOnRampAccount?.entityId ?? null,
         usdcAccountId: fundingOnRampAccount?.id ?? null,
         usdcWalletAddress: fundingOnRampAccount?.walletAddress ?? null,
@@ -4023,6 +4154,20 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
+  const stableConvertAccounts = stablecoinAccountsList
+    .filter(
+      (a) =>
+        (a.currency === "USDC" || a.currency === "USDT") &&
+        isReadyStatus(a.status) &&
+        a.id,
+    )
+    .map((a) => ({
+      id: String(a.id),
+      currency: String(a.currency || "").toUpperCase(),
+      label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
+      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
+      balanceAmount: parseBalanceNumber(a.balance),
+    }));
   const convertMode: ConvertMode =
     s.convertMode === "stable_to_fiat" || s.convertMode === "fiat_to_fiat"
       ? s.convertMode
@@ -4030,12 +4175,14 @@ export default function DashboardApp(props: Props = {}) {
   const convertBridgeUsdcId = s.convertBridgeUsdcId || usdcConvertAccounts[0]?.id || "";
   const convertSourceAccounts =
     convertMode === "stable_to_fiat" || (convertMode === "fiat_to_fiat" && s.convertHop === 2)
-      ? usdcConvertAccounts
+      ? convertMode === "fiat_to_fiat"
+        ? usdcConvertAccounts
+        : stableConvertAccounts
       : fiatConvertAccounts;
   // Fiat↔fiat hop 1: pick final fiat dest in the UI; quote uses USDC under the hood.
   const convertDestAccounts =
     convertMode === "fiat_to_stable"
-      ? usdcConvertAccounts
+      ? stableConvertAccounts
       : convertMode === "fiat_to_fiat" && s.convertHop === 1
         ? fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId)
         : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);

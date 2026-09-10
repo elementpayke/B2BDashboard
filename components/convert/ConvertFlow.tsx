@@ -44,8 +44,8 @@ export type ConvertFlowProps = {
 };
 
 const MODES: { key: ConvertMode; label: string; hint: string }[] = [
-  { key: "fiat_to_stable", label: "Fiat → USDC", hint: "Sell EUR, USD, or GBP for USDC" },
-  { key: "stable_to_fiat", label: "USDC → Fiat", hint: "Sell USDC for EUR, USD, or GBP" },
+  { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell EUR, USD, or GBP for USDC or USDT" },
+  { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for EUR, USD, or GBP" },
   { key: "fiat_to_fiat", label: "EUR ↔ USD", hint: "Two hops via USDC" },
 ];
 
@@ -64,8 +64,8 @@ function friendlyError(message: string): { title: string; body: string } {
   if (lower.includes("minimum")) {
     return { title: "Amount too small", body: m };
   }
-  if (lower.includes("usdc account")) {
-    return { title: "USDC account needed", body: m };
+  if (lower.includes("usdc account") || lower.includes("usdt account") || lower.includes("stablecoin account")) {
+    return { title: "Stablecoin account needed", body: m };
   }
   return { title: "Couldn't convert", body: m };
 }
@@ -151,9 +151,9 @@ export default function ConvertFlow(p: ConvertFlowProps) {
             <span className="ep-convert__expired-title">Accounts needed</span>
             <span className="ep-convert__expired-body">
               {p.mode === "fiat_to_stable"
-                ? "Open a fiat deposit account and a ready USDC account first."
+                ? "Open a fiat deposit account and a ready USDC or USDT account first."
                 : p.mode === "stable_to_fiat"
-                  ? "Open a ready USDC account and a fiat deposit account first."
+                  ? "Open a ready USDC or USDT account and a fiat deposit account first."
                   : "Open EUR and USD deposit accounts plus a ready USDC bridge account."}
             </span>
           </div>

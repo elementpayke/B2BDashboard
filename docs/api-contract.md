@@ -250,10 +250,10 @@ list, that transaction's own detail query, and the dashboard summary.
 
 ## Convert mapping notes (`lib/services/conversions.ts`)
 
-- Partner ledger FX only supports **fiat ↔ USDC** (EUR / GBP / USD). There is
+- Partner ledger FX supports **fiat ↔ USDC|USDT** (EUR / GBP / USD). There is
   no direct EUR↔USD rail.
 - Dashboard modes:
-  - **Fiat → USDC** / **USDC → Fiat**: one quote → accept.
+  - **Fiat → Stablecoin** / **Stablecoin → Fiat**: one quote → accept (USDC or USDT).
   - **EUR ↔ USD**, and the other pairs among the three supported fiat
     currencies (EUR↔GBP, GBP↔USD): two hops via a ready USDC
     FinancialAccount — hop 1 source fiat→USDC, hop 2 USDC→destination fiat.
@@ -264,6 +264,16 @@ list, that transaction's own detail query, and the dashboard summary.
   synced `FinancialAccount` IDs (populated when listing IBAN / entity
   accounts). Accept defaults its `Idempotency-Key` to the quote id, so a user
   retry after a timeout cannot settle the same conversion twice.
+
+## Africa → fiat VA fund (`/v1/funds/africa-to-fiat`)
+
+- After African OnRamp accept while funding a EUR/USD/GBP VA, the dashboard
+  registers `POST /v1/funds/africa-to-fiat` with the OnRamp order id, Polygon
+  USDT (or USDC) intermediate account, and destination VA.
+- Mboka continues in the background on OnRamp `completed`: wait for spendable
+  stable balance (1–2 min), then Convert into the VA. Status is polled via
+  `GET /v1/funds/{fro_…}` and also projected on `GET /v1/transactions` as a
+  processing inbound row (`source=africa_fund_orchestration`).
 
 ## Gaps / follow-up tasks
 
