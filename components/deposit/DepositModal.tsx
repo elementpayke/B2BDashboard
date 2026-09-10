@@ -7,6 +7,8 @@ import dynamic from "next/dynamic";
 import {
   countryMatchesQuery,
 } from "@/lib/hooks/depositFlowHelpers";
+import { isMobileMoneyRail } from "@/lib/services/mobileMoneyBrands";
+import MobileMoneyMark from "@/components/money/MobileMoneyMark";
 import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
@@ -25,6 +27,8 @@ export type DepositCountryRow = {
 
 export type DepositMethodOption = {
   name: string;
+  /** Short label for mobile-money operators (e.g. "M-Pesa"). */
+  displayLabel?: string;
   selected: boolean;
   select: () => void;
 };
@@ -326,10 +330,42 @@ export default function DepositModal(p: DepositModalProps) {
                     ← {p.depositSelectedCountryName || "Countries"}
                   </button>
                   <div className="ep-pick-list" role="listbox" aria-label="Funding method">
-                    {(p.depositMethodGroups || []).map((group) => {
+                    {(p.depositMethodGroups || []).flatMap((group) => {
+                      if (isMobileMoneyRail(group.type)) {
+                        return group.providers.map((pr) => (
+                          <button
+                            key={`${group.railIdx}-${pr.name}`}
+                            type="button"
+                            role="option"
+                            aria-selected={pr.selected}
+                            className={`ep-pick-row${pr.selected ? " ep-pick-row--selected" : ""}`}
+                            onClick={pr.select}
+                          >
+                            <span className="ep-pick-row__mark" aria-hidden>
+                              <MobileMoneyMark name={pr.name} size={32} />
+                            </span>
+                            <span className="ep-pick-row__text">
+                              <span className="ep-pick-row__title">
+                                {pr.displayLabel || pr.name}
+                              </span>
+                              <span className="ep-pick-row__meta">Mobile money</span>
+                            </span>
+                            {pr.selected ? (
+                              <span className="ep-pick-row__check" aria-hidden>
+                                ✓
+                              </span>
+                            ) : (
+                              <span className="ep-pick-row__chev" aria-hidden>
+                                ›
+                              </span>
+                            )}
+                          </button>
+                        ));
+                      }
+
                       const first = group.providers[0];
                       const selected = group.providers.some((pr) => pr.selected);
-                      return (
+                      return [
                         <button
                           key={group.railIdx}
                           type="button"
@@ -354,8 +390,8 @@ export default function DepositModal(p: DepositModalProps) {
                               ›
                             </span>
                           )}
-                        </button>
-                      );
+                        </button>,
+                      ];
                     })}
                   </div>
                 </>

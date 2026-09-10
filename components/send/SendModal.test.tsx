@@ -46,6 +46,7 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
     selectSendProvider: noop,
     sendProviderIdx: 0,
     sendIsBankRail: false,
+    sendIsMobileRail: false,
     sendProvidersAreFallback: false,
     sendBlockedNoNetworkId: false,
     sendAmountCurrency: "USD",
@@ -168,5 +169,44 @@ describe("SendModal success step", () => {
     );
     expect(screen.queryByRole("link", { name: /View on/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+});
+
+describe("SendModal country mobile money", () => {
+  function countryMobile(overrides: Partial<SendModalProps> = {}): SendModalProps {
+    return cryptoStep1({
+      sendIsCrypto: false,
+      sendIsCountry: true,
+      sendIsMobileRail: true,
+      sendIsBankRail: false,
+      sendProviderLabel: "Mobile money provider",
+      sendProviderOptions: ["AIRTELMONEYTZ", "MPESATZ"],
+      sendProviderIdx: 0,
+      sendRecipientLabel: "Recipient phone number",
+      sendRecipientPlaceholder: "0712 345 678",
+      sendDestinationSummary: "Tanzania · Airtel Money",
+      ...overrides,
+    });
+  }
+
+  it("shows branded provider picker on destination step 1", () => {
+    render(<SendModal {...countryMobile()} />);
+    expect(screen.getByText("Mobile money provider")).toBeInTheDocument();
+    expect(screen.getByText("Airtel Money")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+
+  it("does not repeat the mobile provider picker on recipient step", () => {
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+        })}
+      />,
+    );
+    expect(screen.queryByText("Mobile money provider")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Recipient phone number/i)).toBeInTheDocument();
   });
 });

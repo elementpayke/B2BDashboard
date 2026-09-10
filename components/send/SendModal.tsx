@@ -6,6 +6,8 @@ import {
   formatSavedRecipientSubtitle,
   type SavedRecipient,
 } from "@/lib/clients/savedRecipientsApi";
+import { isMobileMoneyRail, mobileMoneyDisplayLabel } from "@/lib/services/mobileMoneyBrands";
+import MobileMoneyMark from "@/components/money/MobileMoneyMark";
 
 /** Presentational Send modal body — props-driven; state lives in DashboardApp. */
 export type SendMethodOption = {
@@ -58,6 +60,7 @@ export type SendModalProps = {
   sendProviderIdx: number;
   /** Country group on a bank rail — drives the "Bank" field on step 2. */
   sendIsBankRail: boolean;
+  sendIsMobileRail: boolean;
   /** Corridor is running on standby providers — shows the rerouting note. */
   sendProvidersAreFallback: boolean;
   /** No aggregator institution id for this corridor — the quote cannot succeed. */
@@ -251,6 +254,7 @@ function SendProviderPicker({
   sendProviderIdx,
   sendProviderOptions,
   selectSendProvider,
+  railType,
 }: {
   id: string;
   label: string;
@@ -259,7 +263,9 @@ function SendProviderPicker({
   sendProviderIdx: number;
   sendProviderOptions: string[];
   selectSendProvider: (index: number) => void;
+  railType?: string;
 }) {
+  const mobileRail = isMobileMoneyRail(railType);
   return (
     <ChoicePicker
       id={id}
@@ -268,7 +274,8 @@ function SendProviderPicker({
       value={String(sendProviderIdx)}
       options={(sendProviderOptions || []).map((name, i) => ({
         value: String(i),
-        label: name,
+        label: mobileRail ? mobileMoneyDisplayLabel(name) : name,
+        leading: mobileRail ? <MobileMoneyMark name={name} size={24} /> : undefined,
       }))}
       onChange={(value) => selectSendProvider(Number(value))}
       disabled={catalogBusy || (sendProviderOptions || []).length === 0}
@@ -421,6 +428,7 @@ export default function SendModal(p: SendModalProps) {
                       sendProviderIdx={p.sendProviderIdx}
                       sendProviderOptions={p.sendProviderOptions || []}
                       selectSendProvider={p.selectSendProvider}
+                      railType={p.sendIsMobileRail ? "mobile" : p.sendIsBankRail ? "bank" : undefined}
                     />
                   ) : null}
 
@@ -602,6 +610,7 @@ export default function SendModal(p: SendModalProps) {
                     sendProviderIdx={p.sendProviderIdx}
                     sendProviderOptions={p.sendProviderOptions || []}
                     selectSendProvider={p.selectSendProvider}
+                    railType="bank"
                   />
                 ) : null}
 

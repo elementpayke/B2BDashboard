@@ -7,6 +7,7 @@ import {
   countryRailsLabel,
   countrySearchHaystack,
 } from "@/lib/hooks/depositFlowHelpers";
+import { mobileMoneyDisplayLabel } from "@/lib/services/mobileMoneyBrands";
 import DepositModal, { type DepositCountryRow, type DepositMethodGroup } from "./DepositModal";
 
 vi.mock("next/dynamic", () => ({
@@ -41,6 +42,10 @@ function methodGroupsFor(idx: number, selectedRail?: number): DepositMethodGroup
     label: rail.label,
     providers: rail.options.map((name, providerIdx) => ({
       name,
+      displayLabel:
+        rail.type === "mobile" || rail.type === "momo"
+          ? mobileMoneyDisplayLabel(name)
+          : name,
       selected: selectedRail === railIdx && providerIdx === 0,
       select: vi.fn(),
     })),
@@ -127,7 +132,7 @@ describe("DepositModal country-first step", () => {
     expect(screen.queryByText("Uganda")).not.toBeInTheDocument();
   });
 
-  it("lists rails without partner or bank institution names", () => {
+  it("lists mobile-money operators with short labels for selection", () => {
     const kenyaIdx = COUNTRIES.findIndex((c) => c.code === "KES");
 
     render(
@@ -141,9 +146,8 @@ describe("DepositModal country-first step", () => {
       />,
     );
 
-    expect(screen.getByText("Mobile money")).toBeInTheDocument();
+    expect(screen.getByText("M-Pesa")).toBeInTheDocument();
     expect(screen.getByText("Bank transfer")).toBeInTheDocument();
-    expect(screen.queryByText("M-Pesa (Safaricom)")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Search banks")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
   });

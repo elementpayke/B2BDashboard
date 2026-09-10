@@ -154,6 +154,10 @@ import {
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
 import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
+import {
+  isMobileMoneyRail,
+  mobileMoneyDisplayLabel,
+} from "@/lib/services/mobileMoneyBrands";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
 import {
   assertSufficientBalance,
@@ -2993,6 +2997,9 @@ export default function DashboardApp(props: Props = {}) {
             label: rail.label,
             providers: options.map((name, providerIdx) => ({
               name,
+              displayLabel: isMobileMoneyRail(rail.type)
+                ? mobileMoneyDisplayLabel(name)
+                : name,
               selected:
                 s.depositRailIdx === railIdx &&
                 indexOfProviderName([name], s.depositProviderName) === 0,
@@ -3829,7 +3836,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendRecipientPlaceholder =
     s.sendGroup === "crypto"
       ? sendCryptoRecipientPlaceholder(s.sendChain)
-      : sendRail.type === "mobile" && sendCountry.dialCode
+      : isMobileMoneyRail(sendRail.type) && sendCountry.dialCode
         ? `+${sendCountry.dialCode}712345678`
         : sendRail.placeholder;
   // USDC + USDT chips and Base/Polygon/Stellar chains come from live sendable
@@ -3879,7 +3886,8 @@ export default function DashboardApp(props: Props = {}) {
     ? `Sends ${sendAssetCode} on ${sendChainLabel} via account send — min 1.00 ${sendAssetCode}.`
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
-  const sendProviderLabel = sendRail.type === "mobile" ? "Mobile money network" : "Bank account";
+  const sendProviderPickerLabel =
+    isMobileMoneyRail(sendRail.type) ? "Mobile money provider" : "Bank account";
   const sendProvidersAreFallback = false;
   // Bank rails can't be quoted without the aggregator's institution id, which
   // only the catalog carries — so this corridor is a dead end until it loads.
@@ -3914,7 +3922,10 @@ export default function DashboardApp(props: Props = {}) {
   const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = depositRail.type === "mobile";
   const depositIsBankRail = depositRail.type === "bank";
-  const depositChannelLabel = channelLabelForRail(depositRail.type);
+  const depositChannelLabel =
+    depositRail.type === "mobile" || depositRail.type === "momo"
+      ? mobileMoneyDisplayLabel(depositProvider) || channelLabelForRail(depositRail.type)
+      : channelLabelForRail(depositRail.type);
   const depositOperator = depositChannelLabel;
   const depositMobileCode = depositCountry.code;
   const depositPhone = s.depositPhone;
@@ -3976,7 +3987,10 @@ export default function DashboardApp(props: Props = {}) {
     sendAsset: sendSelection.asset,
     sendChainLabel,
     countryName: sendCountry.name,
-    channelLabel: channelLabelForRail(sendRail.type),
+    channelLabel:
+      isMobileMoneyRail(sendRail.type)
+        ? mobileMoneyDisplayLabel(sendProvider) || channelLabelForRail(sendRail.type)
+        : channelLabelForRail(sendRail.type),
   });
   // OffRamp quote (by country) or account-send preview (stablecoin).
   const sendQuote = s.sendQuote;
@@ -3991,7 +4005,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote.amounts.rate,
           sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
         )
-      : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+      : (isMobileMoneyRail(sendRail.type) ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
@@ -4939,11 +4953,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendCurrencyName={currencyLabel(sendCountry.code)}
   sendCountryIdx={s.sendCountryIdx}
   selectSendCountry={(i) => selectSendCountry(i)()}
-  sendProviderLabel={sendProviderLabel}
+  sendProviderLabel={sendProviderPickerLabel}
   sendProviderOptions={sendProviderOptions}
   selectSendProvider={pickSendProvider}
   sendProviderIdx={sendProviderIdx}
   sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
+  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
   sendProvidersAreFallback={sendProvidersAreFallback}
   sendBlockedNoNetworkId={sendBlockedNoNetworkId}
   sendAmountCurrency={sendAmountCurrency}
