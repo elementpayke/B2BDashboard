@@ -137,7 +137,7 @@ export function resolveMobileMoneyBrand(
   if (/vodafone|^voda/.test(c) || /\bvodafone\b|\bvoda\b/.test(n)) {
     return BRANDS.vodafone;
   }
-  if (/\bmobile\b|\bwallet\b|\bmoney\b/.test(n) || /mobile|wallet|money/.test(c)) {
+  if (/\bmobile\b|\bwallet\b/.test(n) || /mobile|wallet/.test(c)) {
     return { ...GENERIC, label: shortenGenericLabel(raw) };
   }
   return null;

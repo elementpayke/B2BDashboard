@@ -27,6 +27,7 @@ describe("resolveMobileMoneyBrand", () => {
   it("returns null for bank institution names", () => {
     expect(resolveMobileMoneyBrand("NATIONAL BANK OF KENYA")).toBeNull();
     expect(resolveMobileMoneyBrand("Equity Bank")).toBeNull();
+    expect(resolveMobileMoneyBrand("Money Market Bank")).toBeNull();
   });
 });
 

@@ -3836,7 +3836,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendRecipientPlaceholder =
     s.sendGroup === "crypto"
       ? sendCryptoRecipientPlaceholder(s.sendChain)
-      : sendRail.type === "mobile" && sendCountry.dialCode
+      : isMobileMoneyRail(sendRail.type) && sendCountry.dialCode
         ? `+${sendCountry.dialCode}712345678`
         : sendRail.placeholder;
   // USDC + USDT chips and Base/Polygon/Stellar chains come from live sendable
@@ -3887,7 +3887,7 @@ export default function DashboardApp(props: Props = {}) {
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   const sendProviderPickerLabel =
-    sendRail.type === "mobile" ? "Mobile money provider" : "Bank account";
+    isMobileMoneyRail(sendRail.type) ? "Mobile money provider" : "Bank account";
   const sendProvidersAreFallback = false;
   // Bank rails can't be quoted without the aggregator's institution id, which
   // only the catalog carries — so this corridor is a dead end until it loads.
@@ -3988,7 +3988,7 @@ export default function DashboardApp(props: Props = {}) {
     sendChainLabel,
     countryName: sendCountry.name,
     channelLabel:
-      sendRail.type === "mobile" || sendRail.type === "momo"
+      isMobileMoneyRail(sendRail.type)
         ? mobileMoneyDisplayLabel(sendProvider) || channelLabelForRail(sendRail.type)
         : channelLabelForRail(sendRail.type),
   });
@@ -4005,7 +4005,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote.amounts.rate,
           sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
         )
-      : (sendRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+      : (isMobileMoneyRail(sendRail.type) ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
@@ -4958,7 +4958,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   selectSendProvider={pickSendProvider}
   sendProviderIdx={sendProviderIdx}
   sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
-  sendIsMobileRail={sendIsCountry && sendRail.type === "mobile"}
+  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
   sendProvidersAreFallback={sendProvidersAreFallback}
   sendBlockedNoNetworkId={sendBlockedNoNetworkId}
   sendAmountCurrency={sendAmountCurrency}
