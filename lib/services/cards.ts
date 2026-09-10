@@ -208,6 +208,17 @@ export function describeCardStatus(status: string | null | undefined): string {
   return status || "Unknown";
 }
 
+/** True when the card cannot spend (frozen/blocked). */
+export function isCardFrozenStatus(status: string | null | undefined): boolean {
+  const key = (status || "").toLowerCase();
+  return key === "frozen" || key === "blocked";
+}
+
+/** Strip PAN/CVV from list/get payloads (defense in depth — never cache secrets). */
+export function stripCardSecrets<T extends Partial<IssuedCard>>(card: T): T {
+  return { ...card, number: null, cvv: null };
+}
+
 /** IIN/BIN → scheme. Returns unknown when digits are missing or unrecognized. */
 export function detectCardBrand(pan: string | null | undefined): CardBrand {
   const digits = String(pan || "").replace(/\D/g, "");
@@ -297,15 +308,23 @@ export function cardholderPrefillFromKybProfile(
 }
 
 export const cardsApi = {
-  list(entityId: string, accountId: string): Promise<{
+  async list(entityId: string, accountId: string): Promise<{
     account_id: string;
     entity_id: string;
     cards: IssuedCard[];
   }> {
-    return apiEnvelope(
+    const raw = await apiEnvelope<{
+      account_id: string;
+      entity_id: string;
+      cards: IssuedCard[];
+    }>(
       "GET",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards`,
     );
+    return {
+      ...raw,
+      cards: (raw.cards || []).map((card) => stripCardSecrets(card)),
+    };
   },
 
   create(
@@ -320,11 +339,12 @@ export const cardsApi = {
     );
   },
 
-  get(entityId: string, accountId: string, cardId: string): Promise<IssuedCard> {
-    return apiEnvelope(
+  async get(entityId: string, accountId: string, cardId: string): Promise<IssuedCard> {
+    const card = await apiEnvelope<IssuedCard>(
       "GET",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards/${encodeURIComponent(cardId)}`,
     );
+    return stripCardSecrets(card);
   },
 
   /** Explicit PAN/CVV reveal — never persist; call only on user action. */
@@ -339,23 +359,25 @@ export const cardsApi = {
     );
   },
 
-  freeze(entityId: string, accountId: string, cardId: string): Promise<IssuedCard> {
-    return apiEnvelope(
+  async freeze(entityId: string, accountId: string, cardId: string): Promise<IssuedCard> {
+    const card = await apiEnvelope<IssuedCard>(
       "POST",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards/${encodeURIComponent(cardId)}/freeze`,
       {},
     );
+    return stripCardSecrets(card);
   },
 
-  unfreeze(
+  async unfreeze(
     entityId: string,
     accountId: string,
     cardId: string,
   ): Promise<IssuedCard> {
-    return apiEnvelope(
+    const card = await apiEnvelope<IssuedCard>(
       "POST",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/cards/${encodeURIComponent(cardId)}/unfreeze`,
       {},
     );
+    return stripCardSecrets(card);
   },
 };

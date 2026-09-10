@@ -197,9 +197,15 @@ import {
   newCardReference,
   resolveCardBrand,
   resolveUsdFundingAccount,
+  isCardFrozenStatus,
   type IssuedCard,
   type UsdFundingAccount,
 } from "@/lib/services/cards";
+import {
+  cardTransactionsApi,
+  isCardSpendTransaction,
+  mapCardTransactionToTransaction,
+} from "@/lib/services/cardTransactions";
 import CardDetailModal, {
   billingAddressFromKyb,
 } from "@/components/cards/CardDetailModal";
@@ -714,6 +720,11 @@ export default function DashboardApp(props: Props = {}) {
     state.screen === "cards" ||
     state.modal === "newCard" ||
     state.modal === "cardDetail";
+  const cardTxnSurfaceOpen =
+    cardsSurfaceOpen ||
+    state.screen === "transactions" ||
+    state.screen === "home" ||
+    state.screen === "wallets";
   const bootstrapFiatAccounts = bootstrapQuery.data?.fiatAccounts ?? [];
   const fundingDepositAccounts = bootstrapReady
     ? bootstrapFiatAccounts
@@ -736,7 +747,7 @@ export default function DashboardApp(props: Props = {}) {
       resolveUsdFundingAccount({
         depositAccounts: fundingDepositAccounts,
       }),
-    enabled: cardsSurfaceOpen && usdFundingReady,
+    enabled: cardTxnSurfaceOpen && usdFundingReady,
     retry: false,
     staleTime: 30_000,
   });
@@ -754,6 +765,27 @@ export default function DashboardApp(props: Props = {}) {
       ),
     enabled: Boolean(
       cardsSurfaceOpen &&
+        usdFundingQuery.data?.entityId &&
+        usdFundingQuery.data?.accountId,
+    ),
+    retry: false,
+    staleTime: 15_000,
+  });
+
+  const cardTransactionsQuery = useQuery({
+    queryKey: [
+      "card-transactions",
+      usdFundingQuery.data?.entityId,
+      usdFundingQuery.data?.accountId,
+    ],
+    queryFn: () =>
+      cardTransactionsApi.listForAccount(
+        usdFundingQuery.data!.entityId,
+        usdFundingQuery.data!.accountId,
+        { limit: 50 },
+      ),
+    enabled: Boolean(
+      cardTxnSurfaceOpen &&
         usdFundingQuery.data?.entityId &&
         usdFundingQuery.data?.accountId,
     ),
@@ -2512,12 +2544,31 @@ export default function DashboardApp(props: Props = {}) {
     if (!funding || !card) return;
     setState({ cardFreezeBusy: true, cardFreezeError: "" });
     try {
-      const frozen = (card.status || "").toLowerCase() === "frozen";
+      const frozen = isCardFrozenStatus(card.status);
       const updated = frozen
         ? await cardsApi.unfreeze(funding.entityId, funding.accountId, card.id)
         : await cardsApi.freeze(funding.entityId, funding.accountId, card.id);
+      const patched = {
+        ...(issuedCardsQuery.data || {
+          entity_id: funding.entityId,
+          account_id: funding.accountId,
+          cards: [] as IssuedCard[],
+        }),
+        cards: (issuedCardsQuery.data?.cards ?? []).map((row) =>
+          row.id === updated.id ? { ...row, ...updated, number: null, cvv: null } : row,
+        ),
+      };
+      queryClient.setQueryData(
+        ["issued-cards", funding.entityId, funding.accountId],
+        patched,
+      );
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
-      setState({ cardFreezeBusy: false, selectedCardId: updated.id });
+      await queryClient.invalidateQueries({ queryKey: ["card-transactions"] });
+      setState({
+        cardFreezeBusy: false,
+        cardFreezeError: "",
+        selectedCardId: updated.id,
+      });
     } catch (err) {
       // Own field: the card detail modal renders this one. `newCardError` only
       // surfaces inside the issue-card modal, so a failed toggle looked silent.
@@ -3021,14 +3072,27 @@ export default function DashboardApp(props: Props = {}) {
         openDetail: openTxDetail(t.id),
       };
     };
-    const decoratedAll = (transactionsQuery.data?.items ?? []).map(decorateTx);
+    const cardSpendTransactions = (
+      cardTransactionsQuery.data?.transactions ?? []
+    ).map(mapCardTransactionToTransaction);
+    const feedTransactions = (() => {
+      const base = transactionsQuery.data?.items ?? [];
+      if (!cardSpendTransactions.length) return base;
+      const seen = new Set(base.map((row) => String(row.id)));
+      const extras = cardSpendTransactions.filter((row) => !seen.has(String(row.id)));
+      if (!extras.length) return base;
+      return [...extras, ...base].sort((a, b) =>
+        String(b.created_at).localeCompare(String(a.created_at)),
+      );
+    })();
+    const decoratedAll = feedTransactions.map(decorateTx);
     const txUsesLatestFifty =
       s.txFilter === "incoming" ||
       s.txFilter === "outgoing" ||
       Boolean(s.txSearch.trim()) ||
       s.txCurrency !== "all" ||
       s.txDateRange !== "all";
-    const latestFiftyMatches = searchTransactions(transactionsQuery.data?.items ?? [], {
+    const latestFiftyMatches = searchTransactions(feedTransactions, {
       primary: s.txFilter,
       query: s.txSearch,
       currency: s.txCurrency,
@@ -3532,7 +3596,9 @@ export default function DashboardApp(props: Props = {}) {
         convertNetworkId: null,
       })
     : null;
-  const cardsRecent: ActivityItem[] = [];
+  const cardsRecent: ActivityItem[] = decoratedAll
+    .filter((row) => isCardSpendTransaction(row))
+    .slice(0, 20);
   const corridors = CORRIDORS.map(c => ({
         ...c,
         flagUrl: flagUrl(c.iso),
@@ -3541,7 +3607,7 @@ export default function DashboardApp(props: Props = {}) {
         statusSoft: c.status === "live" ? "var(--indigo-tint)" : "var(--amber-tint)",
       }));
   const cards = issuedCardsList.map((c, i) => {
-    const frozen = (c.status || "").toLowerCase() === "frozen";
+    const frozen = isCardFrozenStatus(c.status);
     const brand = resolveCardBrand(c);
     return {
       id: c.id,
@@ -4253,7 +4319,7 @@ export default function DashboardApp(props: Props = {}) {
         : "Hop 2 of 2 — convert USDC to destination fiat"
       : null;
   const swapAccepted = s.swapAccepted;
-  const cardIsFrozen = (cardSel?.status || "").toLowerCase() === "frozen";
+  const cardIsFrozen = isCardFrozenStatus(cardSel?.status);
   const cardDetail: any = cardSel
     ? {
         id: cardSel.id,
@@ -5292,6 +5358,9 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   cardholderName={cardholderDisplay}
   accountLabel={cardSel.card_name || `···· ${cardSel.last_four || ""}`}
   billing={cardBilling}
+  recent={cardsRecent.filter(
+    (row) => String((row as { card_id?: string | null }).card_id || "") === cardSel.id,
+  )}
   secrets={cardSecrets}
   secretsBusy={cardSecretsBusy}
   secretsError={cardSecretsError}

@@ -65,6 +65,13 @@ function buildProgressSteps(status?: string): ProgressStep[] {
       { key: "failed", label: "Failed", state: "failed" },
     ];
   }
+  if (s === "declined") {
+    return [
+      { key: "created", label: "Created", state: "done" },
+      { key: "processing", label: "Authorization", state: "done" },
+      { key: "declined", label: "Declined", state: "failed" },
+    ];
+  }
   if (s === "canceled") {
     return [
       { key: "created", label: "Created", state: "done" },

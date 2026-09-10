@@ -58,6 +58,14 @@ export const TRANSACTION_STATUS: Record<TransactionStatus, TransactionStatusDesc
     terminal: false,
     receiptEligible: false,
   },
+  declined: {
+    label: "Declined",
+    icon: "!",
+    color: "var(--red)",
+    soft: "var(--red-tint)",
+    terminal: true,
+    receiptEligible: false,
+  },
 };
 
 export function describeTransactionStatus(

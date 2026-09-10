@@ -6,7 +6,7 @@ import { ordersApi, type Order, type OrderStatus } from "./orders";
 // transaction is a read-view over merchant_orders (app/services/orders/status.py
 // ALL_ORDER_STATUSES). "refunded" was missing here, which meant a refunded
 // order silently fell through to the TX_STATUS_DISPLAY "Unknown" fallback.
-export type TransactionStatus = "processing" | "completed" | "failed" | "refunded" | "canceled" | "frozen";
+export type TransactionStatus = "processing" | "completed" | "failed" | "refunded" | "canceled" | "frozen" | "declined";
 export type TransactionDirection = "in" | "out" | "unknown";
 
 /** Fiat-rail counterparty for receipts / transaction detail. */
@@ -48,6 +48,8 @@ export type Transaction = {
   memo?: string | null;
   /** Partner FinancialAccount id for account-scoped credits. */
   financial_account_id?: string | null;
+  /** Issued-card id when this row is a card spend/authorization. */
+  card_id?: string | null;
   /** Credit/event source (e.g. `stellar_payment`, `account.credited`). */
   source?: string | null;
   created_at: string;
@@ -239,7 +241,8 @@ function parseStatus(value: unknown): TransactionStatus | null {
     key === "failed" ||
     key === "refunded" ||
     key === "canceled" ||
-    key === "frozen"
+    key === "frozen" ||
+    key === "declined"
   ) {
     return key;
   }
@@ -308,6 +311,7 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
     financial_account_id: optionalString(
       row.financial_account_id ?? row.financialAccountId ?? row.account_id,
     ),
+    card_id: optionalString(row.card_id ?? row.cardId),
     source: optionalString(row.source),
     created_at: createdAt,
     updated_at: updatedAt,
@@ -356,17 +360,28 @@ export const transactionsApi = {
   // Account credits are not on `/v1/orders`, so the first page of "all" /
   // "completed" also merges `GET /v1/account-credits` (fail open if missing).
   async listPage(params: TransactionPageParams = {}): Promise<TransactionPage> {
-    const page = await ordersApi.list({
-      status: params.status as OrderStatus | undefined,
-      limit: params.limit,
-      offset: params.offset,
-    });
-    let items = page.items.map(mapOrderToTransaction);
-    let total = page.total;
     const offset = params.offset ?? 0;
     const status = params.status;
+    const limit = params.limit ?? 20;
+    // Orders have no "declined" status — card auth declines are card-only.
+    const skipOrders = status === "declined";
+    const page = skipOrders
+      ? { items: [], total: 0, limit, offset }
+      : await ordersApi.list({
+          status: params.status as OrderStatus | undefined,
+          limit: params.limit,
+          offset: params.offset,
+        });
+    let items = page.items.map(mapOrderToTransaction);
+    let total = page.total;
     const mergeCredits =
       offset === 0 && (status === undefined || status === "completed");
+    const mergeCardTxns =
+      offset === 0 &&
+      (status === undefined ||
+        status === "completed" ||
+        status === "failed" ||
+        status === "declined");
 
     if (mergeCredits) {
       try {
@@ -387,6 +402,44 @@ export const transactionsApi = {
         }
       } catch {
         // Endpoint missing / unauthorized — keep orders-only page.
+      }
+    }
+
+    if (mergeCardTxns) {
+      try {
+        const { resolveUsdFundingAccount } = await import("./cards");
+        const {
+          cardTransactionsApi,
+          mapCardTransactionToTransaction,
+        } = await import("./cardTransactions");
+        const funding = await resolveUsdFundingAccount({ depositAccounts: [] });
+        if (funding) {
+          const cardPage = await cardTransactionsApi.listForAccount(
+            funding.entityId,
+            funding.accountId,
+            { limit: 50 },
+          );
+          let cardTxs = cardPage.transactions.map(mapCardTransactionToTransaction);
+          if (status === "failed" || status === "declined") {
+            cardTxs = cardTxs.filter(
+              (row) => row.status === "declined" || row.status === "failed",
+            );
+          } else if (status === "completed") {
+            cardTxs = cardTxs.filter((row) => row.status === "completed");
+          }
+          const seen = new Set(items.map((row) => String(row.id)));
+          const extras = cardTxs.filter((row) => !seen.has(String(row.id)));
+          if (extras.length) {
+            items = [...extras, ...items]
+              .sort((a, b) =>
+                String(b.created_at).localeCompare(String(a.created_at)),
+              )
+              .slice(0, page.limit || limit);
+            total += extras.length;
+          }
+        }
+      } catch {
+        // Endpoint missing / unauthorized — keep orders (+ credits) page.
       }
     }
 
