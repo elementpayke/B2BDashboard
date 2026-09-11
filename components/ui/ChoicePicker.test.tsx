@@ -3,6 +3,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ChoicePicker from "./ChoicePicker";
+import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
+import { DARK, LIGHT } from "@/components/mockData";
 
 const OPTIONS = [
   { value: "0", label: "Access Bank" },
@@ -166,5 +168,37 @@ describe("ChoicePicker", () => {
       expect(listbox.style.bottom).not.toBe("");
       expect(listbox.style.top).toBe("auto");
     });
+  });
+
+  it("inherits dark panel tokens from documentElement when portaled", async () => {
+    setViewport(390);
+    applyThemeVars({ ...DARK }, "dark");
+    try {
+      render(
+        <ChoicePicker
+          id="bank"
+          label="Bank"
+          title="Choose bank"
+          value="0"
+          options={OPTIONS}
+          onChange={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        window.dispatchEvent(new Event("resize"));
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /bank: access bank/i }));
+      const sheet = await screen.findByRole("dialog", { name: /choose bank/i });
+      expect(getComputedStyle(document.documentElement).getPropertyValue("--panel").trim()).toBe(
+        DARK["--panel"],
+      );
+      // Sheet is under body; resolved --panel must come from <html>, not light :root alone.
+      expect(sheet.className).toContain("ep-choice-sheet");
+      expect(getComputedStyle(sheet).getPropertyValue("background-color")).not.toBe("");
+    } finally {
+      clearThemeVars(Object.keys(LIGHT));
+    }
   });
 });

@@ -1,8 +1,9 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { flagUrl, CURRENCIES, LIGHT, DARK, DARK_HC_OVERRIDES } from "./mockData";
 import MbokaLogo from "@/components/brand/MbokaLogo";
+import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
 
 export default function Landing() {
   const router = useRouter();
@@ -18,6 +19,12 @@ export default function Landing() {
   const goLogin = () => router.push("/login");
 
   const vars = theme === "dark" ? { ...DARK, ...DARK_HC_OVERRIDES } : LIGHT;
+
+  useEffect(() => {
+    const next = theme === "dark" ? { ...DARK, ...DARK_HC_OVERRIDES } : LIGHT;
+    applyThemeVars(next, theme);
+    return () => clearThemeVars(Object.keys(LIGHT));
+  }, [theme]);
   const rootStyle: React.CSSProperties = {
     minHeight: "100vh",
     position: "relative",
