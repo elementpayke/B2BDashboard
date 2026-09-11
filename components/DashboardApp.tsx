@@ -8,6 +8,7 @@ import {
   CORRIDORS, STATUS_MAP,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
+import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
 import {
   dashboardApi,
   liveRateRowsFromSummary,
@@ -403,6 +404,20 @@ export default function DashboardApp(props: Props = {}) {
       ...(theme ? { theme } : {}),
     }));
   }, [setState]);
+
+  // Portaled overlays (ChoicePicker) mount under document.body and miss the
+  // dashboard root's inline theme vars — keep <html> in sync.
+  useEffect(() => {
+    const boostDark = props.boostDarkContrast ?? true;
+    const next =
+      state.theme === "dark"
+        ? boostDark
+          ? { ...DARK, ...DARK_HC_OVERRIDES }
+          : DARK
+        : LIGHT;
+    applyThemeVars(next, state.theme === "dark" ? "dark" : "light");
+    return () => clearThemeVars(Object.keys(LIGHT));
+  }, [state.theme, props.boostDarkContrast]);
 
   // Close compact navigation when crossing into desktop chrome.
   useEffect(() => {

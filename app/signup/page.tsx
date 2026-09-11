@@ -79,7 +79,7 @@ export default function SignupPage() {
           />
         </div>
         <div>
-          <label htmlFor="email" style={authLabelStyle}>Work email</label>
+          <label htmlFor="email" style={authLabelStyle}>Email</label>
           <input
             id="email"
             type="email"
@@ -88,8 +88,11 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={authInputStyle}
-            placeholder="name@company.com"
+            placeholder="you@company.com or you@gmail.com"
           />
+          <p style={{ margin: "6px 0 0", fontSize: "12px", color: AUTH_MUTED_SOFT, lineHeight: 1.4 }}>
+            Use any real email. Disposable addresses are blocked. KYB verification is required before you can send or receive money.
+          </p>
         </div>
         <div>
           <label htmlFor="password" style={authLabelStyle}>Password</label>

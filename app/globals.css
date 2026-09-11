@@ -13,9 +13,9 @@ html {
 }
 
 /* Light-theme defaults so brand tokens resolve outside the dashboard root
-   (auth pages, landing, printed documents). DashboardApp sets the same
-   custom properties inline on its own root, which overrides these for the
-   themed subtree — including the dark palette. Values mirror LIGHT in
+   (auth pages, printed documents). DashboardApp / Landing also sync the
+   active palette onto document.documentElement so portaled overlays
+   (ChoicePicker sheets) inherit dark mode. Values mirror LIGHT in
    components/mockData.ts and the brand kit's four colour tokens:
    indigo #3B2ED3 · indigo lift #7C6FFF (dark only) · ink #131126 ·
    bone #F6F4EF (never pure white). */
@@ -33,7 +33,7 @@ html {
   --indigo-text: #3b2ed3;
   --indigo-tint: #eeedfb;
   --ink-panel: #131126;
-  --ink-panel-text: #8b89a6;
+  --ink-panel-text: #c4c2dc;
 }
 
 body {
@@ -2650,7 +2650,7 @@ body {
 .ep-home__balance-sub {
   font-family: "DM Mono", monospace;
   font-size: 11.5px;
-  opacity: 0.75;
+  opacity: 0.9;
   position: relative;
 }
 
@@ -3464,9 +3464,8 @@ button.ep-home__stat:focus-visible {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Opaque so engine-rails white labels don't bleed through while sticky. */
+  background: var(--bg);
   border-bottom: 1px solid var(--glass-border);
 }
 
@@ -4089,7 +4088,7 @@ button.ep-home__stat:focus-visible {
 
 .ep-landing-rails__tag {
   margin-left: auto;
-  color: var(--ink-panel-text);
+  color: rgba(255, 255, 255, 0.72);
   font-family: "DM Mono", monospace;
   font-size: 11px;
 }
@@ -4099,8 +4098,8 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-landing-stat {
-  background: var(--surface);
-  border: 1px solid var(--glass-border);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 18px;
   padding: 18px 12px;
   text-align: center;
@@ -4157,7 +4156,7 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-landing-cta-band__lede {
-  color: var(--ink-panel-text);
+  color: rgba(255, 255, 255, 0.72);
   margin: 14px auto 26px;
   max-width: 420px;
   font-size: 15px;
