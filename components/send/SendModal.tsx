@@ -37,8 +37,11 @@ export type SendModalProps = {
   sendRailChips: any[];
   sendProviderHasChoice: boolean;
   sendProviderChips: any[];
-  /** True while GET /v1/supported/catalog has not settled — hide hardcoded chips. */
+  /** True while GET /v1/supported/catalog is loading / retrying with no data yet. */
   sendCatalogLoading: boolean;
+  /** Set when the catalog request failed and no corridors are available. */
+  sendCatalogError?: string | null;
+  onRetrySendCatalog?: () => void;
   sendAssets: any[];
   sendChains: any[];
   sendAssetCode: string;
@@ -288,6 +291,22 @@ function SendProviderPicker({
 
 export default function SendModal(p: SendModalProps) {
   const catalogBusy = p.sendIsCountry && p.sendCatalogLoading;
+  const countryOptions = (p.sendCountryChips || []).map((c: any) => ({
+    value: String(c.idx),
+    label: c.name,
+    leading: c.flagUrl ? (
+      <span
+        className="ep-money-flag"
+        style={{ backgroundImage: `url(${c.flagUrl})` }}
+        aria-hidden
+      />
+    ) : undefined,
+  }));
+  const catalogEmpty =
+    p.sendIsCountry &&
+    !catalogBusy &&
+    countryOptions.length === 0;
+  const catalogFailed = catalogEmpty && Boolean(p.sendCatalogError);
   const canSaveDetails =
     Boolean(p.sendRecipient.trim()) &&
     (p.sendIsCrypto || Boolean(p.sendRecipientName.trim()));
@@ -349,24 +368,38 @@ export default function SendModal(p: SendModalProps) {
 
               {p.sendIsCountry ? (
                 <>
+                  {catalogFailed ? (
+                    <div className="ep-money-empty-stack" role="alert">
+                      <p className="ep-money-empty">
+                        Couldn&apos;t load destination countries.{" "}
+                        {p.sendCatalogError || "Please try again."}
+                      </p>
+                      {p.onRetrySendCatalog ? (
+                        <button
+                          type="button"
+                          className="ep-btn-primary"
+                          onClick={p.onRetrySendCatalog}
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : catalogEmpty ? (
+                    <p className="ep-money-empty" role="status">
+                      No corridors available for this payout method right now.
+                    </p>
+                  ) : (
                   <div className="ep-send-recipient__card" role="group" aria-label="Destination">
                     <ChoicePicker
                       id="send-country"
                       label="Destination country"
                       title="Choose country"
                       value={String(p.sendCountryIdx)}
-                      options={(p.sendCountryChips || []).map((c: any) => ({
-                        value: String(c.idx),
-                        label: c.name,
-                        leading: c.flagUrl ? (
-                          <span
-                            className="ep-money-flag"
-                            style={{ backgroundImage: `url(${c.flagUrl})` }}
-                            aria-hidden
-                          />
-                        ) : undefined,
-                      }))}
+                      options={countryOptions}
                       onChange={(value) => p.selectSendCountry(Number(value))}
+                      loading={catalogBusy && countryOptions.length === 0}
+                      loadingLabel="Loading countries…"
+                      disabled={catalogBusy && countryOptions.length === 0}
                     />
                     <div className="ep-money-field">
                       <span className="ep-money-label" id="send-currency-label">
@@ -396,7 +429,10 @@ export default function SendModal(p: SendModalProps) {
                       </div>
                     </div>
                   </div>
+                  )}
 
+                  {!catalogEmpty ? (
+                    <>
                   {p.sendRailHasChoice ? (
                     <div className="ep-money-field">
                       <span className="ep-money-label" id="send-rail-label">
@@ -451,6 +487,8 @@ export default function SendModal(p: SendModalProps) {
                         routing through standby providers.
                       </span>
                     </div>
+                  ) : null}
+                    </>
                   ) : null}
                 </>
               ) : (
@@ -535,12 +573,17 @@ export default function SendModal(p: SendModalProps) {
                 onClick={p.sendNext}
                 disabled={
                   catalogBusy ||
+                  catalogEmpty ||
                   p.sendBlockedNoNetworkId ||
                   (p.sendIsCrypto && !(p.sendChains || []).length)
                 }
                 aria-busy={catalogBusy || undefined}
               >
-                {catalogBusy ? "Loading providers…" : "Continue"}
+                {catalogBusy
+                  ? "Loading countries…"
+                  : catalogFailed
+                    ? "Countries unavailable"
+                    : "Continue"}
               </button>
             </div>
           ) : null}

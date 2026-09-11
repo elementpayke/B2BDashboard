@@ -52,6 +52,10 @@ export type DepositModalProps = {
   depositIsCrypto: boolean;
   depositSub: "country" | "method";
   depositCountryRows: DepositCountryRow[];
+  /** True while supported-catalog is loading with no corridors yet. */
+  depositCatalogLoading?: boolean;
+  depositCatalogError?: string | null;
+  onRetryDepositCatalog?: () => void;
   depositMethodGroups: DepositMethodGroup[];
   depositSelectedCountryName: string;
   depositMethodChosen: boolean;
@@ -285,6 +289,27 @@ export default function DepositModal(p: DepositModalProps) {
 
               {p.depositIsCountry && p.depositSub === "country" ? (
                 <>
+                  {p.depositCatalogLoading && filteredCountries.length === 0 ? (
+                    <p className="ep-money-empty" role="status">
+                      Loading countries…
+                    </p>
+                  ) : p.depositCatalogError && filteredCountries.length === 0 && !countrySearch.trim() ? (
+                    <div className="ep-money-empty-stack" role="alert">
+                      <p className="ep-money-empty">
+                        Couldn&apos;t load countries. {p.depositCatalogError}
+                      </p>
+                      {p.onRetryDepositCatalog ? (
+                        <button
+                          type="button"
+                          className="ep-btn-primary"
+                          onClick={p.onRetryDepositCatalog}
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
                   <SearchField
                     id="deposit-country-search"
                     value={countrySearch}
@@ -321,6 +346,8 @@ export default function DepositModal(p: DepositModalProps) {
                       ))
                     )}
                   </div>
+                    </>
+                  )}
                 </>
               ) : null}
 
