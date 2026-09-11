@@ -4699,7 +4699,15 @@ export default function DashboardApp(props: Props = {}) {
 <ActivityList
   title="Card transactions"
   items={cardsRecent}
-  emptyLabel="No card spend yet. Authorizations show here after the card is used (sandbox may stay empty)."
+  emptyLabel={
+    cardTransactionsQuery.isLoading || usdFundingQuery.isLoading
+      ? "Loading card spend…"
+      : cardTransactionsQuery.isError
+        ? "Couldn't load card spend. Try refreshing."
+        : !usdFundingQuery.data
+          ? "Link an active USD account to see card spend."
+          : "No card spend yet. Authorizations show here after the card is used."
+  }
 />
 </div>
 </>) : null}
