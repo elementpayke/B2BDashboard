@@ -4009,12 +4009,11 @@ export default function DashboardApp(props: Props = {}) {
   const depositIsCrypto = s.depositGroup === "crypto";
   const depositSub = s.depositSub === "method" ? "method" : "country";
   const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
-  const depositIsMobileRail = depositRail.type === "mobile";
+  const depositIsMobileRail = isMobileMoneyRail(depositRail.type);
   const depositIsBankRail = depositRail.type === "bank";
-  const depositChannelLabel =
-    depositRail.type === "mobile" || depositRail.type === "momo"
-      ? mobileMoneyDisplayLabel(depositProvider) || channelLabelForRail(depositRail.type)
-      : channelLabelForRail(depositRail.type);
+  const depositChannelLabel = depositIsMobileRail
+    ? mobileMoneyDisplayLabel(depositProvider) || channelLabelForRail(depositRail.type)
+    : channelLabelForRail(depositRail.type);
   const depositOperator = depositChannelLabel;
   const depositMobileCode = depositCountry.code;
   const depositPhone = s.depositPhone;
