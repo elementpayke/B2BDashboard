@@ -132,6 +132,51 @@ describe("DepositModal country-first step", () => {
     expect(screen.queryByText("Uganda")).not.toBeInTheDocument();
   });
 
+  it("shows catalog error with retry when countries failed to load, not search-empty", () => {
+    const onRetryDepositCatalog = vi.fn();
+    render(
+      <DepositModal
+        {...baseProps}
+        depositSub="country"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositCatalogError="Upstream request timed out. Please try again."
+        onRetryDepositCatalog={onRetryDepositCatalog}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/Couldn.t load countries/i);
+    expect(screen.getByText(/Upstream request timed out/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search country or currency")).not.toBeInTheDocument();
+    expect(screen.queryByText("No countries match that search.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryDepositCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows search-empty when a query matches nothing, not catalog recovery", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositSub="country"
+        depositCountryRows={countryRows(vi.fn())}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Search country or currency"), {
+      target: { value: "zzzz-no-match" },
+    });
+
+    expect(screen.getByText("No countries match that search.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("lists mobile-money operators with short labels for selection", () => {
     const kenyaIdx = COUNTRIES.findIndex((c) => c.code === "KES");
 
