@@ -618,6 +618,17 @@ export default function DashboardApp(props: Props = {}) {
 
   // Settled once the first catalog fetch finishes (success or error).
   const sendCatalogSettled = sendCatalogQuery.isFetched;
+  const sendCatalogLoading =
+    !sendCatalogSettled || (sendCatalogQuery.isFetching && !sendCatalogQuery.data);
+  const sendCatalogError =
+    sendCatalogQuery.isError && !sendCatalogQuery.data
+      ? sendCatalogQuery.error instanceof Error
+        ? sendCatalogQuery.error.message
+        : "Upstream request failed. Please try again."
+      : null;
+  const retrySendCatalog = () => {
+    void sendCatalogQuery.refetch();
+  };
   // Live corridors only — never the hardcoded mock COUNTRIES list.
   const sendCountries = offRampCountriesFromCatalog(sendCatalogQuery.data);
   const depositCountries = onRampCountriesFromCatalog(sendCatalogQuery.data);
@@ -2997,7 +3008,6 @@ export default function DashboardApp(props: Props = {}) {
       sendCountry.code,
     );
     const sendProviderOptions = providerNamesFromCatalog(sendCatalogProviders);
-    const sendCatalogLoading = !sendCatalogSettled;
     const sendProviderIdx =
       sendProviderOptions.length === 0
         ? 0
@@ -5036,6 +5046,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendProviderHasChoice={sendProviderHasChoice}
   sendProviderChips={sendProviderChips}
   sendCatalogLoading={sendCatalogLoading}
+  sendCatalogError={sendCatalogError}
+  onRetrySendCatalog={retrySendCatalog}
   sendAssets={sendAssets}
   sendChains={sendChains}
   sendAssetCode={sendAssetCode}
@@ -5141,6 +5153,9 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   depositIsCrypto={depositIsCrypto}
   depositSub={depositSub}
   depositCountryRows={depositCountryRows}
+  depositCatalogLoading={sendCatalogLoading}
+  depositCatalogError={sendCatalogError}
+  onRetryDepositCatalog={retrySendCatalog}
   depositMethodGroups={depositMethodGroups}
   depositSelectedCountryName={depositCountryPicked ? depositCountry.name : ""}
   depositMethodChosen={depositMethodChosen}

@@ -179,6 +179,15 @@ describe("SendModal country mobile money", () => {
       sendIsCountry: true,
       sendIsMobileRail: true,
       sendIsBankRail: false,
+      sendCountryChips: [
+        {
+          idx: 0,
+          name: "Tanzania",
+          code: "TZS",
+          flagUrl: null,
+          select: () => {},
+        },
+      ],
       sendProviderLabel: "Mobile money provider",
       sendProviderOptions: ["AIRTELMONEYTZ", "MPESATZ"],
       sendProviderIdx: 0,
@@ -194,6 +203,25 @@ describe("SendModal country mobile money", () => {
     expect(screen.getByText("Mobile money provider")).toBeInTheDocument();
     expect(screen.getByText("Airtel Money")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+
+  it("shows catalog error with retry when countries failed to load", () => {
+    const onRetrySendCatalog = vi.fn();
+    render(
+      <SendModal
+        {...countryMobile({
+          sendCountryChips: [],
+          sendProviderOptions: [],
+          sendCatalogError: "Upstream request timed out. Please try again.",
+          onRetrySendCatalog,
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/Couldn.t load destination countries/i);
+    expect(screen.getByText(/Upstream request timed out/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetrySendCatalog).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Countries unavailable" })).toBeDisabled();
   });
 
   it("does not repeat the mobile provider picker on recipient step", () => {
