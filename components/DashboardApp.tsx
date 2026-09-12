@@ -209,6 +209,8 @@ import {
   cardTransactionsApi,
   isCardSpendTransaction,
   mapCardTransactionToTransaction,
+  reconcileCardTransactionList,
+  type CardTransactionList,
 } from "@/lib/services/cardTransactions";
 import CardDetailModal, {
   billingAddressFromKyb,
@@ -787,11 +789,37 @@ export default function DashboardApp(props: Props = {}) {
       usdFundingQuery.data?.entityId,
       usdFundingQuery.data?.accountId,
     ],
-    queryFn: () =>
-      cardsApi.list(
-        usdFundingQuery.data!.entityId,
-        usdFundingQuery.data!.accountId,
-      ),
+    queryFn: async () => {
+      const entityId = usdFundingQuery.data!.entityId;
+      const accountId = usdFundingQuery.data!.accountId;
+      const fetched = await cardsApi.list(entityId, accountId);
+      const live = queryClient.getQueryData<{
+        account_id: string;
+        entity_id: string;
+        cards: IssuedCard[];
+      }>(["issued-cards", entityId, accountId]);
+      if (!live?.cards?.length) return fetched;
+      const byId = new Map(fetched.cards.map((card) => [card.id, card]));
+      for (const card of live.cards) {
+        const base = byId.get(card.id);
+        if (!base) {
+          byId.set(card.id, card);
+          continue;
+        }
+        byId.set(card.id, {
+          ...base,
+          // Live SSE status/provider_ready wins over a concurrent list response.
+          ...(card.status ? { status: card.status } : {}),
+          ...(card.provider_ready !== undefined
+            ? { provider_ready: card.provider_ready }
+            : {}),
+        });
+      }
+      return {
+        ...fetched,
+        cards: Array.from(byId.values()),
+      };
+    },
     enabled: Boolean(
       cardsSurfaceOpen &&
         usdFundingQuery.data?.entityId &&
@@ -818,12 +846,19 @@ export default function DashboardApp(props: Props = {}) {
       usdFundingQuery.data?.entityId,
       usdFundingQuery.data?.accountId,
     ],
-    queryFn: () =>
-      cardTransactionsApi.listForAccount(
-        usdFundingQuery.data!.entityId,
-        usdFundingQuery.data!.accountId,
-        { limit: 50 },
-      ),
+    queryFn: async () => {
+      const entityId = usdFundingQuery.data!.entityId;
+      const accountId = usdFundingQuery.data!.accountId;
+      const fetched = await cardTransactionsApi.listForAccount(entityId, accountId, {
+        limit: 50,
+      });
+      const live = queryClient.getQueryData<CardTransactionList>([
+        "card-transactions",
+        entityId,
+        accountId,
+      ]);
+      return reconcileCardTransactionList(fetched, live);
+    },
     enabled: Boolean(
       cardTxnSurfaceOpen &&
         usdFundingQuery.data?.entityId &&

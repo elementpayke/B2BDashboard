@@ -191,6 +191,41 @@ export function mergeCardTransactionList(
   };
 }
 
+/**
+ * Merge a polled/fetched snapshot with any live SSE rows already in cache.
+ * Fetches must not wipe newer live patches that arrived while the request was in flight.
+ */
+export function reconcileCardTransactionList(
+  fetched: CardTransactionList,
+  live: CardTransactionList | undefined,
+): CardTransactionList {
+  if (!live?.transactions?.length) return fetched;
+  const byId = new Map<string, CardTransaction>();
+  for (const row of fetched.transactions) {
+    byId.set(row.transaction_id, row);
+  }
+  for (const row of live.transactions) {
+    const existing = byId.get(row.transaction_id);
+    if (!existing) {
+      byId.set(row.transaction_id, row);
+      continue;
+    }
+    // Prefer the row that looks newer (created_at), else keep live status/fields.
+    const liveNewer =
+      String(row.created_at).localeCompare(String(existing.created_at)) >= 0;
+    byId.set(row.transaction_id, liveNewer ? { ...existing, ...row } : { ...row, ...existing });
+  }
+  const transactions = Array.from(byId.values()).sort((a, b) =>
+    String(b.created_at).localeCompare(String(a.created_at)),
+  );
+  return {
+    entity_id: fetched.entity_id ?? live.entity_id,
+    account_id: fetched.account_id || live.account_id,
+    card_id: fetched.card_id ?? live.card_id,
+    transactions,
+  };
+}
+
 function normalizeList(raw: unknown): CardTransactionList {
   const obj = asRecord(raw);
   const items = extractCardTransactionRows(raw)
