@@ -58,6 +58,7 @@ describe("describeDepositAccountStatus", () => {
     expect(describeDepositAccountStatus("active")).toBe("Active");
     expect(describeDepositAccountStatus("pending")).toBe("Pending");
     expect(describeDepositAccountStatus("unavailable")).toBe("Unavailable");
+    expect(describeDepositAccountStatus("deposit_unavailable")).toBe("Unavailable");
   });
 
   it("passes through unknown statuses rather than hiding them", () => {
@@ -157,6 +158,18 @@ describe("mapDepositAccountToCardView", () => {
     const blank = mapDepositAccountToCardView(empty);
     expect(blank.balance).toBe("—");
     expect(blank.hasBalance).toBe(false);
+  });
+
+  it("shows deposit unavailable copy instead of pending coordinates when fiat rails are off", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "deposit_unavailable",
+      bank_name: "Community National Bank",
+      instructions: "This rail is unavailable.",
+    };
+    const view = mapDepositAccountToCardView(account);
+    expect(view.statusLabel).toBe("Unavailable");
+    expect(view.primaryDetail).toBe("Deposit rail unavailable");
   });
 });
 

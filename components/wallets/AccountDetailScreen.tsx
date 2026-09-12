@@ -28,6 +28,7 @@ export type AccountDetailScreenProps = {
   canConvert?: boolean;
   /** Fund is blocked once the wallet is closed. */
   canFund?: boolean;
+  fundDisabledReason?: string;
   /** Send is blocked once the wallet is closed. */
   canSend?: boolean;
   /** Close is offered for stablecoin wallets (block or delete). */
@@ -56,6 +57,7 @@ export default function AccountDetailScreen({
   recent,
   canConvert = false,
   canFund = true,
+  fundDisabledReason,
   canSend = true,
   canClose = false,
   closeDisabledReason,
@@ -82,6 +84,7 @@ export default function AccountDetailScreen({
   }, [menuOpen]);
 
   const closedHint = "This account is closed";
+  const fundHint = fundDisabledReason || closedHint;
 
   return (
     <div data-screen-label="Account detail" className="ep-acct-detail">
@@ -140,7 +143,7 @@ export default function AccountDetailScreen({
               onClick={onFund}
               className="ep-acct-detail__action"
               disabled={!canFund}
-              title={!canFund ? closedHint : undefined}
+              title={!canFund ? fundHint : undefined}
             >
               Fund <span aria-hidden>＋</span>
             </button>

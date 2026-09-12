@@ -70,6 +70,14 @@ export async function refreshTokens(refreshToken: string): Promise<RefreshResult
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+function isWatchStreamPath(path: string): boolean {
+  const cleanPath = path.split("?")[0] || path;
+  return (
+    cleanPath.endsWith("/watch") ||
+    cleanPath.includes("/card-transactions/watch")
+  );
+}
+
 async function doFetch(
   request: NextRequest,
   backendPathWithQuery: string,
@@ -77,6 +85,9 @@ async function doFetch(
   bodyBuffer: ArrayBuffer | null,
 ): Promise<Response> {
   const headers = buildForwardHeaders(request, accessToken);
+  const signal = isWatchStreamPath(backendPathWithQuery)
+    ? undefined
+    : AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS);
   // `redirect: "manual"` + a single hand-rolled follow, rather than fetch's
   // default auto-follow: undici detaches the ArrayBuffer body while
   // retrying a redirected POST/PUT/PATCH internally, so a second automatic
@@ -91,7 +102,7 @@ async function doFetch(
     headers,
     body: bodyBuffer,
     redirect: "manual",
-    signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
+    signal,
   });
   if (!REDIRECT_STATUSES.has(first.status)) {
     return first;
@@ -120,7 +131,7 @@ async function doFetch(
     headers,
     body: bodyBuffer ? bodyBuffer.slice(0) : null,
     redirect: "manual",
-    signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
+    signal,
   });
 }
 

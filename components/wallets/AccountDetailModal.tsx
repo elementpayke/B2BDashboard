@@ -17,6 +17,7 @@ export type AccountDetailModalProps = {
   acctDetail: {
     currency: string;
     name: string;
+    status?: string;
     /** Legal / beneficiary account holder from the API — never a currency label. */
     beneficiary?: string | null;
     rows: AccountDetailRow[];
@@ -165,6 +166,10 @@ export default function AccountDetailModal({
     .filter((sec) => sec.rows.length > 0);
   const showLetter = acctDetail.showDownloadLetter === true && acctDetail.rows.length > 0;
   const isFund = intent === "fund";
+  const unavailableNoRows =
+    !acctDetail.rows.length &&
+    (acctDetail.status === "deposit_unavailable" ||
+      acctDetail.status === "unavailable");
 
   return (
     <div className="ep-wallets-detail">
@@ -221,10 +226,15 @@ export default function AccountDetailModal({
         ))
       ) : (
         <div className="ep-wallets-detail__pending" role="status">
-          <div className="ep-wallets-detail__pending-title">Coordinates pending</div>
+          <div className="ep-wallets-detail__pending-title">
+            {unavailableNoRows ? "Deposit unavailable" : "Coordinates pending"}
+          </div>
           <div className="ep-wallets-detail__pending-body">
-            {acctDetail.instructions ||
-              "Deposit coordinates are being provisioned for this account. You will be able to copy IBAN and bank details here once they are ready."}
+            {unavailableNoRows
+              ? acctDetail.instructions ||
+                "Deposit rail unavailable for this account right now. Bank coordinates are not available to copy."
+              : acctDetail.instructions ||
+                "Deposit coordinates are being provisioned for this account. You will be able to copy IBAN and bank details here once they are ready."}
           </div>
         </div>
       )}

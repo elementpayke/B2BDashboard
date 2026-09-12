@@ -74,7 +74,10 @@ export type DashboardBootstrap = {
 
 function mapFiat(row: BootstrapAccount): DepositAccount {
   const status =
-    row.status === "active" || row.status === "pending" || row.status === "unavailable"
+    row.status === "active" ||
+    row.status === "pending" ||
+    row.status === "unavailable" ||
+    row.status === "deposit_unavailable"
       ? row.status
       : "pending";
   return {

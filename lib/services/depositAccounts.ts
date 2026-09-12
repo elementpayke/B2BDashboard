@@ -137,7 +137,11 @@ export function isStablecoinSlotSupported(currency: string, network: string): bo
  * `balance` is optional — partner fiat rails (e.g. Nuvion) return it on
  * `GET /partner/entities/{id}/accounts`; older responses omit it.
  */
-export type DepositAccountStatus = "active" | "pending" | "unavailable";
+export type DepositAccountStatus =
+  | "active"
+  | "pending"
+  | "unavailable"
+  | "deposit_unavailable";
 
 export type DepositAccountBalance = {
   available?: string | null;
@@ -249,6 +253,7 @@ const STATUS_LABELS: Record<DepositAccountStatus, string> = {
   active: "Active",
   pending: "Pending",
   unavailable: "Unavailable",
+  deposit_unavailable: "Unavailable",
 };
 
 export function describeDepositAccountStatus(status: string | null | undefined): string {
@@ -311,7 +316,9 @@ export function formatDepositAccountBalance(
 export function mapDepositAccountToCardView(account: DepositAccount): DepositAccountCardView {
   const primaryDetail = account.iban
     ? maskAccountIdentifier(account.iban)
-    : account.bank_name || account.instructions || "Coordinates pending";
+    : account.status === "deposit_unavailable" || account.status === "unavailable"
+      ? "Deposit rail unavailable"
+      : account.bank_name || account.instructions || "Coordinates pending";
   const secondaryDetail = [account.bic, account.account_holder_name]
     .filter((v): v is string => Boolean(v))
     .join(" · ");

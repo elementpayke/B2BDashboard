@@ -26,6 +26,7 @@ export type IssuedCard = {
   entity_id: string;
   type: string;
   status: string;
+  provider_ready?: boolean | null;
   reference?: string | null;
   card_name?: string | null;
   currency: string;
@@ -206,6 +207,24 @@ export function describeCardStatus(status: string | null | undefined): string {
   if (key === "failed") return "Failed";
   if (key === "closed" || key === "terminated" || key === "deleted") return "Closed";
   return status || "Unknown";
+}
+
+export function isCardFailedStatus(status: string | null | undefined): boolean {
+  const key = (status || "").toLowerCase();
+  return (
+    key === "failed" ||
+    key === "closed" ||
+    key === "terminated" ||
+    key === "deleted"
+  );
+}
+
+export function isCardActionable(card: {
+  status?: string | null;
+  provider_ready?: boolean | null;
+}): boolean {
+  if (card.provider_ready === false) return false;
+  return !isCardFailedStatus(card.status);
 }
 
 /** True when the card cannot spend (frozen/blocked). */

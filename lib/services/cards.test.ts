@@ -10,6 +10,8 @@ import {
   detectCardBrand,
   resolveCardBrand,
   isActiveUsdFundingAccount,
+  isCardActionable,
+  isCardFailedStatus,
   isCardFrozenStatus,
   isValidCardE164,
   isValidCardholderEmail,
@@ -128,7 +130,20 @@ describe("describeCardStatus", () => {
     expect(describeCardStatus("frozen")).toBe("Frozen");
     expect(describeCardStatus("blocked")).toBe("Frozen");
     expect(describeCardStatus("pending")).toBe("Pending");
+    expect(describeCardStatus("failed")).toBe("Failed");
+    expect(describeCardStatus("closed")).toBe("Closed");
     expect(describeCardStatus(null)).toBe("Unknown");
+  });
+});
+
+describe("isCardFailedStatus / isCardActionable", () => {
+  it("treats failed and closed partner states as non-actionable", () => {
+    expect(isCardFailedStatus("failed")).toBe(true);
+    expect(isCardFailedStatus("terminated")).toBe(true);
+    expect(isCardFailedStatus("active")).toBe(false);
+    expect(isCardActionable({ status: "active", provider_ready: true })).toBe(true);
+    expect(isCardActionable({ status: "failed", provider_ready: true })).toBe(false);
+    expect(isCardActionable({ status: "active", provider_ready: false })).toBe(false);
   });
 });
 
