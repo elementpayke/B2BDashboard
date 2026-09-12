@@ -17,6 +17,7 @@ export type AccountDetailModalProps = {
   acctDetail: {
     currency: string;
     name: string;
+    status?: string;
     /** Legal / beneficiary account holder from the API — never a currency label. */
     beneficiary?: string | null;
     rows: AccountDetailRow[];
@@ -165,10 +166,12 @@ export default function AccountDetailModal({
     .filter((sec) => sec.rows.length > 0);
   const showLetter = acctDetail.showDownloadLetter === true && acctDetail.rows.length > 0;
   const isFund = intent === "fund";
+  const depositUnavailable =
+    acctDetail.status === "deposit_unavailable" || acctDetail.status === "unavailable";
 
   return (
     <div className="ep-wallets-detail">
-      {isFund ? (
+      {isFund && !depositUnavailable ? (
         <div className="ep-wallets-detail__fund-hint" role="note">
           <div className="ep-wallets-detail__fund-hint-title">
             Transfer {acctDetail.currency} to these bank details
@@ -188,7 +191,15 @@ export default function AccountDetailModal({
         </div>
       ) : null}
 
-      {beneficiary ? (
+      {depositUnavailable ? (
+        <div className="ep-wallets-detail__pending" role="status">
+          <div className="ep-wallets-detail__pending-title">Deposit unavailable</div>
+          <div className="ep-wallets-detail__pending-body">
+            {acctDetail.instructions ||
+              "Deposit rail unavailable for this account right now. Bank coordinates are not available to copy."}
+          </div>
+        </div>
+      ) : beneficiary ? (
         <div className="ep-wallets-detail__section">
           <div className="ep-wallets-detail__section-title">Beneficiary</div>
           <DetailField
@@ -201,7 +212,7 @@ export default function AccountDetailModal({
         </div>
       ) : null}
 
-      {acctDetail.rows.length ? (
+      {depositUnavailable ? null : acctDetail.rows.length ? (
         bankRows.map((sec) => (
           <div key={sec.title} className="ep-wallets-detail__section">
             <div className="ep-wallets-detail__section-title">{sec.title}</div>
@@ -229,7 +240,7 @@ export default function AccountDetailModal({
         </div>
       )}
 
-      {showLetter ? (
+      {showLetter && !depositUnavailable ? (
         <button
           type="button"
           onClick={() => downloadBankLetter(acctDetail)}

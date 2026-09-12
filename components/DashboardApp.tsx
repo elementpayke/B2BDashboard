@@ -120,6 +120,7 @@ import {
   toUiNetworkKey,
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
+import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import {
   offRampCountriesFromCatalog,
   offRampProvidersForRail,
@@ -193,19 +194,25 @@ import {
   formatCardExpiry,
   formatCardPan,
   formatMaskedPan,
+  isCardActionable,
+  isCardFailedStatus,
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
+  reconcileIssuedCardsList,
   resolveCardBrand,
   resolveUsdFundingAccount,
   isCardFrozenStatus,
   type IssuedCard,
+  type IssuedCardsList,
   type UsdFundingAccount,
 } from "@/lib/services/cards";
 import {
   cardTransactionsApi,
   isCardSpendTransaction,
   mapCardTransactionToTransaction,
+  reconcileCardTransactionList,
+  type CardTransactionList,
 } from "@/lib/services/cardTransactions";
 import CardDetailModal, {
   billingAddressFromKyb,
@@ -784,11 +791,19 @@ export default function DashboardApp(props: Props = {}) {
       usdFundingQuery.data?.entityId,
       usdFundingQuery.data?.accountId,
     ],
-    queryFn: () =>
-      cardsApi.list(
-        usdFundingQuery.data!.entityId,
-        usdFundingQuery.data!.accountId,
-      ),
+    queryFn: async () => {
+      const entityId = usdFundingQuery.data!.entityId;
+      const accountId = usdFundingQuery.data!.accountId;
+      const fetchStartedAt = Date.now();
+      const fetched = await cardsApi.list(entityId, accountId);
+      const live = queryClient.getQueryData<IssuedCardsList>([
+        "issued-cards",
+        entityId,
+        accountId,
+      ]);
+      // Server list owns membership; only in-flight SSE patches overlay status.
+      return reconcileIssuedCardsList(fetched, live, fetchStartedAt);
+    },
     enabled: Boolean(
       cardsSurfaceOpen &&
         usdFundingQuery.data?.entityId &&
@@ -798,18 +813,36 @@ export default function DashboardApp(props: Props = {}) {
     staleTime: 15_000,
   });
 
+  const cardTxnStreamEnabled = Boolean(
+    cardTxnSurfaceOpen &&
+      usdFundingQuery.data?.entityId &&
+      usdFundingQuery.data?.accountId,
+  );
+  const { streamActive } = useCardTransactionsLive(
+    usdFundingQuery.data?.entityId,
+    usdFundingQuery.data?.accountId,
+    cardTxnStreamEnabled,
+  );
+
   const cardTransactionsQuery = useQuery({
     queryKey: [
       "card-transactions",
       usdFundingQuery.data?.entityId,
       usdFundingQuery.data?.accountId,
     ],
-    queryFn: () =>
-      cardTransactionsApi.listForAccount(
-        usdFundingQuery.data!.entityId,
-        usdFundingQuery.data!.accountId,
-        { limit: 50 },
-      ),
+    queryFn: async () => {
+      const entityId = usdFundingQuery.data!.entityId;
+      const accountId = usdFundingQuery.data!.accountId;
+      const fetched = await cardTransactionsApi.listForAccount(entityId, accountId, {
+        limit: 50,
+      });
+      const live = queryClient.getQueryData<CardTransactionList>([
+        "card-transactions",
+        entityId,
+        accountId,
+      ]);
+      return reconcileCardTransactionList(fetched, live);
+    },
     enabled: Boolean(
       cardTxnSurfaceOpen &&
         usdFundingQuery.data?.entityId &&
@@ -817,12 +850,12 @@ export default function DashboardApp(props: Props = {}) {
     ),
     retry: false,
     staleTime: 15_000,
-    // Cards screen is outside activityPoll — still refresh authorizations/declines.
+    // SSE is primary for live spend; polling stays as a slow safety net.
     refetchInterval:
       cardTxnSurfaceOpen || activityPoll
-        ? orderTrackingActive
-          ? 5_000
-          : 15_000
+        ? streamActive
+          ? 60_000
+          : 30_000
         : false,
   });
 
@@ -3137,6 +3170,7 @@ export default function DashboardApp(props: Props = {}) {
       active: ["var(--indigo-text)", "var(--indigo-tint)"],
       pending: ["var(--amber)", "var(--amber-tint)"],
       unavailable: ["var(--red)", "var(--red-tint)"],
+      deposit_unavailable: ["var(--red)", "var(--red-tint)"],
     };
     const depositStatusColors = (status: string): [string, string] =>
       depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
@@ -3166,6 +3200,9 @@ export default function DashboardApp(props: Props = {}) {
             (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
+    const selectedFiatUnavailable =
+      selectedDepositAccount?.status === "deposit_unavailable" ||
+      selectedDepositAccount?.status === "unavailable";
     const stellarWalletPaymentsQuery = useStellarWalletPaymentsForAccounts(
       stablecoinAccountsList.map((account) => ({
         id: account.id,
@@ -3235,6 +3272,7 @@ export default function DashboardApp(props: Props = {}) {
           return {
             currency: view.currency,
             name: view.name,
+            status: view.status,
             beneficiary: selectedDepositAccount.account_holder_name?.trim() || null,
             flagUrl: view.iso ? flagUrl(view.iso) : null,
             statusLabel: view.statusLabel,
@@ -3641,6 +3679,9 @@ export default function DashboardApp(props: Props = {}) {
       }));
   const cards = issuedCardsList.map((c, i) => {
     const frozen = isCardFrozenStatus(c.status);
+    const actionable = isCardActionable(c);
+    const failed = !actionable;
+    const closed = isCardFailedStatus(c.status) && describeCardStatus(c.status) === "Closed";
     const brand = resolveCardBrand(c);
     return {
       id: c.id,
@@ -3650,9 +3691,11 @@ export default function DashboardApp(props: Props = {}) {
       brand,
       balance: usdSpendLabel,
       bg: cardPlasticBg(i),
-      status: frozen ? "frozen" : "active",
-      statusLabel: describeCardStatus(c.status),
-      filter: frozen ? "saturate(0.2) opacity(0.7)" : "none",
+      status: failed ? "failed" : frozen ? "frozen" : "active",
+      statusLabel: closed ? "Closed" : failed ? "Failed" : describeCardStatus(c.status),
+      filter: failed ? "grayscale(1) opacity(0.65)" : frozen ? "saturate(0.2) opacity(0.7)" : "none",
+      actionDisabled: failed,
+      actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
       openDetail: openCardDetail(c.id),
       fund: openFundCardDirect(c.id),
       freeze: openCardDetail(c.id),
@@ -4629,7 +4672,16 @@ export default function DashboardApp(props: Props = {}) {
   summaryLines={acctDetailLines}
   recent={accountDetailRecent}
   canConvert={Boolean(acctDetail.showConvert)}
-  canFund={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
+  canFund={
+    selectedDepositAccount
+      ? !selectedFiatUnavailable
+      : !selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)
+  }
+  fundDisabledReason={
+    selectedDepositAccount && selectedFiatUnavailable
+      ? "Deposit rail unavailable for this account."
+      : undefined
+  }
   canSend={!selectedStablecoinAccount || !isClosedStatus(selectedStablecoinAccount.status)}
   canClose={
     selectedStablecoinAccount
@@ -4680,7 +4732,7 @@ export default function DashboardApp(props: Props = {}) {
 ) : (
 <div className="ep-cards__grid">
 {(cards || []).map((c: any) => (
-<div key={c.id} className="ep-cards__item">
+<div key={c.id} className={`ep-cards__item${c.actionDisabled ? " ep-cards__item--failed" : ""}`}>
 <button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
 <div className="ep-cards__plastic-top">
 <span className="ep-cards__plastic-label">{c.label}</span>
@@ -4698,8 +4750,8 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 </button>
 <div className="ep-cards__actions">
-<button type="button" onClick={c.fund} className="ep-cards__action">Fund USD</button>
-<button type="button" onClick={c.freeze} className="ep-cards__action">Manage</button>
+<button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund USD</button>
+<button type="button" onClick={c.freeze} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
 </div>
 </div>
 ))}

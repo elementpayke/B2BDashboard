@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cardholderPrefillFromKybProfile,
+  clearIssuedCardLivePatches,
   describeCardStatus,
   describeUsdFunding,
   describeUsdFundingIssueNote,
@@ -10,12 +11,18 @@ import {
   detectCardBrand,
   resolveCardBrand,
   isActiveUsdFundingAccount,
+  isCardActionable,
+  isCardFailedStatus,
   isCardFrozenStatus,
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
+  noteIssuedCardLivePatch,
+  reconcileIssuedCardsList,
   resolveUsdFundingAccount,
   stripCardSecrets,
+  type IssuedCard,
+  type IssuedCardsList,
 } from "./cards";
 
 // Stub only the network surface; the row/normalization helpers stay real.
@@ -128,7 +135,20 @@ describe("describeCardStatus", () => {
     expect(describeCardStatus("frozen")).toBe("Frozen");
     expect(describeCardStatus("blocked")).toBe("Frozen");
     expect(describeCardStatus("pending")).toBe("Pending");
+    expect(describeCardStatus("failed")).toBe("Failed");
+    expect(describeCardStatus("closed")).toBe("Closed");
     expect(describeCardStatus(null)).toBe("Unknown");
+  });
+});
+
+describe("isCardFailedStatus / isCardActionable", () => {
+  it("treats failed and closed partner states as non-actionable", () => {
+    expect(isCardFailedStatus("failed")).toBe(true);
+    expect(isCardFailedStatus("terminated")).toBe(true);
+    expect(isCardFailedStatus("active")).toBe(false);
+    expect(isCardActionable({ status: "active", provider_ready: true })).toBe(true);
+    expect(isCardActionable({ status: "failed", provider_ready: true })).toBe(false);
+    expect(isCardActionable({ status: "active", provider_ready: false })).toBe(false);
   });
 });
 
@@ -227,5 +247,67 @@ describe("resolveCardBrand / formatMaskedPan", () => {
     expect(formatMaskedPan("1204")).toBe("•••• •••• •••• 1204");
     expect(formatMaskedPan(null)).toBe("•••• •••• •••• ••••");
     expect(formatMaskedPan("----")).toBe("•••• •••• •••• ••••");
+  });
+});
+
+describe("reconcileIssuedCardsList", () => {
+  const baseCard = (overrides: Partial<IssuedCard> = {}): IssuedCard => ({
+    id: "card_1",
+    account_id: "acct_1",
+    entity_id: "ent_1",
+    type: "virtual",
+    status: "pending",
+    currency: "USD",
+    provider_ready: false,
+    ...overrides,
+  });
+
+  const list = (cards: IssuedCard[]): IssuedCardsList => ({
+    account_id: "acct_1",
+    entity_id: "ent_1",
+    cards,
+  });
+
+  beforeEach(() => {
+    clearIssuedCardLivePatches();
+  });
+
+  it("does not restore cards the server no longer returns", () => {
+    noteIssuedCardLivePatch("card_gone", 50);
+    const reconciled = reconcileIssuedCardsList(
+      list([baseCard({ id: "card_1", status: "active", provider_ready: true })]),
+      list([
+        baseCard({ id: "card_1", status: "active", provider_ready: true }),
+        baseCard({ id: "card_gone", status: "active", provider_ready: true }),
+      ]),
+      100,
+    );
+    expect(reconciled.cards.map((card) => card.id)).toEqual(["card_1"]);
+  });
+
+  it("lets a later refetch correct stale cached status/provider_ready", () => {
+    noteIssuedCardLivePatch("card_1", 10);
+    const reconciled = reconcileIssuedCardsList(
+      list([baseCard({ status: "frozen", provider_ready: false })]),
+      list([baseCard({ status: "active", provider_ready: true })]),
+      100,
+    );
+    expect(reconciled.cards[0]).toMatchObject({
+      status: "frozen",
+      provider_ready: false,
+    });
+  });
+
+  it("keeps SSE patches that arrived during the in-flight fetch", () => {
+    noteIssuedCardLivePatch("card_1", 150);
+    const reconciled = reconcileIssuedCardsList(
+      list([baseCard({ status: "pending", provider_ready: false })]),
+      list([baseCard({ status: "active", provider_ready: true })]),
+      100,
+    );
+    expect(reconciled.cards[0]).toMatchObject({
+      status: "active",
+      provider_ready: true,
+    });
   });
 });

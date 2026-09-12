@@ -7812,7 +7812,7 @@ select.ep-wallets-create__control {
   gap: 16px;
   /* Fixed plastic width — never shrinks with more cards; row scrolls instead.
      Mobile: one dominant card + next-card peek. Tablet/desktop: fixed larger plastics. */
-  --ep-card-w: min(340px, calc(100vw - 48px));
+  --ep-card-w: min(340px, calc(100vw - 72px));
   --ep-card-gap: 14px;
 }
 
@@ -8082,7 +8082,7 @@ select.ep-wallets-create__control {
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 2px;
   -webkit-overflow-scrolling: touch;
-  padding: 4px 2px 12px;
+  padding: 4px 20px 12px 2px;
   width: 100%;
   max-width: 100%;
   scrollbar-width: thin;
@@ -8107,6 +8107,10 @@ select.ep-wallets-create__control {
   max-width: var(--ep-card-w);
   min-width: var(--ep-card-w);
   scroll-snap-align: start;
+}
+
+.ep-cards__item--failed {
+  opacity: 0.92;
 }
 
 .ep-cards__plastic {
@@ -8296,6 +8300,12 @@ select.ep-wallets-create__control {
 
 .ep-cards__action:hover {
   background: var(--surface3);
+}
+
+.ep-cards__action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface2);
 }
 
 @media (max-width: 639px) {

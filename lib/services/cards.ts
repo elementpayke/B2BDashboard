@@ -26,6 +26,7 @@ export type IssuedCard = {
   entity_id: string;
   type: string;
   status: string;
+  provider_ready?: boolean | null;
   reference?: string | null;
   card_name?: string | null;
   currency: string;
@@ -38,6 +39,62 @@ export type IssuedCard = {
   brand?: string | null;
   created_at?: string | null;
 };
+
+export type IssuedCardsList = {
+  account_id: string;
+  entity_id: string;
+  cards: IssuedCard[];
+};
+
+/** Per-card timestamps for SSE `card.status` patches (ms since epoch). */
+const issuedCardLivePatchAt = new Map<string, number>();
+
+/** Record that live SSE updated this card's status / provider_ready. */
+export function noteIssuedCardLivePatch(cardId: string, atMs = Date.now()): void {
+  const id = String(cardId || "").trim();
+  if (!id) return;
+  issuedCardLivePatchAt.set(id, atMs);
+}
+
+/** Test helper — clear live patch markers between cases. */
+export function clearIssuedCardLivePatches(): void {
+  issuedCardLivePatchAt.clear();
+}
+
+/**
+ * Merge a polled card list with cache without locking in stale SSE state.
+ * Server membership wins (dropped cards stay dropped). Live status/provider_ready
+ * wins only when an SSE patch landed at/after this fetch started.
+ */
+export function reconcileIssuedCardsList(
+  fetched: IssuedCardsList,
+  live: IssuedCardsList | undefined,
+  fetchStartedAt: number,
+): IssuedCardsList {
+  const liveById = new Map((live?.cards ?? []).map((card) => [card.id, card]));
+  const cards = fetched.cards.map((base) => {
+    const patchedAt = issuedCardLivePatchAt.get(base.id);
+    if (patchedAt == null || patchedAt < fetchStartedAt) return base;
+    const liveCard = liveById.get(base.id);
+    if (!liveCard) return base;
+    return {
+      ...base,
+      ...(liveCard.status ? { status: liveCard.status } : {}),
+      ...(liveCard.provider_ready !== undefined
+        ? { provider_ready: liveCard.provider_ready }
+        : {}),
+    };
+  });
+
+  const fetchedIds = new Set(fetched.cards.map((card) => card.id));
+  for (const [cardId, patchedAt] of [...issuedCardLivePatchAt.entries()]) {
+    if (!fetchedIds.has(cardId) || patchedAt < fetchStartedAt) {
+      issuedCardLivePatchAt.delete(cardId);
+    }
+  }
+
+  return { ...fetched, cards };
+}
 
 export type CardBrand = "visa" | "mastercard" | "amex" | "discover" | "unknown";
 
@@ -206,6 +263,24 @@ export function describeCardStatus(status: string | null | undefined): string {
   if (key === "failed") return "Failed";
   if (key === "closed" || key === "terminated" || key === "deleted") return "Closed";
   return status || "Unknown";
+}
+
+export function isCardFailedStatus(status: string | null | undefined): boolean {
+  const key = (status || "").toLowerCase();
+  return (
+    key === "failed" ||
+    key === "closed" ||
+    key === "terminated" ||
+    key === "deleted"
+  );
+}
+
+export function isCardActionable(card: {
+  status?: string | null;
+  provider_ready?: boolean | null;
+}): boolean {
+  if (card.provider_ready === false) return false;
+  return !isCardFailedStatus(card.status);
 }
 
 /** True when the card cannot spend (frozen/blocked). */

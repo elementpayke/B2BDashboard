@@ -83,4 +83,20 @@ describe("mapBootstrap", () => {
     expect(mapped.fiatAccounts).toEqual([]);
     expect(mapped.stablecoinAccounts).toEqual([]);
   });
+
+  it("preserves deposit_unavailable fiat status from bootstrap", () => {
+    const mapped = mapBootstrap({
+      ...sample,
+      accounts: [
+        {
+          ...sample.accounts[0],
+          status: "deposit_unavailable",
+          iban: null,
+          bank_name: null,
+        },
+      ],
+    });
+
+    expect(mapped.fiatAccounts[0]?.status).toBe("deposit_unavailable");
+  });
 });

@@ -19,6 +19,7 @@ export type CardTransaction = {
   currency: string;
   status: string;
   type: string;
+  payment_type?: string | null;
   narration?: string | null;
   created_at: string;
   card_last_four?: string | null;
@@ -162,11 +163,66 @@ export function normalizeCardTransaction(raw: unknown): CardTransaction | null {
     amount,
     currency: (optionalString(row.currency) || "USD").toUpperCase(),
     status: optionalString(row.status)?.toLowerCase() || "pending",
-    type: optionalString(row.type)?.toLowerCase() || "debit",
+    type: optionalString(row.type ?? row.txn_type)?.toLowerCase() || "debit",
+    payment_type: optionalString(row.payment_type ?? row.paymentType)?.toLowerCase(),
     narration,
     created_at: createdAt,
     card_last_four: optionalString(row.card_last_four ?? row.last_four ?? row.last4),
     card_name: optionalString(row.card_name ?? row.cardName),
+  };
+}
+
+export function mergeCardTransactionList(
+  current: CardTransactionList | undefined,
+  next: CardTransaction,
+): CardTransactionList {
+  const transactions = [
+    next,
+    ...(current?.transactions ?? []).filter(
+      (row) => row.transaction_id !== next.transaction_id,
+    ),
+  ].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+  return {
+    entity_id: next.entity_id ?? current?.entity_id,
+    account_id: next.account_id || current?.account_id,
+    card_id: current?.card_id,
+    transactions,
+  };
+}
+
+/**
+ * Merge a polled/fetched snapshot with any live SSE rows already in cache.
+ * Fetches must not wipe newer live patches that arrived while the request was in flight.
+ */
+export function reconcileCardTransactionList(
+  fetched: CardTransactionList,
+  live: CardTransactionList | undefined,
+): CardTransactionList {
+  if (!live?.transactions?.length) return fetched;
+  const byId = new Map<string, CardTransaction>();
+  for (const row of fetched.transactions) {
+    byId.set(row.transaction_id, row);
+  }
+  for (const row of live.transactions) {
+    const existing = byId.get(row.transaction_id);
+    if (!existing) {
+      byId.set(row.transaction_id, row);
+      continue;
+    }
+    // Prefer the row that looks newer (created_at), else keep live status/fields.
+    const liveNewer =
+      String(row.created_at).localeCompare(String(existing.created_at)) >= 0;
+    byId.set(row.transaction_id, liveNewer ? { ...existing, ...row } : { ...row, ...existing });
+  }
+  const transactions = Array.from(byId.values()).sort((a, b) =>
+    String(b.created_at).localeCompare(String(a.created_at)),
+  );
+  return {
+    entity_id: fetched.entity_id ?? live.entity_id,
+    account_id: fetched.account_id || live.account_id,
+    card_id: fetched.card_id ?? live.card_id,
+    transactions,
   };
 }
 

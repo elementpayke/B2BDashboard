@@ -3,7 +3,9 @@ import {
   isCardSpendTransaction,
   mapCardTransactionToTransaction,
   mapCardTxnStatus,
+  mergeCardTransactionList,
   normalizeCardTransaction,
+  reconcileCardTransactionList,
   toCardTransactionId,
 } from "@/lib/services/cardTransactions";
 import { presentTransaction } from "@/lib/services/transactionPresentation";
@@ -103,5 +105,97 @@ describe("cardTransactions", () => {
         created_at: Number.MAX_SAFE_INTEGER * 1000,
       }),
     ).toBeNull();
+  });
+
+  it("passes through payment_type and falls back to txn_type when type is absent", () => {
+    const row = normalizeCardTransaction({
+      transaction_id: "txn_2",
+      card_id: "4",
+      account_id: "acct_usd",
+      amount: "7.00",
+      currency: "usd",
+      payment_type: "pos",
+      txn_type: "credit",
+      created_at: "2024-01-01T00:00:00.000Z",
+    });
+    expect(row?.payment_type).toBe("pos");
+    expect(row?.type).toBe("credit");
+  });
+
+  it("merges a live row to the front and replaces the older copy by transaction id", () => {
+    const merged = mergeCardTransactionList(
+      {
+        entity_id: "ent_1",
+        account_id: "acct_usd",
+        transactions: [
+          {
+            transaction_id: "txn_1",
+            card_id: "4",
+            account_id: "acct_usd",
+            amount: "12.50",
+            currency: "USD",
+            status: "pending",
+            type: "debit",
+            created_at: "2024-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      {
+        transaction_id: "txn_1",
+        card_id: "4",
+        account_id: "acct_usd",
+        entity_id: "ent_1",
+        amount: "12.50",
+        currency: "USD",
+        status: "completed",
+        type: "debit",
+        created_at: "2024-01-02T00:00:00.000Z",
+      },
+    );
+
+    expect(merged.transactions).toHaveLength(1);
+    expect(merged.transactions[0]?.status).toBe("completed");
+    expect(merged.transactions[0]?.created_at).toBe("2024-01-02T00:00:00.000Z");
+  });
+
+  it("reconciles a polled snapshot without dropping live-only transactions", () => {
+    const reconciled = reconcileCardTransactionList(
+      {
+        entity_id: "ent_1",
+        account_id: "acct_usd",
+        transactions: [
+          {
+            transaction_id: "txn_old",
+            card_id: "4",
+            account_id: "acct_usd",
+            amount: "1.00",
+            currency: "USD",
+            status: "completed",
+            type: "debit",
+            created_at: "2024-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      {
+        entity_id: "ent_1",
+        account_id: "acct_usd",
+        transactions: [
+          {
+            transaction_id: "txn_live",
+            card_id: "4",
+            account_id: "acct_usd",
+            amount: "9.00",
+            currency: "USD",
+            status: "pending",
+            type: "debit",
+            created_at: "2024-01-01T00:02:00.000Z",
+          },
+        ],
+      },
+    );
+    expect(reconciled.transactions.map((row) => row.transaction_id)).toEqual([
+      "txn_live",
+      "txn_old",
+    ]);
   });
 });

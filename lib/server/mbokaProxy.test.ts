@@ -278,6 +278,28 @@ describe("proxyRequest", () => {
     expect(Array.from(buf)).toEqual(Array.from(bytes));
     expect(res.headers.get("content-type")).toBe("application/pdf");
   });
+
+  it("skips the fetch timeout for watch/SSE paths so the upstream stream can stay open", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("event: ping\n\ndata: ok\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+
+    const req = makeRequest({
+      cookies: { [ACCESS_COOKIE]: "token" },
+      path: "/api/mboka/v1/entities/20/accounts/64/card-transactions/watch",
+    });
+    const res = await proxyRequest(
+      req,
+      "/api/v1/entities/20/accounts/64/card-transactions/watch",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].signal).toBeUndefined();
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+  });
   // Regression: a dead partner API key made the backend 401 on
   // /v1/supported/catalog, /v1/exchange-rates and /v1/iban/accounts on every
   // dashboard load. The proxy read that as session loss, cleared the cookies,
