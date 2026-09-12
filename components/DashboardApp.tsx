@@ -199,10 +199,12 @@ import {
   isValidCardE164,
   isValidCardholderEmail,
   newCardReference,
+  reconcileIssuedCardsList,
   resolveCardBrand,
   resolveUsdFundingAccount,
   isCardFrozenStatus,
   type IssuedCard,
+  type IssuedCardsList,
   type UsdFundingAccount,
 } from "@/lib/services/cards";
 import {
@@ -792,33 +794,15 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: async () => {
       const entityId = usdFundingQuery.data!.entityId;
       const accountId = usdFundingQuery.data!.accountId;
+      const fetchStartedAt = Date.now();
       const fetched = await cardsApi.list(entityId, accountId);
-      const live = queryClient.getQueryData<{
-        account_id: string;
-        entity_id: string;
-        cards: IssuedCard[];
-      }>(["issued-cards", entityId, accountId]);
-      if (!live?.cards?.length) return fetched;
-      const byId = new Map(fetched.cards.map((card) => [card.id, card]));
-      for (const card of live.cards) {
-        const base = byId.get(card.id);
-        if (!base) {
-          byId.set(card.id, card);
-          continue;
-        }
-        byId.set(card.id, {
-          ...base,
-          // Live SSE status/provider_ready wins over a concurrent list response.
-          ...(card.status ? { status: card.status } : {}),
-          ...(card.provider_ready !== undefined
-            ? { provider_ready: card.provider_ready }
-            : {}),
-        });
-      }
-      return {
-        ...fetched,
-        cards: Array.from(byId.values()),
-      };
+      const live = queryClient.getQueryData<IssuedCardsList>([
+        "issued-cards",
+        entityId,
+        accountId,
+      ]);
+      // Server list owns membership; only in-flight SSE patches overlay status.
+      return reconcileIssuedCardsList(fetched, live, fetchStartedAt);
     },
     enabled: Boolean(
       cardsSurfaceOpen &&

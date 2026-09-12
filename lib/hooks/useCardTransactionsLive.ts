@@ -8,18 +8,15 @@ import {
   normalizeCardTransaction,
   type CardTransactionList,
 } from "@/lib/services/cardTransactions";
-import type { IssuedCard } from "@/lib/services/cards";
+import {
+  noteIssuedCardLivePatch,
+  type IssuedCardsList,
+} from "@/lib/services/cards";
 
 type CardStatusEvent = {
   card_id?: string | null;
   status?: string | null;
   provider_ready?: boolean | null;
-};
-
-type IssuedCardsList = {
-  account_id: string;
-  entity_id: string;
-  cards: IssuedCard[];
 };
 
 function parseJson<T>(raw: string): T | null {
@@ -90,6 +87,7 @@ export function useCardTransactionsLive(
         const payload = parseJson<CardStatusEvent>((event as MessageEvent).data);
         const cardId = String(payload?.card_id ?? "").trim();
         if (!cardId) return;
+        noteIssuedCardLivePatch(cardId);
         queryClient.setQueryData<IssuedCardsList | undefined>(
           ["issued-cards", entityId, accountId],
           (current) => {

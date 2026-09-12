@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCardTransactionsLive } from "./useCardTransactionsLive";
+import { clearIssuedCardLivePatches } from "@/lib/services/cards";
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -51,11 +52,13 @@ describe("useCardTransactionsLive", () => {
   beforeEach(() => {
     queryClient = makeClient();
     FakeEventSource.instances = [];
+    clearIssuedCardLivePatches();
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
   });
 
   afterEach(() => {
     queryClient.clear();
+    clearIssuedCardLivePatches();
     vi.unstubAllGlobals();
   });
 
