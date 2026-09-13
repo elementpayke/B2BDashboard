@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CardDetailModal, { billingAddressFromKyb } from "./CardDetailModal";
 import type { IssuedCard } from "@/lib/services/cards";
@@ -47,28 +47,36 @@ const baseCard: IssuedCard = {
   last_four: "4242",
 };
 
+const baseProps = {
+  cardholderName: "Element Pay",
+  accountLabel: "Ops",
+  balance: "$1,240.00",
+  billing: null as null,
+  recent: [] as [],
+  secrets: null as null,
+  secretsBusy: false,
+  secretsError: "",
+  freezeBusy: false,
+  freezeError: "",
+  copiedField: "",
+  onCopy: () => () => {},
+  onToggleReveal: vi.fn(),
+  onToggleFreeze: vi.fn(),
+  onClose: vi.fn(),
+};
+
 describe("CardDetailModal freeze UX", () => {
   it("shows Frozen on the face and offers Unfreeze", () => {
     render(
       <CardDetailModal
+        {...baseProps}
         card={baseCard}
-        cardholderName="Element Pay"
-        accountLabel="Ops"
-        billing={null}
-        recent={[]}
-        secrets={null}
-        secretsBusy={false}
-        secretsError=""
-        freezeBusy={false}
-        freezeError=""
-        copiedField=""
-        onCopy={() => () => {}}
         onToggleReveal={vi.fn()}
         onToggleFreeze={vi.fn()}
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("Frozen")).toBeInTheDocument();
+    expect(screen.getAllByText("Frozen").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Unfreeze card" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -78,18 +86,9 @@ describe("CardDetailModal freeze UX", () => {
   it("surfaces freeze errors", () => {
     render(
       <CardDetailModal
+        {...baseProps}
         card={{ ...baseCard, status: "active" }}
-        cardholderName="Element Pay"
-        accountLabel="Ops"
-        billing={null}
-        recent={[]}
-        secrets={null}
-        secretsBusy={false}
-        secretsError=""
-        freezeBusy={false}
         freezeError="Partner rejected freeze"
-        copiedField=""
-        onCopy={() => () => {}}
         onToggleReveal={vi.fn()}
         onToggleFreeze={vi.fn()}
         onClose={vi.fn()}
@@ -100,5 +99,25 @@ describe("CardDetailModal freeze UX", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("flips on click and requests reveal", () => {
+    const onToggleReveal = vi.fn();
+    render(
+      <CardDetailModal
+        {...baseProps}
+        card={{ ...baseCard, status: "active" }}
+        onToggleReveal={onToggleReveal}
+        onToggleFreeze={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show card number — flip to back" }),
+    );
+    expect(onToggleReveal).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "Hide card details" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

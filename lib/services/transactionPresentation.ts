@@ -112,6 +112,31 @@ export function formatTransactionDate(value: string, now = new Date()): string {
   }).format(date);
 }
 
+/** Card spend list: `Today · 09:14` / `Yesterday · 09:14` / `Sep 10 · 09:14`. */
+export function formatCardSpendWhen(value: string, now = new Date()): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDelta = Math.round(
+    (startToday.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (dayDelta === 0) return `Today · ${time}`;
+  if (dayDelta === 1) return `Yesterday · ${time}`;
+  const day = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  }).format(date);
+  return `${day} · ${time}`;
+}
+
 function railTypeFromPayment(transaction: Transaction): "mobile" | "bank" | null {
   const payment = transaction.payment;
   if (!payment) return null;

@@ -20,7 +20,10 @@ import {
 } from "@/lib/services/homeCashFlow";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
-import { presentTransaction } from "@/lib/services/transactionPresentation";
+import {
+  formatCardSpendWhen,
+  presentTransaction,
+} from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
 import { useStellarWalletPaymentsForAccounts } from "@/lib/hooks/useStellarWalletPayments";
 import {
@@ -218,6 +221,7 @@ import CardDetailModal, {
   billingAddressFromKyb,
 } from "@/components/cards/CardDetailModal";
 import CardBrandMark from "@/components/cards/CardBrandMark";
+import CardSpendList, { type CardSpendItem } from "@/components/cards/CardSpendList";
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
@@ -3666,10 +3670,51 @@ export default function DashboardApp(props: Props = {}) {
         convertNetworkId: null,
       })
     : null;
-  const cardsSpendAll: ActivityItem[] = decoratedAll.filter((row) =>
+  const cardsSpendAll = decoratedAll.filter((row) =>
     isCardSpendTransaction(row),
   );
-  const cardsRecent: ActivityItem[] = cardsSpendAll.slice(0, 20);
+  const formatCardSpendAmount = (row: (typeof cardsSpendAll)[number]) => {
+    const currency = String(row.currency || "USD").toUpperCase();
+    const numeric = Number(row.amount_fiat);
+    const currencyCode = /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+    let formatted: string;
+    if (Number.isFinite(numeric)) {
+      try {
+        formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: currencyCode,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Math.abs(numeric));
+      } catch {
+        formatted = `${Math.abs(numeric).toFixed(2)} ${currency}`;
+      }
+    } else {
+      formatted = `${row.amount_fiat} ${currency}`;
+    }
+    if (row.direction === "in") return `+${formatted}`;
+    if (row.direction === "out") return `-${formatted}`;
+    return formatted;
+  };
+  const cardsSpendItems: CardSpendItem[] = cardsSpendAll.slice(0, 20).map((row) => {
+    const last4 =
+      String(row.accountNumber || "")
+        .replace(/[^\d]/g, "")
+        .slice(-4) || "";
+    const settled = row.statusLabel === "Settled";
+    return {
+      id: String(row.id),
+      merchant: row.client || "Card spend",
+      meta: `${row.type} · ${formatCardSpendWhen(String(row.created_at || ""))}`,
+      cardLast4: last4 ? `···· ${last4}` : "",
+      statusLabel: row.statusLabel,
+      statusColor: settled ? "var(--indigo-text)" : row.statusColor,
+      statusSoft: settled ? "var(--indigo-tint)" : row.statusSoft,
+      amount: formatCardSpendAmount(row),
+      amountColor: row.direction === "in" ? "var(--success)" : "var(--ink)",
+      openDetail: row.openDetail,
+    };
+  });
   const corridors = CORRIDORS.map(c => ({
         ...c,
         flagUrl: flagUrl(c.iso),
@@ -3688,17 +3733,18 @@ export default function DashboardApp(props: Props = {}) {
       label: c.card_name || (c.last_four ? `Card ···· ${c.last_four}` : "Virtual card"),
       last4: c.last_four || "",
       panMasked: formatMaskedPan(c.last_four),
+      last4Short: c.last_four ? `···· ${c.last_four}` : "···· ····",
       brand,
       balance: usdSpendLabel,
-      bg: cardPlasticBg(i),
+      bg: cardPlasticBg(i, frozen || failed),
       status: failed ? "failed" : frozen ? "frozen" : "active",
       statusLabel: closed ? "Closed" : failed ? "Failed" : describeCardStatus(c.status),
-      filter: failed ? "grayscale(1) opacity(0.65)" : frozen ? "saturate(0.2) opacity(0.7)" : "none",
+      filter: failed ? "grayscale(1) opacity(0.65)" : "none",
       actionDisabled: failed,
       actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
       openDetail: openCardDetail(c.id),
       fund: openFundCardDirect(c.id),
-      freeze: openCardDetail(c.id),
+      manage: openCardDetail(c.id),
     };
   });
   const cardsLoading = usdFundingQuery.isLoading || issuedCardsQuery.isLoading;
@@ -4406,6 +4452,7 @@ export default function DashboardApp(props: Props = {}) {
             0,
             issuedCardsList.findIndex((c) => c.id === cardSel.id),
           ),
+          cardIsFrozen,
         ),
         status: cardSel.status,
         freezeTrack: cardIsFrozen ? "var(--indigo)" : "var(--surface3)",
@@ -4715,7 +4762,10 @@ export default function DashboardApp(props: Props = {}) {
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
 <div className="ep-cards__head">
-<h2 className="ep-cards__title">Virtual cards · {cards.length}</h2>
+<div className="ep-cards__head-copy">
+<h2 className="ep-cards__title">Cards</h2>
+<p className="ep-cards__subtitle">Virtual USD cards for team spend</p>
+</div>
 <button type="button" onClick={openNewCard} className="ep-cards__cta" disabled={!usdFunding}>+ New card</button>
 </div>
 <p className="ep-cards__funding-hint">{cardsFundingHint}</p>
@@ -4733,33 +4783,42 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-cards__grid">
 {(cards || []).map((c: any) => (
 <div key={c.id} className={`ep-cards__item${c.actionDisabled ? " ep-cards__item--failed" : ""}`}>
-<button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
+<button type="button" onClick={c.openDetail} disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
 <div className="ep-cards__plastic-top">
-<span className="ep-cards__plastic-label">{c.label}</span>
-<div className="ep-cards__plastic-top-right">
-{c.statusLabel && c.statusLabel !== "Active" ? (
-  <span className="ep-cards__plastic-status">{c.statusLabel}</span>
-) : null}
-<CardBrandMark brand={c.brand} className="ep-cards__plastic-brand" />
-</div>
+<span className="ep-cards__plastic-label">
+  <span className="ep-cards__plastic-mark" aria-hidden>
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+      <path d="M2.5 11.5c2.2-1.8 4.2-2.7 6.5-2.7 2.3 0 4.3.9 6.5 2.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M4 8.2c1.7-1.4 3.2-2.1 5-2.1s3.3.7 5 2.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.7" />
+      <path d="M5.8 5c1.1-.9 2.1-1.3 3.2-1.3s2.1.4 3.2 1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.45" />
+    </svg>
+  </span>
+  {c.label}
+</span>
+<span className="ep-cards__plastic-status" data-status={c.status}>{c.statusLabel}</span>
 </div>
 <div className="ep-cards__plastic-body">
-<span className="ep-cards__plastic-eyebrow">Linked USD available</span>
+<span className="ep-cards__plastic-eyebrow">Available</span>
 <span className="ep-cards__plastic-balance">{c.balance}</span>
-<span className="ep-cards__plastic-pan">{c.panMasked}</span>
+</div>
+<div className="ep-cards__plastic-footer">
+<span className="ep-cards__plastic-pan">{c.last4Short}</span>
+<CardBrandMark brand={c.brand} className="ep-cards__plastic-brand" />
 </div>
 </button>
 <div className="ep-cards__actions">
-<button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund USD</button>
-<button type="button" onClick={c.freeze} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
+<button type="button" onClick={c.openDetail} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>View details</button>
+<button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
+<button type="button" onClick={c.manage} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
 </div>
 </div>
 ))}
 </div>
 )}
-<ActivityList
-  title="Card transactions"
-  items={cardsRecent}
+<CardSpendList
+  title="Card spend"
+  items={cardsSpendItems}
+  onViewAll={goTransactions}
   emptyLabel={
     cardTransactionsQuery.isLoading || usdFundingQuery.isLoading
       ? "Loading card spend…"
@@ -5454,6 +5513,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   card={cardSel}
   cardholderName={cardholderDisplay}
   accountLabel={cardSel.card_name || `···· ${cardSel.last_four || ""}`}
+  balance={cardDetail.balance || usdSpendLabel}
+  cardBg={cardDetail.bg}
   billing={cardBilling}
   recent={cardsSpendAll
     .filter(

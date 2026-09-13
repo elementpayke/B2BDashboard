@@ -8028,6 +8028,17 @@ select.ep-wallets-create__control {
   flex-wrap: wrap;
 }
 
+.ep-cards__head {
+  align-items: flex-start;
+}
+
+.ep-cards__head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .ep-cards__title,
 .ep-team__title,
 .ep-developer__title {
@@ -8038,6 +8049,21 @@ select.ep-wallets-create__control {
   letter-spacing: 0.04em;
   color: var(--muted);
   text-transform: uppercase;
+}
+
+.ep-cards__title {
+  font-size: clamp(22px, 2.4vw, 28px);
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-transform: none;
+}
+
+.ep-cards__subtitle {
+  margin: 0;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .ep-cards__cta,
@@ -8133,6 +8159,10 @@ select.ep-wallets-create__control {
   box-sizing: border-box;
 }
 
+.ep-cards__plastic:disabled {
+  cursor: not-allowed;
+}
+
 .ep-cards__plastic::after {
   content: "";
   position: absolute;
@@ -8144,9 +8174,17 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__plastic-top,
-.ep-cards__plastic-body {
+.ep-cards__plastic-body,
+.ep-cards__plastic-footer {
   position: relative;
   z-index: 1;
+}
+
+.ep-cards__plastic-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .ep-cards__plastic-top {
@@ -8161,6 +8199,24 @@ select.ep-wallets-create__control {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.ep-cards__plastic-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.ep-cards__plastic-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.92;
 }
 
 .ep-card-brand {
@@ -8203,33 +8259,43 @@ select.ep-wallets-create__control {
 
 .ep-cards__plastic-label {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 70%;
+  max-width: 72%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ep-cards__plastic-status {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 6px 10px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.95);
   flex-shrink: 0;
+}
+
+.ep-cards__plastic-status[data-status="frozen"],
+.ep-cards__plastic-status[data-status="failed"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .ep-cards__plastic-eyebrow {
   display: block;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .ep-cards__plastic-balance {
@@ -8246,13 +8312,12 @@ select.ep-wallets-create__control {
   font-family: "DM Mono", monospace;
   font-size: 14px;
   letter-spacing: 0.14em;
-  margin-top: 12px;
   opacity: 0.92;
 }
 
 @media (min-width: 640px) {
   .ep-cards__plastic-label {
-    font-size: 17px;
+    font-size: 16px;
   }
 
   .ep-cards__plastic-balance {
@@ -8266,7 +8331,7 @@ select.ep-wallets-create__control {
 
 @media (min-width: 1024px) {
   .ep-cards__plastic-label {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .ep-cards__plastic-balance {
@@ -8281,21 +8346,37 @@ select.ep-wallets-create__control {
 
 .ep-cards__actions {
   display: flex;
-  gap: 8px;
+  gap: 0;
+  background: var(--surface2);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  overflow: hidden;
+  padding: 4px;
 }
 
 .ep-cards__action {
   flex: 1;
-  min-height: 44px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: var(--surface2);
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
   color: var(--ink);
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  position: relative;
+}
+
+.ep-cards__action + .ep-cards__action::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 1px;
+  background: var(--border);
 }
 
 .ep-cards__action:hover {
@@ -8305,7 +8386,7 @@ select.ep-wallets-create__control {
 .ep-cards__action:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-  background: var(--surface2);
+  background: transparent;
 }
 
 @media (max-width: 639px) {
@@ -8397,6 +8478,68 @@ select.ep-wallets-create__control {
   box-shadow: 0 18px 40px -18px rgba(19, 17, 38, 0.5);
 }
 
+.ep-card-flip {
+  perspective: 1400px;
+  width: 100%;
+  max-width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.ep-card-flip__inner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.586;
+  transform-style: preserve-3d;
+  transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ep-card-flip__inner[data-flipped="true"] {
+  transform: rotateY(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-card-flip__inner {
+    transition: none;
+  }
+}
+
+.ep-card-flip__face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+button.ep-card-flip__face {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  padding: 20px 22px 18px;
+}
+
+button.ep-card-flip__face:disabled {
+  cursor: wait;
+}
+
+button.ep-card-flip__face:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 4px;
+}
+
+.ep-card-flip__face--back {
+  transform: rotateY(180deg);
+}
+
+.ep-card-flip__hint {
+  margin: 2px 0 0;
+  text-align: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .ep-card-face {
   position: relative;
   aspect-ratio: 1.586;
@@ -8417,6 +8560,90 @@ select.ep-wallets-create__control {
   background:
     radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.08), transparent 55%),
     linear-gradient(145deg, #1a1824 0%, #0f0e14 55%, #17151f 100%);
+}
+
+.ep-card-flip .ep-card-face {
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.ep-card-face--brand {
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.16), transparent 55%),
+    linear-gradient(145deg, #131126 0%, #241a5c 48%, #3B2ED3 100%);
+}
+
+.ep-card-face__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.ep-card-face__status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.95);
+  flex-shrink: 0;
+}
+
+.ep-card-face__status[data-frozen="true"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ep-card-face__avail {
+  position: relative;
+  z-index: 1;
+}
+
+.ep-card-face__avail-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.ep-card-face__avail-amount {
+  display: block;
+  margin-top: 4px;
+  font-family: "DM Mono", monospace;
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.ep-card-face__footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-card-face__last4 {
+  font-family: "DM Mono", monospace;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  opacity: 0.92;
 }
 
 .ep-card-face__top {
@@ -8701,6 +8928,177 @@ select.ep-wallets-create__control {
   font-weight: 600;
   color: var(--ink);
   line-height: 1.45;
+}
+
+.ep-card-spend__header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-card-spend__title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ep-card-spend__empty {
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ep-card-spend__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ep-card-spend__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ep-card-spend__row:last-child {
+  border-bottom: none;
+}
+
+.ep-card-spend__row:disabled {
+  cursor: default;
+}
+
+.ep-card-spend__row:hover:not(:disabled) {
+  background: var(--surface2);
+}
+
+.ep-card-spend__row:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: -2px;
+  background: var(--surface2);
+}
+
+.ep-card-spend__avatar {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ep-card-spend__party {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ep-card-spend__merchant {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ep-card-spend__meta {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ep-card-spend__last4 {
+  display: none;
+}
+
+.ep-card-spend__amount {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  justify-self: end;
+}
+
+.ep-card-spend__row .ep-activity__badge {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .ep-card-spend__row {
+    grid-template-columns: auto minmax(0, 1.4fr) auto auto auto;
+    column-gap: 16px;
+  }
+
+  .ep-card-spend__avatar {
+    grid-row: 1;
+  }
+
+  .ep-card-spend__party {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ep-card-spend__last4 {
+    display: block;
+    grid-column: 3;
+    grid-row: 1;
+    font-family: "DM Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .ep-card-spend__row .ep-activity__badge {
+    display: inline-flex;
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .ep-card-spend__amount {
+    grid-column: 5;
+    grid-row: 1;
+  }
 }
 
 .ep-cards__modal-row {
