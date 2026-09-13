@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callMboka } from "@/lib/server/mbokaCall";
 import { setSessionCookies } from "@/lib/server/cookies";
+import { rejectCrossOrigin } from "@/lib/server/sameOrigin";
 
 type LoginBusinessData = {
   access_token: string;
@@ -22,6 +23,9 @@ type Envelope = {
 };
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const blocked = rejectCrossOrigin(request);
+  if (blocked) return blocked as NextResponse;
+
   const body = await request.text();
   const upstream = await callMboka("/api/auth/businesses/login", {
     method: "POST",
@@ -39,17 +43,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!upstream.ok || json.status !== "success" || !json.data) {
-    // Passthrough verbatim — no tokens are present on an error response,
-    // and we deliberately don't alter the message so the backend's
-    // wrong-password vs unknown-email indistinguishability is preserved.
     return NextResponse.json(json, { status: upstream.status });
   }
 
   const { access_token, refresh_token, ...rest } = json.data;
-  const safeData = rest; // token_type, kyb_status, role, user_id, business_id, wallet_address — never the tokens
 
   const res = NextResponse.json(
-    { status: json.status, message: json.message, data: safeData },
+    { status: json.status, message: json.message, data: rest },
     { status: upstream.status },
   );
   setSessionCookies(res, { access_token, refresh_token });

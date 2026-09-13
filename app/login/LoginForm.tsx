@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { authApi, authMePlaceholderFromLogin } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
+import { stashVerifyEmail } from "@/lib/auth/verifyHandoff";
 import {
   authPageStyle,
   authCardStyle,
@@ -51,12 +52,24 @@ function IconEye({ open }: { open: boolean }) {
   );
 }
 
-/** Only same-origin relative paths; blocks open redirects via `//…` or absolute URLs. */
+/** Same-origin relative paths only; allowlist known post-login destinations. */
 export function safeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
     return "/dashboard";
   }
-  return raw;
+  if (raw.includes("://") || raw.includes("\\")) {
+    return "/dashboard";
+  }
+  const pathOnly = raw.split("?")[0] || "";
+  const allowed =
+    pathOnly === "/dashboard" ||
+    pathOnly.startsWith("/dashboard/") ||
+    pathOnly === "/team/accept";
+  return allowed ? raw : "/dashboard";
+}
+
+export function isUnverifiedEmailError(message: string): boolean {
+  return /not verified|unverified|verify your email/i.test(message);
 }
 
 function loginErrorMessage(err: unknown): string {
@@ -142,6 +155,19 @@ export default function LoginForm() {
         {error ? (
           <div id={errorId} role="alert" style={authErrorStyle}>
             {error}
+            {isUnverifiedEmailError(error) ? (
+              <div style={{ marginTop: 10 }}>
+                <a
+                  href="/verify-email"
+                  style={authLinkStyle}
+                  onClick={() => {
+                    if (email.trim()) stashVerifyEmail(email.trim());
+                  }}
+                >
+                  Verify your email
+                </a>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

@@ -13,6 +13,22 @@ describe("proxy", () => {
     expect(location.searchParams.get("next")).toBe("/dashboard/transactions");
   });
 
+  it("preserves query string in next", () => {
+    const req = new NextRequest("http://localhost:3000/dashboard?tab=cards");
+    const res = proxy(req);
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("next")).toBe("/dashboard?tab=cards");
+  });
+
+  it("treats empty cookie values as signed out", () => {
+    const req = new NextRequest("http://localhost:3000/dashboard", {
+      headers: { cookie: `${ACCESS_COOKIE}=` },
+    });
+    const res = proxy(req);
+    expect(res.status).toBe(307);
+  });
+
   it("lets an authenticated request (session cookie present) through", () => {
     const req = new NextRequest("http://localhost:3000/dashboard", {
       headers: { cookie: `${ACCESS_COOKIE}=some-token` },
