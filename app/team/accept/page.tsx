@@ -98,8 +98,8 @@ function AcceptInviteForm() {
           </button>
         ) : null}
         {!busy && !needsLogin && error ? (
-          <button style={authButtonStyle} type="button" onClick={() => router.push("/dashboard")}>
-            Back to dashboard
+          <button style={authButtonStyle} type="button" onClick={() => router.push("/login")}>
+            Back to sign in
           </button>
         ) : null}
       </div>

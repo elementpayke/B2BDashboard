@@ -1,16 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { safeNextPath } from "./LoginForm";
+import { isUnverifiedEmailError, safeNextPath } from "./LoginForm";
 
 describe("login invite handoff", () => {
   it("keeps invite accept next paths", () => {
     expect(safeNextPath("/team/accept?token=abc")).toBe("/team/accept?token=abc");
     expect(safeNextPath("/dashboard")).toBe("/dashboard");
+    expect(safeNextPath("/dashboard/cards")).toBe("/dashboard/cards");
   });
 
-  it("rejects open redirects", () => {
+  it("rejects open redirects and off-allowlist paths", () => {
     expect(safeNextPath("https://evil.example")).toBe("/dashboard");
     expect(safeNextPath("//evil.example")).toBe("/dashboard");
+    expect(safeNextPath("/\\evil")).toBe("/dashboard");
+    expect(safeNextPath("/login")).toBe("/dashboard");
     expect(safeNextPath(null)).toBe("/dashboard");
+  });
+
+  it("detects unverified email errors", () => {
+    expect(isUnverifiedEmailError("Email address is not verified.")).toBe(true);
+    expect(isUnverifiedEmailError("Invalid credentials")).toBe(false);
   });
 
   it("builds invite login URLs with email prefill", () => {

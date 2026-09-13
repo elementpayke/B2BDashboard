@@ -15,8 +15,10 @@ export default function Landing() {
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
   const setLcAmt = (e: React.ChangeEvent<HTMLInputElement>) => setLcAmtState(e.target.value);
   const selectLcCountry = (i: number) => () => setLcCountryIdx(i);
-  const enterApp = () => router.push("/dashboard");
   const goLogin = () => router.push("/login");
+  const goSignup = () => router.push("/signup");
+  /** Returning users: login first so stale cookies never paint /dashboard anonymously. */
+  const goDashboardViaLogin = () => router.push("/login?next=%2Fdashboard");
 
   const vars = theme === "dark" ? { ...DARK, ...DARK_HC_OVERRIDES } : LIGHT;
 
@@ -121,8 +123,8 @@ export default function Landing() {
               <button type="button" onClick={goLogin} className="ep-landing-btn ep-landing-btn--ghost ep-hide-mobile">
                 Log in
               </button>
-              <button type="button" onClick={enterApp} className="ep-landing-btn ep-landing-btn--primary">
-                Dashboard
+              <button type="button" onClick={goSignup} className="ep-landing-btn ep-landing-btn--primary">
+                Get started
               </button>
             </div>
           </div>
@@ -141,8 +143,8 @@ export default function Landing() {
               <button type="button" className="ep-landing-mobile-menu__link ep-landing-mobile-menu__link--accent" onClick={goLogin}>
                 Log in
               </button>
-              <button type="button" className="ep-landing-btn ep-landing-btn--primary ep-landing-mobile-menu__cta" onClick={enterApp}>
-                Open the dashboard
+              <button type="button" className="ep-landing-btn ep-landing-btn--primary ep-landing-mobile-menu__cta" onClick={goSignup}>
+                Get started
               </button>
             </div>
           ) : null}
@@ -166,8 +168,11 @@ export default function Landing() {
                 Africa and beyond.
               </p>
               <div className="ep-landing-hero__actions">
-                <button type="button" onClick={enterApp} className="ep-landing-btn ep-landing-btn--primary ep-landing-btn--lg">
-                  Open the dashboard
+                <button type="button" onClick={goSignup} className="ep-landing-btn ep-landing-btn--primary ep-landing-btn--lg">
+                  Get started
+                </button>
+                <button type="button" onClick={goLogin} className="ep-landing-btn ep-landing-btn--ghost ep-landing-btn--lg">
+                  Log in
                 </button>
                 <button type="button" onClick={scrollTo("engine")} className="ep-landing-btn ep-landing-btn--ghost ep-landing-btn--lg">
                   See how it works
@@ -309,8 +314,16 @@ export default function Landing() {
             <p className="ep-landing-cta-band__lede">
               Join the businesses already moving money faster, cheaper and more securely.
             </p>
-            <button type="button" onClick={enterApp} className="ep-landing-btn ep-landing-btn--bright ep-landing-btn--lg">
-              Open the dashboard
+            <button type="button" onClick={goSignup} className="ep-landing-btn ep-landing-btn--bright ep-landing-btn--lg">
+              Create account
+            </button>
+            <button
+              type="button"
+              onClick={goDashboardViaLogin}
+              className="ep-landing-btn ep-landing-btn--ghost ep-landing-btn--lg"
+              style={{ marginLeft: 12 }}
+            >
+              Sign in to dashboard
             </button>
           </section>
         </main>

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
@@ -133,7 +133,7 @@ import {
   providerNamesFromCatalog,
   type CatalogCorridorCountry,
 } from "@/lib/services/catalog";
-import { setSessionLostHandler, ApiRequestError } from "@/lib/apiClient";
+import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
@@ -439,20 +439,25 @@ export default function DashboardApp(props: Props = {}) {
   }, [isCompact]);
 
   // Real backend data. Session-expiry from any of these bounces to /login —
-  // registered once here rather than per-call, matching the mobile client's
-  // single global session-lost handler.
+  // registered in useLayoutEffect so it is ready before queries flush effects.
   const queryClient = useQueryClient();
   const [saveRecipientBusy, setSaveRecipientBusy] = useState(false);
   const [saveRecipientMessage, setSaveRecipientMessage] = useState("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     setSessionLostHandler(() => {
       queryClient.clear();
-      router.push("/login");
+      router.replace("/login");
     });
     return () => setSessionLostHandler(null);
   }, [router, queryClient]);
 
   const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
+  useEffect(() => {
+    if (!meQuery.isError) return;
+    if (!isSessionExpiredError(meQuery.error)) return;
+    queryClient.clear();
+    router.replace("/login");
+  }, [meQuery.isError, meQuery.error, queryClient, router]);
   const businessId = meQuery.data?.business?.id ?? null;
   const myRole = meQuery.data?.role ?? null;
   const myUserId = meQuery.data?.user?.id ?? null;
@@ -489,6 +494,7 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: bootstrapApi.get,
     retry: false,
     staleTime: 30_000,
+    enabled: meQuery.isSuccess,
   });
   const bootstrapReady = bootstrapQuery.isSuccess;
   const bootstrapFailed = bootstrapQuery.isError;
@@ -4500,6 +4506,38 @@ export default function DashboardApp(props: Props = {}) {
   const invoiceError = s.invoiceError;
   const invoiceSubmitting = s.invoiceSubmitting;
 
+  // Fail closed: do not paint the authenticated shell until /me succeeds
+  // (login may have seeded a placeholder — that counts as data).
+  if (!meQuery.data) {
+    if (meQuery.isError && isSessionExpiredError(meQuery.error)) {
+      return (
+        <div style={rootStyle}>
+          <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
+            Redirecting to sign in…
+          </div>
+        </div>
+      );
+    }
+    if (meQuery.isError) {
+      return (
+        <div style={rootStyle}>
+          <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
+            <p>Couldn&apos;t load your session.</p>
+            <button type="button" onClick={() => router.replace("/login")}>
+              Sign in
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={rootStyle}>
+        <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
+          Loading…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} style={rootStyle}>
