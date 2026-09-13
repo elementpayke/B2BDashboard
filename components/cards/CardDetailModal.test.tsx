@@ -112,13 +112,12 @@ describe("CardDetailModal freeze UX", () => {
         onClose={vi.fn()}
       />,
     );
-    const flip = screen.getByRole("button", {
-      name: "Show card number — flip to back",
-    });
-    fireEvent.click(flip);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show card number — flip to back" }),
+    );
     expect(onToggleReveal).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: "Hide card number — flip to front" }),
-    ).toHaveAttribute("data-flipped", "true");
+      screen.getByRole("button", { name: "Hide card details" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

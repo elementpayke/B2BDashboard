@@ -8159,6 +8159,10 @@ select.ep-wallets-create__control {
   box-sizing: border-box;
 }
 
+.ep-cards__plastic:disabled {
+  cursor: not-allowed;
+}
+
 .ep-cards__plastic::after {
   content: "";
   position: absolute;
@@ -8485,15 +8489,8 @@ select.ep-wallets-create__control {
   position: relative;
   width: 100%;
   aspect-ratio: 1.586;
-  border: none;
-  padding: 0;
-  background: transparent;
-  cursor: pointer;
   transform-style: preserve-3d;
   transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
-  color: inherit;
-  font: inherit;
-  text-align: left;
 }
 
 .ep-card-flip__inner[data-flipped="true"] {
@@ -8506,21 +8503,29 @@ select.ep-wallets-create__control {
   }
 }
 
-.ep-card-flip__inner:disabled {
-  cursor: wait;
-}
-
-.ep-card-flip__inner:focus-visible {
-  outline: 2px solid var(--indigo);
-  outline-offset: 4px;
-  border-radius: 20px;
-}
-
 .ep-card-flip__face {
   position: absolute;
   inset: 0;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+}
+
+button.ep-card-flip__face {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  padding: 20px 22px 18px;
+}
+
+button.ep-card-flip__face:disabled {
+  cursor: wait;
+}
+
+button.ep-card-flip__face:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 4px;
 }
 
 .ep-card-flip__face--back {

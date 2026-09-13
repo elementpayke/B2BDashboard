@@ -74,7 +74,15 @@ export default function CardSpendList({
                   className="ep-card-spend__row"
                   onClick={tx.openDetail}
                   disabled={!tx.openDetail}
-                  aria-label={`${tx.merchant}, ${tx.meta}, ${tx.amount}, ${tx.statusLabel}`}
+                  aria-label={[
+                    tx.merchant,
+                    tx.meta,
+                    tx.cardLast4,
+                    tx.amount,
+                    tx.statusLabel,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
                 >
                   <span
                     className="ep-card-spend__avatar"

@@ -3676,14 +3676,22 @@ export default function DashboardApp(props: Props = {}) {
   const formatCardSpendAmount = (row: (typeof cardsSpendAll)[number]) => {
     const currency = String(row.currency || "USD").toUpperCase();
     const numeric = Number(row.amount_fiat);
-    const formatted = Number.isFinite(numeric)
-      ? new Intl.NumberFormat("en-US", {
+    const currencyCode = /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+    let formatted: string;
+    if (Number.isFinite(numeric)) {
+      try {
+        formatted = new Intl.NumberFormat("en-US", {
           style: "currency",
-          currency: currency.length === 3 ? currency : "USD",
+          currency: currencyCode,
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
-        }).format(Math.abs(numeric))
-      : `${row.amount_fiat} ${currency}`;
+        }).format(Math.abs(numeric));
+      } catch {
+        formatted = `${Math.abs(numeric).toFixed(2)} ${currency}`;
+      }
+    } else {
+      formatted = `${row.amount_fiat} ${currency}`;
+    }
     if (row.direction === "in") return `+${formatted}`;
     if (row.direction === "out") return `-${formatted}`;
     return formatted;
@@ -4775,7 +4783,7 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-cards__grid">
 {(cards || []).map((c: any) => (
 <div key={c.id} className={`ep-cards__item${c.actionDisabled ? " ep-cards__item--failed" : ""}`}>
-<button type="button" onClick={c.openDetail} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
+<button type="button" onClick={c.openDetail} disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
 <div className="ep-cards__plastic-top">
 <span className="ep-cards__plastic-label">
   <span className="ep-cards__plastic-mark" aria-hidden>

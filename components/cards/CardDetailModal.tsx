@@ -270,22 +270,17 @@ export default function CardDetailModal({
   return (
     <div className="ep-cards__modal ep-cards__modal--detail">
       <div className="ep-card-flip">
-        <button
-          type="button"
+        <div
           className="ep-card-flip__inner"
           data-flipped={flipped ? "true" : "false"}
-          onClick={flipCard}
-          disabled={secretsBusy}
-          aria-pressed={flipped}
-          aria-label={
-            flipped
-              ? "Hide card number — flip to front"
-              : "Show card number — flip to back"
-          }
         >
-          <div
+          <button
+            type="button"
             className="ep-card-flip__face ep-card-flip__face--front ep-card-face ep-card-face--brand"
             style={faceStyle}
+            onClick={flipCard}
+            disabled={secretsBusy}
+            aria-label="Show card number — flip to back"
           >
             <div className="ep-card-face__top">
               <span className="ep-card-face__name">
@@ -307,7 +302,7 @@ export default function CardDetailModal({
               <span className="ep-card-face__last4">{last4Short}</span>
               <CardBrandMark brand={scheme} className="ep-card-face__scheme" />
             </div>
-          </div>
+          </button>
 
           <div
             className="ep-card-flip__face ep-card-flip__face--back ep-card-face ep-card-face--brand"
@@ -355,11 +350,11 @@ export default function CardDetailModal({
               <span className="ep-card-face__brand">{cardholderLabel}</span>
             </div>
           </div>
-        </button>
+        </div>
       </div>
 
       <p className="ep-card-flip__hint">
-        {flipped ? "Tap card to hide details" : "Tap card to flip & reveal"}
+        {flipped ? "Tap the eye to hide details" : "Tap card to flip & reveal"}
       </p>
 
       <div className="ep-card-face__actions" role="group" aria-label="Card actions">
