@@ -8,6 +8,7 @@ import {
   clearVerifyHandoff,
   readVerifyHandoff,
   stashVerifyEmail,
+  takeHashVerifyParams,
   takeQueryVerifyParams,
 } from "@/lib/auth/verifyHandoff";
 import {
@@ -31,6 +32,7 @@ function VerifyEmailForm() {
   const handoff = readVerifyHandoff();
   const [email, setEmail] = useState(handoff.email);
   const [code, setCode] = useState(handoff.code);
+  const [handoffReady, setHandoffReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -39,12 +41,34 @@ function VerifyEmailForm() {
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
-    const taken = takeQueryVerifyParams(searchParams);
-    if (taken.email) setEmail(taken.email);
-    if (taken.code) setCode(taken.code);
-    if (taken.stripped) {
+    // Prefer fragment handoff (BFF GET redirect); fall back to legacy query.
+    const fromHash = takeHashVerifyParams();
+    const fromQuery = takeQueryVerifyParams(searchParams);
+
+    let nextEmail = "";
+    let nextCode = "";
+    if (fromHash.stripped) {
+      nextEmail = fromHash.email;
+      nextCode = fromHash.code;
+    } else if (fromQuery.stripped) {
+      nextEmail = fromQuery.email;
+      nextCode = fromQuery.code;
+    } else {
+      nextEmail = fromQuery.email || fromHash.email;
+      nextCode = fromQuery.code || fromHash.code;
+    }
+
+    if (fromHash.stripped || fromQuery.stripped) {
+      if (nextEmail) setEmail(nextEmail);
+      setCode(nextCode);
+    } else {
+      if (nextEmail) setEmail(nextEmail);
+      if (nextCode) setCode(nextCode);
+    }
+    if (fromQuery.stripped) {
       router.replace("/verify-email", { scroll: false });
     }
+    setHandoffReady(true);
   }, [searchParams, router]);
 
   useEffect(() => {
@@ -70,14 +94,16 @@ function VerifyEmailForm() {
   }
 
   useEffect(() => {
-    if (autoTried.current) return;
+    // Wait until query/hash import runs so a new deep link is not overwritten
+    // by a one-shot auto-verify of stale sessionStorage values.
+    if (!handoffReady || autoTried.current) return;
     const e = email.trim();
     const c = code.trim();
     if (!e || !c) return;
     autoTried.current = true;
     void verify(e, c);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep-link verify
-  }, [email, code]);
+  }, [handoffReady, email, code]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

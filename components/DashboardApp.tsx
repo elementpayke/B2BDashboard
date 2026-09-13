@@ -4506,10 +4506,10 @@ export default function DashboardApp(props: Props = {}) {
   const invoiceError = s.invoiceError;
   const invoiceSubmitting = s.invoiceSubmitting;
 
-  // Fail closed: do not paint the authenticated shell until /me succeeds
-  // (login may have seeded a placeholder — that counts as data).
-  if (!meQuery.data) {
-    if (meQuery.isError && isSessionExpiredError(meQuery.error)) {
+  // Fail closed: handle /me errors before cached data, and require success
+  // so a non-session failure cannot keep painting a stale shell.
+  if (meQuery.isError) {
+    if (isSessionExpiredError(meQuery.error)) {
       return (
         <div style={rootStyle}>
           <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
@@ -4518,18 +4518,18 @@ export default function DashboardApp(props: Props = {}) {
         </div>
       );
     }
-    if (meQuery.isError) {
-      return (
-        <div style={rootStyle}>
-          <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
-            <p>Couldn&apos;t load your session.</p>
-            <button type="button" onClick={() => router.replace("/login")}>
-              Sign in
-            </button>
-          </div>
+    return (
+      <div style={rootStyle}>
+        <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>
+          <p>Couldn&apos;t load your session.</p>
+          <button type="button" onClick={() => router.replace("/login")}>
+            Sign in
+          </button>
         </div>
-      );
-    }
+      </div>
+    );
+  }
+  if (!meQuery.isSuccess || !meQuery.data) {
     return (
       <div style={rootStyle}>
         <div className="ep-shell" style={{ padding: 48, textAlign: "center" }}>

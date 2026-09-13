@@ -3,6 +3,7 @@ import {
   clearVerifyHandoff,
   readVerifyHandoff,
   stashVerifyEmail,
+  takeHashVerifyParams,
   takeQueryVerifyParams,
 } from "./verifyHandoff";
 
@@ -26,7 +27,8 @@ describe("verifyHandoff", () => {
     vi.unstubAllGlobals();
   });
 
-  it("stashes and reads email", () => {
+  it("stashes email and clears any prior code", () => {
+    store.set("ep_verify_code", "OLDCODE");
     stashVerifyEmail("  ops@acme.com ");
     expect(readVerifyHandoff()).toEqual({ email: "ops@acme.com", code: "" });
   });
@@ -41,6 +43,49 @@ describe("verifyHandoff", () => {
     expect(readVerifyHandoff()).toEqual({
       email: "ops@acme.com",
       code: "ABC123",
+    });
+  });
+
+  it("email-only query clears a prior code", () => {
+    store.set("ep_verify_email", "old@acme.com");
+    store.set("ep_verify_code", "OLDCODE");
+    const result = takeQueryVerifyParams(new URLSearchParams("email=new%40acme.com"));
+    expect(result).toEqual({ email: "new@acme.com", code: "", stripped: true });
+    expect(readVerifyHandoff()).toEqual({ email: "new@acme.com", code: "" });
+  });
+
+  it("returns query values and strips even without sessionStorage", () => {
+    vi.stubGlobal("sessionStorage", undefined);
+    const result = takeQueryVerifyParams(
+      new URLSearchParams("email=ops%40acme.com&code=ABC123"),
+    );
+    expect(result).toEqual({
+      email: "ops@acme.com",
+      code: "ABC123",
+      stripped: true,
+    });
+  });
+
+  it("takes hash params and clears the fragment", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: "#email=ops%40acme.com&code=HASH99",
+        pathname: "/verify-email",
+        search: "",
+      },
+      history: { replaceState },
+    });
+    const result = takeHashVerifyParams();
+    expect(result).toEqual({
+      email: "ops@acme.com",
+      code: "HASH99",
+      stripped: true,
+    });
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/verify-email");
+    expect(readVerifyHandoff()).toEqual({
+      email: "ops@acme.com",
+      code: "HASH99",
     });
   });
 
