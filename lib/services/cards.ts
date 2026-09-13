@@ -349,8 +349,13 @@ export function formatCardExpiry(
   return `${mm}/${yy}`;
 }
 
-export function cardPlasticBg(index: number): string {
-  return index % 2 === 0 ? "#131126" : "#3B2ED3";
+export function cardPlasticBg(index: number, frozen = false): string {
+  if (frozen) {
+    return "linear-gradient(145deg, #3a3a44 0%, #1c1c22 55%, #2a2a32 100%)";
+  }
+  return index % 2 === 0
+    ? "linear-gradient(145deg, #131126 0%, #241a5c 48%, #3B2ED3 100%)"
+    : "linear-gradient(145deg, #3B2ED3 0%, #4f46e5 45%, #2a1f8f 100%)";
 }
 
 /** Prefill cardholder from KYB associate when present — never invent names. */
