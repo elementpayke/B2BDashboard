@@ -221,6 +221,7 @@ import CardDetailModal, {
   billingAddressFromKyb,
 } from "@/components/cards/CardDetailModal";
 import CardBrandMark from "@/components/cards/CardBrandMark";
+import CardFlipTile from "@/components/cards/CardFlipTile";
 import CardSpendList, { type CardSpendItem } from "@/components/cards/CardSpendList";
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
@@ -375,6 +376,11 @@ export default function DashboardApp(props: Props = {}) {
     cardSecrets: null as null | { number: string; cvv: string },
     cardSecretsBusy: false,
     cardSecretsError: "",
+    /** Grid-tile flip UX — keyed by card id since two cards can be flipped at once. */
+    cardTileFlipped: {} as Record<string, boolean>,
+    cardTileSecrets: {} as Record<string, { number: string; cvv: string }>,
+    cardTileSecretsBusy: {} as Record<string, boolean>,
+    cardTileSecretsError: {} as Record<string, string>,
     invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
@@ -2699,6 +2705,51 @@ export default function DashboardApp(props: Props = {}) {
     }
     void revealCardSecrets();
   };
+  const revealCardTileSecrets = async (cardId: string) => {
+    const funding = usdFundingQuery.data;
+    if (!funding) return;
+    setState((s: any) => ({
+      cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: true },
+      cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
+    }));
+    try {
+      const revealed = await cardsApi.credentials(funding.entityId, funding.accountId, cardId);
+      const number = String(revealed.number || "").trim();
+      const cvv = String(revealed.cvv || "").trim();
+      if (!number || !cvv) {
+        setState((s: any) => ({
+          cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
+          cardTileSecretsError: {
+            ...s.cardTileSecretsError,
+            [cardId]: "Card details aren't available right now.",
+          },
+        }));
+        return;
+      }
+      setState((s: any) => ({
+        cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
+        cardTileSecrets: { ...s.cardTileSecrets, [cardId]: { number, cvv } },
+        cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
+      }));
+      // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
+      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+    } catch (err) {
+      setState((s: any) => ({
+        cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
+        cardTileSecretsError: {
+          ...s.cardTileSecretsError,
+          [cardId]: err instanceof Error ? err.message : "Couldn't load card details.",
+        },
+      }));
+    }
+  };
+  const flipCardTile = (cardId: string) => () => {
+    const willFlip = !state.cardTileFlipped[cardId];
+    setState((s: any) => ({ cardTileFlipped: { ...s.cardTileFlipped, [cardId]: willFlip } }));
+    if (willFlip && !state.cardTileSecrets[cardId] && !state.cardTileSecretsBusy[cardId]) {
+      void revealCardTileSecrets(cardId);
+    }
+  };
   const fundCard = () =>
     setState({
       modal: "acctDetail",
@@ -3740,6 +3791,7 @@ export default function DashboardApp(props: Props = {}) {
       last4: c.last_four || "",
       panMasked: formatMaskedPan(c.last_four),
       last4Short: c.last_four ? `···· ${c.last_four}` : "···· ····",
+      exp: formatCardExpiry(c.expiration_month, c.expiration_year),
       brand,
       balance: usdSpendLabel,
       bg: cardPlasticBg(i, frozen || failed),
@@ -3748,7 +3800,6 @@ export default function DashboardApp(props: Props = {}) {
       filter: failed ? "grayscale(1) opacity(0.65)" : "none",
       actionDisabled: failed,
       actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
-      openDetail: openCardDetail(c.id),
       fund: openFundCardDirect(c.id),
       manage: openCardDetail(c.id),
     };
@@ -4821,31 +4872,30 @@ export default function DashboardApp(props: Props = {}) {
 <div className="ep-cards__grid">
 {(cards || []).map((c: any) => (
 <div key={c.id} className={`ep-cards__item${c.actionDisabled ? " ep-cards__item--failed" : ""}`}>
-<button type="button" onClick={c.openDetail} disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined} className="ep-cards__plastic" style={{background: c.bg, filter: c.filter}} aria-label={`${c.label}, ${c.balance} available`}>
-<div className="ep-cards__plastic-top">
-<span className="ep-cards__plastic-label">
-  <span className="ep-cards__plastic-mark" aria-hidden>
-    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-      <path d="M2.5 11.5c2.2-1.8 4.2-2.7 6.5-2.7 2.3 0 4.3.9 6.5 2.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M4 8.2c1.7-1.4 3.2-2.1 5-2.1s3.3.7 5 2.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.7" />
-      <path d="M5.8 5c1.1-.9 2.1-1.3 3.2-1.3s2.1.4 3.2 1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.45" />
-    </svg>
-  </span>
-  {c.label}
-</span>
-<span className="ep-cards__plastic-status" data-status={c.status}>{c.statusLabel}</span>
-</div>
-<div className="ep-cards__plastic-body">
-<span className="ep-cards__plastic-eyebrow">Available</span>
-<span className="ep-cards__plastic-balance">{c.balance}</span>
-</div>
-<div className="ep-cards__plastic-footer">
-<span className="ep-cards__plastic-pan">{c.last4Short}</span>
-<CardBrandMark brand={c.brand} className="ep-cards__plastic-brand" />
-</div>
-</button>
+<CardFlipTile
+  cardId={c.id}
+  label={c.label}
+  bg={c.bg}
+  filter={c.filter}
+  status={c.status}
+  statusLabel={c.statusLabel}
+  balance={c.balance}
+  last4={c.last4}
+  expiry={c.exp}
+  brand={c.brand}
+  cardholderLabel={cardholderDisplay}
+  flipped={!!s.cardTileFlipped[c.id]}
+  onFlip={flipCardTile(c.id)}
+  secrets={s.cardTileSecrets[c.id] || null}
+  secretsBusy={!!s.cardTileSecretsBusy[c.id]}
+  secretsError={s.cardTileSecretsError[c.id] || ""}
+  copiedField={s.copiedField}
+  onCopy={copyField}
+  actionDisabled={c.actionDisabled}
+  actionDisabledReason={c.actionDisabledReason}
+/>
 <div className="ep-cards__actions">
-<button type="button" onClick={c.openDetail} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>View details</button>
+<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>{s.cardTileFlipped[c.id] ? "Hide details" : "Show details"}</button>
 <button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
 <button type="button" onClick={c.manage} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
 </div>
