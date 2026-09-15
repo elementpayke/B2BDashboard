@@ -34,15 +34,24 @@ describe("CardFlipTile", () => {
 
   it("flips on click and reflects state via aria-pressed / aria-hidden", () => {
     const onFlip = vi.fn();
-    const { rerender } = render(<CardFlipTile {...baseProps} onFlip={onFlip} />);
+    const { container, rerender } = render(
+      <CardFlipTile {...baseProps} onFlip={onFlip} />,
+    );
     const flipButton = screen.getByRole("button", { name: "Show card details" });
     fireEvent.click(flipButton);
     expect(onFlip).toHaveBeenCalledTimes(1);
+
+    const backFaceHidden = container.querySelector(".ep-card-flip__face--back");
+    expect(backFaceHidden).toHaveAttribute("aria-hidden", "true");
+    expect(backFaceHidden).toHaveAttribute("inert");
 
     rerender(<CardFlipTile {...baseProps} onFlip={onFlip} flipped />);
     expect(
       screen.getByRole("button", { name: "Hide card details" }),
     ).toHaveAttribute("aria-pressed", "true");
+    const backFaceShown = container.querySelector(".ep-card-flip__face--back");
+    expect(backFaceShown).toHaveAttribute("aria-hidden", "false");
+    expect(backFaceShown).not.toHaveAttribute("inert");
   });
 
   it("shows a masked PAN before reveal, and 'Loading…' while fetching", () => {

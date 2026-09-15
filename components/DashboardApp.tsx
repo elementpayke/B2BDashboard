@@ -2541,14 +2541,20 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setCreateAccountNetwork = (e) => setState({ createAccountNetwork: e.target.value, createAccountError: "" });
 
-  const copyField = (fieldKey, val) => () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(val).catch(() => {});
-    setState({ copiedField: fieldKey });
-    window.setTimeout(() => {
-      setState((s: { copiedField?: string }) =>
-        s.copiedField === fieldKey ? { copiedField: "" } : {},
-      );
-    }, 1500);
+  const copyField = (fieldKey, val) => async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(val);
+      setState({ copiedField: fieldKey });
+      window.setTimeout(() => {
+        setState((s: { copiedField?: string }) =>
+          s.copiedField === fieldKey ? { copiedField: "" } : {},
+        );
+      }, 1500);
+    } catch {
+      // Don't show "Copied" when the write failed (permission / insecure context).
+      setState({ copiedField: "" });
+    }
   };
   const toggleRevealKey = (id) => () => setState(s => ({ apiKeyRevealed: { ...s.apiKeyRevealed, [id]: !s.apiKeyRevealed[id] } }));
   const toggleRevealSecret = (id) => () => setState(s => ({ secretRevealed: { ...s.secretRevealed, [id]: !s.secretRevealed[id] } }));

@@ -152,6 +152,8 @@ export default function CardFlipTile({
           className="ep-card-flip__face ep-card-flip__face--back ep-card-face ep-card-face--brand"
           style={faceStyle}
           aria-hidden={!flipped}
+          // Keep back-face controls out of the tab order while the card is face-up.
+          inert={!flipped ? true : undefined}
         >
           <div className="ep-card-face__top">
             <span className="ep-card-face__kind">
