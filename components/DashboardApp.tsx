@@ -2625,12 +2625,11 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const toggleFreezeCard = async () => {
+  const toggleFreezeCard = async (cardId: string = state.selectedCardId) => {
     const funding = usdFundingQuery.data;
-    const cardId = state.selectedCardId;
     const card = (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === cardId);
     if (!funding || !card) return;
-    setState({ cardFreezeBusy: true, cardFreezeError: "" });
+    setState({ cardFreezeBusy: true, cardFreezeError: "", selectedCardId: cardId });
     try {
       const frozen = isCardFrozenStatus(card.status);
       const updated = frozen
@@ -4901,9 +4900,12 @@ export default function DashboardApp(props: Props = {}) {
   actionDisabledReason={c.actionDisabledReason}
 />
 <div className="ep-cards__actions">
-<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>{s.cardTileFlipped[c.id] ? "Hide details" : "Show details"}</button>
+<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__action" disabled={c.actionDisabled || c.status === "frozen"} title={c.actionDisabled ? c.actionDisabledReason : c.status === "frozen" ? "Unfreeze this card to view its details" : undefined}>{s.cardTileFlipped[c.id] ? "Hide details" : "Show details"}</button>
+<div className="ep-cards__actions-row">
+<button type="button" onClick={() => void toggleFreezeCard(c.id)} className="ep-cards__action" disabled={c.actionDisabled || (s.cardFreezeBusy && s.selectedCardId === c.id)} title={c.actionDisabled ? c.actionDisabledReason : s.cardFreezeError && s.selectedCardId === c.id ? s.cardFreezeError : undefined}>{c.status === "frozen" ? "Unfreeze" : "Freeze"}</button>
 <button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
 <button type="button" onClick={c.manage} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
+</div>
 </div>
 </div>
 ))}

@@ -132,8 +132,31 @@ describe("CardFlipTile", () => {
     expect(flipButton).toHaveAttribute("title", "This card is closed.");
   });
 
-  it("surfaces a reveal error", () => {
-    render(<CardFlipTile {...baseProps} flipped secretsError="Couldn't load card details." />);
-    expect(screen.getByText("Couldn't load card details.")).toBeInTheDocument();
+  it("locks the flip on a frozen card instead of rotating", () => {
+    const onFlip = vi.fn();
+    render(<CardFlipTile {...baseProps} status="frozen" statusLabel="Frozen" onFlip={onFlip} />);
+    const flipButton = screen.getByRole("button", { name: "Show card details" });
+    expect(flipButton).toBeDisabled();
+    expect(flipButton).toHaveAttribute("title", "Unfreeze this card to view its details");
+    fireEvent.click(flipButton);
+    expect(onFlip).not.toHaveBeenCalled();
+  });
+
+  it("does not disable the front face while secrets are loading, so it can still flip back", () => {
+    render(<CardFlipTile {...baseProps} flipped secretsBusy />);
+    expect(screen.getByRole("button", { name: "Hide card details" })).not.toBeDisabled();
+  });
+
+  it("surfaces a reveal error inside the fixed card face, not as extra height below it", () => {
+    const { container } = render(
+      <CardFlipTile {...baseProps} flipped secretsError="Couldn't load card details." />,
+    );
+    // The visible face shows a short message in the existing PAN slot...
+    expect(screen.getByText("Couldn't load")).toBeInTheDocument();
+    // ...and the full message is only announced via an off-screen live region,
+    // never a visible element that would grow the tile and push the page down.
+    const announcement = screen.getByText("Couldn't load card details.");
+    expect(announcement).toHaveClass("ep-sr-only");
+    expect(container.querySelector(".ep-card-flip__hint")).not.toBeInTheDocument();
   });
 });

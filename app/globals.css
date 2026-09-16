@@ -8346,12 +8346,18 @@ select.ep-wallets-create__control {
 
 .ep-cards__actions {
   display: flex;
-  gap: 0;
+  flex-direction: column;
+  gap: 4px;
   background: var(--surface2);
   border: 1px solid var(--glass-border);
   border-radius: 14px;
   overflow: hidden;
   padding: 4px;
+}
+
+.ep-cards__actions-row {
+  display: flex;
+  gap: 0;
 }
 
 .ep-cards__action {
