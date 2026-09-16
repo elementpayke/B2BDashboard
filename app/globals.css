@@ -8568,7 +8568,14 @@ button.ep-card-flip__face:focus-visible {
     linear-gradient(145deg, #1a1824 0%, #0f0e14 55%, #17151f 100%);
 }
 
+/* .ep-card-face sets position:relative and is declared after
+   .ep-card-flip__face, so at equal specificity it won and dropped both faces
+   back into normal flow — they stacked vertically, doubling the tile's height
+   and rendering the flipped face a full card below its neighbours. This rule
+   outranks it; the position/inset must stay here. */
 .ep-card-flip .ep-card-face {
+  position: absolute;
+  inset: 0;
   max-width: none;
   margin: 0;
   width: 100%;
