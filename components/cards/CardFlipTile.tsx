@@ -79,16 +79,19 @@ export default function CardFlipTile({
   const last4Short = last4 ? `···· ${last4}` : "···· ····";
   const panMasked = formatMaskedPan(last4);
   const faceStyle = { background: bg, filter };
+  const frozen = status === "frozen";
+  const flipLocked = Boolean(actionDisabled) || frozen;
+  const panSlotText = secretsError ? "Couldn't load" : secretsBusy ? "Loading…" : panMasked;
 
   const copyable = (
     field: string,
     value: string,
     label: string,
-    opts?: { formatPan?: boolean },
+    opts?: { formatPan?: boolean; title?: string },
   ) => {
     if (!revealed) {
       return (
-        <span className="ep-card-face__secret" aria-label={label}>
+        <span className="ep-card-face__secret" aria-label={label} title={opts?.title}>
           {value}
         </span>
       );
@@ -124,10 +127,16 @@ export default function CardFlipTile({
           className="ep-card-flip__face ep-card-flip__face--front ep-card-face ep-card-face--brand"
           style={faceStyle}
           onClick={onFlip}
-          disabled={secretsBusy || actionDisabled}
+          disabled={flipLocked}
           aria-pressed={flipped}
           aria-label={flipped ? "Hide card details" : "Show card details"}
-          title={actionDisabled ? actionDisabledReason : undefined}
+          title={
+            actionDisabled
+              ? actionDisabledReason
+              : frozen
+                ? "Unfreeze this card to view its details"
+                : undefined
+          }
         >
           <div className="ep-card-face__top">
             <span className="ep-card-face__name">
@@ -158,7 +167,7 @@ export default function CardFlipTile({
           <div className="ep-card-face__top">
             <span className="ep-card-face__kind">
               VIRTUAL
-              {status === "frozen" ? (
+              {frozen ? (
                 <span className="ep-card-face__kind-chip" data-frozen="true">
                   {statusLabel}
                 </span>
@@ -172,11 +181,9 @@ export default function CardFlipTile({
               ? copyable(`card:${cardId}:num`, secrets!.number, "Card number", {
                   formatPan: true,
                 })
-              : copyable(
-                  `card:${cardId}:num`,
-                  secretsBusy ? "Loading…" : panMasked,
-                  "Card number",
-                )}
+              : copyable(`card:${cardId}:num`, panSlotText, "Card number", {
+                  title: secretsError || undefined,
+                })}
           </div>
 
           <div className="ep-card-face__bottom">
@@ -198,8 +205,10 @@ export default function CardFlipTile({
           </div>
         </div>
       </div>
+      {/* Announced for assistive tech without affecting the tile's box height — the
+          card face itself shows "Couldn't load" in the PAN slot (see panSlotText). */}
       {secretsError ? (
-        <p className="ep-card-flip__hint" role="alert">
+        <p className="ep-sr-only" role="alert">
           {secretsError}
         </p>
       ) : null}
