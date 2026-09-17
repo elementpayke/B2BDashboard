@@ -33,6 +33,7 @@ describe("compact navigation", () => {
         onClose={vi.fn()}
         onNavigate={vi.fn()}
         onOpenBulk={vi.fn()}
+        bulkEnabled
         onOpenHelp={vi.fn()}
         onOpenTopUp={vi.fn()}
         onToggleTheme={vi.fn()}

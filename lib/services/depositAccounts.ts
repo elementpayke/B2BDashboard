@@ -1,4 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
+import { isAllowlistedStellarStable } from "@/lib/config/stellarFeatures";
 import { formatAccountBalance, pickAvailableBalance } from "@/lib/services/balances";
 
 /**
@@ -83,15 +84,14 @@ export type NetworkOption = { code: string; label: string };
 export const STABLECOIN_OPTIONS: StablecoinOption[] = [
   { code: "USDC", label: "USD Coin (USDC)" },
   { code: "USDT", label: "Tether (USDT)" },
+  { code: "EURC", label: "EURC" },
 ];
 
-/** Custodial create/send: USDC on Base/Polygon/Stellar; USDT on Base/Polygon only. */
-export const SUPPORTED_STABLECOINS = ["USDC", "USDT"] as const;
+/** Custodial create: USDC everywhere, plus allowlisted Stellar-only stables. */
+export const SUPPORTED_STABLECOINS = ["USDC", "USDT", "EURC"] as const;
 
 export function isStablecoinSupported(code: string): boolean {
-  return (SUPPORTED_STABLECOINS as readonly string[]).includes(
-    code.trim().toUpperCase(),
-  );
+  return networksForStablecoin(code).length > 0;
 }
 
 export const NETWORK_OPTIONS: NetworkOption[] = [
@@ -104,7 +104,7 @@ export const NETWORK_OPTIONS: NetworkOption[] = [
 /** Networks currently available for custodial stablecoin account creation. */
 export const SUPPORTED_STABLECOIN_NETWORKS = ["BASE", "POLYGON", "STELLAR"] as const;
 
-/** EVM networks that support both USDC and USDT. Stellar is USDC-only. */
+/** EVM networks that support both USDC and USDT. */
 export const EVM_STABLECOIN_NETWORKS = ["BASE", "POLYGON"] as const;
 
 export function isStablecoinNetworkSupported(code: string): boolean {
@@ -116,8 +116,13 @@ export function isStablecoinNetworkSupported(code: string): boolean {
 /** Networks allowed for a given stablecoin when creating/sending. */
 export function networksForStablecoin(currency: string): readonly string[] {
   const code = currency.trim().toUpperCase();
-  if (code === "USDT") return EVM_STABLECOIN_NETWORKS;
+  if (code === "USDT") {
+    return isAllowlistedStellarStable(code)
+      ? SUPPORTED_STABLECOIN_NETWORKS
+      : EVM_STABLECOIN_NETWORKS;
+  }
   if (code === "USDC") return SUPPORTED_STABLECOIN_NETWORKS;
+  if (isAllowlistedStellarStable(code)) return ["STELLAR"];
   return [];
 }
 

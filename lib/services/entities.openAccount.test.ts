@@ -38,14 +38,14 @@ describe("buildStablecoinOpenPayload", () => {
         network: "BASE",
         displayName: "x",
       }),
-    ).toThrow(/USDC or USDT/);
+    ).toThrow(/supported stablecoin/);
     expect(() =>
       buildStablecoinOpenPayload({
-        currency: "USDT",
-        network: "STELLAR",
+        currency: "EURC",
+        network: "BASE",
         displayName: "x",
       }),
-    ).toThrow(/USDT is not available on Stellar/);
+    ).toThrow(/only available on Stellar/);
     expect(() =>
       buildStablecoinOpenPayload({
         currency: "USDC",
@@ -67,6 +67,33 @@ describe("buildStablecoinOpenPayload", () => {
       currency: "USDT",
       network: "Polygon",
       display_name: "Ops USDT",
+    });
+  });
+
+  it("opens allowlisted Stellar stables", () => {
+    expect(
+      buildStablecoinOpenPayload({
+        currency: "usdt",
+        network: "STELLAR",
+        displayName: "Stellar USDT",
+      }),
+    ).toEqual({
+      asset_type: "stablecoin",
+      currency: "USDT",
+      network: "Stellar",
+      display_name: "Stellar USDT",
+    });
+    expect(
+      buildStablecoinOpenPayload({
+        currency: "eurc",
+        network: "stellar",
+        displayName: "Treasury EURC",
+      }),
+    ).toEqual({
+      asset_type: "stablecoin",
+      currency: "EURC",
+      network: "Stellar",
+      display_name: "Treasury EURC",
     });
   });
 });
@@ -154,6 +181,25 @@ describe("occupiedStablecoinNetworkCodes", () => {
     expect([...occupiedStablecoinNetworkCodes([base, usdtPoly], "USDT")]).toEqual([
       "POLYGON",
     ]);
+    expect([...occupiedStablecoinSlots([stellar, usdtPoly])]).toEqual([
+      "USDC:STELLAR",
+      "USDT:POLYGON",
+    ]);
+  });
+
+  it("keeps Stellar-only currencies occupied by asset and network", async () => {
+    const eurc = normalizeFinancialAccount(
+      {
+        id: "a4",
+        asset_type: "stablecoin",
+        currency: "EURC",
+        network: "Stellar",
+        status: "active",
+      },
+      "ent_1",
+    )!;
+    const { occupiedStablecoinSlots } = await import("./entities");
+    expect([...occupiedStablecoinSlots([eurc])]).toEqual(["EURC:STELLAR"]);
   });
 });
 
