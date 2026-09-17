@@ -119,3 +119,17 @@ export function resolveQuotedProviderName(options: string[], selectedName: strin
   if (idx >= 0) return options[idx];
   return selectedName.trim() || options[0] || "";
 }
+
+/**
+ * Country OnRamp rails require `source.networkId` from `/v1/supported/catalog`.
+ * Fail closed when the catalog settled without a match — same as Send.
+ */
+export function depositRailBlockedByMissingNetworkId(input: {
+  depositGroup: string;
+  networkId: string | undefined;
+  catalogSettled: boolean;
+}): boolean {
+  if (input.depositGroup !== "country") return false;
+  if (!input.catalogSettled) return false;
+  return !input.networkId;
+}

@@ -196,7 +196,7 @@ export default function AccountDetailModal({
           <div className="ep-wallets-detail__pending-title">Deposit unavailable</div>
           <div className="ep-wallets-detail__pending-body">
             {acctDetail.instructions ||
-              "Deposit rail unavailable for this account right now. Bank coordinates are not available to copy."}
+              "IBAN / bank coordinates are not available for this rail. Use Interac or open banking from Fund account when offered for this currency."}
           </div>
         </div>
       ) : beneficiary ? (

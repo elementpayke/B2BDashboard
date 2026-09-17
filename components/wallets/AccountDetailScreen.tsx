@@ -38,6 +38,10 @@ export type AccountDetailScreenProps = {
   onOpenDetails: () => void;
   onFund: () => void;
   onSend: () => void;
+  /** Same-currency VA→VA move (fiat). */
+  onMove?: () => void;
+  /** External bank payout (fiat). */
+  onPayout?: () => void;
   onConvert?: () => void;
   onCloseAccount?: () => void;
   onViewAllTx: () => void;
@@ -65,6 +69,8 @@ export default function AccountDetailScreen({
   onOpenDetails,
   onFund,
   onSend,
+  onMove,
+  onPayout,
   onConvert,
   onCloseAccount,
   onViewAllTx,
@@ -154,6 +160,16 @@ export default function AccountDetailScreen({
                 className="ep-acct-detail__action"
               >
                 Convert
+              </button>
+            ) : null}
+            {onMove ? (
+              <button type="button" onClick={onMove} className="ep-acct-detail__action">
+                Move
+              </button>
+            ) : null}
+            {onPayout ? (
+              <button type="button" onClick={onPayout} className="ep-acct-detail__action">
+                Payout
               </button>
             ) : null}
             <button

@@ -42,7 +42,7 @@ export default function FundStablecoinModal({
   }, [rails, selectedId]);
 
   const selected = rails.find((r) => r.id === selectedId) ?? rails[0] ?? null;
-  const hasRail = Boolean(selected?.walletAddress || selected?.checkoutUrl);
+  const hasRail = Boolean(selected?.walletAddress);
 
   const continueFromAmount = () => {
     if (!hasRail) return;
@@ -89,8 +89,8 @@ export default function FundStablecoinModal({
                   <span className="ep-pick-row__title">{rail.currency}</span>
                   <span className="ep-pick-row__meta">{rail.networkLabel}</span>
                 </span>
-                {rail.checkoutUrl ? (
-                  <span className="ep-fund-sc__rail-tag">Checkout</span>
+                {rail.walletAddress ? (
+                  <span className="ep-fund-sc__rail-tag">Address</span>
                 ) : null}
                 {selected?.id === rail.id ? (
                   <span className="ep-pick-row__check" aria-hidden>✓</span>
@@ -163,7 +163,7 @@ export default function FundStablecoinModal({
     );
   }
 
-  const hasCheckout = Boolean(selected.checkoutUrl);
+  const hasCheckout = false;
 
   return (
     <div className="ep-fund-sc ep-money-flow">
@@ -173,39 +173,16 @@ export default function FundStablecoinModal({
       <div className="ep-fund-sc__success-icon" aria-hidden>
         ✓
       </div>
-      <div className="ep-fund-sc__title">
-        {hasCheckout ? "Payment initiated" : "Deposit address ready"}
-      </div>
+      <div className="ep-fund-sc__title">Deposit address ready</div>
       <p className="ep-fund-sc__body">
-        {hasCheckout
-          ? "Complete funding with the checkout link below, or send on-chain to the deposit address when shown."
-          : `Send ${selected.currency}${amount ? ` (about ${amount} ${selected.currency})` : ""} on `}
-        {!hasCheckout ? (
-          <>
-            <strong>{selected.networkLabel}</strong> to the address below.
-          </>
-        ) : null}
+        Send {selected.currency}
+        {amount ? ` (about ${amount} ${selected.currency})` : ""} on{" "}
+        <strong>{selected.networkLabel}</strong> to the address below.
       </p>
 
       <div className="ep-fund-sc__meta">
         {selected.currency} · {selected.networkLabel}
       </div>
-
-      {hasCheckout ? (
-        <div className="ep-fund-sc__url-row">
-          <code className="ep-fund-sc__url ep-mono" title={selected.checkoutUrl!}>
-            {selected.checkoutUrl}
-          </code>
-          <button
-            type="button"
-            className="ep-fund-sc__copy"
-            onClick={() => copyText(selected.checkoutUrl!, "url")}
-            aria-label={copiedUrl ? "Checkout URL copied" : "Copy checkout URL"}
-          >
-            {copiedUrl ? "Copied" : "Copy"}
-          </button>
-        </div>
-      ) : null}
 
       {selected.walletAddress ? (
         <>
@@ -230,7 +207,11 @@ export default function FundStablecoinModal({
             amount={amount}
           />
         </>
-      ) : null}
+      ) : (
+        <div className="ep-fund-sc__warn" role="status">
+          No on-chain deposit address yet. Wait until this rail is active.
+        </div>
+      )}
 
       {copyError ? (
         <div className="ep-fund-sc__warn" role="alert">
@@ -254,18 +235,8 @@ export default function FundStablecoinModal({
       <p className="ep-fund-sc__disclaimer">{selected.chainDisclaimer}</p>
 
       <div className="ep-fund-sc__footer">
-        {hasCheckout ? (
-          <a
-            className="ep-fund-sc__btn-primary"
-            href={selected.checkoutUrl!}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Continue to checkout
-          </a>
-        ) : null}
-        <button type="button" className="ep-fund-sc__btn-secondary" onClick={onBack}>
-          Done
+        <button type="button" className="ep-fund-sc__btn-secondary" onClick={() => setStep("amount")}>
+          Back
         </button>
       </div>
     </div>

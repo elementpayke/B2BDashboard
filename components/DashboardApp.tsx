@@ -122,6 +122,10 @@ import {
   toPartnerNetwork,
   toUiNetworkKey,
 } from "@/lib/services/entities";
+import {
+  remittanceMethodForCurrency,
+  remittanceMethodLabel,
+} from "@/lib/services/paymentRequests";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import {
@@ -157,7 +161,7 @@ import {
   type SendQuoteErrorData,
 } from "@/lib/hooks/sendFlowHelpers";
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
-import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
+import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
 import {
   isMobileMoneyRail,
@@ -258,7 +262,10 @@ function fiatRailForCurrency(code: string): string {
 
 import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
 import CloseAccountModal, { type CloseAccountAction } from "@/components/wallets/CloseAccountModal";
+import BookTransferModal from "@/components/wallets/BookTransferModal";
+import FundPaymentRequestModal from "@/components/wallets/FundPaymentRequestModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
+import PayoutModal from "@/components/wallets/PayoutModal";
 import {
   AFRICAN_FUND_FIAT_CURRENCIES,
   africanFundDisabledReason,
@@ -1562,6 +1569,18 @@ export default function DashboardApp(props: Props = {}) {
           state.depositProviderName,
         );
         const networkId = networkIdForProvider(catalogProviders, providerName);
+        if (
+          depositRailBlockedByMissingNetworkId({
+            depositGroup: state.depositGroup,
+            networkId,
+            catalogSettled: sendCatalogSettled,
+          })
+        ) {
+          throw new Error(
+            friendlySendQuoteError("network_id is required") ||
+              "This corridor isn’t available right now — pick another method or try again shortly.",
+          );
+        }
         const payerName =
           meQuery.data?.business?.legal_name ||
           meQuery.data?.business?.name ||
@@ -3897,7 +3916,7 @@ export default function DashboardApp(props: Props = {}) {
         copyWebhook: detail?.webhook_url ? copyField("wh:" + k.id, detail.webhook_url) : () => {},
         copyWebhookLabel: s.copiedField === "wh:" + k.id ? "Copied" : "Copy",
         canCopyWebhook: !!detail?.webhook_url,
-        events: detail?.scopes?.length ? detail.scopes.join(" · ") : "No scopes set",
+        events: "Authorization uses dashboard roles (admin/finance/operator). API key scope fields are reserved and not enforced yet.",
 
         webhookSecretDisplay: webhookSecret ? (secretRevealed ? webhookSecret : "whsec_••••••••••••••••") : "Not configured",
         canRevealSecret: !!webhookSecret,
@@ -3995,7 +4014,7 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
@@ -4009,6 +4028,9 @@ export default function DashboardApp(props: Props = {}) {
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
   const isModalFundStablecoin = s.modal === "fundStablecoin";
+  const isModalFundPaymentRequest = s.modal === "fundPaymentRequest";
+  const isModalBookTransfer = s.modal === "bookTransfer";
+  const isModalPayout = s.modal === "payout";
   const isModalCloseAccount = s.modal === "closeAccount";
   const isModalCardDetail = s.modal === "cardDetail";
   const isModalNewCard = s.modal === "newCard";
@@ -4840,6 +4862,16 @@ export default function DashboardApp(props: Props = {}) {
   onFund={openAcctFundChooser}
   onSend={openSelectedAccountSend}
   onConvert={openConvert}
+  onMove={
+    selectedDepositAccount
+      ? guardMoneyModal("bookTransfer")
+      : undefined
+  }
+  onPayout={
+    selectedDepositAccount
+      ? guardMoneyModal("payout")
+      : undefined
+  }
   onCloseAccount={selectedStablecoinAccount ? openCloseAccountChooser : undefined}
   onViewAllTx={goTransactions}
 />
@@ -5539,6 +5571,10 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       setState({ modal: "fundStablecoin" });
       return;
     }
+    if (option === "remittance") {
+      setState({ modal: "fundPaymentRequest" });
+      return;
+    }
     if (meQuery.isLoading || meQuery.isPending) return;
     const status =
       (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
@@ -5559,6 +5595,73 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       ? undefined
       : "No ready stablecoin deposit rails yet. Open a stablecoin account and wait until it is active."
   }
+  remittanceDisabled={!remittanceMethodForCurrency(acctDetail.currency)}
+  remittanceDisabledReason={
+    remittanceMethodForCurrency(acctDetail.currency)
+      ? undefined
+      : "Interac / open banking is available for CAD, EUR, and GBP accounts."
+  }
+  remittanceLabel={
+    remittanceMethodForCurrency(acctDetail.currency)
+      ? remittanceMethodLabel(remittanceMethodForCurrency(acctDetail.currency)!)
+      : "Interac / open banking"
+  }
+  remittanceDesc={
+    remittanceMethodForCurrency(acctDetail.currency)
+      ? `Request ${acctDetail.currency} via ${remittanceMethodLabel(remittanceMethodForCurrency(acctDetail.currency)!)} — preferred when IBAN deposit is unavailable`
+      : undefined
+  }
+/>
+</>) : null}
+
+{(isModalFundPaymentRequest && acctDetail && selectedDepositAccount) ? (<>
+<FundPaymentRequestModal
+  entityId={String(selectedDepositAccount.entity_id || "").trim()}
+  accountId={String(selectedDepositAccount.id)}
+  currency={acctDetail.currency}
+  accountName={acctDetail.name}
+  method={remittanceMethodForCurrency(acctDetail.currency) || "interac"}
+  onBack={() => setState({ modal: "fundChooser" })}
+/>
+</>) : null}
+
+{(isModalBookTransfer && selectedDepositAccount) ? (<>
+<BookTransferModal
+  entityId={String(selectedDepositAccount.entity_id || "").trim()}
+  source={{
+    id: String(selectedDepositAccount.id),
+    entityId: String(selectedDepositAccount.entity_id || ""),
+    assetType: "fiat",
+    currency: String(selectedDepositAccount.currency || acctDetail?.currency || ""),
+    network: "",
+    status: String(selectedDepositAccount.status || ""),
+  }}
+  candidates={depositAccountsList.map((a) => ({
+    id: String(a.id),
+    entityId: String(a.entity_id || ""),
+    assetType: "fiat",
+    currency: String(a.currency || ""),
+    network: "",
+    status: String(a.status || ""),
+  }))}
+  onDone={closeModal}
+  onCancel={closeModal}
+/>
+</>) : null}
+
+{(isModalPayout && selectedDepositAccount) ? (<>
+<PayoutModal
+  entityId={String(selectedDepositAccount.entity_id || "").trim()}
+  account={{
+    id: String(selectedDepositAccount.id),
+    entityId: String(selectedDepositAccount.entity_id || ""),
+    assetType: "fiat",
+    currency: String(selectedDepositAccount.currency || acctDetail?.currency || ""),
+    network: "",
+    status: String(selectedDepositAccount.status || ""),
+  }}
+  onDone={closeModal}
+  onCancel={closeModal}
 />
 </>) : null}
 

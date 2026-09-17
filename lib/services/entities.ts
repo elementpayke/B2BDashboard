@@ -269,7 +269,7 @@ export function stablecoinStatusTone(
   return "pending";
 }
 
-/** Accept only http(s) checkout links — reject javascript:/data:/etc. */
+/** Accept only http(s) checkout links — reject javascript:/data:/PSP hosts. */
 export function toHttpUrl(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
@@ -277,6 +277,11 @@ export function toHttpUrl(raw: unknown): string | null {
   try {
     const url = new URL(trimmed);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    const host = url.hostname.toLowerCase();
+    // White-label: never surface Nuvion (or other PSP) hosted checkout to merchants.
+    if (host === "nuvion.dev" || host.endsWith(".nuvion.dev") || host.includes("nuvion.")) {
+      return null;
+    }
     return url.href;
   } catch {
     return null;
