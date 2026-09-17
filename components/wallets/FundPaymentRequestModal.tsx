@@ -31,6 +31,12 @@ function redirectUrl(): string {
   return `${window.location.origin}/wallets?fund=return`;
 }
 
+function statusLabel(status: string | null | undefined): string {
+  const raw = (status || "").trim().toLowerCase();
+  if (!raw) return "Unknown";
+  return raw.replace(/_/g, " ");
+}
+
 /**
  * Create and track an Interac / open-banking payment request via Mboka.
  * Never surfaces raw PSP hosted checkout URLs.
@@ -54,6 +60,8 @@ export default function FundPaymentRequestModal({
 
   const methodLabel = remittanceMethodLabel(method);
   const needsPayer = method === "interac";
+  const canConfirm =
+    method === "interac" && !!request && !isTerminalPaymentRequestStatus(request.status);
 
   const refresh = useCallback(async () => {
     if (!request?.id) return;
@@ -120,51 +128,74 @@ export default function FundPaymentRequestModal({
     return (
       <div className="ep-fund-pr">
         <p className="ep-fund-pr__intro">
-          <strong>{methodLabel}</strong> request for <strong>{accountName}</strong> ({currency})
+          {methodLabel} request for <strong>{accountName}</strong> ({currency})
         </p>
-        <div className="ep-fund-pr__status" role="status">
-          Status: <strong>{request.status}</strong>
+
+        <div className="ep-fund-pr__panel" role="status">
+          <div className="ep-fund-pr__row">
+            <span className="ep-fund-pr__k">Status</span>
+            <span className="ep-fund-pr__v ep-fund-pr__v--status">{statusLabel(request.status)}</span>
+          </div>
           {request.amount ? (
-            <>
-              {" "}
-              · {request.amount} {request.currency || currency}
-            </>
+            <div className="ep-fund-pr__row">
+              <span className="ep-fund-pr__k">Amount</span>
+              <span className="ep-fund-pr__v">
+                {request.amount} {request.currency || currency}
+              </span>
+            </div>
+          ) : null}
+          {request.reference_number ? (
+            <div className="ep-fund-pr__row">
+              <span className="ep-fund-pr__k">Reference</span>
+              <code className="ep-fund-pr__v ep-mono">{request.reference_number}</code>
+            </div>
           ) : null}
         </div>
-        {request.reference_number ? (
-          <p className="ep-fund-pr__ref">
-            Reference: <code className="ep-mono">{request.reference_number}</code>
-          </p>
-        ) : null}
+
         {request.security_question ? (
           <p className="ep-fund-pr__note">{request.security_question}</p>
         ) : null}
-        {request.requires_hosted_checkout ? (
-          <p className="ep-fund-pr__notice" role="note">
-            This method needs a secure ElementPay-hosted step. Complete it from the email or
-            in-app prompt — do not use third-party checkout links emailed by the rail.
-          </p>
-        ) : (
-          <p className="ep-fund-pr__notice" role="note">
-            {method === "interac"
-              ? "Complete the Interac Request for Money from your bank. Messages from the rail may not show ElementPay branding."
+
+        <p className="ep-fund-pr__notice" role="note">
+          {request.requires_hosted_checkout
+            ? "This method needs a secure ElementPay-hosted step. Complete it from the email or in-app prompt — we never open third-party checkout pages here."
+            : method === "interac"
+              ? "Complete the Interac Request for Money in your bank app. Messages from the rail may not show ElementPay branding."
               : "Approve the open-banking payment in your bank app when prompted."}
-          </p>
-        )}
+        </p>
+
         {request.failure?.code ? (
-          <p className="ep-fund-pr__error">Failed ({request.failure.code})</p>
+          <p className="ep-fund-pr__error" role="alert">
+            Failed ({request.failure.code})
+          </p>
         ) : null}
-        {error ? <p className="ep-fund-pr__error">{error}</p> : null}
-        <div className="ep-fund-pr__actions">
-          <button type="button" className="ep-btn ep-btn--ghost" onClick={onBack} disabled={busy}>
+        {error ? (
+          <p className="ep-fund-pr__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="ep-money-actions ep-fund-pr__actions">
+          <button type="button" className="ep-btn-secondary" onClick={onBack} disabled={busy}>
             Back
           </button>
-          {method === "interac" && !isTerminalPaymentRequestStatus(request.status) ? (
-            <button type="button" className="ep-btn" onClick={() => void onConfirm()} disabled={busy}>
+          {canConfirm ? (
+            <button
+              type="button"
+              className="ep-btn-primary"
+              onClick={() => void onConfirm()}
+              disabled={busy}
+              aria-busy={busy || undefined}
+            >
               {busy ? "Confirming…" : "I've paid — confirm"}
             </button>
           ) : null}
-          <button type="button" className="ep-btn ep-btn--ghost" onClick={() => void refresh()} disabled={busy}>
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={() => void refresh()}
+            disabled={busy}
+          >
             Refresh status
           </button>
         </div>
@@ -178,9 +209,10 @@ export default function FundPaymentRequestModal({
         Fund <strong>{accountName}</strong> with {methodLabel} ({currency})
       </p>
       <p className="ep-fund-pr__notice" role="note">
-        External bank messages for {methodLabel} may show the rail&apos;s branding, not ElementPay.
-        We never open third-party checkout pages from this screen.
+        External bank messages for this {methodLabel} request may show the rail&apos;s branding, not
+        ElementPay. We never open third-party checkout pages from this screen.
       </p>
+
       <label className="ep-field">
         <span>Amount</span>
         <input
@@ -211,12 +243,24 @@ export default function FundPaymentRequestModal({
           </label>
         </>
       ) : null}
-      {error ? <p className="ep-fund-pr__error">{error}</p> : null}
-      <div className="ep-fund-pr__actions">
-        <button type="button" className="ep-btn ep-btn--ghost" onClick={onBack} disabled={busy}>
+
+      {error ? (
+        <p className="ep-fund-pr__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="ep-money-actions ep-fund-pr__actions">
+        <button type="button" className="ep-btn-secondary" onClick={onBack} disabled={busy}>
           Back
         </button>
-        <button type="button" className="ep-btn" onClick={() => void onCreate()} disabled={!canSubmit}>
+        <button
+          type="button"
+          className="ep-btn-primary"
+          onClick={() => void onCreate()}
+          disabled={!canSubmit}
+          aria-busy={busy || undefined}
+        >
           {busy ? "Creating…" : `Create ${methodLabel} request`}
         </button>
       </div>
