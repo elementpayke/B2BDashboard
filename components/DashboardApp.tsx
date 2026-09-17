@@ -124,6 +124,7 @@ import {
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
+import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
 import {
   offRampCountriesFromCatalog,
   offRampProvidersForRail,
@@ -2731,11 +2732,18 @@ export default function DashboardApp(props: Props = {}) {
         }));
         return;
       }
-      setState((s: any) => ({
-        cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
-        cardTileSecrets: { ...s.cardTileSecrets, [cardId]: { number, cvv } },
-        cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
-      }));
+      setState((s: any) => {
+        // Hidden (or auto-hidden) while the reveal was in flight — drop the
+        // payload rather than parking credentials behind a face-up card.
+        if (!s.cardTileFlipped[cardId]) {
+          return { cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false } };
+        }
+        return {
+          cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
+          cardTileSecrets: { ...s.cardTileSecrets, [cardId]: { number, cvv } },
+          cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
+        };
+      });
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
     } catch (err) {
@@ -2748,13 +2756,59 @@ export default function DashboardApp(props: Props = {}) {
       }));
     }
   };
+  /**
+   * Purge one card's credentials and turn the tile face-up.
+   *
+   * Order matters: the PAN/CVV leave client state, they are not merely covered
+   * by a CSS rotation. Flipping alone left them readable in React state (and so
+   * in any memory dump or devtools session) for the rest of the visit.
+   */
+  const hideCardTileSecrets = useCallback(
+    (cardId: string) =>
+      setState((s: any) => {
+        const secrets = { ...s.cardTileSecrets };
+        delete secrets[cardId];
+        return {
+          cardTileSecrets: secrets,
+          cardTileFlipped: { ...s.cardTileFlipped, [cardId]: false },
+          cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
+          copiedField: "",
+        };
+      }),
+    [setState],
+  );
+
   const flipCardTile = (cardId: string) => () => {
     const willFlip = !state.cardTileFlipped[cardId];
-    setState((s: any) => ({ cardTileFlipped: { ...s.cardTileFlipped, [cardId]: willFlip } }));
-    if (willFlip && !state.cardTileSecrets[cardId] && !state.cardTileSecretsBusy[cardId]) {
+    if (!willFlip) {
+      hideCardTileSecrets(cardId);
+      return;
+    }
+    setState((s: any) => ({ cardTileFlipped: { ...s.cardTileFlipped, [cardId]: true } }));
+    if (!state.cardTileSecrets[cardId] && !state.cardTileSecretsBusy[cardId]) {
       void revealCardTileSecrets(cardId);
     }
   };
+
+  // Auto-hide revealed credentials. The window starts when the secrets land,
+  // not when the flip begins, so a slow reveal doesn't eat the user's time.
+  useSecretExpiry(Object.keys(state.cardTileSecrets), hideCardTileSecrets);
+
+  // The detail modal shows the same PAN/CVV and gets the same window. It
+  // already purged on close, so it only needed the timer.
+  useSecretExpiry(state.cardSecrets ? ["card-detail-modal"] : [], hideCardSecrets);
+
+  // Leaving Cards purges every revealed card. Navigating away is as strong a
+  // signal as "hide" that the user is done looking.
+  const onCardsScreen = state.screen === "cards";
+  useEffect(() => {
+    if (onCardsScreen) return;
+    setState((s: any) =>
+      Object.keys(s.cardTileSecrets).length === 0 && !s.cardSecrets
+        ? {}
+        : { cardTileSecrets: {}, cardTileFlipped: {}, cardSecrets: null, copiedField: "" },
+    );
+  }, [onCardsScreen, setState]);
   const fundCard = () =>
     setState({
       modal: "acctDetail",
