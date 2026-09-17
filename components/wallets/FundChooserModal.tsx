@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { settlesAsUsdcOnStellar } from "@/lib/config/stellarFeatures";
 
 export type FundChooserOption = "bank" | "stablecoin" | "african" | "remittance";
 
@@ -64,6 +65,9 @@ export default function FundChooserModal({
   isStablecoinAccount = false,
   networkLabel,
 }: FundChooserModalProps) {
+  const stellarSettlementHint = settlesAsUsdcOnStellar(currency, networkLabel)
+    ? " Allowlisted Stellar stable deposits still credit as USDC."
+    : "";
   const options: {
     key: FundChooserOption;
     label: string;
@@ -75,7 +79,7 @@ export default function FundChooserModal({
       key: "stablecoin",
       label: "Stablecoin",
       desc: isStablecoinAccount
-        ? `Show a ${currency} deposit address / QR for this wallet`
+        ? `Show a ${currency} deposit address / QR for this wallet.${stellarSettlementHint}`
         : "Deposit to a stablecoin account (address / QR) — does not credit this fiat VA directly",
       disabled: stablecoinDisabled,
       disabledReason: stablecoinDisabledReason,

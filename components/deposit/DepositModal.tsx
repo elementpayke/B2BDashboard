@@ -9,6 +9,7 @@ import {
 } from "@/lib/hooks/depositFlowHelpers";
 import { isMobileMoneyRail } from "@/lib/services/mobileMoneyBrands";
 import MobileMoneyMark from "@/components/money/MobileMoneyMark";
+import { settlesAsUsdcOnStellar } from "@/lib/config/stellarFeatures";
 import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
@@ -189,6 +190,10 @@ export default function DepositModal(p: DepositModalProps) {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [countrySearch, setCountrySearch] = useState("");
   const hasAddress = Boolean(p.depositAddress && p.depositAddress !== "—");
+  const stellarSettlementHint = settlesAsUsdcOnStellar(
+    p.depositAssetCode,
+    p.depositNetwork,
+  );
 
   const filteredCountries = useMemo(
     () => (p.depositCountryRows || []).filter((row) => countryMatchesQuery(row.searchText, countrySearch)),
@@ -575,6 +580,11 @@ export default function DepositModal(p: DepositModalProps) {
                 Only send {p.depositAssetCode} on {p.depositNetworkLabel} — other networks cannot be
                 recovered.
               </div>
+              {stellarSettlementHint ? (
+                <p className="ep-money-hint">
+                  Deposits on this Stellar {p.depositAssetCode} rail settle as USDC after arrival.
+                </p>
+              ) : null}
 
               {hasAddress ? (
                 <div className="ep-money-stack ep-money-stack--tight">

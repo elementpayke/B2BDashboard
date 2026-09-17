@@ -7,9 +7,11 @@ import {
   describeDepositAccountStatus,
   formatBankAddress,
   isCurrencySupported,
+  isStablecoinSupported,
   mapDepositAccountToCardView,
   maskAccountIdentifier,
   mergeDepositAccount,
+  networksForStablecoin,
   type DepositAccount,
 } from "./depositAccounts";
 
@@ -19,6 +21,22 @@ describe("isCurrencySupported", () => {
     expect(isCurrencySupported("eur")).toBe(true);
     expect(isCurrencySupported("GBP")).toBe(false);
     expect(isCurrencySupported("kes")).toBe(false);
+  });
+});
+
+describe("stablecoin creation support", () => {
+  it("keeps Base/Polygon USDT and adds allowlisted Stellar rails", () => {
+    expect(isStablecoinSupported("USDC")).toBe(true);
+    expect(isStablecoinSupported("USDT")).toBe(true);
+    expect(isStablecoinSupported("EURC")).toBe(true);
+    expect(networksForStablecoin("USDT")).toEqual(["BASE", "POLYGON", "STELLAR"]);
+    expect(networksForStablecoin("EURC")).toEqual(["STELLAR"]);
+    expect(networksForStablecoin("USDC")).toEqual(["BASE", "POLYGON", "STELLAR"]);
+  });
+
+  it("rejects unknown stablecoins", () => {
+    expect(isStablecoinSupported("DAI")).toBe(false);
+    expect(networksForStablecoin("DAI")).toEqual([]);
   });
 });
 
