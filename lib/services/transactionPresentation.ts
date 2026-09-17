@@ -35,6 +35,10 @@ export type TransactionPresentation = Transaction & {
   explorerUrl: string | null;
   /** Human network label for detail rows (e.g. Stellar). */
   cryptoNetworkLabel: string | null;
+  /** Enriched brand logo for card spend; null when unmatched or not a card row. */
+  merchantLogoUrl: string | null;
+  /** Enriched brand category for card spend (e.g. "Technology"). */
+  merchantCategory: string | null;
 };
 
 /** Receiver/payer display name: party_name preferred, else account_name (quote destination). */
@@ -225,5 +229,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     railType: railTypeFromPayment(transaction),
     explorerUrl,
     cryptoNetworkLabel,
+    merchantLogoUrl: transaction.merchant?.logo_url?.trim() || null,
+    merchantCategory: transaction.merchant?.category?.trim() || null,
   };
 }

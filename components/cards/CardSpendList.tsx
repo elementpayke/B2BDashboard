@@ -1,10 +1,13 @@
 "use client";
 
+import MerchantMark from "@/components/money/MerchantMark";
 import StatusBadge from "@/components/ui/StatusBadge";
 
 export type CardSpendItem = {
   id: string;
   merchant: string;
+  /** Enriched brand logo when the backend resolved one for this descriptor. */
+  merchantLogoUrl?: string | null;
   meta: string;
   cardLast4: string;
   statusLabel: string;
@@ -21,28 +24,6 @@ type Props = {
   onViewAll?: () => void;
   emptyLabel?: string;
 };
-
-function merchantInitial(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "?";
-  const letter = trimmed.match(/[A-Za-z0-9]/)?.[0];
-  return (letter || trimmed[0] || "?").toUpperCase();
-}
-
-function avatarTone(name: string): string {
-  const tones = [
-    "color-mix(in srgb, var(--indigo) 72%, #1a1630)",
-    "color-mix(in srgb, var(--ink) 85%, var(--indigo))",
-    "color-mix(in srgb, #3d2a1f 80%, var(--amber))",
-    "color-mix(in srgb, #1f3d36 75%, var(--success))",
-    "color-mix(in srgb, #2a2440 70%, var(--indigo))",
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash + name.charCodeAt(i) * (i + 1)) % tones.length;
-  }
-  return tones[hash] || tones[0];
-}
 
 export default function CardSpendList({
   title = "Card spend",
@@ -66,7 +47,6 @@ export default function CardSpendList({
       ) : (
         <ul className="ep-card-spend__list">
           {items.map((tx) => {
-            const initial = merchantInitial(tx.merchant);
             return (
               <li key={tx.id}>
                 <button
@@ -84,13 +64,11 @@ export default function CardSpendList({
                     .filter(Boolean)
                     .join(", ")}
                 >
-                  <span
+                  <MerchantMark
+                    name={tx.merchant}
+                    logoUrl={tx.merchantLogoUrl}
                     className="ep-card-spend__avatar"
-                    style={{ background: avatarTone(tx.merchant) }}
-                    aria-hidden
-                  >
-                    {initial}
-                  </span>
+                  />
                   <div className="ep-card-spend__party">
                     <span className="ep-card-spend__merchant">{tx.merchant}</span>
                     <span className="ep-card-spend__meta">{tx.meta}</span>

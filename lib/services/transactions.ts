@@ -22,6 +22,18 @@ export type TransactionPayment = {
   network_name?: string | null;
 };
 
+/**
+ * Merchant brand for card spend, resolved server-side from the raw acquirer
+ * descriptor. Every field is independently nullable — a brand can be named
+ * without a logo, so consumers must not treat `name` as implying `logo_url`.
+ */
+export type TransactionMerchant = {
+  name: string | null;
+  domain: string | null;
+  logo_url: string | null;
+  category: string | null;
+};
+
 export type Transaction = {
   /**
    * Merchant order id (number) or projected account-credit id (`acr_…` string)
@@ -50,6 +62,8 @@ export type Transaction = {
   financial_account_id?: string | null;
   /** Issued-card id when this row is a card spend/authorization. */
   card_id?: string | null;
+  /** Resolved merchant brand for card spend; null until (or unless) matched. */
+  merchant?: TransactionMerchant | null;
   /** Credit/event source (e.g. `stellar_payment`, `account.credited`). */
   source?: string | null;
   created_at: string;

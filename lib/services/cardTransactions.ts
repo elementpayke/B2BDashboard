@@ -24,6 +24,15 @@ export type CardTransaction = {
   created_at: string;
   card_last_four?: string | null;
   card_name?: string | null;
+  /**
+   * Merchant brand resolved from `narration` by the backend's enrichment cache.
+   * Absent on older rows and on descriptors the provider could not match — the
+   * UI must always be able to fall back to the raw narration.
+   */
+  merchant_name?: string | null;
+  merchant_domain?: string | null;
+  merchant_logo_url?: string | null;
+  merchant_category?: string | null;
 };
 
 export type CardTransactionList = {
@@ -169,6 +178,10 @@ export function normalizeCardTransaction(raw: unknown): CardTransaction | null {
     created_at: createdAt,
     card_last_four: optionalString(row.card_last_four ?? row.last_four ?? row.last4),
     card_name: optionalString(row.card_name ?? row.cardName),
+    merchant_name: optionalString(row.merchant_name),
+    merchant_domain: optionalString(row.merchant_domain),
+    merchant_logo_url: optionalString(row.merchant_logo_url),
+    merchant_category: optionalString(row.merchant_category),
   };
 }
 
@@ -248,7 +261,12 @@ export function mapCardTransactionToTransaction(txn: CardTransaction): Transacti
     type === "reversal" ||
     status === "refunded";
   const direction = isRefund && status !== "declined" ? "in" : "out";
-  const merchant = txn.narration?.trim() || null;
+  const rawDescriptor = txn.narration?.trim() || null;
+  const brandName = txn.merchant_name?.trim() || null;
+  // A resolved brand is a strictly better label than the acquirer descriptor
+  // ("Uber" beats "UBER *TRIP HELP.UBER.COM"), but the descriptor is what the
+  // cardholder sees on a decline, so it stays the memo.
+  const merchant = brandName || rawDescriptor;
   const last4 = txn.card_last_four?.trim();
   const cardLabel = txn.card_name?.trim()
     ? txn.card_name.trim()
@@ -280,7 +298,15 @@ export function mapCardTransactionToTransaction(txn: CardTransaction): Transacti
       network_name: cardLabel,
     },
     tx_hash: null,
-    memo: merchant && status === "declined" ? merchant : null,
+    memo: rawDescriptor && status === "declined" ? rawDescriptor : null,
+    merchant: brandName || txn.merchant_logo_url
+      ? {
+          name: brandName,
+          domain: txn.merchant_domain?.trim() || null,
+          logo_url: txn.merchant_logo_url?.trim() || null,
+          category: txn.merchant_category?.trim() || null,
+        }
+      : null,
     financial_account_id: txn.account_id,
     card_id: txn.card_id,
     source: "card_authorization",
