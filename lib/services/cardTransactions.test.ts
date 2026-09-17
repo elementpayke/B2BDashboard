@@ -199,3 +199,76 @@ describe("cardTransactions", () => {
     ]);
   });
 });
+
+describe("merchant enrichment fields", () => {
+  const rawRow = {
+    transaction_id: "txn_1",
+    card_id: "card_1",
+    account_id: "acct_1",
+    amount: "19.99",
+    currency: "USD",
+    created_at: "2026-09-16T09:14:00Z",
+    status: "completed",
+    type: "debit",
+    narration: "NETFLIX.COM 866-579-7172 CA",
+  };
+
+  it("normalizes the merchant_* fields off the wire", () => {
+    const row = normalizeCardTransaction({
+      ...rawRow,
+      merchant_name: "Netflix",
+      merchant_domain: "netflix.com",
+      merchant_logo_url: "https://cdn/netflix.png",
+      merchant_category: "Entertainment",
+    });
+    expect(row?.merchant_name).toBe("Netflix");
+    expect(row?.merchant_domain).toBe("netflix.com");
+    expect(row?.merchant_logo_url).toBe("https://cdn/netflix.png");
+    expect(row?.merchant_category).toBe("Entertainment");
+  });
+
+  it("leaves merchant fields null when the backend sent none", () => {
+    const row = normalizeCardTransaction(rawRow);
+    expect(row?.merchant_name).toBeNull();
+    expect(row?.merchant_logo_url).toBeNull();
+  });
+
+  it("prefers the resolved brand name over the acquirer descriptor", () => {
+    const row = normalizeCardTransaction({ ...rawRow, merchant_name: "Netflix" });
+    const txn = mapCardTransactionToTransaction(row!);
+    expect(txn.payment?.party_name).toBe("Netflix");
+  });
+
+  it("still labels the row from the descriptor when unmatched", () => {
+    const row = normalizeCardTransaction(rawRow);
+    const txn = mapCardTransactionToTransaction(row!);
+    expect(txn.payment?.party_name).toBe("NETFLIX.COM 866-579-7172 CA");
+  });
+
+  it("attaches the brand for the UI when a logo resolved", () => {
+    const row = normalizeCardTransaction({
+      ...rawRow,
+      merchant_name: "Netflix",
+      merchant_logo_url: "https://cdn/netflix.png",
+    });
+    const txn = mapCardTransactionToTransaction(row!);
+    expect(txn.merchant?.logo_url).toBe("https://cdn/netflix.png");
+    expect(txn.merchant?.name).toBe("Netflix");
+  });
+
+  it("leaves merchant null when nothing resolved", () => {
+    const txn = mapCardTransactionToTransaction(normalizeCardTransaction(rawRow)!);
+    expect(txn.merchant).toBeNull();
+  });
+
+  it("keeps the raw descriptor as the decline memo", () => {
+    const row = normalizeCardTransaction({
+      ...rawRow,
+      status: "declined",
+      merchant_name: "Netflix",
+    });
+    const txn = mapCardTransactionToTransaction(row!);
+    // The cardholder's statement shows the descriptor, not the tidy brand.
+    expect(txn.memo).toBe("NETFLIX.COM 866-579-7172 CA");
+  });
+});

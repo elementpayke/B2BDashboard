@@ -3767,6 +3767,7 @@ export default function DashboardApp(props: Props = {}) {
     return {
       id: String(row.id),
       merchant: row.client || "Card spend",
+      merchantLogoUrl: row.merchantLogoUrl,
       meta: `${row.type} · ${formatCardSpendWhen(String(row.created_at || ""))}`,
       cardLast4: last4 ? `···· ${last4}` : "",
       statusLabel: row.statusLabel,

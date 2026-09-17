@@ -9026,6 +9026,34 @@ button.ep-card-flip__face:focus-visible {
   flex-shrink: 0;
 }
 
+/* Base slot for a standalone merchant mark. Lists supply their own layout
+   class; these modifiers style whichever branch MerchantMark renders. */
+.ep-merchant-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* Brand logos arrive as squares with their own padding and, often, a
+   transparent background. `contain` keeps them undistorted; the neutral
+   backdrop stops a dark monochrome mark vanishing on a dark surface. */
+.ep-merchant-mark--logo {
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+
+.ep-merchant-mark--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .ep-card-spend__party {
   grid-column: 2;
   grid-row: 1 / span 2;
