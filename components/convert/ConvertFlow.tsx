@@ -17,7 +17,24 @@ export type ConvertAccountOption = {
   balanceAmount: number | null;
 };
 
-export type ConvertMode = "fiat_to_stable" | "stable_to_fiat" | "fiat_to_fiat";
+export type ConvertMode =
+  | "fiat_to_stable"
+  | "stable_to_fiat"
+  | "fiat_to_fiat"
+  | "stable_to_stable";
+
+export function isConvertMode(value: string | null | undefined): value is ConvertMode {
+  return (
+    value === "fiat_to_stable" ||
+    value === "stable_to_fiat" ||
+    value === "fiat_to_fiat" ||
+    value === "stable_to_stable"
+  );
+}
+
+export function normalizeConvertMode(value: string | null | undefined): ConvertMode {
+  return isConvertMode(value) ? value : "fiat_to_stable";
+}
 
 export type ConvertFlowProps = {
   mode: ConvertMode;
@@ -36,6 +53,7 @@ export type ConvertFlowProps = {
   acceptLoading: boolean;
   error: string;
   hopLabel?: string | null;
+  settlesViaLabel?: string | null;
   done: boolean;
   doneBody?: string;
   onRefreshQuote: () => void;
@@ -47,6 +65,7 @@ const MODES: { key: ConvertMode; label: string; hint: string }[] = [
   { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell EUR, USD, or GBP for USDC or USDT" },
   { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for EUR, USD, or GBP" },
   { key: "fiat_to_fiat", label: "EUR ↔ USD", hint: "Two hops via USDC" },
+  { key: "stable_to_stable", label: "Stellar stable → USDC", hint: "Convert allowlisted Stellar stables into USDC" },
 ];
 
 function friendlyError(message: string): { title: string; body: string } {
@@ -154,6 +173,8 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 ? "Open a fiat deposit account and a ready USDC or USDT account first."
                 : p.mode === "stable_to_fiat"
                   ? "Open a ready USDC or USDT account and a fiat deposit account first."
+                  : p.mode === "stable_to_stable"
+                    ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
                   : "Open EUR and USD deposit accounts plus a ready USDC bridge account."}
             </span>
           </div>
@@ -273,7 +294,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               <div className="ep-convert__meta-row">
                 <span className="ep-convert__meta-k">Settles via</span>
                 <span className="ep-convert__meta-v">
-                  Ledger FX{dest ? ` · ${dest.label}` : ""}
+                  {p.settlesViaLabel || `Ledger FX${dest ? ` · ${dest.label}` : ""}`}
                 </span>
               </div>
             </div>

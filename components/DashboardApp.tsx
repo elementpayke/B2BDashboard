@@ -192,7 +192,11 @@ import {
   secondsUntilExpiry,
   type ConversionOut,
 } from "@/lib/services/conversions";
-import ConvertFlow, { type ConvertMode } from "@/components/convert/ConvertFlow";
+import { stellarSwapsApi } from "@/lib/services/stellarSwaps";
+import ConvertFlow, {
+  normalizeConvertMode,
+  type ConvertMode,
+} from "@/components/convert/ConvertFlow";
 import {
   cardsApi,
   cardholderPrefillFromKybProfile,
@@ -274,6 +278,13 @@ import BookTransferModal from "@/components/wallets/BookTransferModal";
 import FundPaymentRequestModal from "@/components/wallets/FundPaymentRequestModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import PayoutModal from "@/components/wallets/PayoutModal";
+import BulkStellarPayoutWizard from "@/components/wallets/BulkStellarPayoutWizard";
+import StellarLiquidityPanel from "@/components/developer/StellarLiquidityPanel";
+import {
+  SHOW_STELLAR_LIQUIDITY_PANEL,
+  STELLAR_BULK_PAYOUTS_ENABLED,
+  isAllowlistedStellarStable,
+} from "@/lib/config/stellarFeatures";
 import {
   AFRICAN_FUND_FIAT_CURRENCIES,
   africanFundDisabledReason,
@@ -2346,6 +2357,7 @@ export default function DashboardApp(props: Props = {}) {
     const amount = state.convertAmount;
     const twoHopHop1 =
       state.convertMode === "fiat_to_fiat" && state.convertHop === 1;
+    const stellarStableSwap = state.convertMode === "stable_to_stable";
     const bridgeId = twoHopHop1 ? resolveUsdcBridgeId() : "";
     // Hop 1 of EUR↔USD quotes source fiat → USDC; selectedDestId is the final fiat.
     const quoteDestId = twoHopHop1 ? bridgeId : selectedDestId;
@@ -2398,11 +2410,17 @@ export default function DashboardApp(props: Props = {}) {
       ...(bridgeId ? { convertBridgeUsdcId: bridgeId } : {}),
     });
     try {
-      const quote = await conversionsApi.quote({
-        source_account_id: sourceId,
-        destination_account_id: quoteDestId,
-        amount,
-      });
+      const quote = stellarStableSwap
+        ? await stellarSwapsApi.quote({
+            source_account_id: sourceId,
+            destination_account_id: quoteDestId,
+            amount,
+          })
+        : await conversionsApi.quote({
+            source_account_id: sourceId,
+            destination_account_id: quoteDestId,
+            amount,
+          });
       setState({
         convertQuoteLoading: false,
         convertQuote: quote,
@@ -2434,9 +2452,12 @@ export default function DashboardApp(props: Props = {}) {
     if (!quote?.quote_id || state.quoteSeconds <= 0) return;
     const bridgeId = resolveUsdcBridgeId();
     const finalFiatId = state.convertDestAccountId;
+    const stellarStableSwap = state.convertMode === "stable_to_stable";
     setState({ convertAccepting: true, convertError: "" });
     try {
-      const accepted = await conversionsApi.accept(quote.quote_id);
+      const accepted = stellarStableSwap
+        ? await stellarSwapsApi.confirm(quote.quote_id)
+        : await conversionsApi.accept(quote.quote_id);
       queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
@@ -4604,12 +4625,43 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
-  const convertMode: ConvertMode =
-    s.convertMode === "stable_to_fiat" || s.convertMode === "fiat_to_fiat"
-      ? s.convertMode
-      : "fiat_to_stable";
+  const stellarSwapSourceAccounts = stablecoinAccountsList
+    .filter(
+      (a) =>
+        isReadyStatus(a.status) &&
+        a.id &&
+        toPartnerNetwork(a.network) === "Stellar" &&
+        isAllowlistedStellarStable(a.currency) &&
+        a.currency !== "USDC",
+    )
+    .map((a) => ({
+      id: String(a.id),
+      currency: String(a.currency || "").toUpperCase(),
+      label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
+      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
+      balanceAmount: parseBalanceNumber(a.balance),
+    }));
+  const stellarSwapDestAccounts = stablecoinAccountsList
+    .filter(
+      (a) =>
+        a.currency === "USDC" &&
+        isReadyStatus(a.status) &&
+        a.id &&
+        toPartnerNetwork(a.network) === "Stellar",
+    )
+    .map((a) => ({
+      id: String(a.id),
+      currency: "USDC",
+      label: `USDC · ${formatNetworkLabel(a.network)}`,
+      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
+      balanceAmount: parseBalanceNumber(a.balance),
+    }));
+  const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
   const convertBridgeUsdcId = s.convertBridgeUsdcId || usdcConvertAccounts[0]?.id || "";
   const convertSourceAccounts =
+    convertMode === "stable_to_stable"
+      ? stellarSwapSourceAccounts
+      :
     convertMode === "stable_to_fiat" || (convertMode === "fiat_to_fiat" && s.convertHop === 2)
       ? convertMode === "fiat_to_fiat"
         ? usdcConvertAccounts
@@ -4617,13 +4669,17 @@ export default function DashboardApp(props: Props = {}) {
       : fiatConvertAccounts;
   // Fiat↔fiat hop 1: pick final fiat dest in the UI; quote uses USDC under the hood.
   const convertDestAccounts =
-    convertMode === "fiat_to_stable"
+    convertMode === "stable_to_stable"
+      ? stellarSwapDestAccounts.filter((a) => a.id !== s.convertSourceAccountId)
+      : convertMode === "fiat_to_stable"
       ? stableConvertAccounts
       : convertMode === "fiat_to_fiat" && s.convertHop === 1
         ? fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId)
         : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
   const convertHopLabel =
-    convertMode === "fiat_to_fiat"
+    convertMode === "stable_to_stable"
+      ? "Stellar allowlisted stables settle into USDC."
+      : convertMode === "fiat_to_fiat"
       ? s.convertHop === 1
         ? "Hop 1 of 2 — convert source fiat to USDC (then USDC → destination)"
         : "Hop 2 of 2 — convert USDC to destination fiat"
@@ -5629,6 +5685,11 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   acceptLoading={s.convertAccepting}
   error={s.convertError}
   hopLabel={convertHopLabel}
+  settlesViaLabel={
+    convertMode === "stable_to_stable"
+      ? `Stellar swap${s.convertDestAccountId ? ` · ${(convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.label || "USDC")}` : ""}`
+      : null
+  }
   done={swapAccepted}
   doneBody={
     s.convertQuote
