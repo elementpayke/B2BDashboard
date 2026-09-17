@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 
-export type FundChooserOption = "bank" | "stablecoin" | "african";
+export type FundChooserOption = "bank" | "stablecoin" | "african" | "remittance";
 
 export type FundChooserModalProps = {
   currency: string;
@@ -12,6 +12,10 @@ export type FundChooserModalProps = {
   africanDisabledReason?: string;
   stablecoinDisabled?: boolean;
   stablecoinDisabledReason?: string;
+  remittanceDisabled?: boolean;
+  remittanceDisabledReason?: string;
+  remittanceLabel?: string;
+  remittanceDesc?: string;
   /** When true, bank/mobile options top up this USDC wallet instead of an IBAN. */
   isStablecoinAccount?: boolean;
   networkLabel?: string;
@@ -26,6 +30,12 @@ const METHOD_ICONS: Record<FundChooserOption, React.ReactNode> = {
   ),
   bank: (
     <path d="M3 21h18M4 10h16M5 10l7-6 7 6M6 10v11M18 10v11M10 10v11M14 10v11" />
+  ),
+  remittance: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18M8 15h3" />
+    </>
   ),
   african: (
     <>
@@ -47,6 +57,10 @@ export default function FundChooserModal({
   africanDisabledReason,
   stablecoinDisabled = false,
   stablecoinDisabledReason,
+  remittanceDisabled = true,
+  remittanceDisabledReason,
+  remittanceLabel = "Interac / open banking",
+  remittanceDesc,
   isStablecoinAccount = false,
   networkLabel,
 }: FundChooserModalProps) {
@@ -72,6 +86,15 @@ export default function FundChooserModal({
       desc: isStablecoinAccount
         ? `Pay from a local bank. Credits ${currency}${networkLabel ? ` on ${networkLabel}` : ""}.`
         : `Send ${currency} to this account's IBAN / bank details`,
+    },
+    {
+      key: "remittance",
+      label: remittanceLabel,
+      desc:
+        remittanceDesc ||
+        `Request ${currency} via ${remittanceLabel} when IBAN deposit is unavailable`,
+      disabled: remittanceDisabled,
+      disabledReason: remittanceDisabledReason,
     },
     {
       key: "african",
