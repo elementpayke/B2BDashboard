@@ -124,6 +124,8 @@ import {
 } from "@/lib/services/entities";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
+import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
+import { useRevealGuard } from "@/lib/hooks/useRevealGuard";
 import {
   offRampCountriesFromCatalog,
   offRampProvidersForRail,
@@ -246,6 +248,12 @@ import WalletsScreen from "@/components/wallets/WalletsScreen";
 import CreateAccountModal from "@/components/wallets/CreateAccountModal";
 import AccountDetailModal from "@/components/wallets/AccountDetailModal";
 import AccountDetailScreen from "@/components/wallets/AccountDetailScreen";
+
+/**
+ * Reveal-guard key for the card detail modal. The modal shows one card at a
+ * time, so a single key covers it; tiles key on their own card id.
+ */
+const MODAL_REVEAL_KEY = "card-detail-modal";
 
 function fiatRailForCurrency(code: string): string {
   const c = code.toUpperCase();
@@ -391,6 +399,13 @@ export default function DashboardApp(props: Props = {}) {
   const setState = useCallback((update: any) => {
     setStateRaw((prev: any) => ({ ...prev, ...(typeof update === "function" ? update(prev) : update) }));
   }, []);
+
+  /**
+   * Strands credential reveals that the user dismissed while they were still
+   * in flight. Checking current UI state at write time is not equivalent:
+   * show → hide → show would land the abandoned request's PAN/CVV.
+   */
+  const revealGuard = useRevealGuard();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1624,6 +1639,9 @@ export default function DashboardApp(props: Props = {}) {
       };
     });
   const closeModal = () => {
+    // Closing dismisses any reveal still in flight, so its response cannot
+    // repopulate cardSecrets behind a shut modal.
+    revealGuard.invalidate(MODAL_REVEAL_KEY);
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
       return;
@@ -1800,7 +1818,10 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
-  const openCardDetail = (cardId: string) => () =>
+  const openCardDetail = (cardId: string) => () => {
+    // Switching cards must strand the previous card's reveal — otherwise its
+    // credentials land in a modal now showing a different card.
+    revealGuard.invalidate(MODAL_REVEAL_KEY);
     setState({
       modal: "cardDetail",
       selectedCardId: cardId,
@@ -1811,6 +1832,7 @@ export default function DashboardApp(props: Props = {}) {
       cardSecretsError: "",
       copiedField: "",
     });
+  };
   const openNewCard = () => {
     const prefill = cardholderPrefillFromKybProfile(
       meQuery.data?.kyb_summary?.profile ?? null,
@@ -2670,6 +2692,7 @@ export default function DashboardApp(props: Props = {}) {
     const funding = usdFundingQuery.data;
     const cardId = state.selectedCardId;
     if (!funding || !cardId) return;
+    const abandoned = revealGuard.begin(MODAL_REVEAL_KEY);
     setState({ cardSecretsBusy: true, cardSecretsError: "", copiedField: "" });
     try {
       const revealed = await cardsApi.credentials(
@@ -2677,6 +2700,9 @@ export default function DashboardApp(props: Props = {}) {
         funding.accountId,
         cardId,
       );
+      // Modal closed, card switched, or the window elapsed while we waited —
+      // the busy flag is already cleared by whoever dismissed it.
+      if (abandoned()) return;
       const number = String(revealed.number || "").trim();
       const cvv = String(revealed.cvv || "").trim();
       if (!number || !cvv) {
@@ -2694,6 +2720,7 @@ export default function DashboardApp(props: Props = {}) {
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
     } catch (err) {
+      if (abandoned()) return;
       setState({
         cardSecretsBusy: false,
         cardSecretsError:
@@ -2701,8 +2728,15 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  const hideCardSecrets = () =>
-    setState({ cardSecrets: null, cardSecretsError: "", copiedField: "" });
+  const hideCardSecrets = useCallback(() => {
+    revealGuard.invalidate(MODAL_REVEAL_KEY);
+    setState({
+      cardSecrets: null,
+      cardSecretsBusy: false,
+      cardSecretsError: "",
+      copiedField: "",
+    });
+  }, [revealGuard, setState]);
   const toggleCardSecrets = () => {
     if (state.cardSecrets) {
       hideCardSecrets();
@@ -2713,12 +2747,17 @@ export default function DashboardApp(props: Props = {}) {
   const revealCardTileSecrets = async (cardId: string) => {
     const funding = usdFundingQuery.data;
     if (!funding) return;
+    const abandoned = revealGuard.begin(cardId);
     setState((s: any) => ({
       cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: true },
       cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
     }));
     try {
       const revealed = await cardsApi.credentials(funding.entityId, funding.accountId, cardId);
+      // Hidden, auto-hidden, or navigated away from while in flight. Bail
+      // before touching state: whoever dismissed this reveal already cleared
+      // the busy flag, and a later reveal may now own the card.
+      if (abandoned()) return;
       const number = String(revealed.number || "").trim();
       const cvv = String(revealed.cvv || "").trim();
       if (!number || !cvv) {
@@ -2739,6 +2778,7 @@ export default function DashboardApp(props: Props = {}) {
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
     } catch (err) {
+      if (abandoned()) return;
       setState((s: any) => ({
         cardTileSecretsBusy: { ...s.cardTileSecretsBusy, [cardId]: false },
         cardTileSecretsError: {
@@ -2748,13 +2788,77 @@ export default function DashboardApp(props: Props = {}) {
       }));
     }
   };
+  /**
+   * Purge one card's credentials and turn the tile face-up.
+   *
+   * Order matters: the PAN/CVV leave client state, they are not merely covered
+   * by a CSS rotation. Flipping alone left them readable in React state (and so
+   * in any memory dump or devtools session) for the rest of the visit.
+   */
+  const hideCardTileSecrets = useCallback(
+    (cardId: string) => {
+      revealGuard.invalidate(cardId);
+      setState((s: any) => {
+        const secrets = { ...s.cardTileSecrets };
+        delete secrets[cardId];
+        // Busy must clear too. Leaving it set stranded the tile: the guard now
+        // drops the in-flight response, and the re-reveal below is gated on
+        // exactly this flag, so the card would sit on "Loading…" forever.
+        const busy = { ...s.cardTileSecretsBusy };
+        delete busy[cardId];
+        return {
+          cardTileSecrets: secrets,
+          cardTileSecretsBusy: busy,
+          cardTileFlipped: { ...s.cardTileFlipped, [cardId]: false },
+          cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
+          copiedField: "",
+        };
+      });
+    },
+    [revealGuard, setState],
+  );
+
   const flipCardTile = (cardId: string) => () => {
     const willFlip = !state.cardTileFlipped[cardId];
-    setState((s: any) => ({ cardTileFlipped: { ...s.cardTileFlipped, [cardId]: willFlip } }));
-    if (willFlip && !state.cardTileSecrets[cardId] && !state.cardTileSecretsBusy[cardId]) {
+    if (!willFlip) {
+      hideCardTileSecrets(cardId);
+      return;
+    }
+    setState((s: any) => ({ cardTileFlipped: { ...s.cardTileFlipped, [cardId]: true } }));
+    if (!state.cardTileSecrets[cardId] && !state.cardTileSecretsBusy[cardId]) {
       void revealCardTileSecrets(cardId);
     }
   };
+
+  // Auto-hide revealed credentials. The window starts when the secrets land,
+  // not when the flip begins, so a slow reveal doesn't eat the user's time.
+  useSecretExpiry(Object.keys(state.cardTileSecrets), hideCardTileSecrets);
+
+  // The detail modal shows the same PAN/CVV and gets the same window. It
+  // already purged on close, so it only needed the timer.
+  useSecretExpiry(state.cardSecrets ? [MODAL_REVEAL_KEY] : [], hideCardSecrets);
+
+  // Leaving Cards purges every revealed card. Navigating away is as strong a
+  // signal as "hide" that the user is done looking.
+  const onCardsScreen = state.screen === "cards";
+  useEffect(() => {
+    if (onCardsScreen) return;
+    // Strand in-flight reveals as well as purging stored values, or a request
+    // issued on the Cards screen would repopulate credentials after we left.
+    revealGuard.invalidateAll();
+    setState((s: any) =>
+      Object.keys(s.cardTileSecrets).length === 0 && !s.cardSecrets
+        ? {}
+        : {
+            cardTileSecrets: {},
+            cardTileSecretsBusy: {},
+            cardTileFlipped: {},
+            cardSecrets: null,
+            cardSecretsBusy: false,
+            copiedField: "",
+          },
+    );
+  }, [onCardsScreen, revealGuard, setState]);
   const fundCard = () =>
     setState({
       modal: "acctDetail",
