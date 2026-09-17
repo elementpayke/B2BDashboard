@@ -3666,9 +3666,13 @@ export default function DashboardApp(props: Props = {}) {
     ? undefined
     : ((meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending");
   const kybApproved = isKybApproved(kybStatus);
+  const showStellarLiquidityPanel = SHOW_STELLAR_LIQUIDITY_PANEL && isTeamAdmin;
+  const bulkPayoutSourceAccounts = stablecoinAccountsList.filter(
+    (account) => isReadyStatus(account.status) && toPartnerNetwork(account.network) === "Stellar",
+  );
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Bulk payouts", icon: "⇉", desc: STELLAR_BULK_PAYOUTS_ENABLED ? "CSV disbursements from your Stellar wallet." : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -5380,6 +5384,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 </div>
 </section>
 ))}
+{showStellarLiquidityPanel ? <StellarLiquidityPanel /> : null}
 </div>
 </>) : null}
 
@@ -5408,6 +5413,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onNavigate={navigateToScreen}
   onOpenHelp={() => openHelp()}
   onOpenBulk={guardMoneyModal("bulk")}
+  bulkEnabled={STELLAR_BULK_PAYOUTS_ENABLED}
   onOpenTopUp={guardMoneyModal("deposit")}
   onToggleTheme={toggleTheme}
   onLogout={logout}
@@ -5704,12 +5710,20 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 
 {(isModalBulk) ? (<>
+{STELLAR_BULK_PAYOUTS_ENABLED ? (
+<BulkStellarPayoutWizard
+  sourceAccounts={bulkPayoutSourceAccounts}
+  onDone={closeModal}
+  onCancel={closeModal}
+/>
+) : (
 <ComingSoonPanel
   compact
   featureKey="bulk-payouts"
   title="Bulk payouts"
   description="CSV bulk payouts aren’t live yet. Join the waitlist and we’ll email you when you can pay many recipients in one go."
 />
+) }
 </>) : null}
 
 {(isModalTxDetail) ? (<>

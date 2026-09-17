@@ -16,6 +16,7 @@ type MoreSheetProps = {
   onNavigate: (screen: string) => void;
   onOpenHelp: () => void;
   onOpenBulk: () => void;
+  bulkEnabled?: boolean;
   onOpenTopUp: () => void;
   onToggleTheme: () => void;
   onLogout: () => void;
@@ -31,6 +32,7 @@ export default function MoreSheet({
   onNavigate,
   onOpenHelp,
   onOpenBulk,
+  bulkEnabled = false,
   onOpenTopUp,
   onToggleTheme,
   onLogout,
@@ -129,7 +131,7 @@ export default function MoreSheet({
           <button type="button" className="ep-more-sheet__item" onClick={onOpenBulk}>
             <span aria-hidden>⇉</span>
             <span>Bulk payouts</span>
-            <span className="ep-more-sheet__soon">Soon</span>
+            {bulkEnabled ? <span aria-hidden>›</span> : <span className="ep-more-sheet__soon">Soon</span>}
           </button>
           <button type="button" className="ep-more-sheet__item" onClick={onOpenHelp}>
             <span aria-hidden>?</span>
