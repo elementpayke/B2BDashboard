@@ -10,6 +10,7 @@ import {
   isStablecoinNetworkSupported,
   networksForStablecoin,
 } from "@/lib/services/depositAccounts";
+import { isAllowlistedStellarStable } from "@/lib/config/stellarFeatures";
 
 export type CreateAccountModalProps = {
   createAccountName: string;
@@ -173,8 +174,10 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
                   >
                     {o.label}
                     {!supported
-                      ? p.createAccountStablecoin === "USDT" && o.code === "STELLAR"
-                        ? " — USDT not on Stellar"
+                      ? p.createAccountStablecoin &&
+                        isAllowlistedStellarStable(p.createAccountStablecoin) &&
+                        o.code !== "STELLAR"
+                        ? " — Stellar only"
                         : " — not available yet"
                       : taken
                         ? " — already open"
@@ -184,8 +187,9 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
               })}
             </select>
             <div className="ep-wallets-create__hint">
-              One account per asset and network. USDC on Base, Polygon, and Stellar; USDT on
-              Base and Polygon only.
+              One account per asset and network. USDC is available on Base, Polygon, and
+              Stellar. Allowlisted Stellar rails like USDT or EURC settle as USDC after
+              funding.
             </div>
           </div>
         </>

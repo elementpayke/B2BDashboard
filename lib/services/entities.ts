@@ -1,4 +1,5 @@
 import { apiEnvelope } from "@/lib/apiClient";
+import { isAllowlistedStellarStable } from "@/lib/config/stellarFeatures";
 import { formatAccountBalance, pickAvailableBalance } from "@/lib/services/balances";
 
 /** `GET /v1/entities` row (local ProviderEntity projection). */
@@ -37,6 +38,7 @@ export type FinancialAccount = {
 
 const READY = new Set(["active", "ready", "open", "opened"]);
 const SEND_PARTNER_NETWORKS = new Set(["Base", "Polygon", "Stellar"]);
+const OPENABLE_STABLECOINS = new Set(["USDC", "USDT", "EURC"]);
 
 /** Body for `POST /v1/entities/{id}/accounts` (`AccountOpenIn`). */
 export type AccountOpenPayload = {
@@ -81,7 +83,8 @@ export async function resolvePrimaryEntityId(): Promise<string> {
 /**
  * Build a Phase 4–compatible open-account body from Create Account UI values.
  * UI network codes are `BASE` / `POLYGON`; partner expects `Base` / `Polygon`.
- * USDC: Base / Polygon / Stellar. USDT: Base / Polygon only.
+ * USDC: Base / Polygon / Stellar. Additional Stellar-only stables can be
+ * allowlisted for staged rollout without changing Base / Polygon support.
  */
 export function buildStablecoinOpenPayload(input: {
   currency: string;
@@ -89,15 +92,26 @@ export function buildStablecoinOpenPayload(input: {
   displayName: string;
 }): AccountOpenPayload {
   const currency = input.currency.trim().toUpperCase();
-  if (currency !== "USDC" && currency !== "USDT") {
-    throw new Error("Only USDC or USDT stablecoin accounts can be opened.");
+  if (!OPENABLE_STABLECOINS.has(currency)) {
+    throw new Error("Only supported stablecoin accounts can be opened.");
   }
   const network = toPartnerNetwork(input.network);
   if (!network) {
     throw new Error("Choose Base, Polygon, or Stellar.");
   }
-  if (currency === "USDT" && network === "Stellar") {
-    throw new Error("USDT is not available on Stellar. Choose Base or Polygon.");
+  if (network === "Stellar") {
+    if (currency === "USDC" || isAllowlistedStellarStable(currency)) {
+      return {
+        asset_type: "stablecoin",
+        currency,
+        network,
+        display_name: input.displayName.trim() || null,
+      };
+    }
+    throw new Error(`${currency} is not available on Stellar yet.`);
+  }
+  if (currency !== "USDC" && currency !== "USDT") {
+    throw new Error(`${currency} is only available on Stellar.`);
   }
   return {
     asset_type: "stablecoin",
@@ -215,7 +229,7 @@ export function occupiedStablecoinSlots(
   for (const account of accounts) {
     if (account.assetType.toLowerCase() !== "stablecoin") continue;
     const currency = account.currency.trim().toUpperCase();
-    if (currency !== "USDC" && currency !== "USDT") continue;
+    if (!currency) continue;
     const partner = toPartnerNetwork(account.network);
     if (partner) occupied.add(`${currency}:${partner.toUpperCase()}`);
   }
