@@ -59,6 +59,21 @@ describe("FundStablecoinModal Stellar wallet", () => {
     expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
 
+  it("shows honest USDC processing copy instead of via-target phrasing", () => {
+    render(
+      <FundStablecoinModal
+        targetCurrency="USDC"
+        targetName="USDC · Stellar"
+        rails={[base]}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText("Deposit USDC on Base. Credits your USDC balance after processing."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/via USDC on Base/i)).not.toBeInTheDocument();
+  });
+
   it("does not offer Stellar wallet connect for a Stellar-labelled rail with an EVM address", () => {
     openAddressStep([
       {
