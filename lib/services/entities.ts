@@ -52,6 +52,11 @@ export const entitiesApi = {
   list: () => apiEnvelope<ProviderEntity[]>("GET", "/v1/entities"),
   listAccounts: (entityId: string) =>
     apiEnvelope<unknown>("GET", `/v1/entities/${encodeURIComponent(entityId)}/accounts`),
+  depositInstructions: (entityId: string, accountId: string) =>
+    apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/deposit-instructions`,
+    ),
   openAccount: (entityId: string, payload: AccountOpenPayload) =>
     apiEnvelope<unknown>(
       "POST",

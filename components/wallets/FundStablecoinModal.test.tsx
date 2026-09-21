@@ -69,7 +69,9 @@ describe("FundStablecoinModal Stellar wallet", () => {
       />,
     );
     expect(
-      screen.getByText("Deposit USDC on Base. Credits your USDC balance after processing."),
+      screen.getByText(
+        "Deposit USDC on Base. Credits your Stellar USDC after CCTP processing.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/via USDC on Base/i)).not.toBeInTheDocument();
   });

@@ -8,6 +8,16 @@ export function fundStablecoinRailSummary(input: {
   const asset = (input.currency || "").trim().toUpperCase();
   const network = (input.networkLabel || "").trim();
   if (asset === "USDC") {
+    const net = network.toUpperCase();
+    const isEvm =
+      net.includes("BASE") ||
+      net.includes("ETHEREUM") ||
+      net.includes("POLYGON") ||
+      net.includes("ARBITRUM") ||
+      net.includes("OPTIMISM");
+    if (isEvm) {
+      return `Deposit USDC on ${network}. Credits your Stellar USDC after CCTP processing.`;
+    }
     return `Deposit USDC on ${network}. Credits your USDC balance after processing.`;
   }
   if (asset === "EURC" || asset === "USDT") {

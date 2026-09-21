@@ -126,6 +126,10 @@ import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
+import {
+  buildCollectEvmFundRails,
+  mergeFundStablecoinRails,
+} from "@/lib/collect/cctpRails";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
@@ -3410,6 +3414,40 @@ export default function DashboardApp(props: Props = {}) {
             (a) => a.id === s.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
         : null;
+    // Stellar USDC home — Collect EVM rails credit this account after CCTP.
+    const collectHomeAccount =
+      stablecoinAccountsList.find(
+        (a) =>
+          isFundableStablecoinAccount(a) &&
+          a.currency.trim().toUpperCase() === "USDC" &&
+          isStellarUsdcRail({ network: a.network, currency: a.currency }),
+      ) ??
+      stablecoinAccountsList.find(
+        (a) =>
+          isFundableStablecoinAccount(a) &&
+          a.currency.trim().toUpperCase() === "USDC",
+      ) ??
+      null;
+    const collectFundSurfaceOpen =
+      s.modal === "fundStablecoin" ||
+      s.modal === "fundChooser" ||
+      (s.modal === "acctDetail" && s.acctDetailIntent === "fund");
+    const collectDepositInstructionsQuery = useQuery({
+      queryKey: [
+        "collect-deposit-instructions",
+        collectHomeAccount?.entityId ?? "",
+        collectHomeAccount?.id ?? "",
+      ],
+      queryFn: () =>
+        entitiesApi.depositInstructions(
+          String(collectHomeAccount!.entityId),
+          String(collectHomeAccount!.id),
+        ),
+      retry: false,
+      enabled:
+        collectFundSurfaceOpen &&
+        Boolean(collectHomeAccount?.entityId && collectHomeAccount?.id),
+    });
     const selectedFiatUnavailable =
       selectedDepositAccount?.status === "deposit_unavailable" ||
       selectedDepositAccount?.status === "unavailable";
@@ -3865,7 +3903,14 @@ export default function DashboardApp(props: Props = {}) {
       ? selectedStablecoinAccount
       : null) ??
     fundingUsdcAccount;
-  const fundStablecoinRails = buildFundStablecoinRails(stablecoinAccountsList);
+  const fundStablecoinRails = mergeFundStablecoinRails(
+    buildFundStablecoinRails(stablecoinAccountsList),
+    collectHomeAccount
+      ? buildCollectEvmFundRails(collectDepositInstructionsQuery.data, {
+          homeAccountId: String(collectHomeAccount.id),
+        })
+      : [],
+  );
   const africanFundPlan = acctDetail
     ? planAfricanFundOrchestration({
         fiatCurrency: acctDetail.currency,

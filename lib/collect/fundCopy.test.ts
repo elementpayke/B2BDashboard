@@ -9,8 +9,9 @@ describe("fundStablecoinRailSummary", () => {
         currency: "USDC",
         networkLabel: "Base",
       }),
-    ).toBe("Deposit USDC on Base. Credits your USDC balance after processing.");
-  });
+    ).toBe(
+      "Deposit USDC on Base. Credits your Stellar USDC after CCTP processing.",
+    );  });
 
   it("describes Stellar EURC Aquarius conversion", () => {
     expect(
