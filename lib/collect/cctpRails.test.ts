@@ -27,11 +27,41 @@ describe("buildCollectEvmFundRails", () => {
       networkLabel: "Base",
       walletAddress: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
     });
+    expect(rails[0].id).toMatch(/^collect-cctp:/);
     expect(rails[0].chainDisclaimer).toMatch(/CCTP/);
   });
 
   it("ignores missing collect block", () => {
     expect(buildCollectEvmFundRails({ wallet_address: "G" }, { homeAccountId: "1" })).toEqual([]);
+  });
+
+  it("rejects non-hex and overlong EVM addresses", () => {
+    const rails = buildCollectEvmFundRails(
+      {
+        collect: {
+          evm_usdc: [
+            {
+              network: "base",
+              address: "0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+              asset: "USDC",
+            },
+            {
+              network: "base",
+              address: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903ff",
+              asset: "USDC",
+            },
+            {
+              network: "base",
+              address: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
+              asset: "USDC",
+            },
+          ],
+        },
+      },
+      { homeAccountId: "1" },
+    );
+    expect(rails).toHaveLength(1);
+    expect(rails[0].walletAddress).toBe("0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903");
   });
 });
 

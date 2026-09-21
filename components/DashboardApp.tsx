@@ -3421,13 +3421,7 @@ export default function DashboardApp(props: Props = {}) {
           isFundableStablecoinAccount(a) &&
           a.currency.trim().toUpperCase() === "USDC" &&
           isStellarUsdcRail({ network: a.network, currency: a.currency }),
-      ) ??
-      stablecoinAccountsList.find(
-        (a) =>
-          isFundableStablecoinAccount(a) &&
-          a.currency.trim().toUpperCase() === "USDC",
-      ) ??
-      null;
+      ) ?? null;
     const collectFundSurfaceOpen =
       s.modal === "fundStablecoin" ||
       s.modal === "fundChooser" ||
@@ -5894,6 +5888,20 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   targetCurrency={acctDetail.currency}
   targetName={acctDetail.name}
   rails={fundStablecoinRails}
+  collectRailsError={
+    collectDepositInstructionsQuery.isError
+      ? collectDepositInstructionsQuery.error instanceof Error
+        ? collectDepositInstructionsQuery.error.message
+        : "Collect deposit instructions failed."
+      : null
+  }
+  onRetryCollectRails={
+    collectDepositInstructionsQuery.isError
+      ? () => {
+          void collectDepositInstructionsQuery.refetch();
+        }
+      : undefined
+  }
   onBack={() => setState({ modal: "fundChooser" })}
 />
 </>) : null}

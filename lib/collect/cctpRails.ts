@@ -11,6 +11,12 @@ export type CollectEvmUsdcRow = {
   token_address?: string;
 };
 
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+export function isEvmDepositAddress(value: string): boolean {
+  return EVM_ADDRESS_RE.test(value.trim());
+}
+
 /**
  * Map Aggregator/Mboka ``collect.evm_usdc[]`` into Fund modal rails.
  * Additive only — does not invent addresses.
@@ -36,7 +42,7 @@ export function buildCollectEvmFundRails(
     const network = String(row.network || row.chain || "").trim().toLowerCase();
     const address = String(row.address || "").trim();
     const asset = String(row.asset || "USDC").trim().toUpperCase();
-    if (!network || !address.startsWith("0x") || address.length < 42 || asset !== "USDC") {
+    if (!network || !isEvmDepositAddress(address) || asset !== "USDC") {
       continue;
     }
     const networkLabel = formatNetworkLabel(network);
