@@ -404,6 +404,15 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   if (collect && mintTx) {
     rows.push({ label: "Stellar mint", value: mintTx, mono: true });
   }
+  const feeAmount =
+    typeof txDetail.fee_amount === "string" ? txDetail.fee_amount.trim() : "";
+  const feeCurrency =
+    typeof txDetail.fee_currency === "string" && txDetail.fee_currency.trim()
+      ? txDetail.fee_currency.trim()
+      : txDetail.currency;
+  if (collect && feeAmount) {
+    rows.push({ label: "Circle fee", value: `${feeAmount} ${feeCurrency}` });
+  }
 
   const txHash =
     typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
