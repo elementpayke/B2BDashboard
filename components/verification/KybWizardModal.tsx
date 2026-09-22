@@ -257,7 +257,7 @@ function DocumentDropRow(p: {
         >
           {row.uploading
             ? "Uploading…"
-            : "Drag & drop PDF, JPEG, or PNG here\nor click to choose a file (max 10 MB)"}
+            : "Drag & drop PDF, JPEG, or PNG here\nor click to choose a file (max 4 MB)"}
         </button>
       ) : (
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>

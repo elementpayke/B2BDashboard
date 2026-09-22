@@ -527,7 +527,12 @@ export type KybWizardProfileDraft = {
 /** Compliance: UBO = ≥25% ownership. Cap the wizard at a practical count. */
 export const KYB_MIN_UBO_OWNERSHIP = 25;
 export const KYB_MAX_UBOS = 5;
-export const KYB_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+/**
+ * Vercel serverless proxy (`/api/mboka`) hard-caps request bodies at 4.5 MB
+ * (`FUNCTION_PAYLOAD_TOO_LARGE`). Keep under that with headroom for multipart
+ * framing. Mboka/R2 still allow 10 MB once uploads bypass this hop.
+ */
+export const KYB_MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const KYB_ALLOWED_DOCUMENT_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -797,7 +802,7 @@ export function validateProfileDraft(draft: KybWizardProfileDraft): string | nul
 export function validateKybDocumentFile(file: File): string | null {
   if (file.size <= 0) return "Uploaded file is empty.";
   if (file.size > KYB_MAX_DOCUMENT_BYTES) {
-    return "Document exceeds the 10 MB limit.";
+    return "Document exceeds the 4 MB upload limit. Compress the PDF (or export a smaller scan) and try again.";
   }
   const type = (file.type || "").toLowerCase();
   const name = file.name.toLowerCase();

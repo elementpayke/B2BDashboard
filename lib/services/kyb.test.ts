@@ -319,7 +319,7 @@ describe("validateProfileDraft", () => {
 
   it("rejects oversized or unsupported document files", () => {
     const big = new File([new Uint8Array(11 * 1024 * 1024)], "big.pdf", { type: "application/pdf" });
-    expect(validateKybDocumentFile(big)).toMatch(/10 MB/i);
+    expect(validateKybDocumentFile(big)).toMatch(/4 MB/i);
     const bad = new File(["x"], "notes.txt", { type: "text/plain" });
     expect(validateKybDocumentFile(bad)).toMatch(/PDF|JPEG|PNG/i);
   });
