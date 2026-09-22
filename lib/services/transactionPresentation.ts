@@ -57,6 +57,19 @@ export function resolvePartyDisplayName(payment: Transaction["payment"]): {
   };
 }
 
+export function isCollectTransfer(transaction: { source?: string | null }): boolean {
+  return (transaction.source || "").trim().toLowerCase() === "cctp_transfer";
+}
+
+/** Plain-language stage for a Base USDC deposit that has not settled on Stellar yet. */
+export function collectStagePhrase(stage?: string | null): string {
+  const value = (stage || "").trim().toLowerCase();
+  if (value === "attesting") return "bridging";
+  if (value === "minting" || value.startsWith("mint")) return "crediting Stellar";
+  if (value === "completed") return "from Base";
+  return "received on Base";
+}
+
 function typeLabel(transaction: Transaction): string {
   if (isInboundStellarDeposit(transaction)) return "Stellar deposit";
   if (isCardSpendTransaction(transaction)) {
@@ -198,10 +211,16 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   // Fallback stays workflow · currency (never partner brands).
   const accountNumber = payment?.account_number?.trim() || null;
   const networkName = payment?.network_name?.trim() || null;
-  const client = partyName || workflowLabel;
-  const metaParts = partyName
+  const collect = isCollectTransfer(transaction);
+  const client = collect ? "Deposit · USDC" : partyName || workflowLabel;
+  const metaParts = partyName && !collect
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];
+  if (collect) {
+    metaParts.unshift(
+      transaction.status === "completed" ? "from Base" : collectStagePhrase(transaction.stage),
+    );
+  }
   // Prefer the PSP confirmation code on fiat rails; else the order reference.
   metaParts.push(`Ref ${shortReference(paymentRef || ref)}`);
   const meta = metaParts.filter(Boolean).join(" · ");

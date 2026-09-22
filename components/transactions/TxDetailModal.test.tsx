@@ -165,6 +165,42 @@ describe("TxDetailModal payout receiver", () => {
   });
 });
 
+describe("TxDetailModal Collect deposit", () => {
+  it("follows the worker stage and shows Base then burn then mint hashes", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          source: "cctp_transfer",
+          status: "processing",
+          statusLabel: "Pending",
+          type: "Deposit",
+          client: "Deposit · USDC",
+          stage: "minting",
+          crypto_network: "base",
+          cryptoNetworkLabel: "Base",
+          source_tx_hash: "0xsource",
+          burn_tx_hash: "0xburn",
+          mint_tx_hash: null,
+          tx_hash: "0xsource",
+          explorerUrl: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Received on Base")).toBeInTheDocument();
+    expect(screen.getByText("Bridging")).toBeInTheDocument();
+    expect(screen.getByText("Credited on Stellar")).toBeInTheDocument();
+    const current = document.querySelector('[aria-current="step"]');
+    expect(current?.textContent).toContain("Credited on Stellar");
+    expect(screen.getByText("Base deposit")).toBeInTheDocument();
+    expect(screen.getByText("0xsource")).toBeInTheDocument();
+    expect(screen.getByText("Burn")).toBeInTheDocument();
+    expect(screen.getByText("0xburn")).toBeInTheDocument();
+    expect(screen.queryByText("Stellar mint")).not.toBeInTheDocument();
+    expect(screen.queryByText("Created")).not.toBeInTheDocument();
+  });
+});
+
 describe("TxDetailModal receipt share sheet", () => {
   it("opens an opaque share sheet with a dismiss backdrop", async () => {
     const { fireEvent } = await import("@testing-library/react");

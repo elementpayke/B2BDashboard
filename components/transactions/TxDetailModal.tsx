@@ -54,8 +54,31 @@ function formatTimestamp(iso?: string | null): string | null {
   }).format(d);
 }
 
+function collectCurrentIndex(stage?: string | null, status?: string | null): number {
+  const settled = (status || "").toLowerCase() === "completed" || (stage || "").toLowerCase() === "completed";
+  if (settled) return 3;
+  const value = (stage || "").trim().toLowerCase();
+  if (value === "minting" || value.startsWith("mint")) return 2;
+  if (value === "attesting") return 1;
+  return 0;
+}
+
+/** Base deposit → bridge → Stellar credit. Settled only after the credit is confirmed. */
+function buildCollectProgressSteps(stage?: string | null, status?: string | null): ProgressStep[] {
+  const labels = ["Received on Base", "Bridging", "Credited on Stellar"];
+  const current = collectCurrentIndex(stage, status);
+  return labels.map((label, index) => ({
+    key: label,
+    label,
+    state: current > index ? "done" : current === index ? "current" : "upcoming",
+  }));
+}
+
 /** Derive a readable status progression from the canonical transaction status. */
-function buildProgressSteps(status?: string): ProgressStep[] {
+function buildProgressSteps(status?: string, source?: string | null, stage?: string | null): ProgressStep[] {
+  if ((source || "").trim().toLowerCase() === "cctp_transfer") {
+    return buildCollectProgressSteps(stage, status);
+  }
   const s = (status || "").toLowerCase();
 
   if (s === "failed") {
@@ -280,7 +303,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
 
   const created = formatTimestamp(txDetail.created_at);
   const updated = formatTimestamp(txDetail.updated_at);
-  const steps = buildProgressSteps(txDetail.status);
+  const steps = buildProgressSteps(txDetail.status, txDetail.source, txDetail.stage);
   const showUpdated = Boolean(updated && updated !== created);
   const paymentMethod = receiptPaymentMethod(
     txDetail.provider,
@@ -365,11 +388,28 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     (txDetail.accountKind || "").toLowerCase() === "bank_account" ||
     (txDetail.accountKind || "").toLowerCase() === "phone";
 
+  const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
+  const sourceTx =
+    typeof txDetail.source_tx_hash === "string" ? txDetail.source_tx_hash.trim() : "";
+  const burnTx =
+    typeof txDetail.burn_tx_hash === "string" ? txDetail.burn_tx_hash.trim() : "";
+  const mintTx =
+    typeof txDetail.mint_tx_hash === "string" ? txDetail.mint_tx_hash.trim() : "";
+  if (collect && sourceTx) {
+    rows.push({ label: "Base deposit", value: sourceTx, mono: true });
+  }
+  if (collect && burnTx) {
+    rows.push({ label: "Burn", value: burnTx, mono: true });
+  }
+  if (collect && mintTx) {
+    rows.push({ label: "Stellar mint", value: mintTx, mono: true });
+  }
+
   const txHash =
     typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
   const explorerUrl =
     typeof txDetail.explorerUrl === "string" ? txDetail.explorerUrl.trim() : "";
-  if (txHash && !isFiatRail) {
+  if (txHash && !isFiatRail && !collect) {
     rows.push({
       label: "Tx hash",
       mono: true,
