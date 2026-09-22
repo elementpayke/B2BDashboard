@@ -62,15 +62,19 @@ export function buildUsdcSendDestChains(opts?: {
   const supported = (opts?.supportedChainKeys || [])
     .map((k) => k.trim().toLowerCase())
     .filter(Boolean);
-  const catalog = USDC_SEND_DEST_NETWORKS.map((n) => ({
-    key: n.key,
-    label: n.label,
-  }));
+  const catalog: Array<{ key: string; label: string }> = USDC_SEND_DEST_NETWORKS.map(
+    (n) => ({
+      key: n.key,
+      label: n.label,
+    }),
+  );
   if (supported.length === 0) {
     return catalog;
   }
   const allow = new Set(supported);
-  const evm = catalog.filter((n) => n.key !== "stellar" && allow.has(n.key));
+  const evm: Array<{ key: string; label: string }> = catalog.filter(
+    (n) => n.key !== "stellar" && allow.has(n.key),
+  );
   // If API returns unknown keys, surface them with formatted labels.
   for (const key of supported) {
     if (key === "stellar") continue;
