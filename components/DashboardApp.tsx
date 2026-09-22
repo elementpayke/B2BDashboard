@@ -109,7 +109,6 @@ import {
   entitiesApi,
   describeStablecoinAccountStatus,
   buildStablecoinAccountDetailRows,
-  buildFundStablecoinRails,
   formatNetworkLabel,
   isReadyStatus,
   isFundableStablecoinAccount,
@@ -126,10 +125,7 @@ import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
-import {
-  buildCollectEvmFundRails,
-  mergeFundStablecoinRails,
-} from "@/lib/collect/cctpRails";
+import { buildCollectFundModalRails } from "@/lib/collect/cctpRails";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
@@ -3897,14 +3893,13 @@ export default function DashboardApp(props: Props = {}) {
       ? selectedStablecoinAccount
       : null) ??
     fundingUsdcAccount;
-  const fundStablecoinRails = mergeFundStablecoinRails(
-    buildFundStablecoinRails(stablecoinAccountsList),
-    collectHomeAccount
-      ? buildCollectEvmFundRails(collectDepositInstructionsQuery.data, {
-          homeAccountId: String(collectHomeAccount.id),
-        })
-      : [],
-  );
+  const fundStablecoinRails = buildCollectFundModalRails({
+    accounts: stablecoinAccountsList,
+    depositInstructions: collectDepositInstructionsQuery.data,
+    isFundable: isFundableStablecoinAccount,
+    isStellarUsdc: (a) =>
+      isStellarUsdcRail({ network: a.network, currency: a.currency }),
+  });
   const africanFundPlan = acctDetail
     ? planAfricanFundOrchestration({
         fiatCurrency: acctDetail.currency,

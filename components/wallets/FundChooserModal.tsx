@@ -77,10 +77,10 @@ export default function FundChooserModal({
   }[] = [
     {
       key: "stablecoin",
-      label: "Stablecoin",
+      label: "Stablecoin / CCTP",
       desc: isStablecoinAccount
-        ? `Show a ${currency} deposit address / QR for this wallet.${stellarSettlementHint}`
-        : "Deposit to a stablecoin account (address / QR) — does not credit this fiat VA directly",
+        ? `Deposit USDC on EVM (CCTP → Stellar) or send USDC on Stellar to this wallet.${stellarSettlementHint}`
+        : "Deposit USDC via CCTP (EVM → Stellar home) or Stellar address — does not credit this fiat VA directly",
       disabled: stablecoinDisabled,
       disabledReason: stablecoinDisabledReason,
     },

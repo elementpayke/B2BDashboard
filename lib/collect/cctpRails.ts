@@ -59,22 +59,76 @@ export function buildCollectEvmFundRails(
   return out;
 }
 
-/** Prefer account rails, then Collect EVM rails (dedupe by network+address). */
+/** Prefer Collect EVM rails first, then Stellar home (dedupe by network+address). */
 export function mergeFundStablecoinRails(
-  accountRails: FundStablecoinRail[],
-  collectRails: FundStablecoinRail[],
+  preferredRails: FundStablecoinRail[],
+  extraRails: FundStablecoinRail[],
 ): FundStablecoinRail[] {
   const seen = new Set(
-    accountRails.map(
+    preferredRails.map(
       (r) => `${r.network.trim().toLowerCase()}:${(r.walletAddress || "").trim().toLowerCase()}`,
     ),
   );
-  const merged = [...accountRails];
-  for (const rail of collectRails) {
+  const merged = [...preferredRails];
+  for (const rail of extraRails) {
     const key = `${rail.network.trim().toLowerCase()}:${(rail.walletAddress || "").trim().toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(rail);
   }
   return merged;
+}
+
+/**
+ * Fund-account stablecoin modal rails for Collect:
+ * CCTP EVM USDC → Stellar home, plus the Stellar USDC home address.
+ * Blocks native EVM/USDT account wallets (those are separate balances, not Collect).
+ */
+export function buildCollectFundModalRails(opts: {
+  accounts: Array<{
+    id: string;
+    currency: string;
+    network: string;
+    walletAddress?: string | null;
+    chainDisclaimer?: string | null;
+    checkoutUrl?: string | null;
+    status?: string;
+  }>;
+  depositInstructions: unknown;
+  isFundable: (account: {
+    id: string;
+    currency: string;
+    network: string;
+    walletAddress?: string | null;
+    status?: string;
+  }) => boolean;
+  isStellarUsdc: (account: { currency: string; network: string }) => boolean;
+}): FundStablecoinRail[] {
+  const home = opts.accounts.find(
+    (a) =>
+      opts.isFundable(a) &&
+      opts.isStellarUsdc({ currency: a.currency, network: a.network }),
+  );
+  const stellarRails: FundStablecoinRail[] = home?.walletAddress
+    ? [
+        {
+          id: home.id,
+          currency: home.currency,
+          network: home.network,
+          networkLabel: formatNetworkLabel(home.network),
+          walletAddress: home.walletAddress.trim(),
+          chainDisclaimer:
+            home.chainDisclaimer ||
+            `Send only USDC on Stellar. Credits your Stellar USDC home.`,
+          checkoutUrl: home.checkoutUrl ?? null,
+        },
+      ]
+    : [];
+  const collectRails = home
+    ? buildCollectEvmFundRails(opts.depositInstructions, {
+        homeAccountId: String(home.id),
+      })
+    : [];
+  // Collect EVM first (product path), then Stellar direct.
+  return mergeFundStablecoinRails(collectRails, stellarRails);
 }

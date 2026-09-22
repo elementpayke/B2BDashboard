@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildCollectEvmFundRails, mergeFundStablecoinRails } from "./cctpRails";
+import {
+  buildCollectEvmFundRails,
+  buildCollectFundModalRails,
+  mergeFundStablecoinRails,
+} from "./cctpRails";
 import type { FundStablecoinRail } from "@/lib/services/entities";
 
 describe("buildCollectEvmFundRails", () => {
@@ -62,6 +66,55 @@ describe("buildCollectEvmFundRails", () => {
     );
     expect(rails).toHaveLength(1);
     expect(rails[0].walletAddress).toBe("0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903");
+  });
+});
+
+describe("buildCollectFundModalRails", () => {
+  it("keeps Collect EVM + Stellar home and blocks native EVM/USDT accounts", () => {
+    const rails = buildCollectFundModalRails({
+      accounts: [
+        {
+          id: "base-acct",
+          currency: "USDC",
+          network: "Base",
+          walletAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          status: "ready",
+        },
+        {
+          id: "stellar-home",
+          currency: "USDC",
+          network: "Stellar",
+          walletAddress: "GHOMEADDRESS",
+          status: "ready",
+        },
+        {
+          id: "usdt-poly",
+          currency: "USDT",
+          network: "Polygon",
+          walletAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          status: "ready",
+        },
+      ],
+      depositInstructions: {
+        collect: {
+          evm_usdc: [
+            {
+              network: "base",
+              address: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
+              asset: "USDC",
+            },
+          ],
+        },
+      },
+      isFundable: (a) => Boolean(a.walletAddress),
+      isStellarUsdc: (a) =>
+        a.currency.toUpperCase() === "USDC" && /stellar/i.test(a.network),
+    });
+    expect(rails.map((r) => r.id)).toEqual([
+      "collect-cctp:stellar-home:base:0x71d323e4af97b1deca2e9bc7f31f86b1bce55903",
+      "stellar-home",
+    ]);
+    expect(rails[0].chainDisclaimer).toMatch(/CCTP/);
   });
 });
 
