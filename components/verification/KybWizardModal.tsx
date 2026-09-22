@@ -647,9 +647,9 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                 type="number"
                 min={KYB_MIN_UBO_OWNERSHIP}
                 max={100}
-                step={1}
-                inputMode="numeric"
-                hint={`Minimum ${KYB_MIN_UBO_OWNERSHIP}% for a UBO. All owners together ≤ 100%.`}
+                step={0.1}
+                inputMode="decimal"
+                hint={`Minimum ${KYB_MIN_UBO_OWNERSHIP}% for a UBO. Decimals allowed (e.g. 51.5). All owners together ≤ 100%.`}
               />
               <CountrySelect
                 label="Tax residence country"
@@ -657,6 +657,30 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                 onChange={(code) => p.patchAssociate(index, { country: code })}
                 required
               />
+              {(associate.country || p.draft.addressCountry).trim().toUpperCase() === "NG" ? (
+                <>
+                  <TextField
+                    label="BVN"
+                    value={associate.bvn}
+                    onChange={(v) =>
+                      p.patchAssociate(index, { bvn: v.replace(/\D/g, "").slice(0, 11) })
+                    }
+                    inputMode="numeric"
+                    placeholder="11-digit BVN"
+                    hint="Required for Nigerian nationals (Bank Verification Number)"
+                  />
+                  <TextField
+                    label="NIN"
+                    value={associate.nin}
+                    onChange={(v) =>
+                      p.patchAssociate(index, { nin: v.replace(/\D/g, "").slice(0, 11) })
+                    }
+                    inputMode="numeric"
+                    placeholder="11-digit NIN"
+                    hint="Required for Nigerian nationals (National Identity Number)"
+                  />
+                </>
+              ) : null}
               <SelectField
                 label="Government ID type"
                 value={associate.idType}
@@ -698,7 +722,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                 autoComplete="address-level2"
               />
               <TextField
-                label="Residential post code"
+                label="Residential post code (optional)"
                 value={associate.postCode}
                 onChange={(v) => p.patchAssociate(index, { postCode: v })}
                 autoComplete="postal-code"
@@ -744,7 +768,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             <TextField label="Street" value={p.draft.street} onChange={(v) => p.patchDraft({ street: v })} autoComplete="street-address" />
             <TextField label="Street line 2" value={p.draft.street2} onChange={(v) => p.patchDraft({ street2: v })} />
             <TextField label="City" value={p.draft.city} onChange={(v) => p.patchDraft({ city: v })} placeholder="Nairobi" autoComplete="address-level2" />
-            <TextField label="Post code" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} autoComplete="postal-code" />
+            <TextField label="Post code (optional)" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} autoComplete="postal-code" />
             <TextField label="State / county" value={p.draft.state} onChange={(v) => p.patchDraft({ state: v })} placeholder="Nairobi County" autoComplete="address-level1" />
             <CountrySelect
               label="Address country"
