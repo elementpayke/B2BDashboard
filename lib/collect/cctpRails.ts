@@ -52,7 +52,7 @@ export function buildCollectEvmFundRails(
       network,
       networkLabel,
       walletAddress: address,
-      chainDisclaimer: `Send only USDC on ${networkLabel}. Credits Stellar USDC after CCTP processing.`,
+      chainDisclaimer: `Send only USDC on ${networkLabel}. Credits your USDC balance after processing.`,
       checkoutUrl: null,
     });
   }

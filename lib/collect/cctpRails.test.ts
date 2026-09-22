@@ -32,7 +32,8 @@ describe("buildCollectEvmFundRails", () => {
       walletAddress: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
     });
     expect(rails[0].id).toMatch(/^collect-cctp:/);
-    expect(rails[0].chainDisclaimer).toMatch(/CCTP/);
+    expect(rails[0].chainDisclaimer).toMatch(/Credits your USDC balance/);
+    expect(rails[0].chainDisclaimer).not.toMatch(/CCTP/i);
   });
 
   it("ignores missing collect block", () => {
@@ -114,7 +115,8 @@ describe("buildCollectFundModalRails", () => {
       "collect-cctp:stellar-home:base:0x71d323e4af97b1deca2e9bc7f31f86b1bce55903",
       "stellar-home",
     ]);
-    expect(rails[0].chainDisclaimer).toMatch(/CCTP/);
+    expect(rails[0].chainDisclaimer).toMatch(/Credits your USDC balance/);
+    expect(rails[0].chainDisclaimer).not.toMatch(/CCTP/i);
   });
 });
 

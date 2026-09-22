@@ -83,10 +83,10 @@ export default function FundStablecoinModal({
 
         {collectRailsError ? (
           <div className="ep-fund-sc__warn" role="alert">
-            <p>Couldn&apos;t load CCTP Collect deposit rails. Your other rails still work.</p>
+            <p>Couldn&apos;t load deposit networks. Your other rails still work.</p>
             {onRetryCollectRails ? (
               <button type="button" className="ep-fund-sc__btn-secondary" onClick={onRetryCollectRails}>
-                Retry Collect rails
+                Retry
               </button>
             ) : null}
             <p className="ep-fund-sc__hint">{collectRailsError}</p>

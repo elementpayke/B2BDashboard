@@ -57,6 +57,9 @@ export const entitiesApi = {
       "GET",
       `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/deposit-instructions`,
     ),
+  /** Dest discovery for USDC Send — empty when Collect is disabled upstream. */
+  collectSupportedChains: () =>
+    apiEnvelope<unknown>("GET", "/v1/collect/cctp/supported-chains"),
   openAccount: (entityId: string, payload: AccountOpenPayload) =>
     apiEnvelope<unknown>(
       "POST",
@@ -101,7 +104,7 @@ export function buildStablecoinOpenPayload(input: {
     throw new Error("Only supported stablecoin accounts can be opened.");
   }
   const network = toPartnerNetwork(input.network);
-  if (!network) {
+  if (network !== "Base" && network !== "Polygon" && network !== "Stellar") {
     throw new Error("Choose Base, Polygon, or Stellar.");
   }
   if (network === "Stellar") {
@@ -172,11 +175,22 @@ export function normalizeNetworkKey(network: string | null | undefined): string 
   return (network || "").trim().toLowerCase();
 }
 
+export type PartnerNetwork =
+  | "Base"
+  | "Polygon"
+  | "Stellar"
+  | "Ethereum"
+  | "Optimism"
+  | "Arbitrum";
+
 /** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
-export function toPartnerNetwork(network: string): "Base" | "Polygon" | "Stellar" | null {
+export function toPartnerNetwork(network: string): PartnerNetwork | null {
   const key = normalizeNetworkKey(network);
   if (key === "base") return "Base";
   if (key === "polygon") return "Polygon";
+  if (key === "ethereum" || key === "eth") return "Ethereum";
+  if (key === "optimism" || key === "op") return "Optimism";
+  if (key === "arbitrum" || key === "arb") return "Arbitrum";
   if (key === "stellar" || key === "stellar_testnet" || key === "stellar_public") {
     return "Stellar";
   }

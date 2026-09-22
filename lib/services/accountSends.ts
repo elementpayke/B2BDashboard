@@ -14,6 +14,7 @@ import {
   coerceStablecoinNetworkKey,
   stablecoinNetworksForAsset,
 } from "@/lib/services/depositRampDestination";
+import { buildUsdcSendDestChains } from "@/lib/collect/sendDestChains";
 import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 import { StrKey } from "@stellar/stellar-sdk";
 
@@ -29,12 +30,18 @@ import { StrKey } from "@stellar/stellar-sdk";
  * StrKey destinations; the aggregator submits a Horizon payment from the
  * Element-custodial account secret.
  *
+ * USDC dest chips may include Collect EVM networks while the source account
+ * remains the Element Stellar USDC home (Aggregator bridges when enabled).
+ *
  * See `Mboka-Backend/docs/implementation/PHASE_4.md` and `app/schema/sends.py`.
  */
 
 export const SEND_STABLECOIN_NETWORKS = [
   { key: "base", label: "Base" },
   { key: "polygon", label: "Polygon" },
+  { key: "ethereum", label: "Ethereum" },
+  { key: "optimism", label: "Optimism" },
+  { key: "arbitrum", label: "Arbitrum" },
   { key: "stellar", label: "Stellar" },
 ] as const;
 
@@ -44,6 +51,20 @@ export type SendStablecoinNetworkOption = {
   key: string;
   label: string;
 };
+
+/** Ready Element Stellar USDC home used as the Send source for USDC. */
+export function stellarUsdcHomeAccount(
+  accounts: FinancialAccount[],
+): FinancialAccount | null {
+  return (
+    accounts.find(
+      (account) =>
+        isSendableStablecoinAccount(account) &&
+        account.currency.trim().toUpperCase() === "USDC" &&
+        toPartnerNetwork(account.network) === "Stellar",
+    ) || null
+  );
+}
 
 /** Dedupe sendable accounts from dedicated fetch + bootstrap/list. */
 export function mergeSendableAccounts(
@@ -74,21 +95,29 @@ export function sendableAssetsFromAccounts(
 }
 
 /**
- * Chain chips for the selected asset.
- * When sendable wallets are known, only list rails the user can send from —
- * never invent Ethereum/Solana or empty Base/Stellar stubs.
- * While accounts are still loading, fall back to the catalog filtered by asset.
+ * Dest chain chips for the selected asset.
+ * USDC + Stellar home: Aggregator Collect dests + Stellar (source stays Stellar).
+ * Otherwise: only rails the user can send from (same-chain).
  */
 export function sendableChainsForAsset(
   accounts: FinancialAccount[],
   asset: string | null | undefined,
-  opts: { accountsReady?: boolean } = {},
+  opts: {
+    accountsReady?: boolean;
+    supportedChainKeys?: string[] | null;
+  } = {},
 ): SendStablecoinNetworkOption[] {
+  const currency = (asset || "usdc").trim().toUpperCase() || "USDC";
+  if (currency === "USDC" && stellarUsdcHomeAccount(accounts)) {
+    return buildUsdcSendDestChains({
+      supportedChainKeys: opts.supportedChainKeys,
+    });
+  }
+
   const catalog = stablecoinNetworksForAsset(SEND_STABLECOIN_NETWORKS, asset).map((n) => ({
     key: n.key,
     label: n.label,
   }));
-  const currency = (asset || "usdc").trim().toUpperCase() || "USDC";
   const fromAccounts = catalog.filter((network) =>
     accounts.some(
       (account) =>
@@ -101,13 +130,14 @@ export function sendableChainsForAsset(
   return catalog;
 }
 
-/** Pick a coherent asset + chain + account id from live sendable wallets. */
+/** Pick a coherent asset + dest chain + source account id from live wallets. */
 export function resolveSendStablecoinSelection(input: {
   accounts: FinancialAccount[];
   asset?: string | null;
   chain?: string | null;
   preferredAccountId?: string | null;
   accountsReady?: boolean;
+  supportedChainKeys?: string[] | null;
 }): {
   asset: string;
   chain: string;
@@ -126,10 +156,23 @@ export function resolveSendStablecoinSelection(input: {
 
   const chains = sendableChainsForAsset(accounts, asset, {
     accountsReady: input.accountsReady,
+    supportedChainKeys: input.supportedChainKeys,
   });
   let chain = coerceStablecoinNetworkKey(input.chain, asset, SEND_STABLECOIN_NETWORKS);
   if (chains.length && !chains.some((c) => c.key === chain)) {
     chain = chains[0]!.key;
+  }
+
+  const stellarHome =
+    asset.toUpperCase() === "USDC" ? stellarUsdcHomeAccount(accounts) : null;
+  if (stellarHome) {
+    return {
+      asset,
+      chain,
+      accountId: stellarHome.id,
+      chainLabel:
+        chains.find((c) => c.key === chain)?.label || formatNetworkLabel(chain),
+    };
   }
 
   const preferredId = (input.preferredAccountId || "").trim();
@@ -216,8 +259,16 @@ export function validateStellarAddress(address: string): string {
 export function validateSendAddress(address: string, networkKey: string): string {
   const network = toPartnerNetwork(networkKey);
   if (network === "Stellar") return validateStellarAddress(address);
-  if (network === "Base" || network === "Polygon") return validateEvmAddress(address);
-  throw new Error("Sends support Base, Polygon, and Stellar only.");
+  if (
+    network === "Base" ||
+    network === "Polygon" ||
+    network === "Ethereum" ||
+    network === "Optimism" ||
+    network === "Arbitrum"
+  ) {
+    return validateEvmAddress(address);
+  }
+  throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
 }
 
 /** Min 1.00 per Phase 4 / partner contract (USDC or USDT). */
@@ -241,10 +292,16 @@ export function buildSendPreviewPayload(params: {
   /** Display currency for min-amount errors (USDC / USDT). */
   currency?: string;
 }): AccountSendPreviewIn {
-  const network = toAssetNetwork(params.accountNetwork || params.networkKey);
-  if (!toPartnerNetwork(network)) {
-    throw new Error("Sends support Base, Polygon, and Stellar only.");
+  const destPartner = toPartnerNetwork(params.networkKey);
+  if (!destPartner) {
+    throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
   }
+  // Dest network drives the partner call. Preserve stellar_testnet/public only when
+  // the destination is Stellar (same-chain home payment).
+  const network =
+    destPartner === "Stellar" && params.accountNetwork
+      ? toAssetNetwork(params.accountNetwork)
+      : toAssetNetwork(params.networkKey);
   return {
     to_address: validateSendAddress(params.toAddress, params.networkKey),
     amount: validateSendAmount(params.amount, params.currency),
@@ -299,6 +356,15 @@ export function buildSendExplorerUrl(opts: {
   if (network === "Polygon" || key.includes("polygon")) {
     return `https://polygonscan.com/tx/${encodeURIComponent(hash)}`;
   }
+  if (network === "Ethereum" || key === "ethereum" || key === "eth") {
+    return `https://etherscan.io/tx/${encodeURIComponent(hash)}`;
+  }
+  if (network === "Optimism" || key.includes("optimism")) {
+    return `https://optimistic.etherscan.io/tx/${encodeURIComponent(hash)}`;
+  }
+  if (network === "Arbitrum" || key.includes("arbitrum")) {
+    return `https://arbiscan.io/tx/${encodeURIComponent(hash)}`;
+  }
   return null;
 }
 
@@ -347,6 +413,9 @@ export function buildSendExplorerLabel(network: string | null | undefined): stri
   if (partner === "Stellar" || key.includes("stellar")) return "View on Stellar";
   if (partner === "Base" || key.includes("base")) return "View on Basescan";
   if (partner === "Polygon" || key.includes("polygon")) return "View on Polygonscan";
+  if (partner === "Ethereum" || key === "ethereum" || key === "eth") return "View on Etherscan";
+  if (partner === "Optimism" || key.includes("optimism")) return "View on Optimism";
+  if (partner === "Arbitrum" || key.includes("arbitrum")) return "View on Arbiscan";
   return "View onchain";
 }
 

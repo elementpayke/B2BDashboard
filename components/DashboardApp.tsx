@@ -126,6 +126,7 @@ import {
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
 import { buildCollectFundModalRails } from "@/lib/collect/cctpRails";
+import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
@@ -1193,6 +1194,13 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     staleTime: 30_000,
   });
+  const collectSupportedChainsQuery = useQuery({
+    queryKey: ["collect-cctp-supported-chains"],
+    queryFn: () => entitiesApi.collectSupportedChains(),
+    enabled: state.modal === "send",
+    retry: false,
+    staleTime: 60_000,
+  });
   const savedRecipientsQuery = useQuery({
     queryKey: ["saved-recipients"],
     queryFn: listSavedRecipients,
@@ -1272,6 +1280,9 @@ export default function DashboardApp(props: Props = {}) {
         chain: state.sendChain,
         preferredAccountId: state.sendAccountId,
         accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+        supportedChainKeys: parseCollectSupportedChainKeys(
+          collectSupportedChainsQuery.data,
+        ),
       });
       if (!selection.accountId) {
         setState({
@@ -1280,7 +1291,9 @@ export default function DashboardApp(props: Props = {}) {
           sendAccountId: "",
           sendQuoteError: sendableAccountsQuery.isLoading
             ? `Loading your ${selection.asset.toUpperCase()} accounts…`
-            : `No ready ${selection.asset.toUpperCase()} account on ${selection.chainLabel}. Open a ${selection.asset.toUpperCase()} account on this network first.`,
+            : selection.asset === "usdc"
+              ? `No ready Stellar USDC account to send from. Open a USDC account on Stellar first.`
+              : `No ready ${selection.asset.toUpperCase()} account on ${selection.chainLabel}. Open a ${selection.asset.toUpperCase()} account on this network first.`,
         });
         return;
       }
@@ -2233,6 +2246,9 @@ export default function DashboardApp(props: Props = {}) {
       chain: state.sendChain,
       preferredAccountId: state.sendAccountId,
       accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+      supportedChainKeys: parseCollectSupportedChainKeys(
+        collectSupportedChainsQuery.data,
+      ),
     });
     setState({
       sendAsset: next.asset,
@@ -2253,6 +2269,9 @@ export default function DashboardApp(props: Props = {}) {
       chain: k,
       preferredAccountId: state.sendAccountId,
       accountsReady: sendableAccountsQuery.isFetched || bootstrapReady,
+      supportedChainKeys: parseCollectSupportedChainKeys(
+        collectSupportedChainsQuery.data,
+      ),
     });
     setState({
       sendChain: next.chain,
@@ -4289,6 +4308,9 @@ export default function DashboardApp(props: Props = {}) {
     chain: s.sendChain,
     preferredAccountId: s.sendAccountId,
     accountsReady: sendAccountsReady,
+    supportedChainKeys: parseCollectSupportedChainKeys(
+      collectSupportedChainsQuery.data,
+    ),
   });
   const sendAssetKeys =
     sendableAssetsFromAccounts(sendableAccountsForPicker).length > 0
@@ -4305,7 +4327,12 @@ export default function DashboardApp(props: Props = {}) {
   const sendChainOptions = sendableChainsForAsset(
     sendableAccountsForPicker,
     sendSelection.asset,
-    { accountsReady: sendAccountsReady },
+    {
+      accountsReady: sendAccountsReady,
+      supportedChainKeys: parseCollectSupportedChainKeys(
+        collectSupportedChainsQuery.data,
+      ),
+    },
   );
   const sendChains = sendChainOptions.map((n) => ({
     key: n.key,
@@ -4319,7 +4346,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendAssetCode = sendSelection.asset.toUpperCase();
   const sendChainLabel = sendSelection.chainLabel;
   const sendCorridorText = s.sendGroup === "crypto"
-    ? `Sends ${sendAssetCode} on ${sendChainLabel} via account send — min 1.00 ${sendAssetCode}.`
+    ? `Sends ${sendAssetCode} from your Stellar balance to ${sendChainLabel} — min 1.00 ${sendAssetCode}.`
     : `${sendCountry.name} via ${channelLabelForRail(sendRail.type)} · ${sendRail.arrival}`;
   const sendProviderHasChoice = sendProviderOptions.length > 1;
   const sendProviderPickerLabel =

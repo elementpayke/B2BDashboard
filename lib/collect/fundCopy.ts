@@ -1,11 +1,10 @@
-/** Honest Collect Fund copy — no fake CCTP / cross-rail promises. */
+/** Fund rail copy — simple deposit messaging (no bridge jargon). */
 
 export function isCollectCctpRail(input: {
   railId?: string | null;
   chainDisclaimer?: string | null;
 }): boolean {
-  if (String(input.railId || "").startsWith("collect-cctp:")) return true;
-  return /CCTP/i.test(String(input.chainDisclaimer || ""));
+  return String(input.railId || "").startsWith("collect-cctp:");
 }
 
 export function fundStablecoinRailSummary(input: {
@@ -18,9 +17,6 @@ export function fundStablecoinRailSummary(input: {
   const asset = (input.currency || "").trim().toUpperCase();
   const network = (input.networkLabel || "").trim();
   if (asset === "USDC") {
-    if (isCollectCctpRail(input)) {
-      return `Deposit USDC on ${network}. Credits your Stellar USDC after CCTP processing.`;
-    }
     return `Deposit USDC on ${network}. Credits your USDC balance after processing.`;
   }
   if (asset === "EURC" || asset === "USDT") {

@@ -72,9 +72,10 @@ describe("FundStablecoinModal Stellar wallet", () => {
       screen.getByText("Deposit USDC on Base. Credits your USDC balance after processing."),
     ).toBeInTheDocument();
     expect(screen.queryByText(/via USDC on Base/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/CCTP/i)).not.toBeInTheDocument();
   });
 
-  it("shows CCTP copy for Collect-provenance rails", () => {
+  it("keeps generic processing copy for Collect-provenance rails", () => {
     render(
       <FundStablecoinModal
         targetCurrency="USDC"
@@ -83,17 +84,16 @@ describe("FundStablecoinModal Stellar wallet", () => {
           {
             ...base,
             id: "collect-cctp:1:base:0xcbdb",
-            chainDisclaimer: "Credits Stellar USDC after CCTP processing.",
+            chainDisclaimer: "Send only USDC on Base. Credits your USDC balance after processing.",
           },
         ]}
         onBack={vi.fn()}
       />,
     );
     expect(
-      screen.getByText(
-        "Deposit USDC on Base. Credits your Stellar USDC after CCTP processing.",
-      ),
+      screen.getByText("Deposit USDC on Base. Credits your USDC balance after processing."),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/CCTP/i)).not.toBeInTheDocument();
   });
 
   it("does not offer Stellar wallet connect for a Stellar-labelled rail with an EVM address", () => {
