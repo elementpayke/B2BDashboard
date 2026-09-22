@@ -667,7 +667,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                     }
                     inputMode="numeric"
                     placeholder="11-digit BVN"
-                    hint="Required for Nigerian nationals (Bank Verification Number)"
+                    hint="Required when tax residence is Nigeria (or business address is Nigeria if tax residence is unset)"
                   />
                   <TextField
                     label="NIN"
@@ -677,7 +677,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                     }
                     inputMode="numeric"
                     placeholder="11-digit NIN"
-                    hint="Required for Nigerian nationals (National Identity Number)"
+                    hint="Required when tax residence is Nigeria (or business address is Nigeria if tax residence is unset)"
                   />
                 </>
               ) : null}
