@@ -206,6 +206,44 @@ describe("presentTransaction", () => {
       ).explorerUrl,
     ).toBe("https://polygonscan.com/tx/0xabc");
   });
+
+  it("shows a Base collect deposit as Pending until the Stellar credit is confirmed", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "cctp_1",
+        direction: "in",
+        status: "processing",
+        currency: "USDC",
+        amount_fiat: "3.00",
+        provider: "stellar",
+        crypto_network: "base",
+        source: "cctp_transfer",
+        stage: "minting",
+        source_tx_hash: "0xsource",
+        burn_tx_hash: "0xburn",
+      }),
+    );
+    expect(view.client).toBe("Deposit · USDC");
+    expect(view.type).toBe("Deposit");
+    expect(view.type).not.toBe("Stellar deposit");
+    expect(view.statusLabel).toBe("Pending");
+    expect(view.meta).toContain("crediting Stellar");
+
+    const settled = presentTransaction(
+      transaction({
+        id: "cctp_1",
+        direction: "in",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "3.00",
+        provider: "stellar",
+        source: "cctp_transfer",
+        stage: "completed",
+      }),
+    );
+    expect(settled.statusLabel).toBe("Settled");
+    expect(settled.meta).toContain("from Base");
+  });
 });
 
 describe("formatTransactionDate", () => {
