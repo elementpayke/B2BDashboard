@@ -1,9 +1,18 @@
-/** Honest Collect Fund copy — no fake CCTP / cross-rail promises. */
+/** Fund rail copy — simple deposit messaging (no bridge jargon). */
+
+export function isCollectCctpRail(input: {
+  railId?: string | null;
+  chainDisclaimer?: string | null;
+}): boolean {
+  return String(input.railId || "").startsWith("collect-cctp:");
+}
 
 export function fundStablecoinRailSummary(input: {
   targetName: string;
   currency: string;
   networkLabel: string;
+  railId?: string | null;
+  chainDisclaimer?: string | null;
 }): string {
   const asset = (input.currency || "").trim().toUpperCase();
   const network = (input.networkLabel || "").trim();

@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { fundStablecoinRailSummary, isEvmEurcRail } from "./fundCopy";
+import { fundStablecoinRailSummary, isCollectCctpRail, isEvmEurcRail } from "./fundCopy";
 
 describe("fundStablecoinRailSummary", () => {
-  it("describes EVM USDC CCTP processing honestly", () => {
+  it("uses generic USDC processing copy for all USDC rails", () => {
     expect(
       fundStablecoinRailSummary({
         targetName: "USDC · Stellar",
         currency: "USDC",
         networkLabel: "Base",
+        railId: "collect-cctp:42:base:0xabc",
+      }),
+    ).toBe("Deposit USDC on Base. Credits your USDC balance after processing.");
+    expect(
+      fundStablecoinRailSummary({
+        targetName: "USDC · Base",
+        currency: "USDC",
+        networkLabel: "Base",
+        railId: "acct-base",
       }),
     ).toBe("Deposit USDC on Base. Credits your USDC balance after processing.");
   });
@@ -20,6 +29,13 @@ describe("fundStablecoinRailSummary", () => {
         networkLabel: "Stellar",
       }),
     ).toContain("Aquarius");
+  });
+});
+
+describe("isCollectCctpRail", () => {
+  it("detects collect-cctp ids only", () => {
+    expect(isCollectCctpRail({ railId: "collect-cctp:1:base:0x" })).toBe(true);
+    expect(isCollectCctpRail({ railId: "acct-1", chainDisclaimer: "after processing" })).toBe(false);
   });
 });
 

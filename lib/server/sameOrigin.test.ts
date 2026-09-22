@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-import { rejectCrossOrigin } from "./sameOrigin";
+import { originsMatch, rejectCrossOrigin } from "./sameOrigin";
+
+describe("originsMatch", () => {
+  it("equates localhost and 127.0.0.1 on the same port", () => {
+    expect(originsMatch("http://127.0.0.1:3000", "http://localhost:3000")).toBe(true);
+    expect(originsMatch("http://localhost:3000", "http://127.0.0.1:3000")).toBe(true);
+  });
+
+  it("rejects different ports or hosts", () => {
+    expect(originsMatch("http://127.0.0.1:3000", "http://localhost:3001")).toBe(false);
+    expect(originsMatch("http://localhost:3000", "https://evil.example")).toBe(false);
+  });
+});
 
 describe("rejectCrossOrigin", () => {
   it("allows GET without Origin", () => {
@@ -12,6 +24,14 @@ describe("rejectCrossOrigin", () => {
     const req = new NextRequest("http://localhost:3000/api/auth/login", {
       method: "POST",
       headers: { origin: "http://localhost:3000" },
+    });
+    expect(rejectCrossOrigin(req)).toBeNull();
+  });
+
+  it("allows loopback 127.0.0.1 Origin against localhost nextUrl", () => {
+    const req = new NextRequest("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { origin: "http://127.0.0.1:3000" },
     });
     expect(rejectCrossOrigin(req)).toBeNull();
   });

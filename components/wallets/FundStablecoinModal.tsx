@@ -17,6 +17,9 @@ export type FundStablecoinModalProps = {
   /** Ready rails from backend — asset/network/address driven by API. */
   rails: FundStablecoinRail[];
   onBack: () => void;
+  /** Optional Collect deposit-instructions lookup failure (non-blocking). */
+  collectRailsError?: string | null;
+  onRetryCollectRails?: () => void;
 };
 
 /**
@@ -28,6 +31,8 @@ export default function FundStablecoinModal({
   targetName,
   rails,
   onBack,
+  collectRailsError = null,
+  onRetryCollectRails,
 }: FundStablecoinModalProps) {
   const [step, setStep] = useState<"amount" | "address">("amount");
   const [selectedId, setSelectedId] = useState(rails[0]?.id ?? "");
@@ -76,6 +81,18 @@ export default function FundStablecoinModal({
           ← Back
         </button>
 
+        {collectRailsError ? (
+          <div className="ep-fund-sc__warn" role="alert">
+            <p>Couldn&apos;t load deposit networks. Your other rails still work.</p>
+            {onRetryCollectRails ? (
+              <button type="button" className="ep-fund-sc__btn-secondary" onClick={onRetryCollectRails}>
+                Retry
+              </button>
+            ) : null}
+            <p className="ep-fund-sc__hint">{collectRailsError}</p>
+          </div>
+        ) : null}
+
         {visibleRails.length > 0 ? (
           <div className="ep-fund-sc__rails" role="radiogroup" aria-label="Stablecoin rail">
             {visibleRails.map((rail) => (
@@ -117,6 +134,8 @@ export default function FundStablecoinModal({
                   targetName,
                   currency: selected.currency,
                   networkLabel: selected.networkLabel,
+                  railId: selected.id,
+                  chainDisclaimer: selected.chainDisclaimer,
                 })
               : `Fund ${targetName}`}
           </p>

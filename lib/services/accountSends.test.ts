@@ -48,6 +48,7 @@ describe("account send validation", () => {
         toAddress: "0x1111111111111111111111111111111111111111",
         amount: "2.5",
         networkKey: "base",
+        accountNetwork: "Stellar",
       }),
     ).toEqual({
       to_address: "0x1111111111111111111111111111111111111111",
@@ -55,7 +56,9 @@ describe("account send validation", () => {
       network: "Base",
     });
     expect(toPartnerNetwork("POLYGON")).toBe("Polygon");
-    expect(toPartnerNetwork("ethereum")).toBeNull();
+    expect(toPartnerNetwork("ethereum")).toBe("Ethereum");
+    expect(toPartnerNetwork("optimism")).toBe("Optimism");
+    expect(toPartnerNetwork("solana")).toBeNull();
   });
 
   it("accepts a Stellar public key and pins network Stellar", () => {
@@ -297,5 +300,38 @@ describe("sendable asset/chain picker from backend wallets", () => {
 
   it("returns no chain chips when accounts are ready but empty for that asset", () => {
     expect(sendableChainsForAsset([polyUsdt], "usdc", { accountsReady: true })).toEqual([]);
+  });
+
+  it("USDC with Stellar home uses dest chips and sources from Stellar", () => {
+    const stellarUsdc = normalizeFinancialAccount(
+      {
+        id: "stellar_usdc",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "ready",
+        wallet_address: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      },
+      "ent_1",
+    )!;
+    const accounts = mergeSendableAccounts([stellarUsdc, baseUsdc]);
+    expect(
+      sendableChainsForAsset(accounts, "usdc", {
+        accountsReady: true,
+        supportedChainKeys: ["base", "polygon"],
+      }).map((n) => n.key),
+    ).toEqual(["base", "polygon", "stellar"]);
+    const next = resolveSendStablecoinSelection({
+      accounts,
+      asset: "usdc",
+      chain: "base",
+      accountsReady: true,
+      supportedChainKeys: ["base", "polygon"],
+    });
+    expect(next).toMatchObject({
+      asset: "usdc",
+      chain: "base",
+      accountId: "stellar_usdc",
+    });
   });
 });
