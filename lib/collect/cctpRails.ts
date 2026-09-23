@@ -2,6 +2,7 @@
 
 import type { FundStablecoinRail } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
+import { fundStablecoinRailSummary } from "@/lib/collect/fundCopy";
 
 export type CollectEvmUsdcRow = {
   network?: string;
@@ -64,14 +65,12 @@ export function mergeFundStablecoinRails(
   preferredRails: FundStablecoinRail[],
   extraRails: FundStablecoinRail[],
 ): FundStablecoinRail[] {
-  const seen = new Set(
-    preferredRails.map(
-      (r) => `${r.network.trim().toLowerCase()}:${(r.walletAddress || "").trim().toLowerCase()}`,
-    ),
-  );
+  const railKey = (r: FundStablecoinRail) =>
+    `${r.currency.trim().toUpperCase()}:${r.network.trim().toLowerCase()}:${(r.walletAddress || "").trim().toLowerCase()}`;
+  const seen = new Set(preferredRails.map(railKey));
   const merged = [...preferredRails];
   for (const rail of extraRails) {
-    const key = `${rail.network.trim().toLowerCase()}:${(rail.walletAddress || "").trim().toLowerCase()}`;
+    const key = railKey(rail);
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(rail);
@@ -129,6 +128,42 @@ export function buildCollectFundModalRails(opts: {
         homeAccountId: String(home.id),
       })
     : [];
-  // Collect EVM first (product path), then Stellar direct.
-  return mergeFundStablecoinRails(collectRails, stellarRails);
+  const eurcRails = home ? stellarEurcFundRail(home, opts.depositInstructions) : [];
+  // Collect EVM first, then Stellar USDC, then Stellar EURC (same G, separate asset).
+  return mergeFundStablecoinRails([...collectRails, ...stellarRails], eurcRails);
+}
+
+function stellarEurcFundRail(
+  home: {
+    id: string;
+    network: string;
+    walletAddress?: string | null;
+  },
+  depositInstructions: unknown,
+): FundStablecoinRail[] {
+  if (!depositInstructions || typeof depositInstructions !== "object") return [];
+  const collect = (depositInstructions as Record<string, unknown>).collect;
+  if (!collect || typeof collect !== "object") return [];
+  const eurc = (collect as Record<string, unknown>).stellar_eurc;
+  if (!eurc || typeof eurc !== "object") return [];
+  const row = eurc as Record<string, unknown>;
+  if (row.trustline_open !== true) return [];
+  const address = String(row.address || home.walletAddress || "").trim();
+  if (!address) return [];
+  const networkLabel = formatNetworkLabel(home.network);
+  return [
+    {
+      id: `${home.id}:eurc`,
+      currency: "EURC",
+      network: home.network,
+      networkLabel,
+      walletAddress: address,
+      chainDisclaimer: fundStablecoinRailSummary({
+        targetName: "USDC",
+        currency: "EURC",
+        networkLabel,
+      }),
+      checkoutUrl: null,
+    },
+  ];
 }

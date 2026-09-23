@@ -75,6 +75,8 @@ export type Transaction = {
   /** Circle fast-transfer fee deducted from this deposit, in `fee_currency`. */
   fee_amount?: string | null;
   fee_currency?: string | null;
+  /** EURC/USDT sold when this row is a Collect swap. */
+  source_currency?: string | null;
   created_at: string;
   updated_at: string;
 };

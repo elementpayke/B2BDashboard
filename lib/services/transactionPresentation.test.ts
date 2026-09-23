@@ -245,6 +245,56 @@ describe("presentTransaction", () => {
     expect(settled.statusLabel).toBe("Settled");
     expect(settled.meta).toContain("from Base");
   });
+
+  it("shows one EURC convert row, pending then settled USDC", () => {
+    const pending = presentTransaction(
+      transaction({
+        id: "swap_1",
+        direction: "in",
+        status: "processing",
+        currency: "EURC",
+        amount_fiat: "10.00",
+        source: "collect_swap",
+        source_currency: "EURC",
+      }),
+    );
+    expect(pending.client).toBe("Convert · EURC");
+    expect(pending.statusLabel).toBe("Pending");
+
+    const settled = presentTransaction(
+      transaction({
+        id: "swap_1",
+        direction: "in",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "10.80",
+        source: "collect_swap",
+        source_currency: "EURC",
+      }),
+    );
+    expect(settled.client).toBe("Convert · EURC");
+    expect(settled.statusLabel).toBe("Settled");
+    expect(settled.amount).toContain("10.80");
+    expect(settled.amount).toContain("USDC");
+    expect(settled.meta).toContain("from EURC");
+  });
+
+  it("shows a Stellar USDC send as Payout · USDC", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "snd_1",
+        direction: "out",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "2.00",
+        source: "stablecoin_send",
+        crypto_network: "Stellar",
+      }),
+    );
+    expect(view.client).toBe("Payout · USDC");
+    expect(view.statusLabel).toBe("Settled");
+    expect(view.type).toBe("Payout");
+  });
 });
 
 describe("formatTransactionDate", () => {

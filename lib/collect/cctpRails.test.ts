@@ -118,6 +118,46 @@ describe("buildCollectFundModalRails", () => {
     expect(rails[0].chainDisclaimer).toMatch(/Credits your USDC balance/);
     expect(rails[0].chainDisclaimer).not.toMatch(/CCTP/i);
   });
+
+  it("adds Stellar EURC only when the trustline is open", () => {
+    const base = {
+      accounts: [
+        {
+          id: "stellar-home",
+          currency: "USDC",
+          network: "Stellar",
+          walletAddress: "GHOMEADDRESS",
+          status: "ready",
+        },
+      ],
+      isFundable: (a: { walletAddress?: string | null }) => Boolean(a.walletAddress),
+      isStellarUsdc: (a: { currency: string; network: string }) =>
+        a.currency.toUpperCase() === "USDC" && /stellar/i.test(a.network),
+    };
+    const closed = buildCollectFundModalRails({
+      ...base,
+      depositInstructions: {
+        collect: { stellar_eurc: { trustline_open: false, address: null, asset: "EURC" } },
+      },
+    });
+    expect(closed.map((r) => r.currency)).toEqual(["USDC"]);
+
+    const open = buildCollectFundModalRails({
+      ...base,
+      depositInstructions: {
+        collect: {
+          stellar_eurc: {
+            trustline_open: true,
+            address: "GHOMEADDRESS",
+            asset: "EURC",
+          },
+        },
+      },
+    });
+    expect(open.map((r) => r.currency)).toEqual(["USDC", "EURC"]);
+    expect(open[1].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
+    expect(open[1].walletAddress).toBe("GHOMEADDRESS");
+  });
 });
 
 describe("mergeFundStablecoinRails", () => {
