@@ -72,6 +72,9 @@ export type Transaction = {
   source_tx_hash?: string | null;
   burn_tx_hash?: string | null;
   mint_tx_hash?: string | null;
+  /** Circle fast-transfer fee deducted from this deposit, in `fee_currency`. */
+  fee_amount?: string | null;
+  fee_currency?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -341,6 +344,8 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
     source_tx_hash: optionalString(row.source_tx_hash ?? row.sourceTxHash),
     burn_tx_hash: optionalString(row.burn_tx_hash ?? row.burnTxHash),
     mint_tx_hash: optionalString(row.mint_tx_hash ?? row.mintTxHash),
+    fee_amount: optionalString(row.fee_amount ?? row.feeAmount),
+    fee_currency: optionalString(row.fee_currency ?? row.feeCurrency),
     created_at: createdAt,
     updated_at: updatedAt,
   };

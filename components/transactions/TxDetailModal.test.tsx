@@ -181,6 +181,8 @@ describe("TxDetailModal Collect deposit", () => {
           source_tx_hash: "0xsource",
           burn_tx_hash: "0xburn",
           mint_tx_hash: null,
+          fee_amount: "0.000390",
+          fee_currency: "USDC",
           tx_hash: "0xsource",
           explorerUrl: null,
         })}
@@ -197,6 +199,8 @@ describe("TxDetailModal Collect deposit", () => {
     expect(screen.getByText("Burn")).toBeInTheDocument();
     expect(screen.getByText("0xburn")).toBeInTheDocument();
     expect(screen.queryByText("Stellar mint")).not.toBeInTheDocument();
+    expect(screen.getByText("Circle fee")).toBeInTheDocument();
+    expect(screen.getByText("0.000390 USDC")).toBeInTheDocument();
     expect(screen.queryByText("Created")).not.toBeInTheDocument();
   });
 });
