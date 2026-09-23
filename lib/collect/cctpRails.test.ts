@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCollectEvmFundRails,
   buildCollectFundModalRails,
+  fundRailsForAccount,
   mergeFundStablecoinRails,
 } from "./cctpRails";
 import type { FundStablecoinRail } from "@/lib/services/entities";
@@ -157,6 +158,76 @@ describe("buildCollectFundModalRails", () => {
     expect(open.map((r) => r.currency)).toEqual(["USDC", "EURC"]);
     expect(open[1].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
     expect(open[1].walletAddress).toBe("GHOMEADDRESS");
+  });
+});
+
+describe("fundRailsForAccount", () => {
+  const accounts = [
+    {
+      id: "stellar-home",
+      currency: "USDC",
+      network: "Stellar",
+      walletAddress: "GHOMEADDRESS",
+      status: "ready",
+    },
+    {
+      id: "usdt-poly",
+      currency: "USDT",
+      network: "Polygon",
+      walletAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      status: "ready",
+    },
+  ];
+  const depositInstructions = {
+    collect: {
+      evm_usdc: [
+        {
+          network: "base",
+          address: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
+          asset: "USDC",
+        },
+      ],
+      stellar_eurc: {
+        trustline_open: true,
+        address: "GHOMEADDRESS",
+        asset: "EURC",
+      },
+    },
+  };
+  const shared = {
+    accounts,
+    depositInstructions,
+    isFundable: (a: { walletAddress?: string | null }) => Boolean(a.walletAddress),
+    isStellarUsdc: (a: { currency: string; network: string }) =>
+      a.currency.toUpperCase() === "USDC" && /stellar/i.test(a.network),
+  };
+
+  it("keeps Base USDC, Stellar USDC, and Stellar EURC on the Stellar home", () => {
+    const rails = fundRailsForAccount({ ...shared, selected: accounts[0] });
+    expect(rails.map((r) => `${r.currency} ${r.networkLabel}`)).toEqual([
+      "USDC Base",
+      "USDC Stellar",
+      "EURC Stellar",
+    ]);
+  });
+
+  it("offers only the selected chain wallet", () => {
+    const rails = fundRailsForAccount({ ...shared, selected: accounts[1] });
+    expect(rails).toHaveLength(1);
+    expect(rails[0]).toMatchObject({
+      id: "usdt-poly",
+      currency: "USDT",
+      networkLabel: "Polygon",
+      walletAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    });
+  });
+
+  it("does not fall back to Stellar rails for a wallet with no address", () => {
+    const rails = fundRailsForAccount({
+      ...shared,
+      selected: { ...accounts[1], walletAddress: null },
+    });
+    expect(rails).toEqual([]);
   });
 });
 
