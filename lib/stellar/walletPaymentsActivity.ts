@@ -1,7 +1,7 @@
 import type { ActivityItem } from "@/components/ui/ActivityList";
 import { transactionPartyLabel } from "@/lib/services/channelLabels";
 import { formatNetworkLabel } from "@/lib/services/entities";
-import { formatTransactionDate } from "@/lib/services/transactionPresentation";
+import { activityInstantMs, formatTransactionDate } from "@/lib/services/transactionPresentation";
 import { describeTransactionStatus } from "@/lib/services/transactionStatus";
 import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 import type { OnchainWalletPayment } from "./walletPayments";
@@ -48,8 +48,17 @@ function normalizeHash(value: string | null | undefined): string {
 }
 
 function createdAtMs(value: string | null | undefined): number {
-  const time = Date.parse(String(value ?? ""));
-  return Number.isFinite(time) ? time : 0;
+  return activityInstantMs(value);
+}
+
+function newestFirst<T extends { created_at?: string | null; id?: string | number }>(
+  rows: T[],
+): T[] {
+  return [...rows].sort((a, b) => {
+    const delta = createdAtMs(b.created_at) - createdAtMs(a.created_at);
+    if (delta !== 0) return delta;
+    return String(b.id ?? "").localeCompare(String(a.id ?? ""), undefined, { numeric: true });
+  });
 }
 
 /**
@@ -166,9 +175,7 @@ export function mergeWalletPaymentsWithElementActivity(opts: {
       created_at: payment.createdAt,
     }));
 
-  return [...opts.elementActivity, ...unmatchedOnchain]
-    .sort((a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at))
-    .slice(0, opts.limit ?? 25);
+  return newestFirst([...opts.elementActivity, ...unmatchedOnchain]).slice(0, opts.limit ?? 25);
 }
 
 export type PresentedActivityRow = LinkedWalletActivityItem & {
@@ -226,9 +233,7 @@ export function mergePresentedActivityRows(
   onchainRows: PresentedActivityRow[],
   limit?: number,
 ): PresentedActivityRow[] {
-  const merged = [...elementRows, ...onchainRows].sort(
-    (a, b) => createdAtMs(b.created_at) - createdAtMs(a.created_at),
-  );
+  const merged = newestFirst([...elementRows, ...onchainRows]);
   return typeof limit === "number" ? merged.slice(0, limit) : merged;
 }
 

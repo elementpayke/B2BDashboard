@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatTransactionDate,
+  parseApiInstant,
   presentTransaction,
   transactionReference,
 } from "./transactionPresentation";
@@ -254,6 +255,15 @@ describe("formatTransactionDate", () => {
     );
     expect(formatTransactionDate(new Date(2026, 7, 13, 14, 32).toISOString(), now)).toMatch(
       /^Yesterday, /,
+    );
+  });
+
+  it("treats a naive timestamp as UTC and formats it in the browser zone", () => {
+    const naive = "2026-09-22T19:38:13";
+    const zoned = "2026-09-22T19:38:13Z";
+    expect(parseApiInstant(naive).getTime()).toBe(parseApiInstant(zoned).getTime());
+    expect(formatTransactionDate(naive, new Date("2026-09-23T07:00:00Z"))).toBe(
+      formatTransactionDate(zoned, new Date("2026-09-23T07:00:00Z")),
     );
   });
 

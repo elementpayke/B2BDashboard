@@ -104,8 +104,25 @@ export function transactionReference(transaction: Transaction): string {
   );
 }
 
+/**
+ * Mboka and the aggregator often send naive ISO datetimes that are UTC.
+ * `Date.parse` would treat those as the browser's zone and show the UTC clock.
+ */
+export function parseApiInstant(value: string): Date {
+  const raw = value.trim().replace(" ", "T");
+  if (!raw) return new Date(Number.NaN);
+  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const naiveDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw);
+  return new Date(hasZone || !naiveDateTime ? raw : `${raw}Z`);
+}
+
+export function activityInstantMs(value: string | null | undefined): number {
+  const time = parseApiInstant(String(value ?? "")).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
 export function formatTransactionDate(value: string, now = new Date()): string {
-  const date = new Date(value);
+  const date = parseApiInstant(value);
   if (Number.isNaN(date.getTime())) return "Date unavailable";
 
   const time = new Intl.DateTimeFormat(undefined, {
@@ -131,7 +148,7 @@ export function formatTransactionDate(value: string, now = new Date()): string {
 
 /** Card spend list: `Today · 09:14` / `Yesterday · 09:14` / `Sep 10 · 09:14`. */
 export function formatCardSpendWhen(value: string, now = new Date()): string {
-  const date = new Date(value);
+  const date = parseApiInstant(value);
   if (Number.isNaN(date.getTime())) return "Date unavailable";
 
   const time = new Intl.DateTimeFormat(undefined, {

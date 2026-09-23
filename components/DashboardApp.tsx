@@ -21,6 +21,7 @@ import {
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import {
+  activityInstantMs,
   formatCardSpendWhen,
   presentTransaction,
 } from "@/lib/services/transactionPresentation";
@@ -3371,13 +3372,13 @@ export default function DashboardApp(props: Props = {}) {
     ).map(mapCardTransactionToTransaction);
     const feedTransactions = (() => {
       const base = transactionsQuery.data?.items ?? [];
-      if (!cardSpendTransactions.length) return base;
       const seen = new Set(base.map((row) => String(row.id)));
       const extras = cardSpendTransactions.filter((row) => !seen.has(String(row.id)));
-      if (!extras.length) return base;
-      return [...extras, ...base].sort((a, b) =>
-        String(b.created_at).localeCompare(String(a.created_at)),
-      );
+      return [...extras, ...base].sort((a, b) => {
+        const delta = activityInstantMs(b.created_at) - activityInstantMs(a.created_at);
+        if (delta !== 0) return delta;
+        return String(b.id).localeCompare(String(a.id), undefined, { numeric: true });
+      });
     })();
     const decoratedAll = feedTransactions.map(decorateTx);
     const txUsesLatestFifty =
