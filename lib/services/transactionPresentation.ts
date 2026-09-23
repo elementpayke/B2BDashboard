@@ -61,6 +61,10 @@ export function isCollectTransfer(transaction: { source?: string | null }): bool
   return (transaction.source || "").trim().toLowerCase() === "cctp_transfer";
 }
 
+export function isCollectSwap(transaction: { source?: string | null }): boolean {
+  return (transaction.source || "").trim().toLowerCase() === "collect_swap";
+}
+
 /** Plain-language stage for a Base USDC deposit that has not settled on Stellar yet. */
 export function collectStagePhrase(stage?: string | null): string {
   const value = (stage || "").trim().toLowerCase();
@@ -229,7 +233,13 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   const accountNumber = payment?.account_number?.trim() || null;
   const networkName = payment?.network_name?.trim() || null;
   const collect = isCollectTransfer(transaction);
-  const client = collect ? "Deposit · USDC" : partyName || workflowLabel;
+  const swap = isCollectSwap(transaction);
+  const swapSource = (transaction.source_currency || "EURC").trim().toUpperCase();
+  const client = collect
+    ? "Deposit · USDC"
+    : swap
+      ? `Convert · ${swapSource}`
+      : partyName || workflowLabel;
   const metaParts = partyName && !collect
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];
@@ -237,6 +247,9 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     metaParts.unshift(
       transaction.status === "completed" ? "from Base" : collectStagePhrase(transaction.stage),
     );
+  }
+  if (swap && transaction.status === "completed") {
+    metaParts.unshift(`from ${swapSource}`);
   }
   // Prefer the PSP confirmation code on fiat rails; else the order reference.
   metaParts.push(`Ref ${shortReference(paymentRef || ref)}`);
