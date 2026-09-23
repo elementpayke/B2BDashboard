@@ -133,6 +133,52 @@ export function buildCollectFundModalRails(opts: {
   return mergeFundStablecoinRails([...collectRails, ...stellarRails], eurcRails);
 }
 
+/**
+ * Deposit rails for the account the user is funding.
+ * Stellar USDC (and fiat "deposit to a stablecoin") keep the Collect set:
+ * USDC on Base, USDC on Stellar, EURC on Stellar.
+ * Any other chain wallet gets only its own asset and address.
+ */
+export function fundRailsForAccount(opts: {
+  selected: {
+    id: string;
+    currency: string;
+    network: string;
+    walletAddress?: string | null;
+    chainDisclaimer?: string | null;
+    checkoutUrl?: string | null;
+    status?: string;
+  } | null;
+  accounts: Parameters<typeof buildCollectFundModalRails>[0]["accounts"];
+  depositInstructions: unknown;
+  isFundable: Parameters<typeof buildCollectFundModalRails>[0]["isFundable"];
+  isStellarUsdc: Parameters<typeof buildCollectFundModalRails>[0]["isStellarUsdc"];
+}): FundStablecoinRail[] {
+  const selected = opts.selected;
+  if (
+    selected &&
+    !opts.isStellarUsdc({ currency: selected.currency, network: selected.network })
+  ) {
+    if (!opts.isFundable(selected) || !selected.walletAddress?.trim()) return [];
+    const networkLabel = formatNetworkLabel(selected.network);
+    const currency = selected.currency.trim().toUpperCase();
+    return [
+      {
+        id: selected.id,
+        currency,
+        network: selected.network,
+        networkLabel,
+        walletAddress: selected.walletAddress.trim(),
+        chainDisclaimer:
+          selected.chainDisclaimer ||
+          `Send only ${currency} on ${networkLabel}. Funds sent on the wrong network may be lost.`,
+        checkoutUrl: selected.checkoutUrl ?? null,
+      },
+    ];
+  }
+  return buildCollectFundModalRails(opts);
+}
+
 function stellarEurcFundRail(
   home: {
     id: string;

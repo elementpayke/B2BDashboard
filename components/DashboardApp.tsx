@@ -130,7 +130,7 @@ import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
-import { buildCollectFundModalRails } from "@/lib/collect/cctpRails";
+import { fundRailsForAccount } from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
@@ -3949,7 +3949,8 @@ export default function DashboardApp(props: Props = {}) {
       ? selectedStablecoinAccount
       : null) ??
     fundingUsdcAccount;
-  const fundStablecoinRails = buildCollectFundModalRails({
+  const fundStablecoinRails = fundRailsForAccount({
+    selected: selectedStablecoinAccount,
     accounts: stablecoinAccountsList,
     depositInstructions: collectDepositInstructionsQuery.data,
     isFundable: isFundableStablecoinAccount,

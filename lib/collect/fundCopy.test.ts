@@ -30,6 +30,16 @@ describe("fundStablecoinRailSummary", () => {
       }),
     ).toContain("Aquarius");
   });
+
+  it("credits USDT on its own chain", () => {
+    expect(
+      fundStablecoinRailSummary({
+        targetName: "USDT · Polygon",
+        currency: "USDT",
+        networkLabel: "Polygon",
+      }),
+    ).toBe("Deposit USDT on Polygon. Credits your USDT balance.");
+  });
 });
 
 describe("isCollectCctpRail", () => {
