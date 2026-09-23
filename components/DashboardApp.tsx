@@ -21,6 +21,7 @@ import {
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
 import {
+  activityInstantMs,
   formatCardSpendWhen,
   presentTransaction,
 } from "@/lib/services/transactionPresentation";
@@ -37,6 +38,10 @@ import {
   onchainTxDetailId,
 } from "@/lib/stellar/walletPaymentsActivity";
 import { isStellarUsdcRail } from "@/lib/stellar/network";
+import {
+  applyCollectEventTimes,
+  collectEventTimesFromPayload,
+} from "@/lib/collect/eventTimes";
 import {
   PRIMARY_TX_FILTERS,
   searchTransactions,
@@ -777,6 +782,29 @@ export default function DashboardApp(props: Props = {}) {
   const resolvedStablecoinAccounts = bootstrapReady
     ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
     : (stablecoinAccountsQuery.data ?? []);
+  const collectHomeForTimes = resolvedStablecoinAccounts.find(
+    (account) =>
+      isFundableStablecoinAccount(account) &&
+      account.currency.trim().toUpperCase() === "USDC" &&
+      isStellarUsdcRail({ network: account.network, currency: account.currency }),
+  );
+  const collectEventTimesQuery = useQuery({
+    queryKey: [
+      "collect-event-times",
+      collectHomeForTimes?.entityId ?? "",
+      collectHomeForTimes?.id ?? "",
+    ],
+    queryFn: async () =>
+      collectEventTimesFromPayload(
+        await entitiesApi.listCollectCctpTransfers(
+          String(collectHomeForTimes!.entityId),
+          String(collectHomeForTimes!.id),
+        ),
+      ),
+    enabled: Boolean(collectHomeForTimes?.entityId && collectHomeForTimes?.id),
+    retry: false,
+    staleTime: 15_000,
+  });
   const fundableRefundWallets = resolvedStablecoinAccounts.filter(isFundableStablecoinAccount);
 
   // Top-up destination wallet — mirror Send’s refund-wallet auto-pick so quotes
@@ -3369,15 +3397,19 @@ export default function DashboardApp(props: Props = {}) {
     const cardSpendTransactions = (
       cardTransactionsQuery.data?.transactions ?? []
     ).map(mapCardTransactionToTransaction);
+    const collectEventTimes = collectEventTimesQuery.data ?? [];
     const feedTransactions = (() => {
-      const base = transactionsQuery.data?.items ?? [];
-      if (!cardSpendTransactions.length) return base;
+      const base = applyCollectEventTimes(
+        transactionsQuery.data?.items ?? [],
+        collectEventTimes,
+      );
       const seen = new Set(base.map((row) => String(row.id)));
       const extras = cardSpendTransactions.filter((row) => !seen.has(String(row.id)));
-      if (!extras.length) return base;
-      return [...extras, ...base].sort((a, b) =>
-        String(b.created_at).localeCompare(String(a.created_at)),
-      );
+      return [...extras, ...base].sort((a, b) => {
+        const delta = activityInstantMs(b.created_at) - activityInstantMs(a.created_at);
+        if (delta !== 0) return delta;
+        return String(b.id).localeCompare(String(a.id), undefined, { numeric: true });
+      });
     })();
     const decoratedAll = feedTransactions.map(decorateTx);
     const txUsesLatestFifty =
@@ -3392,7 +3424,10 @@ export default function DashboardApp(props: Props = {}) {
       currency: s.txCurrency,
       dateRange: s.txDateRange,
     }).map(decorateTx);
-    const pageTransactions = transactionsPageQuery.items.map(decorateTx);
+    const pageTransactions = applyCollectEventTimes(
+      transactionsPageQuery.items,
+      collectEventTimes,
+    ).map(decorateTx);
     // Deposit account status pills — balances come from partner `balance`
     // when present (see docs/api-contract.md / lib/services/balances.ts).
     const depositStatusPalette: Record<string, [string, string]> = {
@@ -3503,7 +3538,9 @@ export default function DashboardApp(props: Props = {}) {
     const listTxDetail =
       decoratedAll.find((t) => t.id === s.selectedTxId) ??
       filteredTransactions.find((t) => t.id === s.selectedTxId);
-    const apiTxDetail = txDetailQuery.data ? decorateTx(txDetailQuery.data) : null;
+    const apiTxDetail = txDetailQuery.data
+      ? decorateTx(applyCollectEventTimes([txDetailQuery.data], collectEventTimes)[0] ?? txDetailQuery.data)
+      : null;
     const txDetailBase = apiTxDetail ?? listTxDetail;
     const txLiveStatus =
       s.modal === "txDetail" &&

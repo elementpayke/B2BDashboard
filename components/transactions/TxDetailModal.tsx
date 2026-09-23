@@ -46,7 +46,9 @@ type ProgressStep = {
 
 function formatTimestamp(iso?: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
+  const raw = iso.trim().replace(" ", "T");
+  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const d = new Date(hasZone ? raw : `${raw}Z`);
   if (Number.isNaN(d.getTime())) return null;
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",

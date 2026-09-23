@@ -60,6 +60,12 @@ export const entitiesApi = {
   /** Dest discovery for USDC Send — empty when Collect is disabled upstream. */
   collectSupportedChains: () =>
     apiEnvelope<unknown>("GET", "/v1/collect/cctp/supported-chains"),
+  /** Worker transfer rows, including the real event time (not the Mboka sync clock). */
+  listCollectCctpTransfers: (entityId: string, accountId: string) =>
+    apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/collect/cctp/transfers`,
+    ),
   openAccount: (entityId: string, payload: AccountOpenPayload) =>
     apiEnvelope<unknown>(
       "POST",
