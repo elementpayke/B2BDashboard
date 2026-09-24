@@ -66,6 +66,7 @@ import {
   depositAccountsApi,
   mapDepositAccountToCardView,
   buildDepositAccountDetailRows,
+  buildDepositAccountDetailSections,
   mergeDepositAccount,
   currencyIso,
   currencyLabel,
@@ -3557,12 +3558,7 @@ export default function DashboardApp(props: Props = {}) {
           const view = mapDepositAccountToCardView(selectedDepositAccount);
           const [statusColor, statusSoft] = depositStatusColors(view.status);
           const rows = buildDepositAccountDetailRows(selectedDepositAccount);
-          const bankRows = rows.filter((r) =>
-            /^(iban|bic|swift|bank|account name)/i.test(r.label),
-          );
-          const settleRows = rows.filter(
-            (r) => !/^(iban|bic|swift|bank|account name)/i.test(r.label),
-          );
+          const sections = buildDepositAccountDetailSections(selectedDepositAccount);
           return {
             currency: view.currency,
             name: view.name,
@@ -3575,10 +3571,7 @@ export default function DashboardApp(props: Props = {}) {
             balance: view.balance,
             balanceSub: view.hasBalance ? "Available balance" : "Balance not yet available",
             rows,
-            sections: [
-              ...(bankRows.length ? [{ title: "Bank details", rows: bankRows }] : []),
-              ...(settleRows.length ? [{ title: "Settlement", rows: settleRows }] : []),
-            ],
+            sections,
             instructions: selectedDepositAccount.instructions,
             railLabel: fiatRailForCurrency(view.currency),
             showConvert: true,

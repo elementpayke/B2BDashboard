@@ -163,6 +163,8 @@ export type DepositAccount = {
   account_holder_name?: string | null;
   iban?: string | null;
   bic?: string | null;
+  /** US ACH/wire routing number. Distinct from `bic` — USD accounts only. */
+  routing_number?: string | null;
   bank_name?: string | null;
   bank_address?: Record<string, unknown> | null;
   reference?: string | null;
@@ -356,6 +358,7 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   const rows: DepositAccountDetailRow[] = [];
   const iban = nonEmpty(account.iban);
   const bic = nonEmpty(account.bic);
+  const routingNumber = nonEmpty(account.routing_number);
   const bankName = nonEmpty(account.bank_name);
   const holder = nonEmpty(account.account_holder_name);
   const reference = nonEmpty(account.reference);
@@ -363,6 +366,9 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   const bankAddress = formatBankAddress(account.bank_address);
   if (iban) rows.push({ label: "IBAN", value: iban, copyValue: iban });
   if (bic) rows.push({ label: "BIC / SWIFT", value: bic, copyValue: bic });
+  if (routingNumber) {
+    rows.push({ label: "Routing number", value: routingNumber, copyValue: routingNumber });
+  }
   if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
   if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
   if (holder) rows.push({ label: "Account name", value: holder, copyValue: holder });
@@ -391,6 +397,69 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
     rows.push({ label: "Settlement asset", value: parts.join(" · ") });
   }
   return rows;
+}
+
+export type DepositAccountDetailSection = {
+  title: string;
+  rows: DepositAccountDetailRow[];
+};
+
+const BANK_ROW_LABEL_RE = /^(iban|bic|swift|bank|account name|routing number)/i;
+
+/**
+ * Currency-aware grouping for the account-detail modal and bank letter.
+ *
+ * USD accounts get the two-rail breakdown a US bank actually requires
+ * (domestic ACH/wire needs the routing number; international wire needs
+ * SWIFT/BIC instead) since the same account number pairs with a different
+ * second identifier depending on which rail the sender uses. Every other
+ * currency keeps the existing single "Bank details" grouping — IBAN + BIC
+ * already fully identify a SEPA/international account on their own.
+ */
+export function buildDepositAccountDetailSections(
+  account: DepositAccount,
+): DepositAccountDetailSection[] {
+  const currency = (account.currency || "").trim().toUpperCase();
+  const rows = buildDepositAccountDetailRows(account);
+  const bankRows = rows.filter((r) => BANK_ROW_LABEL_RE.test(r.label));
+  const otherRows = rows.filter((r) => !BANK_ROW_LABEL_RE.test(r.label));
+  const sections: DepositAccountDetailSection[] = [];
+
+  const iban = nonEmpty(account.iban);
+  const bic = nonEmpty(account.bic);
+  const routingNumber = nonEmpty(account.routing_number);
+  const bankName = nonEmpty(account.bank_name);
+  const bankAddress = formatBankAddress(account.bank_address);
+
+  if (currency === "USD" && iban && (routingNumber || bic)) {
+    if (routingNumber) {
+      const domestic: DepositAccountDetailRow[] = [
+        { label: "Account number", value: iban, copyValue: iban },
+        { label: "Routing number", value: routingNumber, copyValue: routingNumber },
+      ];
+      if (bankName) domestic.push({ label: "Bank", value: bankName, copyValue: bankName });
+      if (bankAddress) {
+        domestic.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+      }
+      sections.push({ title: "Domestic transfer (ACH/wire)", rows: domestic });
+    }
+    if (bic) {
+      const international: DepositAccountDetailRow[] = [
+        { label: "Account number", value: iban, copyValue: iban },
+        { label: "SWIFT/BIC", value: bic, copyValue: bic },
+      ];
+      if (bankName) international.push({ label: "Bank", value: bankName, copyValue: bankName });
+      if (bankAddress) {
+        international.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+      }
+      sections.push({ title: "International wire", rows: international });
+    }
+  } else if (bankRows.length) {
+    sections.push({ title: "Bank details", rows: bankRows });
+  }
+
+  if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
+  return sections;
 }
 
 export type CreateBankAccountInput = {

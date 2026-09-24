@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreateBankAccountPayload,
   buildDepositAccountDetailRows,
+  buildDepositAccountDetailSections,
   currencyIso,
   currencyLabel,
   describeDepositAccountStatus,
@@ -241,6 +242,116 @@ describe("buildDepositAccountDetailRows", () => {
       },
       { label: "Account name", value: "Elementpay LTD", copyValue: "Elementpay LTD" },
     ]);
+  });
+});
+
+describe("buildDepositAccountDetailSections", () => {
+  it("splits a USD account into domestic and international rails", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+      bic: "CSRVUS33COS",
+      routing_number: "021214891",
+      bank_name: "CROSS RIVER BANK",
+      bank_address: { city: "Fort Lee", country: "US", street: "2115 Linwood Ave" },
+      account_holder_name: "Elementpay LTD",
+    };
+
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Domestic transfer (ACH/wire)",
+        rows: [
+          { label: "Account number", value: "391881521473", copyValue: "391881521473" },
+          { label: "Routing number", value: "021214891", copyValue: "021214891" },
+          { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
+          {
+            label: "Bank address",
+            value: "2115 Linwood Ave, Fort Lee, US",
+            copyValue: "2115 Linwood Ave, Fort Lee, US",
+          },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "Account number", value: "391881521473", copyValue: "391881521473" },
+          { label: "SWIFT/BIC", value: "CSRVUS33COS", copyValue: "CSRVUS33COS" },
+          { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
+          {
+            label: "Bank address",
+            value: "2115 Linwood Ave, Fort Lee, US",
+            copyValue: "2115 Linwood Ave, Fort Lee, US",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps a single Bank details section for EUR/IBAN accounts", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+      bic: "MODRFR21",
+      bank_name: "SOCIETE GENERALE",
+    };
+
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Bank details",
+        rows: [
+          {
+            label: "IBAN",
+            value: "FR7630006000011234567890189",
+            copyValue: "FR7630006000011234567890189",
+          },
+          { label: "BIC / SWIFT", value: "MODRFR21", copyValue: "MODRFR21" },
+          { label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to a single domestic-only section when there is no SWIFT/BIC yet", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+      routing_number: "021214891",
+      bank_name: "CROSS RIVER BANK",
+    };
+
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Domestic transfer (ACH/wire)",
+        rows: [
+          { label: "Account number", value: "391881521473", copyValue: "391881521473" },
+          { label: "Routing number", value: "021214891", copyValue: "021214891" },
+          { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
+        ],
+      },
+    ]);
+  });
+
+  it("puts settlement fields in their own section for both currencies", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+      routing_number: "021214891",
+      reference: "INV-42",
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    expect(sections.find((s) => s.title === "Settlement")?.rows).toEqual([
+      { label: "Reference", value: "INV-42", copyValue: "INV-42" },
+    ]);
+  });
+
+  it("returns no sections for a bare pending account", () => {
+    const account: DepositAccount = { currency: "USD", status: "pending" };
+    expect(buildDepositAccountDetailSections(account)).toEqual([]);
   });
 });
 
