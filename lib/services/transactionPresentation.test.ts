@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatTransactionDate,
+  parseApiInstant,
   presentTransaction,
   transactionReference,
 } from "./transactionPresentation";
@@ -206,6 +207,94 @@ describe("presentTransaction", () => {
       ).explorerUrl,
     ).toBe("https://polygonscan.com/tx/0xabc");
   });
+
+  it("shows a Base collect deposit as Pending until the Stellar credit is confirmed", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "cctp_1",
+        direction: "in",
+        status: "processing",
+        currency: "USDC",
+        amount_fiat: "3.00",
+        provider: "stellar",
+        crypto_network: "base",
+        source: "cctp_transfer",
+        stage: "minting",
+        source_tx_hash: "0xsource",
+        burn_tx_hash: "0xburn",
+      }),
+    );
+    expect(view.client).toBe("Deposit · USDC");
+    expect(view.type).toBe("Deposit");
+    expect(view.type).not.toBe("Stellar deposit");
+    expect(view.statusLabel).toBe("Pending");
+    expect(view.meta).toContain("crediting Stellar");
+
+    const settled = presentTransaction(
+      transaction({
+        id: "cctp_1",
+        direction: "in",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "3.00",
+        provider: "stellar",
+        source: "cctp_transfer",
+        stage: "completed",
+      }),
+    );
+    expect(settled.statusLabel).toBe("Settled");
+    expect(settled.meta).toContain("from Base");
+  });
+
+  it("shows one EURC convert row, pending then settled USDC", () => {
+    const pending = presentTransaction(
+      transaction({
+        id: "swap_1",
+        direction: "in",
+        status: "processing",
+        currency: "EURC",
+        amount_fiat: "10.00",
+        source: "collect_swap",
+        source_currency: "EURC",
+      }),
+    );
+    expect(pending.client).toBe("Convert · EURC");
+    expect(pending.statusLabel).toBe("Pending");
+
+    const settled = presentTransaction(
+      transaction({
+        id: "swap_1",
+        direction: "in",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "10.80",
+        source: "collect_swap",
+        source_currency: "EURC",
+      }),
+    );
+    expect(settled.client).toBe("Convert · EURC");
+    expect(settled.statusLabel).toBe("Settled");
+    expect(settled.amount).toContain("10.80");
+    expect(settled.amount).toContain("USDC");
+    expect(settled.meta).toContain("from EURC");
+  });
+
+  it("shows a Stellar USDC send as Payout · USDC", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "snd_1",
+        direction: "out",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "2.00",
+        source: "stablecoin_send",
+        crypto_network: "Stellar",
+      }),
+    );
+    expect(view.client).toBe("Payout · USDC");
+    expect(view.statusLabel).toBe("Settled");
+    expect(view.type).toBe("Payout");
+  });
 });
 
 describe("formatTransactionDate", () => {
@@ -216,6 +305,15 @@ describe("formatTransactionDate", () => {
     );
     expect(formatTransactionDate(new Date(2026, 7, 13, 14, 32).toISOString(), now)).toMatch(
       /^Yesterday, /,
+    );
+  });
+
+  it("treats a naive timestamp as UTC and formats it in the browser zone", () => {
+    const naive = "2026-09-22T19:38:13";
+    const zoned = "2026-09-22T19:38:13Z";
+    expect(parseApiInstant(naive).getTime()).toBe(parseApiInstant(zoned).getTime());
+    expect(formatTransactionDate(naive, new Date("2026-09-23T07:00:00Z"))).toBe(
+      formatTransactionDate(zoned, new Date("2026-09-23T07:00:00Z")),
     );
   });
 

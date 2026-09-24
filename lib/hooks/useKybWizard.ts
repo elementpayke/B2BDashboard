@@ -159,6 +159,8 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   const sessionStatusRef = useRef<string | null | undefined>(undefined);
   const resumeLoadIdRef = useRef(0);
   const submittedRef = useRef(false);
+  /** Set after a successful POST …/kyb/initiate in this wizard session. */
+  const vaultEnrolledRef = useRef(false);
 
   useEffect(() => {
     submittedRef.current = submitted;
@@ -199,6 +201,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setRequirements(null);
     setDocRows([]);
     setShareholderId(null);
+    vaultEnrolledRef.current = false;
 
     const cachedDraft = profileDraftFromSummary(opts.kybSummary, business);
     setDraft(cachedDraft);
@@ -342,12 +345,18 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setBusy(true);
     setError("");
     try {
+      // Always enroll the vault customer before uploads. Checklist GETs do not
+      // create partner_customer_id; skipping initiate when reqs are cached
+      // causes POST /documents → 422 "KYB vault customer is missing".
       let reqs = requirements;
-      if (!reqs) {
-        try {
-          const initiated = await kybApi.initiate(opts.businessId, newKybIdempotencyKey());
-          reqs = initiated.document_requirements ?? null;
-        } catch (initiateErr) {
+      try {
+        const initiated = await kybApi.initiate(opts.businessId, newKybIdempotencyKey());
+        vaultEnrolledRef.current = true;
+        if (initiated.document_requirements) {
+          reqs = initiated.document_requirements;
+        }
+      } catch (initiateErr) {
+        if (!reqs) {
           try {
             reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
           } catch {
@@ -355,12 +364,16 @@ export function useKybWizard(opts: UseKybWizardOptions) {
             setError(formatKybServiceError(initiateErr));
             return false;
           }
+        } else {
+          setBusy(false);
+          setError(formatKybServiceError(initiateErr));
+          return false;
         }
-        if (!reqs) {
-          reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
-        }
-        setRequirements(reqs);
       }
+      if (!reqs) {
+        reqs = await kybApi.documentRequirements(opts.businessId, draft.country || undefined);
+      }
+      setRequirements(reqs);
 
       let listedDocs: ListedDoc[] = [];
       try {
@@ -429,6 +442,18 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         ),
       );
       try {
+        if (!vaultEnrolledRef.current) {
+          try {
+            await kybApi.initiate(opts.businessId, newKybIdempotencyKey());
+            vaultEnrolledRef.current = true;
+          } catch (initiateErr) {
+            const msg = formatKybServiceError(initiateErr);
+            setDocRows((rows) =>
+              rows.map((r, i) => (i === index ? { ...r, uploading: false, error: msg } : r)),
+            );
+            return false;
+          }
+        }
         const issuing =
           row.issuingCountryRequired
             ? row.category === "shareholder"

@@ -137,6 +137,20 @@ describe("recentActivityForFinancialAccount", () => {
     expect(recentActivityForFinancialAccount(items, "acct_stellar")).toEqual([]);
   });
 
+  it("keeps a Base collect row on the matching Stellar account without calling it a Stellar deposit", () => {
+    const row = tx({
+      id: "cctp_1",
+      status: "processing",
+      financial_account_id: "34",
+      provider: "stellar",
+      crypto_network: "base",
+      source: "cctp_transfer",
+      stage: "minting",
+    });
+    expect(isInboundStellarDeposit(row)).toBe(false);
+    expect(recentActivityForFinancialAccount([row], "34")).toEqual([row]);
+  });
+
   it("returns the unfiltered feed when no account id is selected", () => {
     const items = [tx({ id: 1, financial_account_id: "acct_stellar" })];
     expect(recentActivityForFinancialAccount(items, null)).toEqual(items);

@@ -36,11 +36,15 @@ const BRAND_MARKS: Record<
   },
 };
 
-/** Resolve a supported partner network for logo rendering. */
+/** Resolve a network that has a brand mark asset (subset of PartnerNetwork). */
 export function partnerNetworkForMark(
   network: string | null | undefined,
 ): NetworkMarkNetwork | null {
-  return toPartnerNetwork(String(network ?? "").trim());
+  const partner = toPartnerNetwork(String(network ?? "").trim());
+  if (partner === "Base" || partner === "Polygon" || partner === "Stellar") {
+    return partner;
+  }
+  return null;
 }
 
 function BrandGlyph({

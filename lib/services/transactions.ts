@@ -64,8 +64,19 @@ export type Transaction = {
   card_id?: string | null;
   /** Resolved merchant brand for card spend; null until (or unless) matched. */
   merchant?: TransactionMerchant | null;
-  /** Credit/event source (e.g. `stellar_payment`, `account.credited`). */
+  /** Credit/event source (e.g. `stellar_payment`, `account.credited`, `cctp_transfer`). */
   source?: string | null;
+  /** Collect worker stage (`detected`, `attesting`, `minting`, `completed`). */
+  stage?: string | null;
+  source_chain?: string | null;
+  source_tx_hash?: string | null;
+  burn_tx_hash?: string | null;
+  mint_tx_hash?: string | null;
+  /** Circle fast-transfer fee deducted from this deposit, in `fee_currency`. */
+  fee_amount?: string | null;
+  fee_currency?: string | null;
+  /** EURC/USDT sold when this row is a Collect swap. */
+  source_currency?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -292,12 +303,15 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
     : null;
 
   const provider = optionalString(row.provider);
+  const source = optionalString(row.source);
   let cryptoNetwork = optionalString(
     row.crypto_network ?? row.cryptoNetwork ?? row.network,
   );
   // Mboka credit projection today sets provider=stellar without crypto_network.
+  // Collect rows already name their source chain; do not relabel them Stellar.
   if (
     !cryptoNetwork &&
+    source !== "cctp_transfer" &&
     (String(provider || "").toLowerCase().includes("stellar") ||
       String(id).startsWith("acr_"))
   ) {
@@ -326,7 +340,14 @@ export function normalizeTransactionWire(raw: unknown): Transaction | null {
       row.financial_account_id ?? row.financialAccountId ?? row.account_id,
     ),
     card_id: optionalString(row.card_id ?? row.cardId),
-    source: optionalString(row.source),
+    source,
+    stage: optionalString(row.stage),
+    source_chain: optionalString(row.source_chain ?? row.sourceChain),
+    source_tx_hash: optionalString(row.source_tx_hash ?? row.sourceTxHash),
+    burn_tx_hash: optionalString(row.burn_tx_hash ?? row.burnTxHash),
+    mint_tx_hash: optionalString(row.mint_tx_hash ?? row.mintTxHash),
+    fee_amount: optionalString(row.fee_amount ?? row.feeAmount),
+    fee_currency: optionalString(row.fee_currency ?? row.feeCurrency),
     created_at: createdAt,
     updated_at: updatedAt,
   };

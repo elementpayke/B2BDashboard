@@ -194,6 +194,56 @@ describe("validateProfileDraft", () => {
     expect(validateAddressUboStep(draft)).toMatch(/25/);
   });
 
+  it("accepts decimal ownership percentages that sum to 100%", () => {
+    const draft = validDraft();
+    draft.associates = resizeAssociates(draft.associates, 2, "NG");
+    draft.associates[0].ownershipPercentage = "51.5";
+    draft.associates[0].country = "NG";
+    draft.associates[0].bvn = "22123456789";
+    draft.associates[0].nin = "12345678901";
+    draft.associates[0].street = "12 Owner Road";
+    draft.associates[0].city = "Lagos";
+    draft.associates[0].idType = "Passport";
+    draft.associates[0].idNumber = "A1234567";
+    draft.associates[1] = {
+      ...emptyAssociateDraft("NG"),
+      firstName: "John",
+      lastName: "Smith",
+      dateOfBirth: "1980-01-01",
+      email: "john@example.com",
+      phoneNumber: "+2348012345678",
+      ownershipPercentage: "48.5",
+      country: "NG",
+      street: "14 Owner Road",
+      city: "Lagos",
+      idType: "Passport",
+      idNumber: "B7654321",
+      bvn: "22987654321",
+      nin: "10987654321",
+    };
+    draft.ownershipRemainderNote = "";
+    expect(validateAddressUboStep(draft)).toBeNull();
+  });
+
+  it("allows empty post codes", () => {
+    const draft = validDraft();
+    draft.postCode = "";
+    draft.associates[0].postCode = "";
+    expect(validateAddressUboStep(draft)).toBeNull();
+  });
+
+  it("requires BVN and NIN when tax residence is NG", () => {
+    const draft = validDraft();
+    draft.associates[0].country = "NG";
+    draft.associates[0].bvn = "";
+    draft.associates[0].nin = "";
+    expect(validateAddressUboStep(draft)).toMatch(/BVN/i);
+    draft.associates[0].bvn = "22123456789";
+    expect(validateAddressUboStep(draft)).toMatch(/NIN/i);
+    draft.associates[0].nin = "12345678901";
+    expect(validateAddressUboStep(draft)).toBeNull();
+  });
+
   it("rejects ownership totals over 100%", () => {
     const draft = validDraft();
     draft.associates = resizeAssociates(draft.associates, 2, "KE");
@@ -269,7 +319,7 @@ describe("validateProfileDraft", () => {
 
   it("rejects oversized or unsupported document files", () => {
     const big = new File([new Uint8Array(11 * 1024 * 1024)], "big.pdf", { type: "application/pdf" });
-    expect(validateKybDocumentFile(big)).toMatch(/10 MB/i);
+    expect(validateKybDocumentFile(big)).toMatch(/4 MB/i);
     const bad = new File(["x"], "notes.txt", { type: "text/plain" });
     expect(validateKybDocumentFile(bad)).toMatch(/PDF|JPEG|PNG/i);
   });
@@ -488,6 +538,17 @@ describe("buildProfilePayload", () => {
       id_type: "Passport",
       id_number: "A1234567",
     });
+  });
+
+  it("includes BVN and NIN for Nigerian associates", () => {
+    const draft = validDraft();
+    draft.associates[0].country = "NG";
+    draft.associates[0].bvn = "22123456789";
+    draft.associates[0].nin = "12345678901";
+    const payload = buildProfilePayload(draft);
+    expect(payload.associates?.[0].bvn).toBe("22123456789");
+    expect(payload.associates?.[0].nin).toBe("12345678901");
+    expect(payload.associates?.[0].tax_residence_country).toBe("NG");
   });
 
   it("marks only the first UBO as Representative and Director when multiple owners exist", () => {

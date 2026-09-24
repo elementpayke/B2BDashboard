@@ -386,6 +386,7 @@ describe("useKybWizard restore + submit poll", () => {
       await result.current.nextStep();
     });
     await waitFor(() => expect(result.current.step).toBe(3));
+    expect(initiate).toHaveBeenCalledWith(9, expect.any(String));
 
     const file = new File(["%PDF"], "cert.pdf", { type: "application/pdf" });
     await act(async () => {

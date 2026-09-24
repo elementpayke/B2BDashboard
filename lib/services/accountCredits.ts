@@ -168,6 +168,7 @@ export function isInboundStellarDeposit(
   >,
 ): boolean {
   if (tx.direction !== "in") return false;
+  if ((tx.source || "").trim().toLowerCase() === "cctp_transfer") return false;
   if (isStellarNetwork(tx.crypto_network)) return true;
   const source = (tx.source || "").trim().toLowerCase();
   if (source.includes("stellar")) return true;

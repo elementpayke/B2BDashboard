@@ -151,6 +151,48 @@ describe("mergeWalletPaymentsWithElementActivity", () => {
     expect(merged[0]?.id).toBe("onchain:hash-1");
   });
 
+  it("orders naive UTC timestamps newest first", () => {
+    const older = elementActivity({
+      id: "cctp_1",
+      tx_hash: "olderhash",
+      created_at: "2026-09-22T17:50:00",
+    });
+    const newer = elementActivity({
+      id: "cctp_4",
+      tx_hash: "newerhash",
+      created_at: "2026-09-22T20:07:09Z",
+    });
+    const merged = mergeWalletPaymentsWithElementActivity({
+      payments: [],
+      elementActivity: [older, newer],
+      network: "stellar_testnet",
+      limit: 25,
+    });
+
+    expect(merged.map((row) => row.id)).toEqual(["cctp_4", "cctp_1"]);
+  });
+
+  it("breaks equal timestamps with the newer id first", () => {
+    const first = elementActivity({
+      id: "cctp_1",
+      tx_hash: "a",
+      created_at: "2026-09-23T07:02:00",
+    });
+    const last = elementActivity({
+      id: "cctp_5",
+      tx_hash: "b",
+      created_at: "2026-09-23T07:02:00",
+    });
+    const merged = mergeWalletPaymentsWithElementActivity({
+      payments: [],
+      elementActivity: [first, last],
+      network: "stellar_testnet",
+      limit: 25,
+    });
+
+    expect(merged.map((row) => row.id)).toEqual(["cctp_5", "cctp_1"]);
+  });
+
   it("preserves ElementPay activity when Horizon returns no payments", () => {
     const linked = elementActivity();
     const older = elementActivity({

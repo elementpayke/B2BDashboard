@@ -57,6 +57,23 @@ export function resolvePartyDisplayName(payment: Transaction["payment"]): {
   };
 }
 
+export function isCollectTransfer(transaction: { source?: string | null }): boolean {
+  return (transaction.source || "").trim().toLowerCase() === "cctp_transfer";
+}
+
+export function isCollectSwap(transaction: { source?: string | null }): boolean {
+  return (transaction.source || "").trim().toLowerCase() === "collect_swap";
+}
+
+/** Plain-language stage for a Base USDC deposit that has not settled on Stellar yet. */
+export function collectStagePhrase(stage?: string | null): string {
+  const value = (stage || "").trim().toLowerCase();
+  if (value === "attesting") return "bridging";
+  if (value === "minting" || value.startsWith("mint")) return "crediting Stellar";
+  if (value === "completed") return "from Base";
+  return "received on Base";
+}
+
 function typeLabel(transaction: Transaction): string {
   if (isInboundStellarDeposit(transaction)) return "Stellar deposit";
   if (isCardSpendTransaction(transaction)) {
@@ -91,8 +108,25 @@ export function transactionReference(transaction: Transaction): string {
   );
 }
 
+/**
+ * Mboka and the aggregator often send naive ISO datetimes that are UTC.
+ * `Date.parse` would treat those as the browser's zone and show the UTC clock.
+ */
+export function parseApiInstant(value: string): Date {
+  const raw = value.trim().replace(" ", "T");
+  if (!raw) return new Date(Number.NaN);
+  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const naiveDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw);
+  return new Date(hasZone || !naiveDateTime ? raw : `${raw}Z`);
+}
+
+export function activityInstantMs(value: string | null | undefined): number {
+  const time = parseApiInstant(String(value ?? "")).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
 export function formatTransactionDate(value: string, now = new Date()): string {
-  const date = new Date(value);
+  const date = parseApiInstant(value);
   if (Number.isNaN(date.getTime())) return "Date unavailable";
 
   const time = new Intl.DateTimeFormat(undefined, {
@@ -118,7 +152,7 @@ export function formatTransactionDate(value: string, now = new Date()): string {
 
 /** Card spend list: `Today · 09:14` / `Yesterday · 09:14` / `Sep 10 · 09:14`. */
 export function formatCardSpendWhen(value: string, now = new Date()): string {
-  const date = new Date(value);
+  const date = parseApiInstant(value);
   if (Number.isNaN(date.getTime())) return "Date unavailable";
 
   const time = new Intl.DateTimeFormat(undefined, {
@@ -198,10 +232,25 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   // Fallback stays workflow · currency (never partner brands).
   const accountNumber = payment?.account_number?.trim() || null;
   const networkName = payment?.network_name?.trim() || null;
-  const client = partyName || workflowLabel;
-  const metaParts = partyName
+  const collect = isCollectTransfer(transaction);
+  const swap = isCollectSwap(transaction);
+  const swapSource = (transaction.source_currency || "EURC").trim().toUpperCase();
+  const client = collect
+    ? "Deposit · USDC"
+    : swap
+      ? `Convert · ${swapSource}`
+      : partyName || workflowLabel;
+  const metaParts = partyName && !collect
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];
+  if (collect) {
+    metaParts.unshift(
+      transaction.status === "completed" ? "from Base" : collectStagePhrase(transaction.stage),
+    );
+  }
+  if (swap && transaction.status === "completed") {
+    metaParts.unshift(`from ${swapSource}`);
+  }
   // Prefer the PSP confirmation code on fiat rails; else the order reference.
   metaParts.push(`Ref ${shortReference(paymentRef || ref)}`);
   const meta = metaParts.filter(Boolean).join(" · ");

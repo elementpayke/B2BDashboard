@@ -103,7 +103,8 @@ export type BusinessAddress = {
   street: string;
   street2?: string | null;
   city: string;
-  post_code: string;
+  /** Optional — aggregator/vault omit empty postal codes. */
+  post_code?: string | null;
   state?: string | null;
   country: string;
 };
@@ -124,6 +125,10 @@ export type AssociateInput = {
   email?: string | null;
   phone_number?: string | null;
   tax_residence_country?: string | null;
+  /** Nigeria Bank Verification Number — required when tax_residence_country is NG. */
+  bvn?: string | null;
+  /** Nigeria National Identity Number — required when tax_residence_country is NG. */
+  nin?: string | null;
   residential_address?: BusinessAddress | null;
   identities?: AssociateIdentity[];
   ubo?: { ownership_percentage: number } | null;
@@ -488,6 +493,10 @@ export type KybWizardAssociateDraft = {
   /** Government ID for vault officers[].identity_document */
   idType: AssociateIdentity["id_type"] | "";
   idNumber: string;
+  /** Required when tax residence / nationality is NG (vault officers[].bvn). */
+  bvn: string;
+  /** Required when tax residence / nationality is NG (vault officers[].nin). */
+  nin: string;
 };
 
 export type KybWizardProfileDraft = {
@@ -518,7 +527,12 @@ export type KybWizardProfileDraft = {
 /** Compliance: UBO = ≥25% ownership. Cap the wizard at a practical count. */
 export const KYB_MIN_UBO_OWNERSHIP = 25;
 export const KYB_MAX_UBOS = 5;
-export const KYB_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+/**
+ * Vercel serverless proxy (`/api/mboka`) hard-caps request bodies at 4.5 MB
+ * (`FUNCTION_PAYLOAD_TOO_LARGE`). Keep under that with headroom for multipart
+ * framing. Mboka/R2 still allow 10 MB once uploads bypass this hop.
+ */
+export const KYB_MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const KYB_ALLOWED_DOCUMENT_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -543,6 +557,8 @@ export function emptyAssociateDraft(defaultCountry = "KE"): KybWizardAssociateDr
     state: "",
     idType: "",
     idNumber: "",
+    bvn: "",
+    nin: "",
   };
 }
 
@@ -640,6 +656,8 @@ export function profileDraftFromSummary(
         state: ra?.state || "",
         idType: (identity?.id_type as KybWizardAssociateDraft["idType"]) || "",
         idNumber: identity?.id_number || "",
+        bvn: a.bvn || "",
+        nin: a.nin || "",
       };
     });
   }
@@ -688,7 +706,7 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
   if (/^(kenya|nigeria|uganda|ghana|tanzania|south africa)$/i.test(draft.city.trim())) {
     return "City looks like a country name — enter the city (e.g. Nairobi), not the country.";
   }
-  if (!draft.postCode.trim()) return "Post code is required.";
+  // Post code is optional (aggregator/vault omit empty postal_code).
   if (!isValidIsoCountryCode(draft.addressCountry)) {
     return "Select a valid address country from the list.";
   }
@@ -724,11 +742,16 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
       return `Phone for ${who} must be E.164 format, e.g. +254700000000.`;
     }
     const ownership = Number(associate.ownershipPercentage);
-    if (!Number.isInteger(ownership) || ownership < KYB_MIN_UBO_OWNERSHIP || ownership > 100) {
-      return `Ownership for ${who} must be a whole number from ${KYB_MIN_UBO_OWNERSHIP} to 100 (UBOs own ${KYB_MIN_UBO_OWNERSHIP}%+).`;
+    if (
+      !Number.isFinite(ownership) ||
+      ownership < KYB_MIN_UBO_OWNERSHIP ||
+      ownership > 100
+    ) {
+      return `Ownership for ${who} must be a number from ${KYB_MIN_UBO_OWNERSHIP} to 100 (decimals allowed, e.g. 51.5).`;
     }
     ownershipSum += ownership;
-    if (!isValidIsoCountryCode(associate.country || draft.addressCountry)) {
+    const taxCountry = (associate.country || draft.addressCountry).trim().toUpperCase();
+    if (!isValidIsoCountryCode(taxCountry)) {
       return `Select a valid tax residence country for ${who}.`;
     }
     if (!associate.street.trim() || associate.street.trim().length < 3) {
@@ -737,21 +760,30 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
     if (!associate.city.trim()) {
       return `Residential city is required for ${who}.`;
     }
-    if (!associate.postCode.trim()) {
-      return `Residential post code is required for ${who}.`;
-    }
     if (!associate.idType) {
       return `Select a government ID type for ${who} (passport, national ID, or license).`;
     }
     if (!associate.idNumber.trim() || associate.idNumber.trim().length < 4) {
       return `Enter a valid government ID number for ${who}.`;
     }
+    if (taxCountry === "NG") {
+      const bvn = associate.bvn.replace(/\D/g, "");
+      const nin = associate.nin.replace(/\D/g, "");
+      if (bvn.length !== 11) {
+        return `BVN for ${who} must be 11 digits (required for Nigeria).`;
+      }
+      if (nin.length !== 11) {
+        return `NIN for ${who} must be 11 digits (required for Nigeria).`;
+      }
+    }
   }
+  // Round to avoid float noise (e.g. 51.5 + 48.5).
+  ownershipSum = Math.round(ownershipSum * 100) / 100;
   if (ownershipSum > 100) {
     return `Ownership percentages add up to ${ownershipSum}% — total cannot exceed 100%.`;
   }
   if (ownershipSum < 100 && !draft.ownershipRemainderNote.trim()) {
-    return `Ownership adds up to ${ownershipSum}%. Explain who holds the remaining ${100 - ownershipSum}% (e.g. persons under 25%, a trust, or corporate owners).`;
+    return `Ownership adds up to ${ownershipSum}%. Explain who holds the remaining ${Math.round((100 - ownershipSum) * 100) / 100}% (e.g. persons under 25%, a trust, or corporate owners).`;
   }
   return null;
 }
@@ -770,7 +802,7 @@ export function validateProfileDraft(draft: KybWizardProfileDraft): string | nul
 export function validateKybDocumentFile(file: File): string | null {
   if (file.size <= 0) return "Uploaded file is empty.";
   if (file.size > KYB_MAX_DOCUMENT_BYTES) {
-    return "Document exceeds the 10 MB limit.";
+    return "Document exceeds the 4 MB upload limit. Compress the PDF (or export a smaller scan) and try again.";
   }
   const type = (file.type || "").toLowerCase();
   const name = file.name.toLowerCase();
@@ -791,7 +823,7 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
     street: draft.street.trim(),
     street2: draft.street2.trim() || undefined,
     city: draft.city.trim(),
-    post_code: draft.postCode.trim(),
+    post_code: draft.postCode.trim() || undefined,
     state: draft.state.trim() || undefined,
     country: draft.addressCountry.trim().toUpperCase(),
   };
@@ -801,6 +833,8 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
     // First UBO is also the primary Representative / control contact for vault docs.
     const relationship_types: AssociateInput["relationship_types"] =
       index === 0 ? ["UBO", "Representative", "Director"] : ["UBO"];
+    const bvn = associate.bvn.replace(/\D/g, "");
+    const nin = associate.nin.replace(/\D/g, "");
     return {
       id: associate.id,
       relationship_types,
@@ -812,11 +846,13 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
       email: associate.email.trim() || undefined,
       phone_number: associate.phoneNumber.trim() || undefined,
       tax_residence_country: taxCountry,
+      ...(taxCountry === "NG" && bvn ? { bvn } : {}),
+      ...(taxCountry === "NG" && nin ? { nin } : {}),
       residential_address: {
         street: associate.street.trim(),
         street2: associate.street2.trim() || undefined,
         city: associate.city.trim(),
-        post_code: associate.postCode.trim(),
+        post_code: associate.postCode.trim() || undefined,
         state: associate.state.trim() || undefined,
         country: taxCountry,
       },
