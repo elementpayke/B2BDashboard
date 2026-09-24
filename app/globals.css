@@ -43,6 +43,17 @@ body {
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 
+/* Native <select> popups ignore the page's `color` unless <option> is styled
+   directly — `color-scheme: dark` alone is not honored consistently across
+   browsers, so the open dropdown list falls back to near-white with faint
+   text against this app's dark theme. --panel/--ink already track the
+   active theme (light default, dark applied to <html> via applyThemeVars),
+   so this stays correct in both without hardcoding colors. */
+select option {
+  background-color: var(--panel);
+  color: var(--ink);
+}
+
 :focus-visible {
   outline: 2px solid var(--indigo, #3B2ED3);
   outline-offset: 2px;
