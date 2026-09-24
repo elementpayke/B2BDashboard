@@ -139,20 +139,23 @@ export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
 }
 
 export const stellarDisbursementsApi = {
-  async preview(source_account_id: string, items: BulkStellarPayoutRow[]) {
+  // entity_id/account_id (not just the account) are required so the backend
+  // can verify ownership via owned_stellar_account_context — same body shape
+  // as the Stellar swap quote/confirm pair (/v1/conversions/stellar/*).
+  async preview(entity_id: string, account_id: string, items: BulkStellarPayoutRow[]) {
     const raw = await apiEnvelope<unknown>(
       "POST",
       "/v1/disbursements/stellar/preview",
-      { source_account_id, items },
+      { entity_id, account_id, items },
     );
     return normalizeBulkPreview(raw);
   },
 
-  async confirm(source_account_id: string, preview_token: string) {
+  async confirm(entity_id: string, account_id: string, preview_token: string) {
     const raw = await apiEnvelope<unknown>(
       "POST",
       "/v1/disbursements/stellar/confirm",
-      { source_account_id, preview_token },
+      { entity_id, account_id, preview_token },
     );
     return normalizeBulkBatch(raw);
   },

@@ -65,7 +65,7 @@ export default function BulkStellarPayoutWizard({
   };
 
   const previewBatch = async () => {
-    if (!sourceAccountId) {
+    if (!sourceAccountId || !selectedAccount) {
       setError("Choose the Stellar source wallet first.");
       return;
     }
@@ -73,7 +73,11 @@ export default function BulkStellarPayoutWizard({
     setError("");
     try {
       const rows = parseBulkStellarPayoutCsv(csvText);
-      const nextPreview = await stellarDisbursementsApi.preview(sourceAccountId, rows);
+      const nextPreview = await stellarDisbursementsApi.preview(
+        selectedAccount.entityId,
+        sourceAccountId,
+        rows,
+      );
       setParsedRows(rows);
       setPreview(nextPreview);
     } catch (err) {
@@ -88,11 +92,12 @@ export default function BulkStellarPayoutWizard({
   };
 
   const confirmBatch = async () => {
-    if (!preview?.preview_token || !sourceAccountId) return;
+    if (!preview?.preview_token || !sourceAccountId || !selectedAccount) return;
     setBusy("confirm");
     setError("");
     try {
       const nextBatch = await stellarDisbursementsApi.confirm(
+        selectedAccount.entityId,
         sourceAccountId,
         preview.preview_token,
       );
