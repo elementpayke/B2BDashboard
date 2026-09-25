@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { parseBulkStellarPayoutCsv } from "./stellarDisbursements";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/apiClient", () => ({
+  apiEnvelope: vi.fn(),
+}));
+
+import { parseBulkStellarPayoutCsv, stellarDisbursementsApi } from "./stellarDisbursements";
 
 describe("parseBulkStellarPayoutCsv", () => {
   it("parses headered CSV rows including quoted fields", () => {
@@ -42,5 +47,41 @@ describe("parseBulkStellarPayoutCsv", () => {
     expect(() => parseBulkStellarPayoutCsv("destination,amount\nGA123,0.50")).toThrow(
       /minimum convert amount/i,
     );
+  });
+});
+
+describe("stellarDisbursementsApi", () => {
+  it("sends entity_id and account_id on preview, matching the backend's ownership contract", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({
+      preview_token: "tok_1",
+      total_amount: "10.00",
+      currency: "USDC",
+      items: [],
+    } as never);
+
+    const rows = [{ destination: "GA123", amount: "10.00", memo: null, reference: null }];
+    await stellarDisbursementsApi.preview("ent_1", "acct_1", rows);
+
+    expect(mocked).toHaveBeenCalledWith("POST", "/v1/disbursements/stellar/preview", {
+      entity_id: "ent_1",
+      account_id: "acct_1",
+      items: rows,
+    });
+  });
+
+  it("sends entity_id and account_id on confirm alongside the preview token", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({ batch_id: "b1", status: "processing", items: [] } as never);
+
+    await stellarDisbursementsApi.confirm("ent_1", "acct_1", "tok_1");
+
+    expect(mocked).toHaveBeenCalledWith("POST", "/v1/disbursements/stellar/confirm", {
+      entity_id: "ent_1",
+      account_id: "acct_1",
+      preview_token: "tok_1",
+    });
   });
 });
