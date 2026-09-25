@@ -3206,6 +3206,10 @@ button.ep-home__stat:focus-visible {
   max-width: none;
 }
 
+.ep-modal--expanded {
+  max-width: min(1040px, 94vw);
+}
+
 .ep-modal__grabber {
   display: flex;
   justify-content: center;
@@ -3244,6 +3248,11 @@ button.ep-home__stat:focus-visible {
   .ep-modal:has(.ep-flow--sheet) {
     max-width: 520px;
   }
+
+  .ep-modal--expanded {
+    max-width: min(1040px, 94vw);
+    max-height: calc(100dvh - 48px);
+  }
 }
 
 @supports not (align-items: safe center) {
@@ -3280,7 +3289,15 @@ button.ep-home__stat:focus-visible {
   min-width: 0;
 }
 
-.ep-modal__close {
+.ep-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ep-modal__close,
+.ep-modal__expand {
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -3295,7 +3312,8 @@ button.ep-home__stat:focus-visible {
   justify-content: center;
 }
 
-.ep-modal__close:hover {
+.ep-modal__close:hover,
+.ep-modal__expand:hover {
   color: var(--ink);
 }
 
@@ -3414,6 +3432,10 @@ button.ep-home__stat:focus-visible {
   max-height: 360px;
   border: 1.5px solid var(--border);
   border-radius: 14px;
+}
+
+.ep-modal--expanded .ep-row-table-wrap {
+  max-height: min(64vh, 680px);
 }
 
 .ep-row-table {
