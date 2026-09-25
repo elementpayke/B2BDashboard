@@ -302,49 +302,73 @@ export default function BulkStellarPayoutWizard({
           </label>
         </>
       ) : stage === "edit" ? (
-        <div className="ep-row-editor" role="group" aria-label="Bulk payout rows">
-          {parsedRows.map((row, index) => (
-            <div key={index} className="ep-row-card">
-              <div className="ep-row-card__head">
-                <span>Row {index + 1}</span>
-                <button
-                  type="button"
-                  className="ep-row-card__remove"
-                  onClick={() => removeRow(index)}
-                  aria-label={`Remove row ${index + 1}`}
-                >
-                  ✕
-                </button>
-              </div>
-              <input
-                value={row.destination}
-                onChange={(event) => updateRow(index, "destination", event.target.value)}
-                placeholder="Destination address"
-              />
-              <div className="ep-row-card__grid">
-                <input
-                  value={row.amount}
-                  onChange={(event) => updateRow(index, "amount", event.target.value)}
-                  placeholder="Amount"
-                  inputMode="decimal"
-                />
-                <input
-                  value={row.memo || ""}
-                  onChange={(event) => updateRow(index, "memo", event.target.value)}
-                  placeholder="Memo (optional)"
-                />
-              </div>
-              <input
-                value={row.reference || ""}
-                onChange={(event) => updateRow(index, "reference", event.target.value)}
-                placeholder="Reference (optional)"
-              />
-            </div>
-          ))}
+        <>
+          <div className="ep-row-table-wrap">
+            <table className="ep-row-table" aria-label="Bulk payout rows">
+              <thead>
+                <tr>
+                  <th>Destination</th>
+                  <th>Amount</th>
+                  <th>Memo</th>
+                  <th>Reference</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {parsedRows.map((row, index) => (
+                  <tr key={index}>
+                    <td>
+                      <input
+                        value={row.destination}
+                        onChange={(event) => updateRow(index, "destination", event.target.value)}
+                        placeholder="Destination address"
+                        aria-label={`Row ${index + 1} destination`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={row.amount}
+                        onChange={(event) => updateRow(index, "amount", event.target.value)}
+                        placeholder="Amount"
+                        inputMode="decimal"
+                        aria-label={`Row ${index + 1} amount`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={row.memo || ""}
+                        onChange={(event) => updateRow(index, "memo", event.target.value)}
+                        placeholder="Optional"
+                        aria-label={`Row ${index + 1} memo`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={row.reference || ""}
+                        onChange={(event) => updateRow(index, "reference", event.target.value)}
+                        placeholder="Optional"
+                        aria-label={`Row ${index + 1} reference`}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ep-row-table__remove"
+                        onClick={() => removeRow(index)}
+                        aria-label={`Remove row ${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button type="button" className="ep-btn-secondary" onClick={addRow} style={{ width: "fit-content" }}>
             + Add row
           </button>
-        </div>
+        </>
       ) : (
         <div className="ep-money-review" role="group" aria-label="Bulk payout preview">
           <div className="ep-money-review__row">

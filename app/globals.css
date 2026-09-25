@@ -3409,39 +3409,65 @@ button.ep-home__stat:focus-visible {
   color: var(--muted2);
 }
 
-.ep-row-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.ep-row-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 14px;
+.ep-row-table-wrap {
+  overflow: auto;
+  max-height: 360px;
   border: 1.5px solid var(--border);
-  background: var(--surface2);
+  border-radius: 14px;
 }
 
-.ep-row-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10.5px;
+.ep-row-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+
+.ep-row-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: 10px;
   font-weight: 700;
-  color: var(--muted2);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  background: var(--surface2);
+  padding: 9px 10px;
+  border-bottom: 1.5px solid var(--border);
 }
 
-.ep-row-card__remove {
-  min-height: 28px;
-  min-width: 28px;
+.ep-row-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.ep-row-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ep-row-table td:first-child {
+  min-width: 260px;
+}
+
+.ep-row-table input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  outline: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.ep-row-table__remove {
+  min-height: 32px;
+  min-width: 32px;
   border-radius: 8px;
   border: 1.5px solid var(--border);
   background: var(--input-bg);
@@ -3449,27 +3475,6 @@ button.ep-home__stat:focus-visible {
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
-  line-height: 1;
-}
-
-.ep-row-card__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.ep-row-card input {
-  width: 100%;
-  min-height: 40px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: var(--input-bg);
-  border: 1.5px solid var(--input-border);
-  outline: none;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  font-family: 'DM Sans', sans-serif;
 }
 
 .ep-chip-row {
