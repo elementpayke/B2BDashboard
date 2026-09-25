@@ -4,7 +4,11 @@ vi.mock("@/lib/apiClient", () => ({
   apiEnvelope: vi.fn(),
 }));
 
-import { parseBulkStellarPayoutCsv, stellarDisbursementsApi } from "./stellarDisbursements";
+import {
+  parseBulkStellarPayoutCsv,
+  parseBulkStellarPayoutCsvLoose,
+  stellarDisbursementsApi,
+} from "./stellarDisbursements";
 
 describe("parseBulkStellarPayoutCsv", () => {
   it("parses headered CSV rows including quoted fields", () => {
@@ -46,6 +50,37 @@ describe("parseBulkStellarPayoutCsv", () => {
     );
     expect(() => parseBulkStellarPayoutCsv("destination,amount\nGA123,0.50")).toThrow(
       /minimum convert amount/i,
+    );
+  });
+});
+
+describe("parseBulkStellarPayoutCsvLoose", () => {
+  it("parses valid rows the same way the strict parser does", () => {
+    expect(parseBulkStellarPayoutCsvLoose("GA123,1.00\nGB456,2.00")).toEqual([
+      { destination: "GA123", amount: "1.00", memo: null, reference: null },
+      { destination: "GB456", amount: "2.00", memo: null, reference: null },
+    ]);
+  });
+
+  it("keeps a row with a missing destination instead of throwing", () => {
+    expect(parseBulkStellarPayoutCsvLoose("destination,amount\n,5.00")).toEqual([
+      { destination: "", amount: "5.00", memo: null, reference: null },
+    ]);
+  });
+
+  it("keeps a row with an invalid or below-minimum amount instead of throwing", () => {
+    expect(parseBulkStellarPayoutCsvLoose("destination,amount\nGA123,0.50")).toEqual([
+      { destination: "GA123", amount: "0.50", memo: null, reference: null },
+    ]);
+    expect(parseBulkStellarPayoutCsvLoose("destination,amount\nGA123,notanumber")).toEqual([
+      { destination: "GA123", amount: "notanumber", memo: null, reference: null },
+    ]);
+  });
+
+  it("still rejects input with nothing to edit", () => {
+    expect(() => parseBulkStellarPayoutCsvLoose("")).toThrow(/at least one payout row/i);
+    expect(() => parseBulkStellarPayoutCsvLoose("destination,amount")).toThrow(
+      /at least one payout after the csv header/i,
     );
   });
 });
