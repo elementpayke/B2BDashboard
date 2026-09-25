@@ -3409,6 +3409,69 @@ button.ep-home__stat:focus-visible {
   color: var(--muted2);
 }
 
+.ep-row-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.ep-row-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+}
+
+.ep-row-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ep-row-card__remove {
+  min-height: 28px;
+  min-width: 28px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--input-bg);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ep-row-card__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ep-row-card input {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  outline: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+}
+
 .ep-chip-row {
   display: flex;
   gap: 8px;
