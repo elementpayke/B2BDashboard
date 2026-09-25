@@ -1,6 +1,8 @@
 import { authEnvelope } from "@/lib/apiClient";
 
-export type LoginResult = {
+/** Normal login response — a real session was created. */
+export type LoginSuccess = {
+  mfa?: null;
   token_type: string;
   kyb_status: string | null;
   role: string | null;
@@ -11,6 +13,24 @@ export type LoginResult = {
   business_name?: string | null;
   permissions?: string[];
 };
+
+/** Account has 2FA enrolled — no session yet; submit a TOTP (or backup)
+ * code to `mfaApi.verify` to complete login. */
+export type LoginMfaRequired = { mfa: { status: "required" } };
+
+/** 2FA is mandatory per the cutover policy and this account hasn't enrolled
+ * yet — no session yet; complete enrollment (`mfaApi.enrollStart`/
+ * `enrollConfirm`) to get one. */
+export type LoginMfaSetupRequired = { mfa: { status: "setup_required" } };
+
+export type LoginResult = LoginSuccess | LoginMfaRequired | LoginMfaSetupRequired;
+
+/** Type guard: narrows a `LoginResult` down to its "no session yet" variants. */
+export function loginNeedsMfa(
+  login: LoginResult,
+): login is LoginMfaRequired | LoginMfaSetupRequired {
+  return login.mfa != null;
+}
 
 export type AuthMeUser = {
   id: number;
@@ -33,6 +53,12 @@ export type KybSummary = {
   profile: Record<string, unknown> | null;
 };
 
+export type AuthMeMfa = {
+  enabled: boolean;
+  cutover_at: string | null;
+  should_remind: boolean;
+};
+
 export type AuthMe = {
   user: AuthMeUser;
   principal?: "individual" | "business" | string;
@@ -46,15 +72,19 @@ export type AuthMe = {
     status: string;
   }>;
   kyb_summary: KybSummary | null;
+  mfa?: AuthMeMfa;
 };
 
 /**
  * Build a partial `auth-me` cache entry from the login response so the
  * dashboard shell (role, KYB chip, business id) can paint before `/me`
  * returns. Full `/me` still replaces this once it settles.
+ *
+ * Only ever called on the normal (non-MFA) login path — callers must check
+ * `login.mfa?.status` first.
  */
 export function authMePlaceholderFromLogin(
-  login: LoginResult,
+  login: LoginSuccess,
   email: string,
 ): AuthMe {
   const businessName =
