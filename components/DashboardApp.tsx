@@ -1714,6 +1714,7 @@ export default function DashboardApp(props: Props = {}) {
     // Closing dismisses any reveal still in flight, so its response cannot
     // repopulate cardSecrets behind a shut modal.
     revealGuard.invalidate(MODAL_REVEAL_KEY);
+    setBulkModalExpanded(false);
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
       return;
@@ -4237,6 +4238,7 @@ export default function DashboardApp(props: Props = {}) {
   const isReceiveFlow = s.modal === "receive";
   const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
+  const [bulkModalExpanded, setBulkModalExpanded] = useState(false);
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -5514,7 +5516,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div ref={modalRef} onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+<div ref={modalRef} onClick={stopClick} className={`ep-modal${isModalBulk && bulkModalExpanded ? " ep-modal--expanded" : ""}`} role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
 <div className="ep-modal__grabber" aria-hidden="true">
 <span className="ep-modal__grabber-bar" />
@@ -5522,7 +5524,20 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 <div className="ep-modal__header">
 <h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
+<div className="ep-modal__header-actions">
+{isModalBulk ? (
+<button
+  type="button"
+  onClick={() => setBulkModalExpanded((expanded) => !expanded)}
+  className="ep-modal__expand"
+  aria-label={bulkModalExpanded ? "Collapse" : "Expand"}
+  title={bulkModalExpanded ? "Collapse" : "Expand"}
+>
+  {bulkModalExpanded ? "⤡" : "⤢"}
+</button>
+) : null}
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
+</div>
 </div>
 
 {(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">

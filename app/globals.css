@@ -3206,6 +3206,10 @@ button.ep-home__stat:focus-visible {
   max-width: none;
 }
 
+.ep-modal--expanded {
+  max-width: min(1040px, 94vw);
+}
+
 .ep-modal__grabber {
   display: flex;
   justify-content: center;
@@ -3244,6 +3248,11 @@ button.ep-home__stat:focus-visible {
   .ep-modal:has(.ep-flow--sheet) {
     max-width: 520px;
   }
+
+  .ep-modal--expanded {
+    max-width: min(1040px, 94vw);
+    max-height: calc(100dvh - 48px);
+  }
 }
 
 @supports not (align-items: safe center) {
@@ -3280,7 +3289,15 @@ button.ep-home__stat:focus-visible {
   min-width: 0;
 }
 
-.ep-modal__close {
+.ep-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ep-modal__close,
+.ep-modal__expand {
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -3295,7 +3312,8 @@ button.ep-home__stat:focus-visible {
   justify-content: center;
 }
 
-.ep-modal__close:hover {
+.ep-modal__close:hover,
+.ep-modal__expand:hover {
   color: var(--ink);
 }
 
@@ -3407,6 +3425,78 @@ button.ep-home__stat:focus-visible {
 .ep-dropzone__hint {
   font-size: 11.5px;
   color: var(--muted2);
+}
+
+.ep-row-table-wrap {
+  overflow: auto;
+  max-height: 360px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+}
+
+.ep-modal--expanded .ep-row-table-wrap {
+  max-height: min(64vh, 680px);
+}
+
+.ep-row-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+
+.ep-row-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  background: var(--surface2);
+  padding: 9px 10px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.ep-row-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.ep-row-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ep-row-table td:first-child {
+  min-width: 260px;
+}
+
+.ep-row-table input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  outline: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.ep-row-table__remove {
+  min-height: 32px;
+  min-width: 32px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--input-bg);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .ep-chip-row {
