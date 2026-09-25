@@ -42,15 +42,14 @@ export default function BulkStellarPayoutWizard({
   const [batch, setBatch] = useState<BulkStellarPayoutBatch | null>(null);
   const [busy, setBusy] = useState<"preview" | "confirm" | "upload" | null>(null);
   const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
   const selectedAccount = useMemo(
     () => sourceAccounts.find((account) => account.id === sourceAccountId) || null,
     [sourceAccountId, sourceAccounts],
   );
 
-  const onUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const readCsvFile = async (file: File) => {
     setBusy("upload");
     setError("");
     try {
@@ -60,8 +59,39 @@ export default function BulkStellarPayoutWizard({
       setError("Couldn't read that CSV file.");
     } finally {
       setBusy(null);
-      event.target.value = "";
     }
+  };
+
+  const onUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await readCsvFile(file);
+    event.target.value = "";
+  };
+
+  const onDropCsv = async (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    await readCsvFile(file);
+  };
+
+  const downloadSampleCsv = () => {
+    const sample = [
+      "destination,amount,memo,reference",
+      "REPLACE_WITH_STELLAR_ADDRESS,25.00,Payroll,ops-001",
+      "REPLACE_WITH_STELLAR_ADDRESS,10.50,Vendor payment,inv-2045",
+    ].join("\n");
+    const blob = new Blob([sample], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mboka-bulk-payout-sample.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
 
   const previewBatch = async () => {
@@ -178,25 +208,45 @@ export default function BulkStellarPayoutWizard({
 
       {!preview ? (
         <>
-          <label className="ep-field">
-            <span>Paste CSV</span>
-            <textarea
-              value={csvText}
-              onChange={(event) => setCsvText(event.target.value)}
-              placeholder={"destination,amount,memo,reference\nG...,25.00,Payroll,ops-001"}
-              rows={8}
-              disabled={busy === "preview" || busy === "upload"}
-            />
-          </label>
-
-          <label className="ep-btn-secondary" style={{ width: "fit-content", cursor: "pointer" }}>
-            Upload CSV
+          <label
+            className={`ep-dropzone${dragActive ? " ep-dropzone--active" : ""}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(event) => void onDropCsv(event)}
+          >
+            <span className="ep-dropzone__title">
+              {busy === "upload" ? "Reading CSV…" : "Drop a CSV file here, or click to browse"}
+            </span>
+            <span className="ep-dropzone__hint">destination, amount, memo, reference</span>
             <input
               type="file"
               accept=".csv,text/csv"
               onChange={onUpload}
               disabled={busy === "preview" || busy === "upload"}
               style={{ display: "none" }}
+            />
+          </label>
+
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            style={{ width: "fit-content" }}
+            onClick={downloadSampleCsv}
+          >
+            Download sample CSV
+          </button>
+
+          <label className="ep-field">
+            <span>Or paste CSV</span>
+            <textarea
+              value={csvText}
+              onChange={(event) => setCsvText(event.target.value)}
+              placeholder={"destination,amount,memo,reference\nG...,25.00,Payroll,ops-001"}
+              rows={8}
+              disabled={busy === "preview" || busy === "upload"}
             />
           </label>
         </>
