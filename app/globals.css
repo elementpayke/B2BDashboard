@@ -3487,6 +3487,11 @@ button.ep-home__stat:focus-visible {
   font-family: 'DM Sans', sans-serif;
 }
 
+.ep-row-table input:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
 .ep-row-table__remove {
   min-height: 32px;
   min-width: 32px;

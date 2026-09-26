@@ -1,16 +1,21 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { ApiRequestError } from "@/lib/apiClient";
+import { validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
 import {
-  parseBulkStellarPayoutCsv,
+  parseBulkStellarPayoutCsvLoose,
   stellarDisbursementsApi,
   type BulkStellarPayoutBatch,
   type BulkStellarPayoutPreview,
   type BulkStellarPayoutRow,
 } from "@/lib/services/stellarDisbursements";
+
+// Local-only identity for React keys / focus stability across edits, add,
+// and remove — never sent to the API (stripped in previewBatch).
+type EditableRow = BulkStellarPayoutRow & { __id: number };
 
 type BulkStellarPayoutWizardProps = {
   sourceAccounts: FinancialAccount[];
@@ -34,6 +39,15 @@ function emptyRow(): BulkStellarPayoutRow {
   return { destination: "", amount: "", memo: "", reference: "" };
 }
 
+function stripLocalId(row: EditableRow): BulkStellarPayoutRow {
+  const { destination, amount, memo, reference } = row;
+  return { destination, amount, memo, reference };
+}
+
+function isBlankRow(row: BulkStellarPayoutRow): boolean {
+  return !row.destination.trim() && !row.amount.trim() && !row.memo?.trim() && !row.reference?.trim();
+}
+
 export default function BulkStellarPayoutWizard({
   sourceAccounts,
   onDone,
@@ -41,26 +55,38 @@ export default function BulkStellarPayoutWizard({
 }: BulkStellarPayoutWizardProps) {
   const [sourceAccountId, setSourceAccountId] = useState(sourceAccounts[0]?.id || "");
   const [csvText, setCsvText] = useState("");
-  const [parsedRows, setParsedRows] = useState<BulkStellarPayoutRow[]>([]);
+  const [parsedRows, setParsedRows] = useState<EditableRow[]>([]);
+  const [rowsMode, setRowsMode] = useState(false);
   const [preview, setPreview] = useState<BulkStellarPayoutPreview | null>(null);
   const [batch, setBatch] = useState<BulkStellarPayoutBatch | null>(null);
   const [busy, setBusy] = useState<"preview" | "confirm" | "upload" | null>(null);
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const nextRowId = useRef(0);
 
   const selectedAccount = useMemo(
     () => sourceAccounts.find((account) => account.id === sourceAccountId) || null,
     [sourceAccountId, sourceAccounts],
   );
 
+  const withLocalIds = (rows: BulkStellarPayoutRow[]): EditableRow[] =>
+    rows.map((row) => ({ ...row, __id: nextRowId.current++ }));
+
   const loadRowsFromCsv = (text: string) => {
     try {
-      const rows = parseBulkStellarPayoutCsv(text);
-      setParsedRows(rows);
+      const rows = parseBulkStellarPayoutCsvLoose(text);
+      setParsedRows(withLocalIds(rows));
+      setRowsMode(true);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't parse that CSV.");
     }
+  };
+
+  const startManualEntry = () => {
+    setParsedRows(withLocalIds([emptyRow()]));
+    setRowsMode(true);
+    setError("");
   };
 
   const readCsvFile = async (file: File) => {
@@ -118,13 +144,14 @@ export default function BulkStellarPayoutWizard({
   };
 
   const addRow = () => {
-    setParsedRows((rows) => [...rows, emptyRow()]);
+    setParsedRows((rows) => [...rows, ...withLocalIds([emptyRow()])]);
   };
 
   const clearRows = () => {
     setParsedRows([]);
     setCsvText("");
     setError("");
+    setRowsMode(false);
   };
 
   const reviewPastedCsv = () => {
@@ -137,16 +164,29 @@ export default function BulkStellarPayoutWizard({
       setError("Choose the source account first.");
       return;
     }
-    const rows = parsedRows.filter(
-      (row) => row.destination.trim() || row.amount.trim() || row.memo?.trim() || row.reference?.trim(),
-    );
+    // Walk parsedRows in its own order so a reported row number always
+    // matches what's on screen — skipping blank rows must not renumber the
+    // real ones after it.
+    const rows: BulkStellarPayoutRow[] = [];
+    for (let i = 0; i < parsedRows.length; i += 1) {
+      const row = parsedRows[i];
+      if (isBlankRow(row)) continue;
+      if (!row.destination.trim() || !row.amount.trim()) {
+        setError(`Row ${i + 1} needs a destination and an amount.`);
+        return;
+      }
+      try {
+        validateConvertAmount(row.amount);
+      } catch (err) {
+        setError(
+          `Row ${i + 1}: ${err instanceof Error ? err.message : "invalid amount."}`,
+        );
+        return;
+      }
+      rows.push(stripLocalId(row));
+    }
     if (!rows.length) {
       setError("Add at least one payout row.");
-      return;
-    }
-    const invalidIndex = rows.findIndex((row) => !row.destination.trim() || !row.amount.trim());
-    if (invalidIndex !== -1) {
-      setError(`Row ${invalidIndex + 1} needs a destination and an amount.`);
       return;
     }
     setBusy("preview");
@@ -157,7 +197,7 @@ export default function BulkStellarPayoutWizard({
         sourceAccountId,
         rows,
       );
-      setParsedRows(rows);
+      setParsedRows(withLocalIds(rows));
       setPreview(nextPreview);
     } catch (err) {
       setError(
@@ -231,7 +271,7 @@ export default function BulkStellarPayoutWizard({
     );
   }
 
-  const stage: "input" | "edit" | "preview" = preview ? "preview" : parsedRows.length ? "edit" : "input";
+  const stage: "input" | "edit" | "preview" = preview ? "preview" : rowsMode ? "edit" : "input";
 
   return (
     <div className="ep-money-stack">
@@ -281,14 +321,25 @@ export default function BulkStellarPayoutWizard({
             />
           </label>
 
-          <button
-            type="button"
-            className="ep-btn-secondary"
-            style={{ width: "fit-content" }}
-            onClick={downloadSampleCsv}
-          >
-            Download sample CSV
-          </button>
+          <div className="ep-chip-row">
+            <button
+              type="button"
+              className="ep-btn-secondary"
+              style={{ width: "fit-content" }}
+              onClick={downloadSampleCsv}
+            >
+              Download sample CSV
+            </button>
+            <button
+              type="button"
+              className="ep-btn-secondary"
+              style={{ width: "fit-content" }}
+              onClick={startManualEntry}
+              disabled={busy === "upload"}
+            >
+              + Add a recipient manually
+            </button>
+          </div>
 
           <label className="ep-field">
             <span>Or paste CSV</span>
@@ -316,13 +367,14 @@ export default function BulkStellarPayoutWizard({
               </thead>
               <tbody>
                 {parsedRows.map((row, index) => (
-                  <tr key={index}>
+                  <tr key={row.__id}>
                     <td>
                       <input
                         value={row.destination}
                         onChange={(event) => updateRow(index, "destination", event.target.value)}
                         placeholder="Destination address"
                         aria-label={`Row ${index + 1} destination`}
+                        disabled={busy === "preview"}
                       />
                     </td>
                     <td>
@@ -332,6 +384,7 @@ export default function BulkStellarPayoutWizard({
                         placeholder="Amount"
                         inputMode="decimal"
                         aria-label={`Row ${index + 1} amount`}
+                        disabled={busy === "preview"}
                       />
                     </td>
                     <td>
@@ -340,6 +393,7 @@ export default function BulkStellarPayoutWizard({
                         onChange={(event) => updateRow(index, "memo", event.target.value)}
                         placeholder="Optional"
                         aria-label={`Row ${index + 1} memo`}
+                        disabled={busy === "preview"}
                       />
                     </td>
                     <td>
@@ -348,6 +402,7 @@ export default function BulkStellarPayoutWizard({
                         onChange={(event) => updateRow(index, "reference", event.target.value)}
                         placeholder="Optional"
                         aria-label={`Row ${index + 1} reference`}
+                        disabled={busy === "preview"}
                       />
                     </td>
                     <td>
@@ -356,6 +411,7 @@ export default function BulkStellarPayoutWizard({
                         className="ep-row-table__remove"
                         onClick={() => removeRow(index)}
                         aria-label={`Remove row ${index + 1}`}
+                        disabled={busy === "preview"}
                       >
                         ✕
                       </button>
@@ -365,7 +421,13 @@ export default function BulkStellarPayoutWizard({
               </tbody>
             </table>
           </div>
-          <button type="button" className="ep-btn-secondary" onClick={addRow} style={{ width: "fit-content" }}>
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={addRow}
+            style={{ width: "fit-content" }}
+            disabled={busy === "preview"}
+          >
             + Add row
           </button>
         </>
@@ -381,8 +443,8 @@ export default function BulkStellarPayoutWizard({
               {preview?.total_amount || sumAmounts(parsedRows)} {preview?.currency}
             </span>
           </div>
-          {parsedRows.map((row, index) => (
-            <div key={`${row.destination}-${index}`} className="ep-money-review__row">
+          {parsedRows.map((row) => (
+            <div key={row.__id} className="ep-money-review__row">
               <span className="ep-money-review__k">{row.destination}</span>
               <span className="ep-money-review__v">
                 {row.amount} {preview?.currency}
