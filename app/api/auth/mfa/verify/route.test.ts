@@ -119,4 +119,30 @@ describe("POST /api/auth/mfa/verify", () => {
     expect(cookies.find((c) => c.name === ACCESS_COOKIE)).toBeUndefined();
     expect(cookies.find((c) => c.name === REFRESH_COOKIE)).toBeUndefined();
   });
+
+  // Regression: callMboka rejecting (network error / timeout) was unhandled,
+  // so Next.js returned its default 500 HTML error page instead of a JSON
+  // envelope the client could show.
+  it("returns a JSON 502 (not an unhandled 500) when the upstream call rejects", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    const res = await POST(verifyRequest("123456", "challenge-tok"));
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.status).toBe("error");
+    expect(body.data).toBeNull();
+  });
+
+  it("returns a JSON 504 when the upstream call times out", async () => {
+    const timeoutErr = new Error("The operation was aborted");
+    timeoutErr.name = "TimeoutError";
+    fetchMock.mockRejectedValueOnce(timeoutErr);
+
+    const res = await POST(verifyRequest("123456", "challenge-tok"));
+
+    expect(res.status).toBe(504);
+    const body = await res.json();
+    expect(body.status).toBe("error");
+  });
 });

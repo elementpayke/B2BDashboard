@@ -1718,6 +1718,10 @@ export default function DashboardApp(props: Props = {}) {
       };
     });
   const closeModal = () => {
+    // Escape reaches every open modal through this shared function — block
+    // it here too while a disable-2FA request is in flight (see
+    // closeMfaDisable for why).
+    if (state.modal === "mfaDisable" && state.mfaDisableBusy) return;
     // Closing dismisses any reveal still in flight, so its response cannot
     // repopulate cardSecrets behind a shut modal.
     revealGuard.invalidate(MODAL_REVEAL_KEY);
@@ -3077,13 +3081,21 @@ export default function DashboardApp(props: Props = {}) {
   };
   const openMfaDisable = () =>
     setState({ modal: "mfaDisable", mfaDisablePassword: "", mfaDisableCode: "", mfaDisableError: "" });
-  const closeMfaDisable = () =>
+  const closeMfaDisable = () => {
+    // Ignore backdrop/Escape while a disable request is in flight — closing
+    // and reopening the dialog before it resolves would let the stale
+    // response write into (or close) the new dialog.
+    if (state.mfaDisableBusy) return;
     setState({ modal: null, mfaDisableBusy: false, mfaDisableError: "" });
+  };
   const submitMfaDisable = async (e: React.FormEvent) => {
     e.preventDefault();
-    const password = String(state.mfaDisablePassword || "").trim();
+    // Don't trim the password itself — a leading/trailing space can be part
+    // of the real password, and trimming it here would send a different
+    // string than the one the account was created with.
+    const password = String(state.mfaDisablePassword || "");
     const code = String(state.mfaDisableCode || "").trim();
-    if (!password || !code) return;
+    if (!password.trim() || !code) return;
     setState({ mfaDisableBusy: true, mfaDisableError: "" });
     try {
       await mfaApi.disable(password, code);
@@ -5403,11 +5415,14 @@ Two-factor authentication
   : "Add an extra layer of protection to your own sign-in."}
 </p>
 </div>
+
+<span role="status" aria-live="polite">
 <StatusBadge
   label={mfaEnabled ? "Enabled" : "Disabled"}
   color={mfaEnabled ? "#1B7A3D" : "var(--muted)"}
   soft={mfaEnabled ? "#E8F7EE" : "var(--surface2)"}
 />
+</span>
 </div>
 {mfaEnabled ? (
 <button type="button" onClick={openMfaDisable} className="ep-team__remove" style={{ alignSelf: "flex-start" }}>

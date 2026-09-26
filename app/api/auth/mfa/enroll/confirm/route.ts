@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { callMboka } from "@/lib/server/mbokaCall";
 import { ACCESS_COOKIE, MFA_SETUP_COOKIE, setSessionCookies, clearMfaCookies } from "@/lib/server/cookies";
 
+function isTimeoutError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    ((err as { name: string }).name === "TimeoutError" ||
+      (err as { name: string }).name === "AbortError")
+  );
+}
+
 type EnrollConfirmData = {
   backup_codes?: string[];
   access_token?: string;
@@ -53,11 +63,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const body = await request.text();
-  const upstream = await callMboka("/api/auth/mfa/enroll/confirm", {
-    method: "POST",
-    body,
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let upstream: Response;
+  try {
+    upstream = await callMboka("/api/auth/mfa/enroll/confirm", {
+      method: "POST",
+      body,
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    const timedOut = isTimeoutError(err);
+    return NextResponse.json(
+      {
+        status: "error",
+        message: timedOut
+          ? "The request took too long. Please try again."
+          : "Unable to confirm enrollment right now.",
+        data: null,
+      },
+      { status: timedOut ? 504 : 502 },
+    );
+  }
 
   let json: Envelope;
   try {
