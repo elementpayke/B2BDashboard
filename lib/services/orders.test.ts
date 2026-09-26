@@ -330,11 +330,35 @@ describe("buildPaymentInstructionRows", () => {
   it("falls back to bank_info when the top-level bank fields are null", () => {
     const instructions: PaymentInstructions = {
       type: "bank",
-      bank_info: { accountNumber: "999", bankName: "Fallback Bank" },
+      bank_info: { accountNumber: "999", name: "Fallback Bank" },
     };
     expect(buildPaymentInstructionRows(instructions)).toEqual([
       { k: "Account number", v: "999" },
       { k: "Bank", v: "Fallback Bank" },
+    ]);
+  });
+
+  it("reads bank_info using Yellow Card's real field names, including branch code", () => {
+    // Regression: bank_info.bankName / bank_info.accountHolderName don't
+    // exist in Yellow Card's actual submit-receive response — the real keys
+    // are name / accountName / branchCode. See
+    // https://docs.yellowcard.engineering/reference/submit-receive.
+    const instructions: PaymentInstructions = {
+      type: "bank",
+      bank_info: {
+        name: "Yellow Card Financial",
+        accountNumber: "3012345678",
+        accountName: "Acme Ltd",
+        branchCode: "011",
+      },
+      reference: "TX-NGN-001",
+    };
+    expect(buildPaymentInstructionRows(instructions)).toEqual([
+      { k: "Account number", v: "3012345678" },
+      { k: "Bank", v: "Yellow Card Financial" },
+      { k: "Account name", v: "Acme Ltd" },
+      { k: "Branch code", v: "011" },
+      { k: "Reference", v: "TX-NGN-001" },
     ]);
   });
 

@@ -91,6 +91,7 @@ export type PaymentInstructions = {
   account_number?: string | null;
   bank_name?: string | null;
   account_holder_name?: string | null;
+  branch_code?: string | null;
   wallet_address?: string | null;
   amount?: string | null;
   currency?: string | null;
@@ -387,14 +388,20 @@ export function buildPaymentInstructionRows(
   const rows: PaymentInstructionRow[] = [];
 
   if (instructions.type === "bank") {
+    // bank_info mirrors Yellow Card's submit-receive response verbatim
+    // (https://docs.yellowcard.engineering/reference/submit-receive):
+    // `name` / `accountNumber` / `accountName` / `branchCode` — not
+    // `bankName` / `accountHolderName`, which don't exist in that response.
     const bankInfo = (instructions.bank_info ?? {}) as Record<string, unknown>;
     const accountNumber = instructions.account_number ?? (bankInfo.accountNumber as string | undefined);
-    const bankName = instructions.bank_name ?? (bankInfo.bankName as string | undefined);
+    const bankName = instructions.bank_name ?? (bankInfo.name as string | undefined);
     const holderName =
-      instructions.account_holder_name ?? (bankInfo.accountHolderName as string | undefined);
+      instructions.account_holder_name ?? (bankInfo.accountName as string | undefined);
+    const branchCode = instructions.branch_code ?? (bankInfo.branchCode as string | undefined);
     if (accountNumber) rows.push({ k: "Account number", v: String(accountNumber) });
     if (bankName) rows.push({ k: "Bank", v: String(bankName) });
     if (holderName) rows.push({ k: "Account name", v: String(holderName) });
+    if (branchCode) rows.push({ k: "Branch code", v: String(branchCode) });
     if (instructions.reference) rows.push({ k: "Reference", v: instructions.reference });
   } else if (instructions.type === "momo") {
     const source = (instructions.source ?? {}) as Record<string, unknown>;
