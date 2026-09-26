@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
-import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/server/cookies";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  MFA_CHALLENGE_COOKIE,
+  MFA_SETUP_COOKIE,
+} from "@/lib/server/cookies";
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -115,5 +120,59 @@ describe("POST /api/auth/login", () => {
     const res = await POST(loginRequest("owner@acme.com", "whatever"));
     expect(res.status).toBe(502);
     expect(res.cookies.getAll()).toHaveLength(0);
+  });
+
+  it("never returns the mfa_challenge_token in the response body, and sets only the challenge cookie", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        status: "success",
+        message: "ok",
+        data: {
+          mfa_challenge_token: "super-secret-challenge",
+          mfa: { status: "required" },
+        },
+      }),
+    );
+
+    const res = await POST(loginRequest("owner@acme.com", "correct horse battery staple"));
+    const body = await res.json();
+
+    expect(JSON.stringify(body)).not.toContain("super-secret-challenge");
+    expect(body.data).toEqual({ mfa: { status: "required" } });
+
+    const cookies = res.cookies.getAll();
+    expect(cookies.find((c) => c.name === ACCESS_COOKIE)).toBeUndefined();
+    expect(cookies.find((c) => c.name === REFRESH_COOKIE)).toBeUndefined();
+    const challenge = cookies.find((c) => c.name === MFA_CHALLENGE_COOKIE);
+    expect(challenge?.value).toBe("super-secret-challenge");
+    expect(challenge?.httpOnly).toBe(true);
+    expect(challenge?.sameSite).toBe("lax");
+  });
+
+  it("never returns the mfa_setup_token in the response body, and sets only the setup cookie", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        status: "success",
+        message: "ok",
+        data: {
+          mfa_setup_token: "super-secret-setup",
+          mfa: { status: "setup_required" },
+        },
+      }),
+    );
+
+    const res = await POST(loginRequest("owner@acme.com", "correct horse battery staple"));
+    const body = await res.json();
+
+    expect(JSON.stringify(body)).not.toContain("super-secret-setup");
+    expect(body.data).toEqual({ mfa: { status: "setup_required" } });
+
+    const cookies = res.cookies.getAll();
+    expect(cookies.find((c) => c.name === ACCESS_COOKIE)).toBeUndefined();
+    expect(cookies.find((c) => c.name === REFRESH_COOKIE)).toBeUndefined();
+    const setup = cookies.find((c) => c.name === MFA_SETUP_COOKIE);
+    expect(setup?.value).toBe("super-secret-setup");
+    expect(setup?.httpOnly).toBe(true);
+    expect(setup?.sameSite).toBe("lax");
   });
 });
