@@ -2,6 +2,7 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { ApiRequestError } from "@/lib/apiClient";
+import { validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
 import {
@@ -174,6 +175,14 @@ export default function BulkStellarPayoutWizard({
         setError(`Row ${i + 1} needs a destination and an amount.`);
         return;
       }
+      try {
+        validateConvertAmount(row.amount);
+      } catch (err) {
+        setError(
+          `Row ${i + 1}: ${err instanceof Error ? err.message : "invalid amount."}`,
+        );
+        return;
+      }
       rows.push(stripLocalId(row));
     }
     if (!rows.length) {
@@ -326,6 +335,7 @@ export default function BulkStellarPayoutWizard({
               className="ep-btn-secondary"
               style={{ width: "fit-content" }}
               onClick={startManualEntry}
+              disabled={busy === "upload"}
             >
               + Add a recipient manually
             </button>
