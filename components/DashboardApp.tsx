@@ -126,6 +126,7 @@ import {
   stablecoinStatusTone,
   toPartnerNetwork,
   toUiNetworkKey,
+  visibleStablecoinAccounts,
 } from "@/lib/services/entities";
 import {
   remittanceMethodForCurrency,
@@ -348,10 +349,10 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
-    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
@@ -787,9 +788,11 @@ export default function DashboardApp(props: Props = {}) {
   });
 
   /** Prefer bootstrap payload; fall back to the dedicated list query. */
-  const resolvedStablecoinAccounts = bootstrapReady
-    ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-    : (stablecoinAccountsQuery.data ?? []);
+  const resolvedStablecoinAccounts = visibleStablecoinAccounts(
+    bootstrapReady
+      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+      : (stablecoinAccountsQuery.data ?? []),
+  );
   const collectHomeForTimes = resolvedStablecoinAccounts.find(
     (account) =>
       isFundableStablecoinAccount(account) &&
@@ -1160,7 +1163,7 @@ export default function DashboardApp(props: Props = {}) {
   const moneyFlowReset = {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
-    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
+    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
@@ -1178,7 +1181,7 @@ export default function DashboardApp(props: Props = {}) {
     fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
-    depositAsset: "usdc", depositNetwork: "base",
+    depositAsset: "usdc", depositNetwork: "stellar",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
   const openModal = (name) => () => setState({
@@ -3503,9 +3506,11 @@ export default function DashboardApp(props: Props = {}) {
     const depositAccountsList = bootstrapReady
       ? (bootstrapQuery.data?.fiatAccounts ?? [])
       : (depositAccountsQuery.data?.accounts ?? []);
-    const stablecoinAccountsList = bootstrapReady
-      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-      : (stablecoinAccountsQuery.data ?? []);
+    const stablecoinAccountsList = visibleStablecoinAccounts(
+      bootstrapReady
+        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+        : (stablecoinAccountsQuery.data ?? []),
+    );
     const selectedFiatCurrency =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
         ? s.selectedAcctKey.slice("fiat:".length)

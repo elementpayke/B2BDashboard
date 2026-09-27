@@ -389,6 +389,26 @@ export function isFundableStablecoinAccount(account: FinancialAccount): boolean 
 }
 
 /**
+ * Stellar is USDC's only home wallet — a legacy USDC account on Base/Polygon
+ * is a leftover from before consolidation, not a wallet to list, fund, or
+ * send from. Those networks remain valid CCTP bridge destinations elsewhere;
+ * they're just not their own account here.
+ */
+export function isLegacyNonStellarUsdcAccount(account: FinancialAccount): boolean {
+  return (
+    account.currency.trim().toUpperCase() === "USDC" &&
+    toPartnerNetwork(account.network) !== "Stellar"
+  );
+}
+
+/** Listed stablecoin accounts, with legacy non-Stellar USDC filtered out. */
+export function visibleStablecoinAccounts(
+  accounts: FinancialAccount[],
+): FinancialAccount[] {
+  return accounts.filter((a) => !isLegacyNonStellarUsdcAccount(a));
+}
+
+/**
  * Phase 4 sendable: ready USDC on Base/Polygon/Stellar, or ready USDT on
  * Base/Polygon (Stellar has no USDT rail).
  */

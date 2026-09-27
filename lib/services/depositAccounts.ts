@@ -121,7 +121,10 @@ export function networksForStablecoin(currency: string): readonly string[] {
       ? SUPPORTED_STABLECOIN_NETWORKS
       : EVM_STABLECOIN_NETWORKS;
   }
-  if (code === "USDC") return SUPPORTED_STABLECOIN_NETWORKS;
+  // Stellar is USDC's only home wallet — Base/Polygon are bridge networks
+  // (CCTP), not separate accounts you can open or send an existing balance
+  // from directly.
+  if (code === "USDC") return ["STELLAR"];
   if (isAllowlistedStellarStable(code)) return ["STELLAR"];
   return [];
 }
