@@ -46,8 +46,7 @@ describe("stablecoin account predicates", () => {
     expect(isFundableStablecoinAccount(acct({ walletAddress: null }))).toBe(false);
   });
 
-  it("allows USDC on Base/Polygon/Stellar and USDT on Base/Polygon", () => {
-    expect(isSendableStablecoinAccount(acct({ network: "Base" }))).toBe(true);
+  it("allows USDC on Stellar only (its single home wallet) and USDT on Base/Polygon", () => {
     expect(isSendableStablecoinAccount(acct({ network: "Stellar" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_testnet" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_public" }))).toBe(true);
@@ -86,6 +85,13 @@ describe("Stellar-as-home-chain USDC consolidation", () => {
       "usdc-stellar",
       "usdt-polygon",
     ]);
+  });
+
+  it("never offers a legacy Base/Polygon USDC account as a Send source, even if still ready", () => {
+    expect(isSendableStablecoinAccount(acct({ currency: "USDC", network: "Base" }))).toBe(false);
+    expect(isSendableStablecoinAccount(acct({ currency: "USDC", network: "Polygon" }))).toBe(
+      false,
+    );
   });
 });
 

@@ -172,8 +172,8 @@ describe("sendable account discovery helpers", () => {
     expect(extractAccountRows([{ id: "a3" }])).toHaveLength(1);
   });
 
-  it("keeps ready USDC Base, Polygon, and Stellar accounts", () => {
-    const ready = normalizeFinancialAccount(
+  it("only Stellar USDC is sendable — Base is a bridge network, not a source account", () => {
+    const readyBase = normalizeFinancialAccount(
       {
         id: "acct_base",
         asset_type: "stablecoin",
@@ -213,11 +213,14 @@ describe("sendable account discovery helpers", () => {
       },
       "ent_1",
     )!;
-    expect(isSendableStablecoinAccount(ready)).toBe(true);
+    expect(isSendableStablecoinAccount(readyBase)).toBe(false);
     expect(isSendableStablecoinAccount(eth)).toBe(false);
     expect(isSendableStablecoinAccount(pending)).toBe(false);
     expect(isSendableStablecoinAccount(stellar)).toBe(true);
-    expect(accountForNetwork([ready], "base")?.id).toBe("acct_base");
+    // accountForNetwork is a raw network/currency matcher used once a network
+    // is already chosen (e.g. a CCTP destination) — it is not gated by
+    // "sendable" and still finds a Base-network row when asked directly.
+    expect(accountForNetwork([readyBase], "base")?.id).toBe("acct_base");
     expect(accountForNetwork([stellar], "stellar")?.id).toBe("acct_xlm");
     expect(accountForNetwork([stellar], "stellar_public")).toBeUndefined();
   });
@@ -273,18 +276,21 @@ describe("sendable asset/chain picker from backend wallets", () => {
     "ent_1",
   )!;
 
-  it("lists only assets and chains the user can send from", () => {
+  it("without a Stellar USDC home, a legacy Base USDC account is not sendable — only USDT is", () => {
     const accounts = mergeSendableAccounts([baseUsdc, polyUsdt]);
-    expect(sendableAssetsFromAccounts(accounts)).toEqual(["usdc", "usdt"]);
-    expect(sendableChainsForAsset(accounts, "usdc", { accountsReady: true }).map((n) => n.key)).toEqual([
-      "base",
-    ]);
+    expect(sendableAssetsFromAccounts(accounts)).toEqual(["usdt"]);
+    expect(sendableChainsForAsset(accounts, "usdc", { accountsReady: true }).map((n) => n.key)).toEqual(
+      [],
+    );
     expect(sendableChainsForAsset(accounts, "usdt", { accountsReady: true }).map((n) => n.key)).toEqual([
       "polygon",
     ]);
   });
 
-  it("snaps Stellar leftovers onto a wallet the user actually has", () => {
+  it("snaps a leftover chain key onto a wallet the raw list actually has", () => {
+    // resolveSendStablecoinSelection is a pure snapping function — production
+    // code always feeds it an already-filtered list (mergeSendableAccounts),
+    // but the function itself must not crash or misbehave on an unfiltered one.
     const next = resolveSendStablecoinSelection({
       accounts: [baseUsdc, polyUsdt],
       asset: "usdc",

@@ -962,11 +962,7 @@ export default function DashboardApp(props: Props = {}) {
     )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
-    const convertStables = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const convertStables = resolvedStablecoinAccounts
       .filter(
         (a) =>
           (a.currency === "USDC" || a.currency === "USDT") &&
@@ -974,11 +970,7 @@ export default function DashboardApp(props: Props = {}) {
           a.id,
       )
       .map((a) => String(a.id));
-    const usdcBridge = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const usdcBridge = resolvedStablecoinAccounts
       .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
       .map((a) => String(a.id));
     const mode = state.convertMode;
@@ -2426,7 +2418,7 @@ export default function DashboardApp(props: Props = {}) {
   const resolveUsdcBridgeId = (): string => {
     const fromState = (state.convertBridgeUsdcId || "").trim();
     if (fromState) return fromState;
-    const ready = (stablecoinAccountsQuery.data ?? []).find(
+    const ready = resolvedStablecoinAccounts.find(
       (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
     );
     return ready?.id ? String(ready.id) : "";

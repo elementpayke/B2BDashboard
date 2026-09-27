@@ -417,7 +417,9 @@ export function isSendableStablecoinAccount(account: FinancialAccount): boolean 
   const currency = account.currency.trim().toUpperCase();
   const partner = toPartnerNetwork(account.network);
   if (!partner || !SEND_PARTNER_NETWORKS.has(partner)) return false;
-  if (currency === "USDC") return isReadyStatus(account.status);
+  if (currency === "USDC") {
+    return !isLegacyNonStellarUsdcAccount(account) && isReadyStatus(account.status);
+  }
   if (currency === "USDT") {
     if (partner === "Stellar") return false;
     return isReadyStatus(account.status);
