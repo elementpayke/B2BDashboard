@@ -42,6 +42,7 @@ export const SEND_STABLECOIN_NETWORKS = [
   { key: "ethereum", label: "Ethereum" },
   { key: "optimism", label: "Optimism" },
   { key: "arbitrum", label: "Arbitrum" },
+  { key: "arc", label: "Arc" },
   { key: "stellar", label: "Stellar" },
 ] as const;
 
@@ -264,11 +265,12 @@ export function validateSendAddress(address: string, networkKey: string): string
     network === "Polygon" ||
     network === "Ethereum" ||
     network === "Optimism" ||
-    network === "Arbitrum"
+    network === "Arbitrum" ||
+    network === "Arc"
   ) {
     return validateEvmAddress(address);
   }
-  throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
+  throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, Arc, and Stellar.");
 }
 
 /** Min 1.00 per Phase 4 / partner contract (USDC or USDT). */
@@ -294,7 +296,7 @@ export function buildSendPreviewPayload(params: {
 }): AccountSendPreviewIn {
   const destPartner = toPartnerNetwork(params.networkKey);
   if (!destPartner) {
-    throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
+    throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, Arc, and Stellar.");
   }
   // Dest network drives the partner call. Preserve stellar_testnet/public only when
   // the destination is Stellar (same-chain home payment).
@@ -365,6 +367,9 @@ export function buildSendExplorerUrl(opts: {
   if (network === "Arbitrum" || key.includes("arbitrum")) {
     return `https://arbiscan.io/tx/${encodeURIComponent(hash)}`;
   }
+  if (network === "Arc" || key === "arc") {
+    return `https://explorer.arc.io/tx/${encodeURIComponent(hash)}`;
+  }
   return null;
 }
 
@@ -416,6 +421,7 @@ export function buildSendExplorerLabel(network: string | null | undefined): stri
   if (partner === "Ethereum" || key === "ethereum" || key === "eth") return "View on Etherscan";
   if (partner === "Optimism" || key.includes("optimism")) return "View on Optimism";
   if (partner === "Arbitrum" || key.includes("arbitrum")) return "View on Arbiscan";
+  if (partner === "Arc" || key === "arc") return "View on Arc Explorer";
   return "View onchain";
 }
 

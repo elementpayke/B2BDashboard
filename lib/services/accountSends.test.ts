@@ -58,6 +58,7 @@ describe("account send validation", () => {
     expect(toPartnerNetwork("POLYGON")).toBe("Polygon");
     expect(toPartnerNetwork("ethereum")).toBe("Ethereum");
     expect(toPartnerNetwork("optimism")).toBe("Optimism");
+    expect(toPartnerNetwork("arc")).toBe("Arc");
     expect(toPartnerNetwork("solana")).toBeNull();
   });
 
@@ -339,5 +340,45 @@ describe("sendable asset/chain picker from backend wallets", () => {
       chain: "base",
       accountId: "stellar_usdc",
     });
+  });
+
+  it("offers Arc as a dest chip and resolves it end-to-end (address, preview payload, explorer link)", () => {
+    const stellarUsdc = normalizeFinancialAccount(
+      {
+        id: "stellar_usdc",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "ready",
+        wallet_address: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      },
+      "ent_1",
+    )!;
+    const accounts = mergeSendableAccounts([stellarUsdc]);
+    expect(
+      sendableChainsForAsset(accounts, "usdc", {
+        accountsReady: true,
+        supportedChainKeys: ["arc"],
+      }).map((n) => n.key),
+    ).toEqual(["arc", "stellar"]);
+
+    const arcAddress = "0x1111111111111111111111111111111111111111";
+    expect(validateSendAddress(arcAddress, "arc")).toBe(arcAddress);
+    expect(
+      buildSendPreviewPayload({ toAddress: arcAddress, amount: "5", networkKey: "arc" }),
+    ).toEqual({ to_address: arcAddress, amount: "5", network: "Arc" });
+    expect(sendCryptoRecipientPlaceholder("arc")).toMatch(/EVM/);
+    expect(buildSendExplorerUrl({ network: "Arc", txHash: "0xdead" })).toBe(
+      "https://explorer.arc.io/tx/0xdead",
+    );
+
+    const next = resolveSendStablecoinSelection({
+      accounts,
+      asset: "usdc",
+      chain: "arc",
+      accountsReady: true,
+      supportedChainKeys: ["arc"],
+    });
+    expect(next).toMatchObject({ asset: "usdc", chain: "arc", accountId: "stellar_usdc" });
   });
 });

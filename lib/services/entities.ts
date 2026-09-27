@@ -187,7 +187,8 @@ export type PartnerNetwork =
   | "Stellar"
   | "Ethereum"
   | "Optimism"
-  | "Arbitrum";
+  | "Arbitrum"
+  | "Arc";
 
 /** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
 export function toPartnerNetwork(network: string): PartnerNetwork | null {
@@ -197,6 +198,7 @@ export function toPartnerNetwork(network: string): PartnerNetwork | null {
   if (key === "ethereum" || key === "eth") return "Ethereum";
   if (key === "optimism" || key === "op") return "Optimism";
   if (key === "arbitrum" || key === "arb") return "Arbitrum";
+  if (key === "arc") return "Arc";
   if (key === "stellar" || key === "stellar_testnet" || key === "stellar_public") {
     return "Stellar";
   }

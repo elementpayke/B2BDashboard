@@ -9,6 +9,7 @@ export const USDC_SEND_DEST_NETWORKS = [
   { key: "ethereum", label: "Ethereum" },
   { key: "optimism", label: "Optimism" },
   { key: "arbitrum", label: "Arbitrum" },
+  { key: "arc", label: "Arc" },
   { key: "stellar", label: "Stellar" },
 ] as const;
 
