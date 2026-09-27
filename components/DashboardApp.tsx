@@ -132,7 +132,11 @@ import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
-import { fundRailsForAccount } from "@/lib/collect/cctpRails";
+import {
+  findUsdcRailForNetwork,
+  fundRailsForAccount,
+  usdcNetworkOptionsFromRails,
+} from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
@@ -2346,12 +2350,25 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setDepositNetwork = (k) => () => {
     const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset);
-    const match = pickFundableWalletForRail({
-      accounts: resolvedStablecoinAccounts,
-      networkKey: nextNetwork,
-      currency: state.depositAsset,
-      preferredAccountId: state.fundTargetAccountId,
-    });
+    const currency = (state.depositAsset || "usdc").trim().toLowerCase();
+    // USDC's home wallet is always Stellar — a bridge network (Base, etc.)
+    // is just where this particular deposit is coming from, not a separate
+    // account. Keep fundTargetAccountId pinned to the Stellar home so the
+    // auto-pick effect below doesn't fight back and reset the network.
+    const match =
+      currency === "usdc" && toPartnerNetwork(nextNetwork) !== "Stellar"
+        ? resolvedStablecoinAccounts.find(
+            (a) =>
+              isFundableStablecoinAccount(a) &&
+              a.currency.trim().toUpperCase() === "USDC" &&
+              isStellarUsdcRail({ network: a.network, currency: a.currency }),
+          )
+        : pickFundableWalletForRail({
+            accounts: resolvedStablecoinAccounts,
+            networkKey: nextNetwork,
+            currency: state.depositAsset,
+            preferredAccountId: state.fundTargetAccountId,
+          });
     setState({
       depositNetwork: nextNetwork,
       fundTargetAccountId: match?.id ?? null,
@@ -3542,7 +3559,8 @@ export default function DashboardApp(props: Props = {}) {
     const collectFundSurfaceOpen =
       s.modal === "fundStablecoin" ||
       s.modal === "fundChooser" ||
-      (s.modal === "acctDetail" && s.acctDetailIntent === "fund");
+      (s.modal === "acctDetail" && s.acctDetailIntent === "fund") ||
+      (s.modal === "deposit" && s.depositGroup === "crypto");
     const collectDepositInstructionsQuery = useQuery({
       queryKey: [
         "collect-deposit-instructions",
@@ -4510,10 +4528,14 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
-  const depositNetworkOptions = stablecoinNetworksForAsset(
-    DEPOSIT_STABLECOIN_NETWORKS,
-    s.depositAsset,
-  );
+  // USDC deposits bridge into the single Stellar home wallet via CCTP —
+  // the network list here is "where is this coming from", backed by real
+  // addresses from Collect deposit-instructions, not a per-network account.
+  const depositCollectNetworkOptions = usdcNetworkOptionsFromRails(fundStablecoinRails);
+  const depositNetworkOptions =
+    s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0
+      ? depositCollectNetworkOptions
+      : stablecoinNetworksForAsset(DEPOSIT_STABLECOIN_NETWORKS, s.depositAsset);
   const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset);
   const depositNetworks = depositNetworkOptions.map((n) => ({
     key: n.key,
@@ -4604,27 +4626,41 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
-  const depositNetworkLabel = pinnedOnRampDest
-    ? formatNetworkLabel(pinnedOnRampDest.asset.network)
-    : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
-      formatNetworkLabel(depositNetworkUiKey);
+  // USDC's home wallet is always Stellar, so fundTargetAccountId is pinned
+  // there even when the chosen network is a CCTP bridge (Base, etc.) — the
+  // rail match (by the *selected network*, not the pinned account) is the
+  // correct source for both the address and its label in that case.
+  const depositCollectRailMatch =
+    s.depositAsset === "usdc"
+      ? findUsdcRailForNetwork(fundStablecoinRails, depositNetworkUiKey)
+      : undefined;
+  const depositNetworkLabel = depositCollectRailMatch
+    ? depositCollectRailMatch.networkLabel
+    : pinnedOnRampDest
+      ? formatNetworkLabel(pinnedOnRampDest.asset.network)
+      : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
+        formatNetworkLabel(depositNetworkUiKey);
   const depositNetworkKey =
-    pinnedOnRampDest?.asset.network || depositNetworkUiKey;
+    depositCollectRailMatch?.network || pinnedOnRampDest?.asset.network || depositNetworkUiKey;
   const depositPickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
     networkKey: depositNetworkUiKey,
     treasuryWallet: treasuryWalletAddress,
   });
-  const depositAddress = s.fundTargetAccountId
-    ? pinnedOnRampDest?.walletAddress || "—"
-    : depositPickerDest.address || "—";
-  const depositAddressEmptyMessage = s.fundTargetAccountId
-    ? describeMissingOnRampDestination({
-        selectedAccountId: s.fundTargetAccountId,
-        summaryFailed: summaryQuery.isError,
-      })
-    : depositPickerDest.emptyMessage;
+  const depositAddress = depositCollectRailMatch
+    ? depositCollectRailMatch.walletAddress
+    : s.fundTargetAccountId
+      ? pinnedOnRampDest?.walletAddress || "—"
+      : depositPickerDest.address || "—";
+  const depositAddressEmptyMessage = depositCollectRailMatch
+    ? ""
+    : s.fundTargetAccountId
+      ? describeMissingOnRampDestination({
+          selectedAccountId: s.fundTargetAccountId,
+          summaryFailed: summaryQuery.isError,
+        })
+      : depositPickerDest.emptyMessage;
   const depositCreateAccount =
     !s.fundTargetAccountId &&
     depositPickerDest.offerCreate &&

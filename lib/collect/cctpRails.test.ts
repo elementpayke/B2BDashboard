@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildCollectEvmFundRails,
   buildCollectFundModalRails,
+  findUsdcRailForNetwork,
   fundRailsForAccount,
   mergeFundStablecoinRails,
+  usdcNetworkOptionsFromRails,
 } from "./cctpRails";
 import type { FundStablecoinRail } from "@/lib/services/entities";
 
@@ -256,5 +258,63 @@ describe("mergeFundStablecoinRails", () => {
       },
     ];
     expect(mergeFundStablecoinRails(account, collect)).toHaveLength(2);
+  });
+});
+
+describe("Top Up's \"which network is this coming from\" picker", () => {
+  const rails: FundStablecoinRail[] = [
+    {
+      id: "collect-cctp:67:base:0x71d3",
+      currency: "USDC",
+      network: "base",
+      networkLabel: "Base",
+      walletAddress: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
+      chainDisclaimer: "x",
+      checkoutUrl: null,
+    },
+    {
+      id: "67",
+      currency: "USDC",
+      network: "stellar_testnet",
+      networkLabel: "Stellar",
+      walletAddress: "GCNPEB",
+      chainDisclaimer: "y",
+      checkoutUrl: null,
+    },
+    {
+      id: "67:eurc",
+      currency: "EURC",
+      network: "stellar_testnet",
+      networkLabel: "Stellar",
+      walletAddress: "GCNPEB",
+      chainDisclaimer: "z",
+      checkoutUrl: null,
+    },
+  ];
+
+  it("lists only USDC rails as network options, keyed like the UI picker", () => {
+    expect(usdcNetworkOptionsFromRails(rails)).toEqual([
+      { key: "base", label: "Base" },
+      { key: "stellar", label: "Stellar" },
+    ]);
+  });
+
+  it("finds the real deposit address for a chosen bridge network", () => {
+    const match = findUsdcRailForNetwork(rails, "base");
+    expect(match?.walletAddress).toBe("0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903");
+  });
+
+  it("normalizes a raw Stellar network spelling (stellar_testnet) to the UI's plain 'stellar' key", () => {
+    const match = findUsdcRailForNetwork(rails, "stellar");
+    expect(match?.walletAddress).toBe("GCNPEB");
+  });
+
+  it("never matches a non-USDC rail even on the same network", () => {
+    const match = findUsdcRailForNetwork(rails, "stellar");
+    expect(match?.currency).toBe("USDC");
+  });
+
+  it("returns undefined for a network with no rail", () => {
+    expect(findUsdcRailForNetwork(rails, "arbitrum")).toBeUndefined();
   });
 });
