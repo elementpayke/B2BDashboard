@@ -32,7 +32,10 @@ describe("stablecoin creation support", () => {
     expect(isStablecoinSupported("EURC")).toBe(true);
     expect(networksForStablecoin("USDT")).toEqual(["BASE", "POLYGON", "STELLAR"]);
     expect(networksForStablecoin("EURC")).toEqual(["STELLAR"]);
-    expect(networksForStablecoin("USDC")).toEqual(["BASE", "POLYGON", "STELLAR"]);
+  });
+
+  it("restricts USDC to its single Stellar home wallet — Base/Polygon are bridge networks, not accounts", () => {
+    expect(networksForStablecoin("USDC")).toEqual(["STELLAR"]);
   });
 
   it("rejects unknown stablecoins", () => {

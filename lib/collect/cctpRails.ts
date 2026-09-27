@@ -1,8 +1,12 @@
 /** Collect CCTP EVM deposit rails from Mboka deposit-instructions. */
 
 import type { FundStablecoinRail } from "@/lib/services/entities";
-import { formatNetworkLabel } from "@/lib/services/entities";
+import { formatNetworkLabel, toUiNetworkKey } from "@/lib/services/entities";
 import { fundStablecoinRailSummary } from "@/lib/collect/fundCopy";
+
+function railNetworkKey(network: string): string {
+  return toUiNetworkKey(network) || network.trim().toLowerCase();
+}
 
 export type CollectEvmUsdcRow = {
   network?: string;
@@ -58,6 +62,30 @@ export function buildCollectEvmFundRails(
     });
   }
   return out;
+}
+
+/**
+ * USDC's home wallet is Stellar; every other network in `rails` is a CCTP
+ * bridge source, not a separate account. This is "which network is this
+ * deposit coming from", keyed the same way as the UI's network picker.
+ */
+export function usdcNetworkOptionsFromRails(
+  rails: FundStablecoinRail[],
+): { key: string; label: string }[] {
+  return rails
+    .filter((r) => r.currency.trim().toUpperCase() === "USDC")
+    .map((r) => ({ key: railNetworkKey(r.network), label: r.networkLabel }));
+}
+
+/** The rail (address + label) for a chosen USDC source network, or undefined if none. */
+export function findUsdcRailForNetwork(
+  rails: FundStablecoinRail[],
+  networkKey: string,
+): FundStablecoinRail | undefined {
+  const want = networkKey.trim().toLowerCase();
+  return rails.find(
+    (r) => r.currency.trim().toUpperCase() === "USDC" && railNetworkKey(r.network) === want,
+  );
 }
 
 /** Prefer Collect EVM rails first, then Stellar home (dedupe by network+address). */

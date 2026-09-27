@@ -126,12 +126,17 @@ import {
   stablecoinStatusTone,
   toPartnerNetwork,
   toUiNetworkKey,
+  visibleStablecoinAccounts,
 } from "@/lib/services/entities";
 import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
-import { fundRailsForAccount } from "@/lib/collect/cctpRails";
+import {
+  findUsdcRailForNetwork,
+  fundRailsForAccount,
+  usdcNetworkOptionsFromRails,
+} from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
@@ -348,10 +353,10 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
-    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
@@ -787,9 +792,11 @@ export default function DashboardApp(props: Props = {}) {
   });
 
   /** Prefer bootstrap payload; fall back to the dedicated list query. */
-  const resolvedStablecoinAccounts = bootstrapReady
-    ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-    : (stablecoinAccountsQuery.data ?? []);
+  const resolvedStablecoinAccounts = visibleStablecoinAccounts(
+    bootstrapReady
+      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+      : (stablecoinAccountsQuery.data ?? []),
+  );
   const collectHomeForTimes = resolvedStablecoinAccounts.find(
     (account) =>
       isFundableStablecoinAccount(account) &&
@@ -955,11 +962,7 @@ export default function DashboardApp(props: Props = {}) {
     )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
-    const convertStables = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const convertStables = resolvedStablecoinAccounts
       .filter(
         (a) =>
           (a.currency === "USDC" || a.currency === "USDT") &&
@@ -967,11 +970,7 @@ export default function DashboardApp(props: Props = {}) {
           a.id,
       )
       .map((a) => String(a.id));
-    const usdcBridge = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const usdcBridge = resolvedStablecoinAccounts
       .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
       .map((a) => String(a.id));
     const mode = state.convertMode;
@@ -1160,7 +1159,7 @@ export default function DashboardApp(props: Props = {}) {
   const moneyFlowReset = {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
-    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
+    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
@@ -1178,7 +1177,7 @@ export default function DashboardApp(props: Props = {}) {
     fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
-    depositAsset: "usdc", depositNetwork: "base",
+    depositAsset: "usdc", depositNetwork: "stellar",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
   const openModal = (name) => () => setState({
@@ -2343,12 +2342,25 @@ export default function DashboardApp(props: Props = {}) {
   };
   const setDepositNetwork = (k) => () => {
     const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset);
-    const match = pickFundableWalletForRail({
-      accounts: resolvedStablecoinAccounts,
-      networkKey: nextNetwork,
-      currency: state.depositAsset,
-      preferredAccountId: state.fundTargetAccountId,
-    });
+    const currency = (state.depositAsset || "usdc").trim().toLowerCase();
+    // USDC's home wallet is always Stellar — a bridge network (Base, etc.)
+    // is just where this particular deposit is coming from, not a separate
+    // account. Keep fundTargetAccountId pinned to the Stellar home so the
+    // auto-pick effect below doesn't fight back and reset the network.
+    const match =
+      currency === "usdc" && toPartnerNetwork(nextNetwork) !== "Stellar"
+        ? resolvedStablecoinAccounts.find(
+            (a) =>
+              isFundableStablecoinAccount(a) &&
+              a.currency.trim().toUpperCase() === "USDC" &&
+              isStellarUsdcRail({ network: a.network, currency: a.currency }),
+          )
+        : pickFundableWalletForRail({
+            accounts: resolvedStablecoinAccounts,
+            networkKey: nextNetwork,
+            currency: state.depositAsset,
+            preferredAccountId: state.fundTargetAccountId,
+          });
     setState({
       depositNetwork: nextNetwork,
       fundTargetAccountId: match?.id ?? null,
@@ -2406,7 +2418,7 @@ export default function DashboardApp(props: Props = {}) {
   const resolveUsdcBridgeId = (): string => {
     const fromState = (state.convertBridgeUsdcId || "").trim();
     if (fromState) return fromState;
-    const ready = (stablecoinAccountsQuery.data ?? []).find(
+    const ready = resolvedStablecoinAccounts.find(
       (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
     );
     return ready?.id ? String(ready.id) : "";
@@ -3503,9 +3515,11 @@ export default function DashboardApp(props: Props = {}) {
     const depositAccountsList = bootstrapReady
       ? (bootstrapQuery.data?.fiatAccounts ?? [])
       : (depositAccountsQuery.data?.accounts ?? []);
-    const stablecoinAccountsList = bootstrapReady
-      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-      : (stablecoinAccountsQuery.data ?? []);
+    const stablecoinAccountsList = visibleStablecoinAccounts(
+      bootstrapReady
+        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+        : (stablecoinAccountsQuery.data ?? []),
+    );
     const selectedFiatCurrency =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
         ? s.selectedAcctKey.slice("fiat:".length)
@@ -3537,7 +3551,8 @@ export default function DashboardApp(props: Props = {}) {
     const collectFundSurfaceOpen =
       s.modal === "fundStablecoin" ||
       s.modal === "fundChooser" ||
-      (s.modal === "acctDetail" && s.acctDetailIntent === "fund");
+      (s.modal === "acctDetail" && s.acctDetailIntent === "fund") ||
+      (s.modal === "deposit" && s.depositGroup === "crypto");
     const collectDepositInstructionsQuery = useQuery({
       queryKey: [
         "collect-deposit-instructions",
@@ -4505,10 +4520,14 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
-  const depositNetworkOptions = stablecoinNetworksForAsset(
-    DEPOSIT_STABLECOIN_NETWORKS,
-    s.depositAsset,
-  );
+  // USDC deposits bridge into the single Stellar home wallet via CCTP —
+  // the network list here is "where is this coming from", backed by real
+  // addresses from Collect deposit-instructions, not a per-network account.
+  const depositCollectNetworkOptions = usdcNetworkOptionsFromRails(fundStablecoinRails);
+  const depositNetworkOptions =
+    s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0
+      ? depositCollectNetworkOptions
+      : stablecoinNetworksForAsset(DEPOSIT_STABLECOIN_NETWORKS, s.depositAsset);
   const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset);
   const depositNetworks = depositNetworkOptions.map((n) => ({
     key: n.key,
@@ -4599,27 +4618,41 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
-  const depositNetworkLabel = pinnedOnRampDest
-    ? formatNetworkLabel(pinnedOnRampDest.asset.network)
-    : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
-      formatNetworkLabel(depositNetworkUiKey);
+  // USDC's home wallet is always Stellar, so fundTargetAccountId is pinned
+  // there even when the chosen network is a CCTP bridge (Base, etc.) — the
+  // rail match (by the *selected network*, not the pinned account) is the
+  // correct source for both the address and its label in that case.
+  const depositCollectRailMatch =
+    s.depositAsset === "usdc"
+      ? findUsdcRailForNetwork(fundStablecoinRails, depositNetworkUiKey)
+      : undefined;
+  const depositNetworkLabel = depositCollectRailMatch
+    ? depositCollectRailMatch.networkLabel
+    : pinnedOnRampDest
+      ? formatNetworkLabel(pinnedOnRampDest.asset.network)
+      : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
+        formatNetworkLabel(depositNetworkUiKey);
   const depositNetworkKey =
-    pinnedOnRampDest?.asset.network || depositNetworkUiKey;
+    depositCollectRailMatch?.network || pinnedOnRampDest?.asset.network || depositNetworkUiKey;
   const depositPickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
     networkKey: depositNetworkUiKey,
     treasuryWallet: treasuryWalletAddress,
   });
-  const depositAddress = s.fundTargetAccountId
-    ? pinnedOnRampDest?.walletAddress || "—"
-    : depositPickerDest.address || "—";
-  const depositAddressEmptyMessage = s.fundTargetAccountId
-    ? describeMissingOnRampDestination({
-        selectedAccountId: s.fundTargetAccountId,
-        summaryFailed: summaryQuery.isError,
-      })
-    : depositPickerDest.emptyMessage;
+  const depositAddress = depositCollectRailMatch
+    ? depositCollectRailMatch.walletAddress
+    : s.fundTargetAccountId
+      ? pinnedOnRampDest?.walletAddress || "—"
+      : depositPickerDest.address || "—";
+  const depositAddressEmptyMessage = depositCollectRailMatch
+    ? ""
+    : s.fundTargetAccountId
+      ? describeMissingOnRampDestination({
+          selectedAccountId: s.fundTargetAccountId,
+          summaryFailed: summaryQuery.isError,
+        })
+      : depositPickerDest.emptyMessage;
   const depositCreateAccount =
     !s.fundTargetAccountId &&
     depositPickerDest.offerCreate &&

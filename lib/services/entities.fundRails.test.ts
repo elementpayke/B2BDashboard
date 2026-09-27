@@ -3,9 +3,11 @@ import {
   buildFundStablecoinRails,
   formatNetworkLabel,
   isFundableStablecoinAccount,
+  isLegacyNonStellarUsdcAccount,
   isListedStablecoinAccount,
   isSendableStablecoinAccount,
   normalizeFinancialAccount,
+  visibleStablecoinAccounts,
   type FinancialAccount,
 } from "./entities";
 
@@ -44,8 +46,7 @@ describe("stablecoin account predicates", () => {
     expect(isFundableStablecoinAccount(acct({ walletAddress: null }))).toBe(false);
   });
 
-  it("allows USDC on Base/Polygon/Stellar and USDT on Base/Polygon", () => {
-    expect(isSendableStablecoinAccount(acct({ network: "Base" }))).toBe(true);
+  it("allows USDC on Stellar only (its single home wallet) and USDT on Base/Polygon", () => {
     expect(isSendableStablecoinAccount(acct({ network: "Stellar" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_testnet" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ network: "stellar_public" }))).toBe(true);
@@ -53,6 +54,44 @@ describe("stablecoin account predicates", () => {
     expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Polygon" }))).toBe(true);
     expect(isSendableStablecoinAccount(acct({ currency: "USDT", network: "Stellar" }))).toBe(false);
     expect(isSendableStablecoinAccount(acct({ network: "Ethereum" }))).toBe(false);
+  });
+});
+
+describe("Stellar-as-home-chain USDC consolidation", () => {
+  it("flags a USDC account as legacy only when it isn't on Stellar", () => {
+    expect(isLegacyNonStellarUsdcAccount(acct({ currency: "USDC", network: "Base" }))).toBe(true);
+    expect(isLegacyNonStellarUsdcAccount(acct({ currency: "USDC", network: "Polygon" }))).toBe(
+      true,
+    );
+    expect(isLegacyNonStellarUsdcAccount(acct({ currency: "USDC", network: "Stellar" }))).toBe(
+      false,
+    );
+  });
+
+  it("never flags other currencies — USDT on Base/Polygon is still a real account", () => {
+    expect(isLegacyNonStellarUsdcAccount(acct({ currency: "USDT", network: "Base" }))).toBe(false);
+    expect(isLegacyNonStellarUsdcAccount(acct({ currency: "USDT", network: "Polygon" }))).toBe(
+      false,
+    );
+  });
+
+  it("filters legacy non-Stellar USDC out of a listed-accounts array", () => {
+    const accounts = [
+      acct({ id: "usdc-base", currency: "USDC", network: "Base" }),
+      acct({ id: "usdc-stellar", currency: "USDC", network: "Stellar" }),
+      acct({ id: "usdt-polygon", currency: "USDT", network: "Polygon" }),
+    ];
+    expect(visibleStablecoinAccounts(accounts).map((a) => a.id)).toEqual([
+      "usdc-stellar",
+      "usdt-polygon",
+    ]);
+  });
+
+  it("never offers a legacy Base/Polygon USDC account as a Send source, even if still ready", () => {
+    expect(isSendableStablecoinAccount(acct({ currency: "USDC", network: "Base" }))).toBe(false);
+    expect(isSendableStablecoinAccount(acct({ currency: "USDC", network: "Polygon" }))).toBe(
+      false,
+    );
   });
 });
 
