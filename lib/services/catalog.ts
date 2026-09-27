@@ -145,7 +145,7 @@ const QUOTE_TYPE_TO_RAIL: Record<
     type: "bank",
     field: "Recipient account number",
     placeholder: "Account number",
-    arrival: "Arrives within minutes",
+    arrival: "Arrives within 1 business day",
   },
 };
 
