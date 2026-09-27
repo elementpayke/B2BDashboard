@@ -185,6 +185,32 @@ function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string 
   );
 }
 
+function bankInstructionsText(p: DepositModalProps): string {
+  const lines = [
+    `${p.depositBankLabel} · ${p.depositBankArrival}`,
+    p.depositResultText || "",
+    "",
+    ...(p.depositBankLines || []).map((ln: any) => `${ln.k}: ${ln.v}`),
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+function downloadBankInstructions(p: DepositModalProps) {
+  const blob = new Blob([bankInstructionsText(p)], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "mboka-bank-transfer-instructions.txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function shareBankInstructions(p: DepositModalProps) {
+  navigator.share?.({ title: "Bank transfer instructions", text: bankInstructionsText(p) }).catch(() => {});
+}
+
 export default function DepositModal(p: DepositModalProps) {
   const [addressCopied, setAddressCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -793,6 +819,24 @@ export default function DepositModal(p: DepositModalProps) {
                     <span className="ep-money-kv__v">{ln.v}</span>
                   </div>
                 ))}
+              </div>
+              <div className="ep-money-done-panel__actions">
+                <button
+                  type="button"
+                  className="ep-btn-secondary"
+                  onClick={() => downloadBankInstructions(p)}
+                >
+                  Download instructions
+                </button>
+                {typeof navigator !== "undefined" && typeof navigator.share === "function" ? (
+                  <button
+                    type="button"
+                    className="ep-btn-secondary"
+                    onClick={() => shareBankInstructions(p)}
+                  >
+                    Share
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
