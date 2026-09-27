@@ -115,3 +115,30 @@ export default function NetworkMark({
     </svg>
   );
 }
+
+/**
+ * Network icon for list rows: a brand mark when one exists (Base/Polygon/
+ * Stellar), otherwise a lettered avatar so Ethereum/Optimism/Arbitrum still
+ * get a consistent row treatment instead of a blank slot.
+ */
+export function NetworkListIcon({
+  network,
+  label,
+  size = 32,
+}: {
+  network: string | null | undefined;
+  label: string;
+  size?: number;
+}) {
+  const mark = <NetworkMark network={network} size={size} title={null} />;
+  if (partnerNetworkForMark(network)) return mark;
+  return (
+    <span
+      className="ep-home__balance-row-avatar"
+      aria-hidden
+      style={{ width: size, height: size }}
+    >
+      {label.slice(0, 2).toUpperCase()}
+    </span>
+  );
+}

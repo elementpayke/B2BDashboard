@@ -2,6 +2,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import MbokaMark from "@/components/brand/MbokaMark";
 import ChoicePicker from "@/components/ui/ChoicePicker";
+import NetworkPickList from "@/components/brand/NetworkPickList";
 import {
   formatSavedRecipientSubtitle,
   type SavedRecipient,
@@ -519,24 +520,10 @@ export default function SendModal(p: SendModalProps) {
                     <span className="ep-money-label" id="send-chain-label">
                       Confirm the chain you&apos;re sending to
                     </span>
-                    <div
-                      className="ep-money-tabs ep-money-tabs--wrap"
-                      role="group"
-                      aria-labelledby="send-chain-label"
-                    >
-                      {(p.sendChains || []).map((ch: any, i: number) => (
-                        <button
-                          key={ch.key || i}
-                          type="button"
-                          onClick={ch.select}
-                          className="ep-money-network"
-                          aria-pressed={ch.selected}
-                          style={{ borderColor: ch.border, background: ch.bg, color: ch.color }}
-                        >
-                          {ch.label}
-                        </button>
-                      ))}
-                    </div>
+                    <NetworkPickList
+                      items={p.sendChains || []}
+                      ariaLabel="Choose network"
+                    />
                     {(p.sendChains || []).length === 0 ? (
                       <div className="ep-money-banner ep-money-banner--danger" role="status">
                         No ready {p.sendAssetCode} wallet to send from. Open a {p.sendAssetCode}{" "}

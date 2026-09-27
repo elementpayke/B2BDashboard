@@ -1,6 +1,7 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
 import ChoicePicker, { type ChoicePickerOption } from "@/components/ui/ChoicePicker";
+import NetworkPickList from "@/components/brand/NetworkPickList";
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -483,28 +484,10 @@ export default function DepositModal(p: DepositModalProps) {
                     <span className="ep-money-label" id="deposit-network-label">
                       Network
                     </span>
-                    <div
-                      className="ep-money-tabs ep-money-tabs--wrap"
-                      role="group"
-                      aria-labelledby="deposit-network-label"
-                    >
-                      {(p.depositNetworks || []).map((net: any, i: number) => (
-                        <button
-                          key={net.key || i}
-                          type="button"
-                          onClick={net.select}
-                          className="ep-money-network"
-                          aria-pressed={Boolean(net.selected)}
-                          style={{
-                            borderColor: net.border,
-                            background: net.bg,
-                            color: net.color,
-                          }}
-                        >
-                          {net.label}
-                        </button>
-                      ))}
-                    </div>
+                    <NetworkPickList
+                      items={p.depositNetworks || []}
+                      ariaLabel="Choose network"
+                    />
                   </div>
                 </>
               ) : null}

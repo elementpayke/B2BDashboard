@@ -86,9 +86,9 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
 describe("SendModal stablecoin chain picker", () => {
   it("shows Stellar next to Base and Polygon and warns about USDC on Stellar", () => {
     render(<SendModal {...cryptoStep1()} />);
-    expect(screen.getByRole("button", { name: "Base" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Polygon" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stellar" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("option", { name: /^Base/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Polygon/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Stellar/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(/accepts USDC on Stellar/i)).toBeInTheDocument();
   });
 

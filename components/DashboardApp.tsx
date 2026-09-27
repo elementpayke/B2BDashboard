@@ -4449,9 +4449,6 @@ export default function DashboardApp(props: Props = {}) {
     label: n.label,
     select: setSendChain(n.key),
     selected: sendSelection.chain === n.key,
-    bg: sendSelection.chain === n.key ? "var(--indigo-tint)" : "var(--surface2)",
-    border: sendSelection.chain === n.key ? "var(--indigo)" : "transparent",
-    color: sendSelection.chain === n.key ? "var(--indigo-text)" : "var(--ink)",
   }));
   const sendAssetCode = sendSelection.asset.toUpperCase();
   const sendChainLabel = sendSelection.chainLabel;
@@ -4534,9 +4531,6 @@ export default function DashboardApp(props: Props = {}) {
     label: n.label,
     select: setDepositNetwork(n.key),
     selected: depositNetworkUiKey === n.key,
-    bg: depositNetworkUiKey === n.key ? "var(--indigo-tint)" : "var(--surface2)",
-    border: depositNetworkUiKey === n.key ? "var(--indigo)" : "transparent",
-    color: depositNetworkUiKey === n.key ? "var(--indigo-text)" : "var(--ink)",
   }));
   const treasuryWalletAddress = resolveTreasuryWalletAddress({
     summaryWallet:
