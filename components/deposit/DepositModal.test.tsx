@@ -438,3 +438,65 @@ describe("DepositModal stablecoin address step", () => {
     expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
 });
+
+describe("DepositModal bank transfer success screen", () => {
+  const doneProps = {
+    ...baseProps,
+    depositNotDone: false,
+    depositDone: true,
+    depositIsMobileRail: false,
+    depositIsBankRail: true,
+    depositResultText: "Order #122 · processing",
+    depositBankLabel: "Bank Transfer",
+    depositBankArrival: "Arrives within 1 business day",
+    depositBankLines: [
+      { k: "Amount", v: "20000 KES" },
+      { k: "Account number", v: "2045080458" },
+      { k: "Bank", v: "M-pesa" },
+      { k: "Account name", v: "YELLOW PAY LIMITED" },
+      { k: "Reference", v: "EPA1577947" },
+    ],
+  };
+
+  it("shows the amount the customer is expected to send alongside the bank details", () => {
+    render(<DepositModal {...doneProps} />);
+
+    expect(screen.getByText("Amount")).toBeInTheDocument();
+    expect(screen.getByText("20000 KES")).toBeInTheDocument();
+    expect(screen.getByText("2045080458")).toBeInTheDocument();
+  });
+
+  it("lets the customer download the instructions as a text file", () => {
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+
+    render(<DepositModal {...doneProps} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Download instructions" }));
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    const [blob] = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(blob).toBeInstanceOf(Blob);
+
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it("offers a Share button only when the Web Share API is available", () => {
+    const { rerender } = render(<DepositModal {...doneProps} />);
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+
+    (navigator as any).share = vi.fn().mockResolvedValue(undefined);
+    rerender(<DepositModal {...doneProps} />);
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(navigator.share).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Bank transfer instructions" }),
+    );
+
+    delete (navigator as any).share;
+  });
+});

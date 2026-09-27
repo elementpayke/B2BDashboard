@@ -3351,7 +3351,7 @@ export default function DashboardApp(props: Props = {}) {
       options: [] as string[],
       field: "Recipient account number",
       placeholder: "Account number",
-      arrival: "Arrives within minutes",
+      arrival: "Arrives within 1 business day",
     };
     const sendCatalogProviders = offRampProvidersForRail(
       sendCatalogQuery.data,
@@ -3380,7 +3380,7 @@ export default function DashboardApp(props: Props = {}) {
       options: [] as string[],
       field: "Recipient account number",
       placeholder: "Account number",
-      arrival: "Arrives within minutes",
+      arrival: "Arrives within 1 business day",
     };
     const depositCatalogProviders = onRampProvidersForRail(
       sendCatalogQuery.data,
@@ -4498,7 +4498,10 @@ export default function DashboardApp(props: Props = {}) {
     : [];
   const depositBankLines =
     s.depositAccept?.payment_instructions?.type === "bank"
-      ? depositPaymentInstructionRows
+      ? [
+          ...(s.depositAmount ? [{ k: "Amount", v: `${s.depositAmount} ${depositCountry.code}` }] : []),
+          ...depositPaymentInstructionRows,
+        ]
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
@@ -4657,7 +4660,9 @@ export default function DashboardApp(props: Props = {}) {
   });
   const depositNotDone = !s.depositDone;
   const depositDone = s.depositDone;
-  const depositPayerLabel = depositIsMobileRail ? "Your mobile number" : "Your bank account number";
+  const depositPayerLabel = depositIsMobileRail
+    ? "Your mobile number"
+    : "Bank account you'll send funds from";
   const depositPayerPlaceholder = depositIsMobileRail ? "712 345 678" : depositRail.placeholder;
   const depositAmountLabel = `Amount (${depositCountry.code})`;
   const depositQuote = s.depositQuote;

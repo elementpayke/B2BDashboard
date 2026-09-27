@@ -7905,6 +7905,17 @@ select.ep-wallets-create__control {
   flex-shrink: 0;
 }
 
+.ep-money-done-panel__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ep-money-done-panel__actions > .ep-btn-secondary {
+  width: auto;
+  flex: 1;
+}
+
 .ep-modal .ep-money-flow .ep-btn-primary,
 .ep-modal .ep-money-flow .ep-btn-secondary,
 .ep-flow .ep-money-flow .ep-btn-primary,
