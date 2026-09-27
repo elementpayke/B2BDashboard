@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { authMePlaceholderFromLogin, type LoginResult } from "./auth";
+import { authMePlaceholderFromLogin, type LoginSuccess } from "./auth";
 
 describe("authMePlaceholderFromLogin", () => {
-  const base: LoginResult = {
+  const base: LoginSuccess = {
     token_type: "bearer",
     kyb_status: "approved",
     role: "admin",

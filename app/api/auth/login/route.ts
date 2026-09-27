@@ -1,19 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callMboka } from "@/lib/server/mbokaCall";
-import { setSessionCookies } from "@/lib/server/cookies";
+import {
+  setSessionCookies,
+  setMfaChallengeCookie,
+  setMfaSetupCookie,
+} from "@/lib/server/cookies";
 import { rejectCrossOrigin } from "@/lib/server/sameOrigin";
 
+type MfaState = { status: "required" | "setup_required" } | null;
+
 type LoginBusinessData = {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  kyb_status: string | null;
-  role: string | null;
-  user_id: number;
-  business_id: number | null;
-  wallet_address: string | null;
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  kyb_status?: string | null;
+  role?: string | null;
+  user_id?: number;
+  business_id?: number | null;
+  wallet_address?: string | null;
   business_name?: string | null;
   permissions?: string[];
+  // Present only on the two "deferred login" shapes below — never alongside
+  // access_token/refresh_token.
+  mfa_challenge_token?: string;
+  mfa_setup_token?: string;
+  mfa?: MfaState;
 };
 
 type Envelope = {
@@ -46,7 +57,45 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(json, { status: upstream.status });
   }
 
-  const { access_token, refresh_token, ...rest } = json.data;
+  const data = json.data;
+
+  // Challenge required: account already has 2FA enrolled. No access/refresh
+  // tokens exist yet — only a short-lived challenge token, which must never
+  // reach the response body (same rule as the real tokens below).
+  if (data.mfa?.status === "required" && data.mfa_challenge_token) {
+    const res = NextResponse.json(
+      { status: json.status, message: json.message, data: { mfa: { status: "required" } } },
+      { status: upstream.status },
+    );
+    setMfaChallengeCookie(res, data.mfa_challenge_token);
+    return res;
+  }
+
+  // Setup required: 2FA is mandatory per the cutover policy but this account
+  // hasn't enrolled yet. Same rule — the setup token is cookie-only.
+  if (data.mfa?.status === "setup_required" && data.mfa_setup_token) {
+    const res = NextResponse.json(
+      {
+        status: json.status,
+        message: json.message,
+        data: { mfa: { status: "setup_required" } },
+      },
+      { status: upstream.status },
+    );
+    setMfaSetupCookie(res, data.mfa_setup_token);
+    return res;
+  }
+
+  // Normal login. Strip every token-shaped field before it can reach the
+  // response body — access/refresh tokens live in cookies only.
+  const { access_token, refresh_token, mfa_challenge_token, mfa_setup_token, mfa, ...rest } = data;
+
+  if (!access_token || !refresh_token) {
+    return NextResponse.json(
+      { status: "error", message: "Malformed login response from upstream", data: null },
+      { status: 502 },
+    );
+  }
 
   const res = NextResponse.json(
     { status: json.status, message: json.message, data: rest },

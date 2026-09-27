@@ -3,7 +3,8 @@
 import { useId, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { authApi, authMePlaceholderFromLogin } from "@/lib/services/auth";
+import { authApi, authMePlaceholderFromLogin, loginNeedsMfa } from "@/lib/services/auth";
+import { mfaApi } from "@/lib/services/mfa";
 import { ApiRequestError } from "@/lib/apiClient";
 import { stashVerifyEmail } from "@/lib/auth/verifyHandoff";
 import {
@@ -114,6 +115,14 @@ function AuthChrome() {
   );
 }
 
+function mfaErrorMessage(err: unknown): string {
+  if (err instanceof ApiRequestError) return err.message;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    return "The request took too long. Please try again.";
+  }
+  return "Couldn't verify that code. Please try again.";
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -125,19 +134,41 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Set once login responds with `mfa.status === "required"` — the account
+  // already has 2FA enrolled and a short-lived challenge cookie is now set.
+  const [mfaChallenge, setMfaChallenge] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
+  function proceedToNext() {
+    const next = safeNextPath(searchParams.get("next"));
+    router.push(next);
+    router.refresh();
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       const login = await authApi.login(email, password);
+      if (loginNeedsMfa(login)) {
+        if (login.mfa.status === "setup_required") {
+          // No session yet — the setup cookie is the only credential until
+          // enrollment completes. Nothing to seed into auth-me.
+          router.push("/mfa/setup");
+          return;
+        }
+        setMfaChallenge(true);
+        return;
+      }
       // Seed shell identity/KYB from login so Home doesn't wait on /me alone,
       // then invalidate so the real `/me` replaces the placeholder promptly.
       queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
       void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
-      const next = safeNextPath(searchParams.get("next"));
-      router.push(next);
-      router.refresh();
+      proceedToNext();
     } catch (err) {
       setError(loginErrorMessage(err));
     } finally {
@@ -145,7 +176,92 @@ export default function LoginForm() {
     }
   }
 
+  async function onSubmitMfaCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mfaCode.trim()) return;
+    setMfaError(null);
+    setMfaSubmitting(true);
+    try {
+      const login = await mfaApi.verify(mfaCode.trim());
+      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      proceedToNext();
+    } catch (err) {
+      setMfaError(mfaErrorMessage(err));
+    } finally {
+      setMfaSubmitting(false);
+    }
+  }
+
   const inputStyle = error ? authInputErrorStyle : authInputStyle;
+
+  if (mfaChallenge) {
+    return (
+      <div style={authPageStyle}>
+        <form style={authCardStyle} onSubmit={onSubmitMfaCode} aria-busy={mfaSubmitting}>
+          <header>
+            <AuthBrand />
+            <h1 style={authTitleStyle}>Enter your verification code</h1>
+            <p style={authSubtitleStyle}>
+              {useBackupCode
+                ? "Enter one of your saved backup codes."
+                : "Enter the 6-digit code from your authenticator app."}
+            </p>
+          </header>
+
+          {mfaError ? (
+            <div role="alert" style={authErrorStyle}>
+              {mfaError}
+            </div>
+          ) : null}
+
+          <div style={authFieldRowStyle}>
+            <label htmlFor="mfa-code" style={authLabelStyle}>
+              {useBackupCode ? "Backup code" : "6-digit code"}
+            </label>
+            <input
+              id="mfa-code"
+              name="mfa-code"
+              inputMode={useBackupCode ? "text" : "numeric"}
+              autoComplete="one-time-code"
+              autoFocus
+              value={mfaCode}
+              onChange={(e) => {
+                setMfaCode(useBackupCode ? e.target.value : e.target.value.replace(/[^0-9]/g, ""));
+                if (mfaError) setMfaError(null);
+              }}
+              style={mfaError ? authInputErrorStyle : authInputStyle}
+              placeholder={useBackupCode ? "xxxx-xxxx" : "000000"}
+              maxLength={useBackupCode ? 32 : 6}
+              disabled={mfaSubmitting}
+              aria-invalid={mfaError ? true : undefined}
+            />
+          </div>
+
+          <button
+            type="submit"
+            style={authButtonStateStyle(mfaSubmitting || !mfaCode.trim())}
+            disabled={mfaSubmitting || !mfaCode.trim()}
+          >
+            {mfaSubmitting ? "Verifying…" : "Verify and continue"}
+          </button>
+
+          <button
+            type="button"
+            style={{ ...authTextButtonStyle, margin: "0 auto" }}
+            onClick={() => {
+              setUseBackupCode((v) => !v);
+              setMfaCode("");
+              setMfaError(null);
+            }}
+            disabled={mfaSubmitting}
+          >
+            {useBackupCode ? "Use my authenticator app instead" : "Use a backup code instead"}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div style={authPageStyle}>

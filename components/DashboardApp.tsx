@@ -319,6 +319,9 @@ import KybWizardModal from "@/components/verification/KybWizardModal";
 import KybGateBanner from "@/components/verification/KybGateBanner";
 import { useKybWizard } from "@/lib/hooks/useKybWizard";
 import { canOpenKybWizard, describeKybStatus, isKybApproved, mergeKybSummaryCache } from "@/lib/services/kyb";
+import { mfaApi } from "@/lib/services/mfa";
+import MfaReminderBanner from "@/components/auth/MfaReminderBanner";
+import TotpEnrollment from "@/components/auth/TotpEnrollment";
 
 type Props = {
   boostDarkContrast?: boolean;
@@ -395,6 +398,7 @@ export default function DashboardApp(props: Props = {}) {
     inviteBusy: false, inviteError: "", teamActionError: "",
     teamConfirm: null as null | { kind: "revoke" | "remove"; id: number; label: string },
     teamConfirmBusy: false,
+    mfaDisablePassword: "", mfaDisableCode: "", mfaDisableBusy: false, mfaDisableError: "",
     newCardLabel: "",
     newCardFirstName: "",
     newCardLastName: "",
@@ -511,6 +515,9 @@ export default function DashboardApp(props: Props = {}) {
   const meKybStatus =
     (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? null;
   const meKybApproved = isKybApproved(meKybStatus);
+  const mfaEnabled = meQuery.data?.mfa?.enabled ?? false;
+  const mfaShouldRemind = meQuery.data?.mfa?.should_remind ?? false;
+  const mfaCutoverAt = meQuery.data?.mfa?.cutover_at ?? null;
   // Gate off-screen fetches so Home/Accounts win connection slots after login.
   const screen = state.screen;
   const needsActivityFeed =
@@ -1711,9 +1718,14 @@ export default function DashboardApp(props: Props = {}) {
       };
     });
   const closeModal = () => {
+    // Escape reaches every open modal through this shared function — block
+    // it here too while a disable-2FA request is in flight (see
+    // closeMfaDisable for why).
+    if (state.modal === "mfaDisable" && state.mfaDisableBusy) return;
     // Closing dismisses any reveal still in flight, so its response cannot
     // repopulate cardSecrets behind a shut modal.
     revealGuard.invalidate(MODAL_REVEAL_KEY);
+    setBulkModalExpanded(false);
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
       return;
@@ -3048,6 +3060,55 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
 
+  // Voluntary 2FA enrollment (from Team/security) and disable — mandatory
+  // post-login setup lives on its own page (app/mfa/setup) since there's no
+  // session/dashboard shell to render into at that point.
+  const openMfaSetup = () => setState({ modal: "mfaSetup" });
+  const onMfaSetupComplete = () => {
+    setState({ modal: null });
+    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+  };
+  const dismissMfaReminder = async () => {
+    // Optimistically hide now; `/me` is the source of truth on next load.
+    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) =>
+      prev?.mfa ? { ...prev, mfa: { ...prev.mfa, should_remind: false } } : prev,
+    );
+    try {
+      await mfaApi.reminderDismissed();
+    } catch {
+      // Best-effort — worst case the reminder reappears on the next /me fetch.
+    }
+  };
+  const openMfaDisable = () =>
+    setState({ modal: "mfaDisable", mfaDisablePassword: "", mfaDisableCode: "", mfaDisableError: "" });
+  const closeMfaDisable = () => {
+    // Ignore backdrop/Escape while a disable request is in flight — closing
+    // and reopening the dialog before it resolves would let the stale
+    // response write into (or close) the new dialog.
+    if (state.mfaDisableBusy) return;
+    setState({ modal: null, mfaDisableBusy: false, mfaDisableError: "" });
+  };
+  const submitMfaDisable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Don't trim the password itself — a leading/trailing space can be part
+    // of the real password, and trimming it here would send a different
+    // string than the one the account was created with.
+    const password = String(state.mfaDisablePassword || "");
+    const code = String(state.mfaDisableCode || "").trim();
+    if (!password.trim() || !code) return;
+    setState({ mfaDisableBusy: true, mfaDisableError: "" });
+    try {
+      await mfaApi.disable(password, code);
+      await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      setState({ modal: null, mfaDisableBusy: false, mfaDisablePassword: "", mfaDisableCode: "" });
+    } catch (err) {
+      setState({
+        mfaDisableBusy: false,
+        mfaDisableError: err instanceof ApiRequestError ? err.message : "Couldn't disable 2FA.",
+      });
+    }
+  };
+
   const openCreateApiKeyModal = () => setState({ modal: "apiKey", apiKeyName: "", apiKeyEnvironment: "sandbox", apiKeyError: "" });
   const setApiKeyName = (e) => setState({ apiKeyName: e.target.value });
   const setApiKeyEnvironment = (env: string) => () => setState({ apiKeyEnvironment: env });
@@ -4237,6 +4298,7 @@ export default function DashboardApp(props: Props = {}) {
   const isReceiveFlow = s.modal === "receive";
   const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
+  const [bulkModalExpanded, setBulkModalExpanded] = useState(false);
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -4249,6 +4311,8 @@ export default function DashboardApp(props: Props = {}) {
   const isModalNewCard = s.modal === "newCard";
   const isModalInvoice = s.modal === "invoice";
   const isModalKyb = s.modal === "kyb";
+  const isModalMfaSetup = s.modal === "mfaSetup";
+  const isModalMfaDisable = s.modal === "mfaDisable";
   const isModalFundCard = s.modal === "fundCard";
   const sendIsCountry = s.sendGroup === "country";
   const sendIsCrypto = s.sendGroup === "crypto";
@@ -4984,6 +5048,10 @@ export default function DashboardApp(props: Props = {}) {
 <KybGateBanner verificationStatus={kybStatus} reviewerNotes={kybReviewerNotes} showAction={canOpenKybWizard(kybStatus)} actionLabel={kybActionLabel} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
+{mfaShouldRemind ? (
+<MfaReminderBanner cutoverAt={mfaCutoverAt} onSetUp={openMfaSetup} onDismiss={dismissMfaReminder} />
+) : null}
+
 <div className="ep-home__qa-row" aria-label="Quick actions">
 {(quickActionTiles || []).map((qa: any, __i1: number) => (
 <button key={__i1} type="button" onClick={qa.open} className="ep-home__qa">
@@ -5335,6 +5403,38 @@ export default function DashboardApp(props: Props = {}) {
 ) : null}
 </section>
 
+<section className="ep-panel" style={{ marginTop: "20px", padding: "18px 20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+<div>
+<h3 style={{ margin: 0, fontFamily: "'Space Grotesk',sans-serif", fontSize: "15px", fontWeight: 800, color: "var(--ink)" }}>
+Two-factor authentication
+</h3>
+<p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)", lineHeight: 1.5 }}>
+{mfaEnabled
+  ? "Your account requires a code from your authenticator app when you sign in."
+  : "Add an extra layer of protection to your own sign-in."}
+</p>
+</div>
+
+<span role="status" aria-live="polite">
+<StatusBadge
+  label={mfaEnabled ? "Enabled" : "Disabled"}
+  color={mfaEnabled ? "#1B7A3D" : "var(--muted)"}
+  soft={mfaEnabled ? "#E8F7EE" : "var(--surface2)"}
+/>
+</span>
+</div>
+{mfaEnabled ? (
+<button type="button" onClick={openMfaDisable} className="ep-team__remove" style={{ alignSelf: "flex-start" }}>
+Disable 2FA
+</button>
+) : (
+<button type="button" onClick={openMfaSetup} className="ep-team__cta" style={{ alignSelf: "flex-start" }}>
+Set up 2FA
+</button>
+)}
+</section>
+
 {(inviteOpen) ? (<>
 <div className="ep-team__invite-overlay" onClick={closeInvite} role="presentation">
 <div className="ep-team__invite" onClick={stopClick} role="dialog" aria-modal="true" aria-labelledby="ep-team-invite-title">
@@ -5514,7 +5614,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div ref={modalRef} onClick={stopClick} className="ep-modal" role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+<div ref={modalRef} onClick={stopClick} className={`ep-modal${isModalBulk && bulkModalExpanded ? " ep-modal--expanded" : ""}`} role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
 
 <div className="ep-modal__grabber" aria-hidden="true">
 <span className="ep-modal__grabber-bar" />
@@ -5522,7 +5622,20 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 <div className="ep-modal__header">
 <h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
+<div className="ep-modal__header-actions">
+{isModalBulk ? (
+<button
+  type="button"
+  onClick={() => setBulkModalExpanded((expanded) => !expanded)}
+  className="ep-modal__expand"
+  aria-label={bulkModalExpanded ? "Collapse" : "Expand"}
+  title={bulkModalExpanded ? "Collapse" : "Expand"}
+>
+  {bulkModalExpanded ? "⤡" : "⤢"}
+</button>
+) : null}
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
+</div>
 </div>
 
 {(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
@@ -6168,6 +6281,51 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   backStep={kybWizard.backStep}
   closeModal={closeModal}
 />
+</>) : null}
+
+{(isModalMfaSetup) ? (<>
+<div className="ep-team__invite-overlay" onClick={closeModal} role="presentation">
+<div onClick={stopClick}>
+<TotpEnrollment onComplete={onMfaSetupComplete} onCancel={closeModal} />
+</div>
+</div>
+</>) : null}
+
+{(isModalMfaDisable) ? (<>
+<div className="ep-team__invite-overlay" onClick={closeMfaDisable} role="presentation">
+<form onSubmit={submitMfaDisable} onClick={stopClick} className="ep-team__invite" role="dialog" aria-modal="true" aria-labelledby="ep-mfa-disable-title">
+<div className="ep-team__invite-head">
+<h3 id="ep-mfa-disable-title" className="ep-team__invite-title">Disable two-factor authentication</h3>
+<button type="button" onClick={closeMfaDisable} className="ep-team__invite-close" aria-label="Cancel" disabled={s.mfaDisableBusy}>✕</button>
+</div>
+<p className="ep-team__invite-hint">Confirm your password and a current code to turn 2FA off.</p>
+<label className="ep-team__field">
+<span className="ep-team__field-label">Password</span>
+<input
+  value={s.mfaDisablePassword}
+  onChange={(e) => setState({ mfaDisablePassword: e.target.value, mfaDisableError: "" })}
+  type="password"
+  autoComplete="current-password"
+  className="ep-team__input"
+  disabled={s.mfaDisableBusy}
+/>
+</label>
+<label className="ep-team__field">
+<span className="ep-team__field-label">6-digit code or backup code</span>
+<input
+  value={s.mfaDisableCode}
+  onChange={(e) => setState({ mfaDisableCode: e.target.value, mfaDisableError: "" })}
+  className="ep-team__input"
+  autoComplete="one-time-code"
+  disabled={s.mfaDisableBusy}
+/>
+</label>
+{s.mfaDisableError ? <p role="alert" style={{ color: "var(--danger, #b42318)", fontSize: "13px" }}>{s.mfaDisableError}</p> : null}
+<button type="submit" className="ep-team__invite-submit" disabled={s.mfaDisableBusy || !s.mfaDisablePassword.trim() || !s.mfaDisableCode.trim()}>
+{s.mfaDisableBusy ? "Disabling…" : "Disable 2FA"}
+</button>
+</form>
+</div>
 </>) : null}
 
 {(isModalCreateAccount) ? (<>

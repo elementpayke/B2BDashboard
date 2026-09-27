@@ -97,6 +97,35 @@ export function parseBulkStellarPayoutCsv(csv: string): BulkStellarPayoutRow[] {
   });
 }
 
+// Same shape as parseBulkStellarPayoutCsv, but never throws on a single bad
+// row (missing destination, unparseable/too-small amount) — it returns every
+// row, valid or not, so the editable-rows table can show and let the user
+// fix exactly what's wrong instead of rejecting the whole paste/upload.
+// Only throws when there's nothing at all to edit (empty input, or a header
+// with no data rows under it). Row-level validation happens at preview time.
+export function parseBulkStellarPayoutCsvLoose(csv: string): BulkStellarPayoutRow[] {
+  const lines = csv
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    throw new Error("Paste or upload at least one payout row.");
+  }
+
+  const rows = lines.map(splitCsvLine);
+  const dataRows = isHeaderRow(rows[0]) ? rows.slice(1) : rows;
+  if (dataRows.length === 0) {
+    throw new Error("Add at least one payout after the CSV header.");
+  }
+
+  return dataRows.map((cells) => ({
+    destination: (cells[0] || "").trim(),
+    amount: (cells[1] || "").trim(),
+    memo: (cells[2] || "").trim() || null,
+    reference: (cells[3] || "").trim() || null,
+  }));
+}
+
 function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -139,20 +168,23 @@ export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
 }
 
 export const stellarDisbursementsApi = {
-  async preview(source_account_id: string, items: BulkStellarPayoutRow[]) {
+  // entity_id/account_id (not just the account) are required so the backend
+  // can verify ownership via owned_stellar_account_context — same body shape
+  // as the Stellar swap quote/confirm pair (/v1/conversions/stellar/*).
+  async preview(entity_id: string, account_id: string, items: BulkStellarPayoutRow[]) {
     const raw = await apiEnvelope<unknown>(
       "POST",
       "/v1/disbursements/stellar/preview",
-      { source_account_id, items },
+      { entity_id, account_id, items },
     );
     return normalizeBulkPreview(raw);
   },
 
-  async confirm(source_account_id: string, preview_token: string) {
+  async confirm(entity_id: string, account_id: string, preview_token: string) {
     const raw = await apiEnvelope<unknown>(
       "POST",
       "/v1/disbursements/stellar/confirm",
-      { source_account_id, preview_token },
+      { entity_id, account_id, preview_token },
     );
     return normalizeBulkBatch(raw);
   },

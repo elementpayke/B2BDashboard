@@ -164,6 +164,27 @@ function upstreamUnavailableResponse(err: unknown): NextResponse {
   );
 }
 
+/**
+ * Proxies a request using an explicit bearer token rather than the normal
+ * session cookies — for BFF routes authenticated by a purpose-scoped token
+ * (e.g. the MFA setup token) that isn't part of the access/refresh pair and
+ * has no refresh-on-401 story of its own.
+ */
+export async function proxyWithBearerToken(
+  request: NextRequest,
+  backendPathWithQuery: string,
+  token: string,
+): Promise<NextResponse> {
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const bodyBuffer = hasBody ? await request.arrayBuffer() : null;
+  try {
+    const upstream = await doFetch(request, backendPathWithQuery, token, bodyBuffer);
+    return toNextResponse(upstream, null);
+  } catch (err) {
+    return upstreamUnavailableResponse(err);
+  }
+}
+
 export async function proxyRequest(
   request: NextRequest,
   backendPathWithQuery: string,
