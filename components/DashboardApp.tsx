@@ -762,6 +762,9 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     enabled: bootstrapFailed,
   });
+  const depositEligible = bootstrapReady
+    ? Boolean(bootstrapQuery.data?.eligibility.eligible)
+    : depositEligibilityQuery.data?.eligible === true;
   const needsFullFiatCoords =
     state.selectedAcctKind === "fiat" &&
     (state.modal === "acctDetail" ||
@@ -3131,7 +3134,7 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const submitCreateAccount = async () => {
-    if (depositEligibilityQuery.data?.eligible !== true) {
+    if (!depositEligible) {
       return setState({
         createAccountError: "Complete business verification before issuing currency accounts.",
       });
@@ -3917,9 +3920,6 @@ export default function DashboardApp(props: Props = {}) {
   });
   const accounts = [...fiatAccountCards, ...stablecoinAccountCards];
   const accountsCount = accounts.length;
-  const depositEligible = bootstrapReady
-    ? Boolean(bootstrapQuery.data?.eligibility.eligible)
-    : depositEligibilityQuery.data?.eligible === true;
   const depositEligibilityErrorMessage = bootstrapReady
     ? undefined
     : depositEligibilityQuery.isError
