@@ -102,6 +102,12 @@ export type SendModalProps = {
   /** When mobile money — rewrite local 07… to +254… (E.164) on blur. */
   normalizeSendRecipientPhone?: (e?: React.FocusEvent<HTMLInputElement>) => void;
   sendRecipientPlaceholder: string;
+  /** Optional Stellar MEMO_TEXT — some exchanges/pooled wallets need one to
+   * route the deposit to the right account. */
+  sendMemo: string;
+  setSendMemo: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** True only for Stellar-destination crypto sends — memo is ignored on EVM rails. */
+  sendMemoApplies: boolean;
   sendAmount: string;
   setSendAmount: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendQuoteError: string;
@@ -676,6 +682,29 @@ export default function SendModal(p: SendModalProps) {
                   ) : null}
                 </div>
 
+                {p.sendMemoApplies ? (
+                  <div className="ep-money-field">
+                    <label className="ep-money-label" htmlFor="send-memo">
+                      Memo (optional)
+                    </label>
+                    <input
+                      id="send-memo"
+                      className="ep-money-input"
+                      value={p.sendMemo}
+                      onChange={p.setSendMemo}
+                      placeholder="e.g. 123456 — only if your destination asks for one"
+                      autoComplete="off"
+                      spellCheck={false}
+                      maxLength={28}
+                    />
+                    <span className="ep-money-hint ep-money-hint--inline">
+                      Exchanges and other pooled wallets (Binance, Kraken, etc.) often need a memo or
+                      tag to credit the right account — sending without it can delay or lose funds.
+                      Check the destination for one before leaving this blank.
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="ep-money-field">
                   <div className="ep-money-label-row">
                     <label className="ep-money-label" htmlFor="send-amount">
@@ -813,6 +842,14 @@ export default function SendModal(p: SendModalProps) {
                   <div className="ep-money-review__row">
                     <span className="ep-money-review__k">Network</span>
                     <span className="ep-money-review__v">{p.sendChainLabel}</span>
+                  </div>
+                ) : null}
+                {p.sendMemoApplies && p.sendMemo.trim() ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Memo</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
+                      {p.sendMemo.trim()}
+                    </span>
                   </div>
                 ) : null}
                 <div className="ep-money-review__row ep-money-review__row--emphasis">

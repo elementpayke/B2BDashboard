@@ -15,6 +15,7 @@ import {
   validateSendAddress,
   validateSendAmount,
   validateStellarAddress,
+  validateStellarMemo,
 } from "./accountSends";
 import {
   accountForNetwork,
@@ -91,6 +92,48 @@ describe("account send validation", () => {
     ).toBe("stellar_testnet");
     expect(sendCryptoRecipientPlaceholder("stellar")).toMatch(/Stellar/);
     expect(sendCryptoRecipientPlaceholder("base")).toMatch(/EVM/);
+  });
+
+  it("carries an optional memo through to a Stellar preview payload", () => {
+    const stellar = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
+    expect(
+      buildSendPreviewPayload({
+        toAddress: stellar,
+        amount: "5",
+        networkKey: "stellar",
+        memo: "123456",
+      }),
+    ).toEqual({
+      to_address: stellar,
+      amount: "5",
+      network: "Stellar",
+      memo: "123456",
+    });
+  });
+
+  it("drops the memo on an EVM destination instead of sending it to a chain that ignores it", () => {
+    expect(
+      buildSendPreviewPayload({
+        toAddress: "0x1111111111111111111111111111111111111111",
+        amount: "2.5",
+        networkKey: "base",
+        memo: "123456",
+      }),
+    ).toEqual({
+      to_address: "0x1111111111111111111111111111111111111111",
+      amount: "2.5",
+      network: "Base",
+    });
+  });
+
+  it("validates the Stellar memo by UTF-8 byte length, not character count", () => {
+    expect(validateStellarMemo("")).toBe("");
+    expect(validateStellarMemo("   ")).toBe("");
+    expect(validateStellarMemo("123456")).toBe("123456");
+    expect(validateStellarMemo("a".repeat(28))).toBe("a".repeat(28));
+    expect(() => validateStellarMemo("a".repeat(29))).toThrow(/28 bytes/);
+    // 15 multi-byte (3-byte UTF-8) characters = 45 bytes, well under 28 chars.
+    expect(() => validateStellarMemo("あ".repeat(15))).toThrow(/28 bytes/);
   });
 
   it("rejects short or checksum-invalid Stellar keys", () => {

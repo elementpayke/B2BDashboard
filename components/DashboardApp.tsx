@@ -353,7 +353,7 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
@@ -1157,7 +1157,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
@@ -1518,6 +1518,7 @@ export default function DashboardApp(props: Props = {}) {
           networkKey: state.sendChain,
           accountNetwork: account.network,
           currency: account.currency || assetCode,
+          memo: state.sendMemo,
         });
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({
@@ -1561,6 +1562,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote: null,
           sendRecipient: "",
           sendRecipientName: "",
+          sendMemo: "",
           sendAmount: "",
         };
       }
@@ -2006,6 +2008,7 @@ export default function DashboardApp(props: Props = {}) {
       sendDone: false,
       sendRecipient: "",
       sendRecipientName: "",
+      sendMemo: "",
       sendAmount: "",
       sendQuote: null,
       sendQuoteError: "",
@@ -2019,6 +2022,7 @@ export default function DashboardApp(props: Props = {}) {
   const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
+  const setSendMemo = (e) => setState({ sendMemo: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
   /** Mobile money: rewrite local numbers (07…) to E.164 (+254…) in the field. */
   const normalizeSendRecipientPhone = (e?: React.FocusEvent<HTMLInputElement>) => {
@@ -3291,6 +3295,7 @@ export default function DashboardApp(props: Props = {}) {
       sendProviderIdx: 0,
       sendRecipient: "",
       sendRecipientName: "",
+      sendMemo: "",
       sendAmount: "",
       sendAmountCurrency: "USD",
       sendQuoteError: "",
@@ -5771,6 +5776,9 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   setSendRecipient={setSendRecipient}
   normalizeSendRecipientPhone={normalizeSendRecipientPhone}
   sendRecipientPlaceholder={sendRecipientPlaceholder}
+  sendMemo={s.sendMemo}
+  setSendMemo={setSendMemo}
+  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
   sendAmount={sendAmount}
   setSendAmount={setSendAmount}
   sendQuoteError={sendQuoteError}

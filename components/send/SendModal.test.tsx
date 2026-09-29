@@ -66,6 +66,9 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
     sendRecipient: "",
     setSendRecipient: noop,
     sendRecipientPlaceholder: "G… (Stellar public key)",
+    sendMemo: "",
+    setSendMemo: noop,
+    sendMemoApplies: true,
     sendAmount: "",
     setSendAmount: noop,
     sendQuoteError: "",
@@ -113,6 +116,51 @@ describe("SendModal stablecoin chain picker", () => {
     render(<SendModal {...cryptoStep1({ sendNext })} />);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(sendNext).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SendModal memo (Stellar-only)", () => {
+  it("shows an optional memo field on the recipient step for a Stellar send", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText(/Memo \(optional\)/i)).toBeInTheDocument();
+  });
+
+  it("hides the memo field for an EVM destination", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+          sendChainLabel: "Base",
+          sendMemoApplies: false,
+        })}
+      />,
+    );
+    expect(screen.queryByLabelText(/Memo \(optional\)/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the memo on the review step once entered", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs3: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: true }],
+          sendMemo: "123456",
+        })}
+      />,
+    );
+    expect(screen.getByText("Memo")).toBeInTheDocument();
+    expect(screen.getByText("123456")).toBeInTheDocument();
   });
 });
 
