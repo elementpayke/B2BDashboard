@@ -196,7 +196,7 @@ describe("presentTransaction", () => {
           tx_hash: "0xdeadbeef",
         }),
       ).explorerUrl,
-    ).toBe("https://basescan.org/tx/0xdeadbeef");
+    ).toBe("https://sepolia.basescan.org/tx/0xdeadbeef");
 
     expect(
       presentTransaction(
@@ -205,7 +205,7 @@ describe("presentTransaction", () => {
           tx_hash: "0xabc",
         }),
       ).explorerUrl,
-    ).toBe("https://polygonscan.com/tx/0xabc");
+    ).toBe("https://amoy.polygonscan.com/tx/0xabc");
   });
 
   it("shows a Base collect deposit as Pending until the Stellar credit is confirmed", () => {
@@ -279,7 +279,7 @@ describe("presentTransaction", () => {
     expect(settled.meta).toContain("from EURC");
   });
 
-  it("shows a Stellar USDC send as Payout · USDC", () => {
+  it("shows a Stellar USDC send as Payout to Stellar · USDC", () => {
     const view = presentTransaction(
       transaction({
         id: "snd_1",
@@ -291,9 +291,40 @@ describe("presentTransaction", () => {
         crypto_network: "Stellar",
       }),
     );
-    expect(view.client).toBe("Payout · USDC");
+    expect(view.client).toBe("Payout to Stellar · USDC");
     expect(view.statusLabel).toBe("Settled");
     expect(view.type).toBe("Payout");
+  });
+
+  it("names the destination chain for on-chain sends with no recipient name — e.g. Arc, not a generic Payout", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "snd_2",
+        direction: "out",
+        status: "processing",
+        currency: "USDC",
+        amount_fiat: "500.00",
+        source: "stablecoin_send",
+        crypto_network: "Arc",
+      }),
+    );
+    expect(view.client).toBe("Payout to Arc · USDC");
+  });
+
+  it("still prefers a known recipient name over the chain for an on-chain send", () => {
+    const view = presentTransaction(
+      transaction({
+        id: "snd_3",
+        direction: "out",
+        status: "completed",
+        currency: "USDC",
+        amount_fiat: "500.00",
+        source: "stablecoin_send",
+        crypto_network: "Arc",
+        payment: { party_name: "Jane Doe" },
+      }),
+    );
+    expect(view.client).toBe("Jane Doe");
   });
 });
 

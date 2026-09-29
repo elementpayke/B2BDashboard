@@ -160,9 +160,26 @@ describe("account send validation", () => {
       }),
     ).toBe("https://stellar.expert/explorer/public/tx/abc123");
     expect(buildSendExplorerUrl({ network: "Base", txHash: "0xdead" })).toBe(
-      "https://basescan.org/tx/0xdead",
+      "https://sepolia.basescan.org/tx/0xdead",
     );
     expect(buildSendExplorerUrl({ network: "Stellar", txHash: "" })).toBeNull();
+  });
+
+  it("links every EVM chain to its testnet explorer, not mainnet", () => {
+    // This deployment only ever produces testnet transactions today — a
+    // mainnet explorer URL here 404s for every real send.
+    expect(buildSendExplorerUrl({ network: "Polygon", txHash: "0xdead" })).toBe(
+      "https://amoy.polygonscan.com/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Ethereum", txHash: "0xdead" })).toBe(
+      "https://sepolia.etherscan.io/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Optimism", txHash: "0xdead" })).toBe(
+      "https://sepolia-optimism.etherscan.io/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Arbitrum", txHash: "0xdead" })).toBe(
+      "https://sepolia.arbiscan.io/tx/0xdead",
+    );
   });
 });
 
@@ -369,7 +386,7 @@ describe("sendable asset/chain picker from backend wallets", () => {
     ).toEqual({ to_address: arcAddress, amount: "5", network: "Arc" });
     expect(sendCryptoRecipientPlaceholder("arc")).toMatch(/EVM/);
     expect(buildSendExplorerUrl({ network: "Arc", txHash: "0xdead" })).toBe(
-      "https://explorer.arc.io/tx/0xdead",
+      "https://testnet.arcscan.app/tx/0xdead",
     );
 
     const next = resolveSendStablecoinSelection({
