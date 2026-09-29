@@ -1975,6 +1975,7 @@ export default function DashboardApp(props: Props = {}) {
         (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
       if (account) {
         setState({
+          sendAsset: account.currency.trim().toLowerCase(),
           sendChain: toUiNetworkKey(account.network),
           sendAccountId: account.id,
           sendGroup: "crypto",
