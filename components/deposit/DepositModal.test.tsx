@@ -313,6 +313,62 @@ describe("DepositModal stablecoin address step", () => {
     expect(screen.getByText(STELLAR_ADDR)).toBeInTheDocument();
   });
 
+  it("offers an optional reference memo for a Stellar deposit address", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositIsCountry={false}
+        depositIsCrypto
+        depositStepIs1={false}
+        depositStepIs2
+        depositStepDots={[{ on: true }, { on: true }]}
+        depositSub="country"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositDestinationSummary="USDC · Stellar"
+        depositAssetCode="USDC"
+        depositNetwork="stellar"
+        depositNetworkLabel="Stellar"
+        depositAddress={STELLAR_ADDR}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Reference memo \(optional\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Copy memo/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Reference memo \(optional\)/i), {
+      target: { value: "invoice-42" },
+    });
+    expect(screen.getByText("invoice-42")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy memo" })).toBeInTheDocument();
+  });
+
+  it("hides the memo field for a Base deposit address", () => {
+    render(
+      <DepositModal
+        {...baseProps}
+        depositIsCountry={false}
+        depositIsCrypto
+        depositStepIs1={false}
+        depositStepIs2
+        depositStepDots={[{ on: true }, { on: true }]}
+        depositSub="country"
+        depositCountryRows={[]}
+        depositMethodGroups={[]}
+        depositSelectedCountryName=""
+        depositMethodChosen={false}
+        depositDestinationSummary="USDC · Base"
+        depositAssetCode="USDC"
+        depositNetwork="base"
+        depositNetworkLabel="Base"
+        depositAddress="0xcbdb81Ce50aE547e7cD19ccE3af45164e0bF3169"
+      />,
+    );
+
+    expect(screen.queryByLabelText(/Reference memo \(optional\)/i)).not.toBeInTheDocument();
+  });
+
   it("still offers wallet connect for stellar_public / stellar_testnet spellings", () => {
     const { rerender } = render(
       <DepositModal
