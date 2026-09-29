@@ -235,11 +235,19 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   const collect = isCollectTransfer(transaction);
   const swap = isCollectSwap(transaction);
   const swapSource = (transaction.source_currency || "EURC").trim().toUpperCase();
+  // On-chain crypto sends rarely carry a recipient name (they're addressed
+  // to a raw wallet) — without this, every one collapsed to the generic
+  // "Payout · USDC", identical for a send to Base and a send to Arc.
+  const cryptoSend = (transaction.source || "").trim().toLowerCase() === "stablecoin_send";
   const client = collect
     ? "Deposit · USDC"
     : swap
       ? `Convert · ${swapSource}`
-      : partyName || workflowLabel;
+      : partyName
+        ? partyName
+        : cryptoSend && cryptoNetworkLabel
+          ? `${kind} to ${cryptoNetworkLabel} · ${currency}`
+          : workflowLabel;
   const metaParts = partyName && !collect
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];

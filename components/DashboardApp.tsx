@@ -2341,7 +2341,12 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const setDepositNetwork = (k) => () => {
-    const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset);
+    // depositNetworkOptions (below) is the CCTP-backed rail list actually
+    // rendered in the picker — Arc/Arbitrum/Optimism/etc. live there, not in
+    // the default DEPOSIT_STABLECOIN_NETWORKS (base/polygon/stellar only).
+    // Coercing against the default silently snapped every non-default pick
+    // back to "base", making those rows look unclickable.
+    const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset, depositNetworkOptions);
     const currency = (state.depositAsset || "usdc").trim().toLowerCase();
     // USDC's home wallet is always Stellar — a bridge network (Base, etc.)
     // is just where this particular deposit is coming from, not a separate
@@ -4305,6 +4310,7 @@ export default function DashboardApp(props: Props = {}) {
   const modalOpen = !!s.modal;
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
+    mfaSetup: "Set up 2FA",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isModalSupport = s.modal === "support";
@@ -4525,7 +4531,7 @@ export default function DashboardApp(props: Props = {}) {
     s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0
       ? depositCollectNetworkOptions
       : stablecoinNetworksForAsset(DEPOSIT_STABLECOIN_NETWORKS, s.depositAsset);
-  const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset);
+  const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset, depositNetworkOptions);
   const depositNetworks = depositNetworkOptions.map((n) => ({
     key: n.key,
     label: n.label,
@@ -6315,13 +6321,9 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 />
 </>) : null}
 
-{(isModalMfaSetup) ? (<>
-<div className="ep-team__invite-overlay" onClick={closeModal} role="presentation">
-<div onClick={stopClick}>
-<TotpEnrollment onComplete={onMfaSetupComplete} onCancel={closeModal} />
-</div>
-</div>
-</>) : null}
+{(isModalMfaSetup) ? (
+  <TotpEnrollment onComplete={onMfaSetupComplete} onCancel={closeModal} />
+) : null}
 
 {(isModalMfaDisable) ? (<>
 <div className="ep-team__invite-overlay" onClick={closeMfaDisable} role="presentation">

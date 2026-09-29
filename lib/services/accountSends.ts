@@ -352,23 +352,28 @@ export function buildSendExplorerUrl(opts: {
   if (network === "Stellar" || key.includes("stellar")) {
     return stellarExplorerTxUrl({ txHash: hash, network: opts.network });
   }
+  // This deployment runs entirely against testnets today (Base Sepolia,
+  // Polygon Amoy, Ethereum/Optimism/Arbitrum Sepolia, Arc testnet) — same
+  // "default to testnet" call already made for Stellar above. A mainnet
+  // explorer URL here would 404/"transaction not found" for every real
+  // send this app can currently produce.
   if (network === "Base" || key.includes("base")) {
-    return `https://basescan.org/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.basescan.org/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Polygon" || key.includes("polygon")) {
-    return `https://polygonscan.com/tx/${encodeURIComponent(hash)}`;
+    return `https://amoy.polygonscan.com/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Ethereum" || key === "ethereum" || key === "eth") {
-    return `https://etherscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.etherscan.io/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Optimism" || key.includes("optimism")) {
-    return `https://optimistic.etherscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia-optimism.etherscan.io/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Arbitrum" || key.includes("arbitrum")) {
-    return `https://arbiscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.arbiscan.io/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Arc" || key === "arc") {
-    return `https://explorer.arc.io/tx/${encodeURIComponent(hash)}`;
+    return `https://testnet.arcscan.app/tx/${encodeURIComponent(hash)}`;
   }
   return null;
 }
