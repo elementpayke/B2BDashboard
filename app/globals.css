@@ -7343,6 +7343,19 @@ select.ep-wallets-create__control {
   min-height: 48px;
 }
 
+/* Keeps the step's primary action reachable when its content (e.g. the
+   CCTP network list) grows taller than the sheet — sticks to the bottom of
+   .ep-modal's own scroll area instead of scrolling out of view below it. */
+.ep-money-flow__cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--modal-bg);
+  padding-top: 12px;
+  margin-top: 4px;
+  box-shadow: 0 -12px 12px -12px rgba(19, 17, 38, 0.18);
+}
+
 .ep-send-recipient__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
