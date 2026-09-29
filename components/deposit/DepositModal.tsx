@@ -493,9 +493,11 @@ export default function DepositModal(p: DepositModalProps) {
               ) : null}
 
               {showContinue ? (
+              <div className="ep-money-flow__cta">
               <button type="button" className="ep-btn-primary" onClick={p.depositNext}>
                 Continue
               </button>
+              </div>
               ) : null}
             </div>
           ) : null}
@@ -565,7 +567,7 @@ export default function DepositModal(p: DepositModalProps) {
                 </div>
               ) : null}
 
-              <div className="ep-money-actions">
+              <div className="ep-money-actions ep-money-flow__cta">
                 <button type="button" className="ep-btn-secondary" onClick={p.depositBack}>
                   Back
                 </button>
@@ -716,7 +718,7 @@ export default function DepositModal(p: DepositModalProps) {
                 </div>
               ) : null}
 
-              <div className="ep-money-actions">
+              <div className="ep-money-actions ep-money-flow__cta">
                 <button
                   type="button"
                   className="ep-btn-secondary"

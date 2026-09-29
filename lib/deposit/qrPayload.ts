@@ -11,6 +11,9 @@ export function buildDepositQrValue(opts: {
   currency: string;
   network: string;
   amount?: string;
+  /** Reference tag for the payer — this account never requires one to route
+   * correctly, so it's purely a convenience carried through as MEMO_TEXT. */
+  memo?: string;
 }): string {
   const address = opts.address.trim();
   if (!isStellarUsdcRail(opts)) return address;
@@ -25,5 +28,10 @@ export function buildDepositQrValue(opts: {
   }
   const parsed = parseStellarAmount(opts.amount ?? "");
   if (parsed.ok && parsed.amount) params.set("amount", parsed.amount);
+  const memo = (opts.memo ?? "").trim();
+  if (memo) {
+    params.set("memo", memo);
+    params.set("memo_type", "MEMO_TEXT");
+  }
   return `web+stellar:pay?${params.toString()}`;
 }

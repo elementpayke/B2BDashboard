@@ -226,6 +226,8 @@ export type AccountSendPreviewIn = {
   to_address: string;
   amount: string;
   network?: string;
+  /** Stellar MEMO_TEXT only — ignored (and omitted) on EVM rails. */
+  memo?: string;
 };
 
 export type AccountSendConfirmIn = {
@@ -253,6 +255,21 @@ export function validateStellarAddress(address: string): string {
   const value = address.trim().toUpperCase();
   if (!STELLAR_ADDRESS_RE.test(value) || !StrKey.isValidEd25519PublicKey(value)) {
     throw new Error("Enter a valid Stellar public key (G followed by 55 characters).");
+  }
+  return value;
+}
+
+/** Stellar MEMO_TEXT is capped at 28 *bytes*, not 28 characters — a multi-byte
+ * UTF-8 memo (e.g. emoji, non-Latin script) can exceed the on-chain limit well
+ * under 28 characters, so this checks the encoded byte length. */
+export function validateStellarMemo(memo: string): string {
+  const value = memo.trim();
+  if (!value) return "";
+  const byteLength = new TextEncoder().encode(value).length;
+  if (byteLength > 28) {
+    throw new Error(
+      `Memo is too long (${byteLength} bytes — Stellar allows up to 28 bytes).`,
+    );
   }
   return value;
 }
@@ -293,6 +310,8 @@ export function buildSendPreviewPayload(params: {
   accountNetwork?: string;
   /** Display currency for min-amount errors (USDC / USDT). */
   currency?: string;
+  /** Optional Stellar MEMO_TEXT — silently dropped on EVM destinations. */
+  memo?: string;
 }): AccountSendPreviewIn {
   const destPartner = toPartnerNetwork(params.networkKey);
   if (!destPartner) {
@@ -304,10 +323,12 @@ export function buildSendPreviewPayload(params: {
     destPartner === "Stellar" && params.accountNetwork
       ? toAssetNetwork(params.accountNetwork)
       : toAssetNetwork(params.networkKey);
+  const memo = destPartner === "Stellar" ? validateStellarMemo(params.memo || "") : "";
   return {
     to_address: validateSendAddress(params.toAddress, params.networkKey),
     amount: validateSendAmount(params.amount, params.currency),
     network,
+    ...(memo ? { memo } : {}),
   };
 }
 

@@ -52,4 +52,28 @@ describe("buildDepositQrValue", () => {
       }),
     ).toBe("0xabc");
   });
+
+  it("includes memo and memo_type when a reference memo is set", () => {
+    const value = buildDepositQrValue({
+      address: STELLAR_ADDR,
+      currency: "USDC",
+      network: "Stellar",
+      memo: "invoice-42",
+    });
+    const query = new URLSearchParams(value.slice("web+stellar:pay?".length));
+    expect(query.get("memo")).toBe("invoice-42");
+    expect(query.get("memo_type")).toBe("MEMO_TEXT");
+  });
+
+  it("omits memo params when memo is blank", () => {
+    const value = buildDepositQrValue({
+      address: STELLAR_ADDR,
+      currency: "USDC",
+      network: "Stellar",
+      memo: "   ",
+    });
+    const query = new URLSearchParams(value.slice("web+stellar:pay?".length));
+    expect(query.has("memo")).toBe(false);
+    expect(query.has("memo_type")).toBe(false);
+  });
 });

@@ -10,6 +10,7 @@ export type DepositAddressQrProps = {
   network: string;
   networkLabel: string;
   amount?: string;
+  memo?: string;
 };
 
 export default function DepositAddressQr({
@@ -18,10 +19,11 @@ export default function DepositAddressQr({
   network,
   networkLabel,
   amount,
+  memo,
 }: DepositAddressQrProps) {
   const [qr, setQr] = useState<{ payload: string; url: string } | null>(null);
   const [failed, setFailed] = useState(false);
-  const payload = buildDepositQrValue({ address, currency, network, amount });
+  const payload = buildDepositQrValue({ address, currency, network, amount, memo });
 
   useEffect(() => {
     let cancelled = false;
