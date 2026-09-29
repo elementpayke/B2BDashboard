@@ -11,7 +11,7 @@ import {
 import { isMobileMoneyRail } from "@/lib/services/mobileMoneyBrands";
 import MobileMoneyMark from "@/components/money/MobileMoneyMark";
 import { settlesAsUsdcOnStellar } from "@/lib/config/stellarFeatures";
-import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
+import { isStellarNetwork, shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
 const StellarWalletDeposit = dynamic(() => import("@/components/wallets/StellarWalletDeposit"), {
   ssr: false,
@@ -216,6 +216,22 @@ export default function DepositModal(p: DepositModalProps) {
   const [addressCopied, setAddressCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [countrySearch, setCountrySearch] = useState("");
+  // Same as Receive: this wallet is dedicated, not pooled, so nothing routed
+  // here ever needs a memo — purely a reference tag for the depositor's own
+  // records, carried through the QR for wallets that support it.
+  const [depositMemo, setDepositMemo] = useState("");
+  const [depositMemoCopied, setDepositMemoCopied] = useState(false);
+  const copyDepositMemo = async () => {
+    const value = depositMemo.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setDepositMemoCopied(true);
+      window.setTimeout(() => setDepositMemoCopied(false), 1800);
+    } catch {
+      setDepositMemoCopied(false);
+    }
+  };
   const hasAddress = Boolean(p.depositAddress && p.depositAddress !== "—");
   const stellarSettlementHint = settlesAsUsdcOnStellar(
     p.depositAssetCode,
@@ -613,11 +629,49 @@ export default function DepositModal(p: DepositModalProps) {
                       {addressCopied ? "Copied" : "Copy"}
                     </button>
                   </div>
+
+                  {isStellarNetwork(p.depositNetwork) ? (
+                    <div className="ep-money-field">
+                      <label className="ep-money-label" htmlFor="deposit-memo">
+                        Reference memo (optional)
+                      </label>
+                      <input
+                        id="deposit-memo"
+                        className="ep-money-input"
+                        value={depositMemo}
+                        onChange={(e) => setDepositMemo(e.target.value)}
+                        placeholder="e.g. invoice-42 — for your own records"
+                        autoComplete="off"
+                        spellCheck={false}
+                        maxLength={28}
+                      />
+                      <span className="ep-money-hint ep-money-hint--inline">
+                        This wallet is dedicated to your business, so nothing sent here needs a memo
+                        to arrive — add one only if it helps you identify this deposit later. It's
+                        included in the QR code for wallets that support it.
+                      </span>
+                      {depositMemo.trim() ? (
+                        <div className="ep-money-copy-row">
+                          <span className="ep-money-copy-row__value">{depositMemo.trim()}</span>
+                          <button
+                            type="button"
+                            className="ep-money-copy-btn"
+                            onClick={copyDepositMemo}
+                            aria-label={depositMemoCopied ? "Memo copied" : "Copy memo"}
+                          >
+                            {depositMemoCopied ? "Copied" : "Copy"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <DepositAddressQr
                     address={p.depositAddress}
                     currency={p.depositAssetCode}
                     network={p.depositNetwork}
                     networkLabel={p.depositNetworkLabel}
+                    memo={depositMemo}
                   />
                   {copyError ? (
                     <div className="ep-money-banner ep-money-banner--danger" role="alert">
