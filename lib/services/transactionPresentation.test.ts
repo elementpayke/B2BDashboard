@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectStagePhrase,
   formatTransactionDate,
   parseApiInstant,
   presentTransaction,
@@ -326,5 +327,13 @@ describe("formatTransactionDate", () => {
     expect(formatTransactionDate(new Date(2025, 0, 5, 9, 15).toISOString(), now)).toContain(
       "2025",
     );
+  });
+});
+
+describe("collectStagePhrase corridor stages", () => {
+  it("maps fiat_received / bridging / credited for corridor bridge UX", () => {
+    expect(collectStagePhrase("fiat_received")).toBe("Fiat received");
+    expect(collectStagePhrase("bridging")).toBe("Bridging to Stellar");
+    expect(collectStagePhrase("credited")).toBe("Credited");
   });
 });
