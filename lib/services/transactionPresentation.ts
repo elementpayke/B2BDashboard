@@ -68,6 +68,12 @@ export function isCollectSwap(transaction: { source?: string | null }): boolean 
 /** Plain-language stage for a Base USDC deposit that has not settled on Stellar yet. */
 export function collectStagePhrase(stage?: string | null): string {
   const value = (stage || "").trim().toLowerCase();
+  // Corridor bridge lifecycle (post-settlement OnRamp → Collect).
+  if (value === "fiat_received") return "Fiat received";
+  if (value === "bridging") return "Bridging to Stellar";
+  if (value === "credited") return "Credited";
+  if (value === "skipped") return "Bridge skipped";
+  // Collect worker stages.
   if (value === "attesting") return "bridging";
   if (value === "minting" || value.startsWith("mint")) return "crediting Stellar";
   if (value === "completed") return "from Base";
