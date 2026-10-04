@@ -57,17 +57,24 @@ function formatTimestamp(iso?: string | null): string | null {
 }
 
 function collectCurrentIndex(stage?: string | null, status?: string | null): number {
-  const settled = (status || "").toLowerCase() === "completed" || (stage || "").toLowerCase() === "completed";
+  const settled =
+    (status || "").toLowerCase() === "completed" ||
+    (stage || "").toLowerCase() === "completed" ||
+    (stage || "").toLowerCase() === "credited";
   if (settled) return 3;
   const value = (stage || "").trim().toLowerCase();
-  if (value === "minting" || value.startsWith("mint")) return 2;
-  if (value === "attesting") return 1;
+  if (value === "minting" || value.startsWith("mint") || value === "bridging") return 2;
+  if (value === "attesting" || value === "fiat_received") return 1;
   return 0;
 }
 
 /** Base deposit → bridge → Stellar credit. Settled only after the credit is confirmed. */
 function buildCollectProgressSteps(stage?: string | null, status?: string | null): ProgressStep[] {
-  const labels = ["Received on Base", "Bridging", "Credited on Stellar"];
+  const value = (stage || "").trim().toLowerCase();
+  const corridor = value === "fiat_received" || value === "bridging" || value === "credited";
+  const labels = corridor
+    ? ["Fiat received", "Bridging to Stellar", "Credited"]
+    : ["Received on Base", "Bridging", "Credited on Stellar"];
   const current = collectCurrentIndex(stage, status);
   return labels.map((label, index) => ({
     key: label,
