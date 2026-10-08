@@ -190,6 +190,17 @@ function BulkPayoutBatchResult({
         ? `Batch ${batch.batch_id || "—"}: ${okCount} sent, ${failedCount} failed.`
         : `Batch ${batch.batch_id || "pending"} is ${batch.status}.`;
 
+  const explorerUrls = batch.items
+    .map((item) => {
+      const itemStatus = (item.status || "").toLowerCase();
+      const ok = ["completed", "complete", "success", "succeeded", "submitted"].includes(itemStatus);
+      return ok
+        ? stellarExplorerTxUrl({ txHash: item.tx_hash, network: network || "Stellar" })
+        : null;
+    })
+    .filter((url): url is string => Boolean(url));
+  const footerExplorerUrl = explorerUrls[0] || null;
+
   return (
     <div className="ep-money-flow ep-bulk-payout">
       <div className={`ep-bulk-result ep-bulk-result--${batchTone}`}>
@@ -272,6 +283,16 @@ function BulkPayoutBatchResult({
         <button type="button" className="ep-btn-primary" onClick={onDone}>
           Done
         </button>
+        {footerExplorerUrl ? (
+          <a
+            className="ep-send-success__explorer"
+            href={footerExplorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View onchain ↗
+          </a>
+        ) : null}
       </div>
     </div>
   );

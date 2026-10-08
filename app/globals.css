@@ -7837,6 +7837,20 @@ select.ep-wallets-create__control {
   cursor: not-allowed;
 }
 
+.ep-bulk-result + .ep-bulk-payout__actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ep-bulk-result + .ep-bulk-payout__actions > .ep-btn-primary {
+  width: 100%;
+}
+
+.ep-bulk-result + .ep-bulk-payout__actions > .ep-send-success__explorer {
+  width: 100%;
+  text-align: center;
+}
+
 .ep-money-banner--info {
   background: var(--indigo-tint);
   color: var(--indigo-text);
