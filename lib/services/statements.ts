@@ -117,4 +117,23 @@ export const statementsApi = {
     const fallback = `statement-${opts.accountId}-${opts.periodKey}.${opts.format}`;
     triggerBlobDownload(blob, filename || fallback);
   },
+
+  /** One file for an account across from→to (inclusive YYYY-MM). */
+  async downloadRange(opts: {
+    entityId: string;
+    accountId: string;
+    from: string;
+    to: string;
+    format: "pdf" | "csv";
+  }): Promise<void> {
+    const path =
+      `/v1/statements/${encodeURIComponent(opts.entityId)}` +
+      `/${encodeURIComponent(opts.accountId)}/export` +
+      `?from=${encodeURIComponent(opts.from)}` +
+      `&to=${encodeURIComponent(opts.to)}` +
+      `&format=${opts.format}`;
+    const { blob, filename } = await apiDownloadBlob(path);
+    const fallback = `statement-${opts.accountId}-${opts.from}_${opts.to}.${opts.format}`;
+    triggerBlobDownload(blob, filename || fallback);
+  },
 };
