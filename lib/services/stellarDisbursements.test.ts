@@ -231,4 +231,30 @@ describe("stellarDisbursementsApi", () => {
       preview_token: "tok_1",
     });
   });
+
+  it("loads a batch by entity/account/batch id", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({
+      id: "batch_9",
+      status: "completed",
+      items: [
+        {
+          destination_address: "GA123",
+          amount: "2.00",
+          status: "completed",
+          tx_hash: "hash_abc",
+        },
+      ],
+    } as never);
+
+    const batch = await stellarDisbursementsApi.getBatch("ent_1", "acct_1", "batch_9");
+
+    expect(mocked).toHaveBeenCalledWith(
+      "GET",
+      "/v1/entities/ent_1/accounts/acct_1/disbursements/batch_9",
+    );
+    expect(batch.batch_id).toBe("batch_9");
+    expect(batch.items[0].tx_hash).toBe("hash_abc");
+  });
 });

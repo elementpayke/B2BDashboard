@@ -150,17 +150,24 @@ function failureWhy(error: string | null | undefined): string {
 }
 
 function BulkPayoutBatchResult({
-  batch,
+  batch: initialBatch,
   currency,
   network,
+  entityId,
+  accountId,
   onDone,
 }: {
   batch: BulkStellarPayoutBatch;
   currency: string;
   network?: string | null;
+  entityId: string;
+  accountId: string;
   onDone: () => void;
 }) {
+  const [batch, setBatch] = useState(initialBatch);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
 
   const statusKey = (batch.status || "").toLowerCase();
   const failedCount = batch.items.filter((i) =>
@@ -200,6 +207,26 @@ function BulkPayoutBatchResult({
     })
     .filter((url): url is string => Boolean(url));
   const footerExplorerUrl = explorerUrls[0] || null;
+
+  const refreshStatus = async () => {
+    if (!entityId || !accountId || !batch.batch_id || refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      const next = await withTransientRetry(() =>
+        stellarDisbursementsApi.getBatch(entityId, accountId, batch.batch_id),
+      );
+      setBatch(next);
+    } catch (err) {
+      setRefreshError(
+        err instanceof ApiRequestError || err instanceof Error
+          ? err.message
+          : "Couldn't refresh batch status.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="ep-money-flow ep-bulk-payout">
@@ -279,9 +306,22 @@ function BulkPayoutBatchResult({
           })}
         </ul>
       </div>
+      {refreshError ? (
+        <div className="ep-money-banner ep-money-banner--error" role="alert">
+          {refreshError}
+        </div>
+      ) : null}
       <div className="ep-money-actions ep-bulk-payout__actions">
         <button type="button" className="ep-btn-primary" onClick={onDone}>
           Done
+        </button>
+        <button
+          type="button"
+          className="ep-btn-secondary"
+          onClick={() => void refreshStatus()}
+          disabled={refreshing || !batch.batch_id}
+        >
+          {refreshing ? "Refreshing…" : "Refresh status"}
         </button>
         {footerExplorerUrl ? (
           <a
@@ -624,6 +664,8 @@ export default function BulkStellarPayoutWizard({
         batch={batch}
         currency={selectedAccount?.currency || "USDC"}
         network={selectedAccount?.network || "Stellar"}
+        entityId={selectedAccount?.entityId || ""}
+        accountId={selectedAccount?.id || sourceAccountId}
         onDone={onDone}
       />
     );

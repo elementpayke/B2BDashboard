@@ -250,6 +250,7 @@ import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
 import InvoiceList from "@/components/ui/InvoiceList";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
+import StatementsPanel from "@/components/reports/StatementsPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -3334,7 +3335,7 @@ export default function DashboardApp(props: Props = {}) {
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
       invoices: ["Invoices", "Request and track incoming payments"],
-      reports: ["Reports", "Volume, corridors, and settlement performance"],
+      reports: ["Statements", "Download period statements for reconcile and books"],
       verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
@@ -4167,7 +4168,7 @@ export default function DashboardApp(props: Props = {}) {
     return { id: inv.invoice_number, client: clientName, amount, statusLabel: l, statusColor: c, statusSoft: soft };
   });
 
-  // Reports screen is waitlisted — keep nav entry, skip derived report metrics.
+  // Reports screen hosts Statements (period PDF/CSV reconcile).
 
   // Single KYB case — no tier ladder. Submit once; then show clear compliance feedback.
   const hasKybProfile = !!meQuery.data?.kyb_summary?.profile;
@@ -5374,11 +5375,7 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isReports) ? (<>
 <div data-screen-label="Reports" className="ep-reports">
-<ComingSoonPanel
-  featureKey="reports"
-  title="Reports"
-  description="Volume, corridor, and settlement reports are coming soon. Join the waitlist and we’ll notify you when they’re ready."
-/>
+<StatementsPanel />
 </div>
 </>) : null}
 

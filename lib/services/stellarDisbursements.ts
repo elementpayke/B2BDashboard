@@ -279,4 +279,12 @@ export const stellarDisbursementsApi = {
     );
     return normalizeBulkBatch(raw);
   },
+
+  async getBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}`,
+    );
+    return normalizeBulkBatch(raw);
+  },
 };
