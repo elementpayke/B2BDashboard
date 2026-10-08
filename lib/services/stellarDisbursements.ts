@@ -1,4 +1,4 @@
-import { apiEnvelope } from "@/lib/apiClient";
+import { apiEnvelope, ApiRequestError } from "@/lib/apiClient";
 import { validateConvertAmount } from "@/lib/services/conversions";
 
 export type BulkStellarPayoutRow = {
@@ -18,7 +18,14 @@ export type BulkStellarPayoutPreview = {
 export type BulkStellarPayoutBatch = {
   batch_id: string;
   status: string;
-  items: Array<BulkStellarPayoutRow & { status?: string | null; error?: string | null }>;
+  items: Array<
+    BulkStellarPayoutRow & {
+      status?: string | null;
+      error?: string | null;
+      /** Stellar payment hash when submitted on-chain. */
+      tx_hash?: string | null;
+    }
+  >;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -126,6 +133,34 @@ export function parseBulkStellarPayoutCsvLoose(csv: string): BulkStellarPayoutRo
   }));
 }
 
+/** Map Aggregator / Mboka machine codes to plain-language copy for merchants. */
+export function explainDisbursementFailure(code: string | null | undefined): string | null {
+  const key = (code || "").trim().toLowerCase();
+  if (!key) return null;
+  const copy: Record<string, string> = {
+    destination_missing_trustline:
+      "This wallet hasn’t added a USDC trustline yet. Ask the recipient to trust Circle USDC on Stellar, then retry.",
+    destination_account_not_found:
+      "This Stellar address isn’t active on the network yet. The recipient needs to create/fund the account first.",
+    insufficient_balance:
+      "Your source wallet doesn’t have enough USDC (plus fees) for this payout.",
+    funding_account_unusable:
+      "We couldn’t sign from your Stellar wallet. Refresh and try again, or contact support if it persists.",
+    stellar_submit_failed:
+      "Stellar rejected this payment. Check the destination and try again.",
+    stellar_submit_unconfirmed:
+      "Payment was broadcast but not confirmed yet. Refresh batch status in a moment.",
+    sdp_adapter_unavailable:
+      "Payouts are in dry-run mode here — nothing was sent on-chain.",
+    stellar_disbursement_submit_failed:
+      "We couldn’t submit this batch. Try again or contact support.",
+  };
+  if (copy[key]) return copy[key];
+  // Unknown codes: surface a readable sentence, not a bare snake_case token.
+  const readable = key.replace(/_/g, " ");
+  return `This payout failed (${readable}).`;
+}
+
 function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -133,12 +168,27 @@ function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
     .filter((row): row is Record<string, unknown> => row !== null)
     .map((row) => ({
       destination:
-        asText(row.destination ?? row.to_address ?? row.wallet_address) || "",
+        asText(
+          row.destination ??
+            row.destination_address ??
+            row.to_address ??
+            row.wallet_address,
+        ) || "",
       amount: asText(row.amount) || "",
       memo: asText(row.memo),
-      reference: asText(row.reference ?? row.client_reference),
+      reference: asText(row.reference ?? row.client_reference ?? row.partner_item_ref),
       status: asText(row.status),
-      error: asText(row.error ?? row.message),
+      error: asText(
+        row.error ?? row.failure_code ?? row.failureCode ?? row.last_error ?? row.message,
+      ),
+      tx_hash: asText(
+        row.tx_hash ??
+          row.txHash ??
+          row.transaction_hash ??
+          row.transactionHash ??
+          row.external_item_id ??
+          row.externalItemId,
+      ),
     }));
 }
 
@@ -167,16 +217,57 @@ export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
   };
 }
 
+/** Stable key for one preview→confirm attempt. Reuse on confirm retries only. */
+export function newBulkPayoutIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `bulk-${crypto.randomUUID()}`;
+  }
+  return `bulk-${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+/** Proxy/Mboka/Aggregator blips that are safe to retry once (with idempotency). */
+export function isTransientDisbursementError(err: unknown): boolean {
+  if (err instanceof ApiRequestError) {
+    return err.status === 408 || err.status === 502 || err.status === 503 || err.status === 504;
+  }
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /timed out|timeout|upstream|502|503|504/i.test(message);
+}
+
+/** One silent retry on transient errors; non-transient failures throw immediately. */
+export async function withTransientRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { retries?: number; delayMs?: number },
+): Promise<T> {
+  const retries = opts?.retries ?? 1;
+  const delayMs = opts?.delayMs ?? 900;
+  let last: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (attempt >= retries || !isTransientDisbursementError(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+  throw last;
+}
+
 export const stellarDisbursementsApi = {
   // entity_id/account_id (not just the account) are required so the backend
   // can verify ownership via owned_stellar_account_context — same body shape
   // as the Stellar swap quote/confirm pair (/v1/conversions/stellar/*).
-  async preview(entity_id: string, account_id: string, items: BulkStellarPayoutRow[]) {
-    const raw = await apiEnvelope<unknown>(
-      "POST",
-      "/v1/disbursements/stellar/preview",
-      { entity_id, account_id, items },
-    );
+  async preview(
+    entity_id: string,
+    account_id: string,
+    items: BulkStellarPayoutRow[],
+    opts?: { idempotencyKey?: string },
+  ) {
+    const body: Record<string, unknown> = { entity_id, account_id, items };
+    const key = (opts?.idempotencyKey || "").trim();
+    if (key) body.idempotency_key = key.slice(0, 64);
+    const raw = await apiEnvelope<unknown>("POST", "/v1/disbursements/stellar/preview", body);
     return normalizeBulkPreview(raw);
   },
 
@@ -185,6 +276,14 @@ export const stellarDisbursementsApi = {
       "POST",
       "/v1/disbursements/stellar/confirm",
       { entity_id, account_id, preview_token },
+    );
+    return normalizeBulkBatch(raw);
+  },
+
+  async getBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}`,
     );
     return normalizeBulkBatch(raw);
   },

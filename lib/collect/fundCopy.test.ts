@@ -31,7 +31,7 @@ describe("fundStablecoinRailSummary", () => {
     ).toContain("Aquarius");
   });
 
-  it("credits USDT on its own chain", () => {
+  it("credits USDT on EVM chains", () => {
     expect(
       fundStablecoinRailSummary({
         targetName: "USDT · Polygon",
@@ -39,6 +39,16 @@ describe("fundStablecoinRailSummary", () => {
         networkLabel: "Polygon",
       }),
     ).toBe("Deposit USDT on Polygon. Credits your USDT balance.");
+  });
+
+  it("converts Stellar USDT via Aquarius", () => {
+    expect(
+      fundStablecoinRailSummary({
+        targetName: "USDT · Stellar",
+        currency: "USDT",
+        networkLabel: "Stellar",
+      }),
+    ).toBe("Deposit USDT on Stellar. Converts to USDC via Aquarius.");
   });
 });
 

@@ -23,6 +23,9 @@ export function fundStablecoinRailSummary(input: {
     return `Deposit EURC on ${network}. Converts to USDC via Aquarius.`;
   }
   if (asset === "USDT") {
+    if (/stellar/i.test(network)) {
+      return `Deposit USDT on ${network}. Converts to USDC via Aquarius.`;
+    }
     return `Deposit USDT on ${network}. Credits your USDT balance.`;
   }
   return `Deposit ${asset || "asset"} on ${network || "selected network"}.`;
