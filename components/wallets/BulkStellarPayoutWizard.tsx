@@ -159,6 +159,17 @@ export default function BulkStellarPayoutWizard({
     [sourceAccountId, sourceAccounts],
   );
 
+  // Accounts often arrive after mount (entity list). useState(initial) only
+  // runs once — empty id + a populated <select> looks selected in the UI but
+  // previewBatch fails with "Choose the source account first."
+  useEffect(() => {
+    if (!sourceAccounts.length) return;
+    const stillValid = sourceAccounts.some((account) => account.id === sourceAccountId);
+    if (!stillValid) {
+      setSourceAccountId(sourceAccounts[0].id);
+    }
+  }, [sourceAccounts, sourceAccountId]);
+
   const withLocalIds = (rows: BulkStellarPayoutRow[]): EditableRow[] =>
     rows.map((row) => ({ ...row, __id: nextRowId.current++ }));
 
@@ -190,7 +201,11 @@ export default function BulkStellarPayoutWizard({
   }, [batch, pendingDraft, stage, sourceAccountId, csvText, parsedRows, rowsMode, draftScopeId]);
 
   const applyDraft = (draft: BulkPayoutDraft) => {
-    setSourceAccountId(draft.sourceAccountId || sourceAccounts[0]?.id || "");
+    const draftId = draft.sourceAccountId.trim();
+    const resolvedId = sourceAccounts.some((a) => a.id === draftId)
+      ? draftId
+      : sourceAccounts[0]?.id || "";
+    setSourceAccountId(resolvedId);
     setCsvText(draft.csvText);
     setParsedRows(withLocalIds(draft.rows.length ? draft.rows : [emptyRow()]));
     setRowsMode(draft.stage === "edit" || draft.rows.some((r) => !isBlankRow(r)));
@@ -320,9 +335,17 @@ export default function BulkStellarPayoutWizard({
   };
 
   const previewBatch = async () => {
-    if (!sourceAccountId || !selectedAccount) {
+    const account =
+      selectedAccount ||
+      sourceAccounts.find((a) => a.id === sourceAccountId) ||
+      sourceAccounts[0] ||
+      null;
+    if (!account) {
       setError("Choose the source account first.");
       return;
+    }
+    if (account.id !== sourceAccountId) {
+      setSourceAccountId(account.id);
     }
     const rows: BulkStellarPayoutRow[] = [];
     for (let i = 0; i < parsedRows.length; i += 1) {
@@ -350,8 +373,8 @@ export default function BulkStellarPayoutWizard({
     setError("");
     try {
       const nextPreview = await stellarDisbursementsApi.preview(
-        selectedAccount.entityId,
-        sourceAccountId,
+        account.entityId,
+        account.id,
         rows,
       );
       setParsedRows(withLocalIds(rows));
@@ -368,13 +391,18 @@ export default function BulkStellarPayoutWizard({
   };
 
   const confirmBatch = async () => {
-    if (!preview?.preview_token || !sourceAccountId || !selectedAccount) return;
+    const account =
+      selectedAccount ||
+      sourceAccounts.find((a) => a.id === sourceAccountId) ||
+      sourceAccounts[0] ||
+      null;
+    if (!preview?.preview_token || !account) return;
     setBusy("confirm");
     setError("");
     try {
       const nextBatch = await stellarDisbursementsApi.confirm(
-        selectedAccount.entityId,
-        sourceAccountId,
+        account.entityId,
+        account.id,
         preview.preview_token,
       );
       clearBulkPayoutDraft(draftScopeId);
