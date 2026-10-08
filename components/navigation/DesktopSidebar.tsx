@@ -57,7 +57,7 @@ export default function DesktopSidebar({
                     </span>
                     <span>{item.label}</span>
                     {item.key === "reports" ? (
-                      <span className="ep-sidebar__soon">Soon</span>
+                      <span className="ep-sidebar__new">New</span>
                     ) : null}
                   </button>
                 );
