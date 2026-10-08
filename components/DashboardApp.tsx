@@ -5965,6 +5965,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 {STELLAR_BULK_PAYOUTS_ENABLED ? (
 <BulkStellarPayoutWizard
   sourceAccounts={bulkPayoutSourceAccounts}
+  draftScopeId={businessId}
   onDone={closeModal}
   onCancel={closeModal}
 />

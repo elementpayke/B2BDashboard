@@ -1,7 +1,15 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { ApiRequestError } from "@/lib/apiClient";
+import {
+  clearBulkPayoutDraft,
+  draftSummary,
+  readBulkPayoutDraft,
+  writeBulkPayoutDraft,
+  type BulkPayoutDraft,
+} from "@/lib/services/bulkPayoutDraft";
 import { validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
@@ -17,11 +25,21 @@ import {
 // and remove — never sent to the API (stripped in previewBatch).
 type EditableRow = BulkStellarPayoutRow & { __id: number };
 
+type WizardStage = "input" | "edit" | "preview";
+
 type BulkStellarPayoutWizardProps = {
   sourceAccounts: FinancialAccount[];
+  /** Business / tenant id for sessionStorage draft scope. Omit = no persistence. */
+  draftScopeId?: string | number | null;
   onDone: () => void;
   onCancel: () => void;
 };
+
+const STEPS = [
+  { id: "input" as const, label: "Recipients" },
+  { id: "edit" as const, label: "Review rows" },
+  { id: "preview" as const, label: "Confirm" },
+];
 
 function walletLabel(account: FinancialAccount): string {
   return `${account.currency} · ${formatNetworkLabel(account.network)} · ${account.id}`;
@@ -48,8 +66,78 @@ function isBlankRow(row: BulkStellarPayoutRow): boolean {
   return !row.destination.trim() && !row.amount.trim() && !row.memo?.trim() && !row.reference?.trim();
 }
 
+function stepIndex(stage: WizardStage): number {
+  return STEPS.findIndex((s) => s.id === stage);
+}
+
+function BulkPayoutStepper({
+  stage,
+  onStepClick,
+  subline,
+}: {
+  stage: WizardStage;
+  onStepClick: (target: WizardStage) => void;
+  subline: string;
+}) {
+  const current = stepIndex(stage);
+  return (
+    <div className="ep-bulk-stepper">
+      <ol className="ep-bulk-stepper__list" aria-label="Bulk payout steps">
+        {STEPS.map((step, index) => {
+          const done = index < current;
+          const active = index === current;
+          const clickable = done;
+          return (
+            <li
+              key={step.id}
+              className={[
+                "ep-bulk-stepper__item",
+                active ? "ep-bulk-stepper__item--current" : "",
+                done ? "ep-bulk-stepper__item--done" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {index > 0 ? <span className="ep-bulk-stepper__rail" aria-hidden /> : null}
+              <button
+                type="button"
+                className="ep-bulk-stepper__btn"
+                disabled={!clickable}
+                onClick={() => clickable && onStepClick(step.id)}
+                aria-current={active ? "step" : undefined}
+              >
+                <span className="ep-bulk-stepper__mark" aria-hidden>
+                  {done ? "✓" : index + 1}
+                </span>
+                <span className="ep-bulk-stepper__label">{step.label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="ep-bulk-stepper__subline">{subline}</p>
+    </div>
+  );
+}
+
+function SubmittingHourglass() {
+  return (
+    <span className="ep-bulk-hourglass" aria-hidden>
+      <Image
+        src="/brand/bulk-payout-hourglass.png"
+        alt=""
+        width={22}
+        height={22}
+        className="ep-bulk-hourglass__img"
+        unoptimized
+      />
+    </span>
+  );
+}
+
 export default function BulkStellarPayoutWizard({
   sourceAccounts,
+  draftScopeId = null,
   onDone,
   onCancel,
 }: BulkStellarPayoutWizardProps) {
@@ -62,7 +150,9 @@ export default function BulkStellarPayoutWizard({
   const [busy, setBusy] = useState<"preview" | "confirm" | "upload" | null>(null);
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<BulkPayoutDraft | null>(null);
   const nextRowId = useRef(0);
+  const hydrated = useRef(false);
 
   const selectedAccount = useMemo(
     () => sourceAccounts.find((account) => account.id === sourceAccountId) || null,
@@ -71,6 +161,48 @@ export default function BulkStellarPayoutWizard({
 
   const withLocalIds = (rows: BulkStellarPayoutRow[]): EditableRow[] =>
     rows.map((row) => ({ ...row, __id: nextRowId.current++ }));
+
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+    const draft = readBulkPayoutDraft(draftScopeId);
+    if (!draft) return;
+    const { rows } = draftSummary(draft);
+    if (rows === 0 && !draft.csvText.trim()) return;
+    setPendingDraft(draft);
+  }, [draftScopeId]);
+
+  const stage: WizardStage = preview ? "preview" : rowsMode ? "edit" : "input";
+
+  useEffect(() => {
+    if (batch || pendingDraft) return;
+    if (stage === "preview") return;
+    const rows = parsedRows.map(stripLocalId);
+    const hasContent =
+      csvText.trim().length > 0 || rows.some((r) => !isBlankRow(r)) || rowsMode;
+    if (!hasContent) return;
+    writeBulkPayoutDraft(draftScopeId, {
+      sourceAccountId,
+      csvText,
+      rows,
+      stage: stage === "edit" ? "edit" : "input",
+    });
+  }, [batch, pendingDraft, stage, sourceAccountId, csvText, parsedRows, rowsMode, draftScopeId]);
+
+  const applyDraft = (draft: BulkPayoutDraft) => {
+    setSourceAccountId(draft.sourceAccountId || sourceAccounts[0]?.id || "");
+    setCsvText(draft.csvText);
+    setParsedRows(withLocalIds(draft.rows.length ? draft.rows : [emptyRow()]));
+    setRowsMode(draft.stage === "edit" || draft.rows.some((r) => !isBlankRow(r)));
+    setPreview(null);
+    setPendingDraft(null);
+    setError("");
+  };
+
+  const discardDraft = () => {
+    clearBulkPayoutDraft(draftScopeId);
+    setPendingDraft(null);
+  };
 
   const loadRowsFromCsv = (text: string) => {
     try {
@@ -119,21 +251,17 @@ export default function BulkStellarPayoutWizard({
   };
 
   const downloadSampleCsv = () => {
-    // Keep in sync with docs/samples/sdp-bulk-payout-sample.csv
     const sample = [
       "destination,amount,memo,reference",
-      'GAIZK4AKUTPECFCZVLAZ47JDBMAGFXLTA465SWE7O3GXQOZ5C5O26YAW,5,"SDP demo · payroll W40",EP-SDP-2026-1001',
-      'GDYZIDXIMLWBUKSZUH42RFVGJIUDR6TXDSUTKGUWSWWVWOROPZEFQFZQ,10,"Vendor remit · ops",EP-SDP-2026-1002',
-      'GB5W37KTU623IMKY5XQ6UDPE3JLRYL4RFESNLGMP67PG7FOAUUNPVKVF,3,"Field stipend · KE",EP-SDP-2026-1003',
-      'GBBCZTH76D4KKAOPRD2W7SWEUNLMP6OBPJ2Y7L7UQ7BNMD5PFHZVDBLN,15,"Partner rebate Q4",EP-SDP-2026-1004',
-      'GDWSTSK3GEUJFVN6DKLBXCRRQMTFKO5OB5BJ6WLMCILOVFHCE677U2XN,10,"Liquidity top-up",EP-SDP-2026-1005',
-      'GAY7GDUCWXPMIGUJGNBVX3NU25UKV6DERTRWQWZUFYSYYZ6KFOT4YC27,12,"Contractor draw #2",EP-SDP-2026-1006',
+      'GAIZK4AKUTPECFCZVLAZ47JDBMAGFXLTA465SWE7O3GXQOZ5C5O26YAW,2,"SDP smoke · row A",EP-SDP-SMOKE-01',
+      'GDYZIDXIMLWBUKSZUH42RFVGJIUDR6TXDSUTKGUWSWWVWOROPZEFQFZQ,3,"SDP smoke · row B",EP-SDP-SMOKE-02',
+      'GB5W37KTU623IMKY5XQ6UDPE3JLRYL4RFESNLGMP67PG7FOAUUNPVKVF,1,"SDP smoke · row C",EP-SDP-SMOKE-03',
     ].join("\n");
     const blob = new Blob([sample + "\n"], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "sdp-bulk-payout-sample.csv";
+    a.download = "sdp-bulk-payout-smoke-2-3-1.csv";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -157,6 +285,8 @@ export default function BulkStellarPayoutWizard({
     setCsvText("");
     setError("");
     setRowsMode(false);
+    setPreview(null);
+    clearBulkPayoutDraft(draftScopeId);
   };
 
   const reviewPastedCsv = () => {
@@ -164,14 +294,36 @@ export default function BulkStellarPayoutWizard({
     loadRowsFromCsv(csvText);
   };
 
+  const goToStep = (target: WizardStage) => {
+    if (stepIndex(target) >= stepIndex(stage)) return;
+    if (target === "input") {
+      setPreview(null);
+      setRowsMode(false);
+      return;
+    }
+    if (target === "edit") {
+      setPreview(null);
+      setRowsMode(true);
+    }
+  };
+
+  const persistThenCancel = () => {
+    if (stage !== "preview") {
+      writeBulkPayoutDraft(draftScopeId, {
+        sourceAccountId,
+        csvText,
+        rows: parsedRows.map(stripLocalId),
+        stage: stage === "edit" ? "edit" : "input",
+      });
+    }
+    onCancel();
+  };
+
   const previewBatch = async () => {
     if (!sourceAccountId || !selectedAccount) {
       setError("Choose the source account first.");
       return;
     }
-    // Walk parsedRows in its own order so a reported row number always
-    // matches what's on screen — skipping blank rows must not renumber the
-    // real ones after it.
     const rows: BulkStellarPayoutRow[] = [];
     for (let i = 0; i < parsedRows.length; i += 1) {
       const row = parsedRows[i];
@@ -225,6 +377,7 @@ export default function BulkStellarPayoutWizard({
         sourceAccountId,
         preview.preview_token,
       );
+      clearBulkPayoutDraft(draftScopeId);
       setBatch(nextBatch);
     } catch (err) {
       setError(
@@ -260,7 +413,7 @@ export default function BulkStellarPayoutWizard({
     return (
       <div className="ep-money-flow ep-bulk-payout">
         <div className="ep-money-success">
-          <span className="ep-money-success__title">Bulk batch submitted</span>
+          <span className="ep-money-success__title">Submitted</span>
           <span className="ep-money-success__body">
             Batch {batch.batch_id || "pending"} is {batch.status}.
           </span>
@@ -285,10 +438,14 @@ export default function BulkStellarPayoutWizard({
     );
   }
 
-  const stage: "input" | "edit" | "preview" = preview ? "preview" : rowsMode ? "edit" : "input";
   const currency = preview?.currency || selectedAccount?.currency || "USDC";
   const totalLabel = preview?.total_amount || sumAmounts(parsedRows);
   const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your wallet";
+  const stepNum = stepIndex(stage) + 1;
+  const subline =
+    stage === "preview"
+      ? `Step ${stepNum} · Confirm · ${totalLabel} ${currency}`
+      : `Step ${stepNum} · ${STEPS[stepIndex(stage)].label}`;
 
   const secondaryLabel = stage === "input" ? "Cancel" : "Back";
   const primaryLabel =
@@ -311,9 +468,49 @@ export default function BulkStellarPayoutWizard({
     (stage === "input" && !csvText.trim()) ||
     (stage === "edit" && parsedRows.every(isBlankRow));
 
+  const draftBanner = pendingDraft ? draftSummary(pendingDraft) : null;
+
   return (
     <div className="ep-money-flow ep-bulk-payout">
+      <BulkPayoutStepper stage={stage} onStepClick={goToStep} subline={subline} />
+
+      {draftBanner ? (
+        <div className="ep-money-banner ep-bulk-payout__draft" role="status">
+          <div>
+            <strong>Resume draft</strong>
+            <span>
+              {" "}
+              · {draftBanner.rows} rows · {draftBanner.total} USDC
+            </span>
+          </div>
+          <div className="ep-bulk-payout__draft-actions">
+            <button type="button" className="ep-btn-secondary" onClick={discardDraft}>
+              Discard
+            </button>
+            <button
+              type="button"
+              className="ep-btn-primary"
+              onClick={() => applyDraft(pendingDraft)}
+            >
+              Resume
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="ep-bulk-payout__body">
+        {busy === "confirm" ? (
+          <div className="ep-bulk-processing" role="status" aria-live="polite">
+            <SubmittingHourglass />
+            <div>
+              <div className="ep-bulk-processing__title">Submitting batch…</div>
+              <div className="ep-bulk-processing__body">
+                Sending {totalLabel} {currency} from {sourceLabel}. Keep this window open.
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <p className="ep-fund-chooser__intro">
           Bulk disburse on Stellar from {sourceLabel}.
         </p>
@@ -379,7 +576,7 @@ export default function BulkStellarPayoutWizard({
               <textarea
                 value={csvText}
                 onChange={(event) => setCsvText(event.target.value)}
-                placeholder={"destination,amount,memo,reference\nG...,25.00,Payroll,ops-001"}
+                placeholder={"destination,amount,memo,reference\nG...,2.00,Payroll,ops-001"}
                 rows={8}
                 disabled={busy === "upload"}
               />
@@ -407,7 +604,7 @@ export default function BulkStellarPayoutWizard({
                           onChange={(event) => updateRow(index, "destination", event.target.value)}
                           placeholder="Destination address"
                           aria-label={`Row ${index + 1} destination`}
-                          disabled={busy === "preview"}
+                          disabled={busy === "preview" || busy === "confirm"}
                         />
                       </td>
                       <td>
@@ -417,7 +614,7 @@ export default function BulkStellarPayoutWizard({
                           placeholder="Amount"
                           inputMode="decimal"
                           aria-label={`Row ${index + 1} amount`}
-                          disabled={busy === "preview"}
+                          disabled={busy === "preview" || busy === "confirm"}
                         />
                       </td>
                       <td>
@@ -426,7 +623,7 @@ export default function BulkStellarPayoutWizard({
                           onChange={(event) => updateRow(index, "memo", event.target.value)}
                           placeholder="Optional"
                           aria-label={`Row ${index + 1} memo`}
-                          disabled={busy === "preview"}
+                          disabled={busy === "preview" || busy === "confirm"}
                         />
                       </td>
                       <td>
@@ -435,7 +632,7 @@ export default function BulkStellarPayoutWizard({
                           onChange={(event) => updateRow(index, "reference", event.target.value)}
                           placeholder="Optional"
                           aria-label={`Row ${index + 1} reference`}
-                          disabled={busy === "preview"}
+                          disabled={busy === "preview" || busy === "confirm"}
                         />
                       </td>
                       <td>
@@ -444,7 +641,7 @@ export default function BulkStellarPayoutWizard({
                           className="ep-row-table__remove"
                           onClick={() => removeRow(index)}
                           aria-label={`Remove row ${index + 1}`}
-                          disabled={busy === "preview"}
+                          disabled={busy === "preview" || busy === "confirm"}
                         >
                           ✕
                         </button>
@@ -458,7 +655,7 @@ export default function BulkStellarPayoutWizard({
               type="button"
               className="ep-btn-secondary ep-bulk-payout__add-row"
               onClick={addRow}
-              disabled={busy === "preview"}
+              disabled={busy === "preview" || busy === "confirm"}
             >
               + Add row
             </button>
@@ -497,7 +694,7 @@ export default function BulkStellarPayoutWizard({
       </div>
 
       <footer className="ep-bulk-payout__footer">
-        {stage === "preview" ? (
+        {stage === "preview" && busy !== "confirm" ? (
           <p className="ep-bulk-payout__caption" role="note">
             Sends {totalLabel} {currency} from {sourceLabel}.
           </p>
@@ -511,7 +708,7 @@ export default function BulkStellarPayoutWizard({
                 ? () => setPreview(null)
                 : stage === "edit"
                   ? clearRows
-                  : onCancel
+                  : persistThenCancel
             }
             disabled={busy === "preview" || busy === "confirm"}
           >
@@ -530,7 +727,14 @@ export default function BulkStellarPayoutWizard({
             disabled={primaryDisabled}
             aria-busy={busy === "preview" || busy === "confirm" || busy === "upload" || undefined}
           >
-            {primaryLabel}
+            {busy === "confirm" ? (
+              <span className="ep-btn-busy">
+                <SubmittingHourglass />
+                Submitting…
+              </span>
+            ) : (
+              primaryLabel
+            )}
           </button>
         </div>
       </footer>
