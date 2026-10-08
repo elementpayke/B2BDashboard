@@ -15,8 +15,11 @@ import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
 import {
   explainDisbursementFailure,
+  isTransientDisbursementError,
+  newBulkPayoutIdempotencyKey,
   parseBulkStellarPayoutCsvLoose,
   stellarDisbursementsApi,
+  withTransientRetry,
   type BulkStellarPayoutBatch,
   type BulkStellarPayoutPreview,
   type BulkStellarPayoutRow,
@@ -288,6 +291,9 @@ export default function BulkStellarPayoutWizard({
   const [batch, setBatch] = useState<BulkStellarPayoutBatch | null>(null);
   const [busy, setBusy] = useState<"preview" | "confirm" | "upload" | null>(null);
   const [error, setError] = useState("");
+  /** After a timed-out confirm, Retry reuses the same preview_token (idempotent). */
+  const [safeConfirmRetry, setSafeConfirmRetry] = useState(false);
+  const idempotencyKeyRef = useRef<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<BulkPayoutDraft | null>(null);
   const nextRowId = useRef(0);
@@ -510,11 +516,14 @@ export default function BulkStellarPayoutWizard({
     }
     setBusy("preview");
     setError("");
+    setSafeConfirmRetry(false);
+    // Fresh key per preview of these rows; confirm retries reuse the token's key.
+    idempotencyKeyRef.current = newBulkPayoutIdempotencyKey();
     try {
-      const nextPreview = await stellarDisbursementsApi.preview(
-        account.entityId,
-        account.id,
-        rows,
+      const nextPreview = await withTransientRetry(() =>
+        stellarDisbursementsApi.preview(account.entityId, account.id, rows, {
+          idempotencyKey: idempotencyKeyRef.current || undefined,
+        }),
       );
       setParsedRows(withLocalIds(rows));
       setPreview(nextPreview);
@@ -538,20 +547,33 @@ export default function BulkStellarPayoutWizard({
     if (!preview?.preview_token || !account) return;
     setBusy("confirm");
     setError("");
+    setSafeConfirmRetry(false);
     try {
-      const nextBatch = await stellarDisbursementsApi.confirm(
-        account.entityId,
-        account.id,
-        preview.preview_token,
+      // Same preview_token → same Aggregator idempotency_key. Silent retry
+      // after timeout returns the existing batch; it does not create a second one.
+      const nextBatch = await withTransientRetry(() =>
+        stellarDisbursementsApi.confirm(
+          account.entityId,
+          account.id,
+          preview.preview_token,
+        ),
       );
       clearBulkPayoutDraft(draftScopeId);
+      idempotencyKeyRef.current = null;
       setBatch(nextBatch);
     } catch (err) {
-      setError(
-        err instanceof ApiRequestError || err instanceof Error
-          ? err.message
-          : "Couldn't submit this batch.",
-      );
+      if (isTransientDisbursementError(err)) {
+        setSafeConfirmRetry(true);
+        setError(
+          "Timed out waiting for confirmation. Retry safely — this won’t send the batch twice.",
+        );
+      } else {
+        setError(
+          err instanceof ApiRequestError || err instanceof Error
+            ? err.message
+            : "Couldn't submit this batch.",
+        );
+      }
     } finally {
       setBusy(null);
     }
@@ -836,7 +858,17 @@ export default function BulkStellarPayoutWizard({
 
         {error ? (
           <div className="ep-money-banner ep-money-banner--danger" role="alert">
-            {error}
+            <span>{error}</span>
+            {safeConfirmRetry && stage === "preview" ? (
+              <button
+                type="button"
+                className="ep-bulk-payout__retry"
+                onClick={() => void confirmBatch()}
+                disabled={busy === "confirm"}
+              >
+                Retry
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

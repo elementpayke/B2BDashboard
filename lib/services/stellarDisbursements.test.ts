@@ -1,15 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/apiClient", () => ({
-  apiEnvelope: vi.fn(),
-}));
+vi.mock("@/lib/apiClient", () => {
+  class ApiRequestError extends Error {
+    status: number;
+    data: unknown;
+    constructor(message: string, status: number, data: unknown = null) {
+      super(message);
+      this.name = "ApiRequestError";
+      this.status = status;
+      this.data = data;
+    }
+  }
+  return { apiEnvelope: vi.fn(), ApiRequestError };
+});
 
+import { ApiRequestError } from "@/lib/apiClient";
 import {
   explainDisbursementFailure,
+  isTransientDisbursementError,
   normalizeBulkBatch,
   parseBulkStellarPayoutCsv,
   parseBulkStellarPayoutCsvLoose,
   stellarDisbursementsApi,
+  withTransientRetry,
 } from "./stellarDisbursements";
 
 describe("parseBulkStellarPayoutCsv", () => {
@@ -139,8 +152,50 @@ describe("normalizeBulkBatch", () => {
   });
 });
 
+describe("isTransientDisbursementError", () => {
+  it("treats 504 / timeout copy as retryable", () => {
+    expect(isTransientDisbursementError(new ApiRequestError("Upstream request timed out.", 504))).toBe(
+      true,
+    );
+    expect(isTransientDisbursementError(new Error("Upstream request timed out. Please try again."))).toBe(
+      true,
+    );
+    expect(isTransientDisbursementError(new ApiRequestError("Invalid rows", 422))).toBe(false);
+  });
+});
+
+describe("withTransientRetry", () => {
+  it("retries once on transient failure then succeeds", async () => {
+    let calls = 0;
+    const result = await withTransientRetry(
+      async () => {
+        calls += 1;
+        if (calls === 1) throw new ApiRequestError("Upstream request timed out.", 504);
+        return "ok";
+      },
+      { retries: 1, delayMs: 1 },
+    );
+    expect(result).toBe("ok");
+    expect(calls).toBe(2);
+  });
+
+  it("does not retry validation errors", async () => {
+    let calls = 0;
+    await expect(
+      withTransientRetry(
+        async () => {
+          calls += 1;
+          throw new ApiRequestError("bad", 422);
+        },
+        { retries: 2, delayMs: 1 },
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(calls).toBe(1);
+  });
+});
+
 describe("stellarDisbursementsApi", () => {
-  it("sends entity_id and account_id on preview, matching the backend's ownership contract", async () => {
+  it("sends entity_id, account_id, and idempotency_key on preview", async () => {
     const { apiEnvelope } = await import("@/lib/apiClient");
     const mocked = vi.mocked(apiEnvelope);
     mocked.mockResolvedValue({
@@ -151,12 +206,15 @@ describe("stellarDisbursementsApi", () => {
     } as never);
 
     const rows = [{ destination: "GA123", amount: "10.00", memo: null, reference: null }];
-    await stellarDisbursementsApi.preview("ent_1", "acct_1", rows);
+    await stellarDisbursementsApi.preview("ent_1", "acct_1", rows, {
+      idempotencyKey: "bulk-abc",
+    });
 
     expect(mocked).toHaveBeenCalledWith("POST", "/v1/disbursements/stellar/preview", {
       entity_id: "ent_1",
       account_id: "acct_1",
       items: rows,
+      idempotency_key: "bulk-abc",
     });
   });
 

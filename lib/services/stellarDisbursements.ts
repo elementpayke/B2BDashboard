@@ -1,4 +1,4 @@
-import { apiEnvelope } from "@/lib/apiClient";
+import { apiEnvelope, ApiRequestError } from "@/lib/apiClient";
 import { validateConvertAmount } from "@/lib/services/conversions";
 
 export type BulkStellarPayoutRow = {
@@ -217,16 +217,57 @@ export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
   };
 }
 
+/** Stable key for one preview→confirm attempt. Reuse on confirm retries only. */
+export function newBulkPayoutIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `bulk-${crypto.randomUUID()}`;
+  }
+  return `bulk-${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+/** Proxy/Mboka/Aggregator blips that are safe to retry once (with idempotency). */
+export function isTransientDisbursementError(err: unknown): boolean {
+  if (err instanceof ApiRequestError) {
+    return err.status === 408 || err.status === 502 || err.status === 503 || err.status === 504;
+  }
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /timed out|timeout|upstream|502|503|504/i.test(message);
+}
+
+/** One silent retry on transient errors; non-transient failures throw immediately. */
+export async function withTransientRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { retries?: number; delayMs?: number },
+): Promise<T> {
+  const retries = opts?.retries ?? 1;
+  const delayMs = opts?.delayMs ?? 900;
+  let last: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (attempt >= retries || !isTransientDisbursementError(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+  throw last;
+}
+
 export const stellarDisbursementsApi = {
   // entity_id/account_id (not just the account) are required so the backend
   // can verify ownership via owned_stellar_account_context — same body shape
   // as the Stellar swap quote/confirm pair (/v1/conversions/stellar/*).
-  async preview(entity_id: string, account_id: string, items: BulkStellarPayoutRow[]) {
-    const raw = await apiEnvelope<unknown>(
-      "POST",
-      "/v1/disbursements/stellar/preview",
-      { entity_id, account_id, items },
-    );
+  async preview(
+    entity_id: string,
+    account_id: string,
+    items: BulkStellarPayoutRow[],
+    opts?: { idempotencyKey?: string },
+  ) {
+    const body: Record<string, unknown> = { entity_id, account_id, items };
+    const key = (opts?.idempotencyKey || "").trim();
+    if (key) body.idempotency_key = key.slice(0, 64);
+    const raw = await apiEnvelope<unknown>("POST", "/v1/disbursements/stellar/preview", body);
     return normalizeBulkPreview(raw);
   },
 

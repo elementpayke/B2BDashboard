@@ -7806,6 +7806,37 @@ select.ep-wallets-create__control {
   line-height: 1.5;
 }
 
+.ep-bulk-payout .ep-money-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.ep-bulk-payout__retry {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  background: var(--panel);
+  color: var(--red);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ep-bulk-payout__retry:hover:not(:disabled) {
+  background: var(--red-tint);
+}
+
+.ep-bulk-payout__retry:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .ep-money-banner--info {
   background: var(--indigo-tint);
   color: var(--indigo-text);
