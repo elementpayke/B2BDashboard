@@ -46,7 +46,7 @@ describe("statementsApi", () => {
     expect(list.rows[0].status).toEqual(["AVAILABLE", "MTD"]);
   });
 
-  it("requests pdf download path", async () => {
+  function stubDomDownload() {
     const click = vi.fn();
     const anchor = {
       click,
@@ -63,6 +63,11 @@ describe("statementsApi", () => {
       revokeObjectURL: vi.fn(),
     });
     vi.stubGlobal("window", { setTimeout: vi.fn((fn: () => void) => fn()) });
+    return click;
+  }
+
+  it("requests pdf download path", async () => {
+    const click = stubDomDownload();
     vi.mocked(apiDownloadBlob).mockResolvedValue({
       blob: new Blob(["%PDF"], { type: "application/pdf" }),
       filename: "statement.pdf",
@@ -77,6 +82,27 @@ describe("statementsApi", () => {
 
     expect(apiDownloadBlob).toHaveBeenCalledWith(
       "/v1/statements/e1/a1/2026-07?format=pdf",
+    );
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("requests range export path", async () => {
+    const click = stubDomDownload();
+    vi.mocked(apiDownloadBlob).mockResolvedValue({
+      blob: new Blob(["date,amount"], { type: "text/csv" }),
+      filename: "statement.csv",
+    });
+
+    await statementsApi.downloadRange({
+      entityId: "e1",
+      accountId: "a1",
+      from: "2026-01",
+      to: "2026-03",
+      format: "csv",
+    });
+
+    expect(apiDownloadBlob).toHaveBeenCalledWith(
+      "/v1/statements/e1/a1/export?from=2026-01&to=2026-03&format=csv",
     );
     expect(click).toHaveBeenCalled();
   });
