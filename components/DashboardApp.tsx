@@ -133,9 +133,9 @@ import {
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
 import {
-  findUsdcRailForNetwork,
+  findRailForAssetNetwork,
   fundRailsForAccount,
-  usdcNetworkOptionsFromRails,
+  networkOptionsForAssetFromRails,
 } from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
@@ -2331,13 +2331,27 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const setDepositAsset = (k) => () => {
-    const nextNetwork = coerceStablecoinNetworkKey(state.depositNetwork, k);
-    const match = pickFundableWalletForRail({
-      accounts: resolvedStablecoinAccounts,
-      networkKey: nextNetwork,
-      currency: k,
-      preferredAccountId: state.fundTargetAccountId,
-    });
+    const nextNetwork = coerceStablecoinNetworkKey(state.depositNetwork, k, depositNetworkOptions);
+    const currency = (k || "usdc").trim().toLowerCase();
+    const partner = toPartnerNetwork(nextNetwork);
+    // Collect Aquarius (Stellar USDT/EURC) and CCTP bridge deposits credit the
+    // Stellar USDC home — pin that account so auto-pick does not snap away.
+    const pinStellarHome =
+      (currency === "usdc" && partner !== "Stellar") ||
+      ((currency === "usdt" || currency === "eurc") && partner === "Stellar");
+    const match = pinStellarHome
+      ? resolvedStablecoinAccounts.find(
+          (a) =>
+            isFundableStablecoinAccount(a) &&
+            a.currency.trim().toUpperCase() === "USDC" &&
+            isStellarUsdcRail({ network: a.network, currency: a.currency }),
+        )
+      : pickFundableWalletForRail({
+          accounts: resolvedStablecoinAccounts,
+          networkKey: nextNetwork,
+          currency: k,
+          preferredAccountId: state.fundTargetAccountId,
+        });
     setState({
       depositAsset: k,
       depositNetwork: nextNetwork,
@@ -2357,28 +2371,30 @@ export default function DashboardApp(props: Props = {}) {
     // back to "base", making those rows look unclickable.
     const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset, depositNetworkOptions);
     const currency = (state.depositAsset || "usdc").trim().toLowerCase();
+    const partner = toPartnerNetwork(nextNetwork);
     // USDC's home wallet is always Stellar — a bridge network (Base, etc.)
     // is just where this particular deposit is coming from, not a separate
-    // account. Keep fundTargetAccountId pinned to the Stellar home so the
-    // auto-pick effect below doesn't fight back and reset the network.
-    const match =
-      currency === "usdc" && toPartnerNetwork(nextNetwork) !== "Stellar"
-        ? resolvedStablecoinAccounts.find(
-            (a) =>
-              isFundableStablecoinAccount(a) &&
-              a.currency.trim().toUpperCase() === "USDC" &&
-              isStellarUsdcRail({ network: a.network, currency: a.currency }),
-          )
-        : pickFundableWalletForRail({
-            accounts: resolvedStablecoinAccounts,
-            networkKey: nextNetwork,
-            currency: state.depositAsset,
-            preferredAccountId: state.fundTargetAccountId,
-          });
+    // account. Stellar USDT/EURC Aquarius deposits also credit that home.
+    const pinStellarHome =
+      (currency === "usdc" && partner !== "Stellar") ||
+      ((currency === "usdt" || currency === "eurc") && partner === "Stellar");
+    const match = pinStellarHome
+      ? resolvedStablecoinAccounts.find(
+          (a) =>
+            isFundableStablecoinAccount(a) &&
+            a.currency.trim().toUpperCase() === "USDC" &&
+            isStellarUsdcRail({ network: a.network, currency: a.currency }),
+        )
+      : pickFundableWalletForRail({
+          accounts: resolvedStablecoinAccounts,
+          networkKey: nextNetwork,
+          currency: state.depositAsset,
+          preferredAccountId: state.fundTargetAccountId,
+        });
     setState({
       depositNetwork: nextNetwork,
       fundTargetAccountId: match?.id ?? null,
-      depositAsset: match
+      depositAsset: match && !pinStellarHome
         ? match.currency.trim().toLowerCase() || state.depositAsset
         : state.depositAsset,
       depositQuote: null,
@@ -4530,14 +4546,33 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
-  // USDC deposits bridge into the single Stellar home wallet via CCTP —
-  // the network list here is "where is this coming from", backed by real
-  // addresses from Collect deposit-instructions, not a per-network account.
-  const depositCollectNetworkOptions = usdcNetworkOptionsFromRails(fundStablecoinRails);
-  const depositNetworkOptions =
-    s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0
-      ? depositCollectNetworkOptions
-      : stablecoinNetworksForAsset(DEPOSIT_STABLECOIN_NETWORKS, s.depositAsset);
+  // Collect deposits: USDC via CCTP (+ Stellar home), USDT/EURC on Stellar via
+  // Aquarius — network list is "where is this coming from", backed by rails.
+  const depositCollectNetworkOptions = networkOptionsForAssetFromRails(
+    fundStablecoinRails,
+    s.depositAsset,
+  );
+  const depositCatalogNetworks = stablecoinNetworksForAsset(
+    DEPOSIT_STABLECOIN_NETWORKS,
+    s.depositAsset,
+  );
+  const depositNetworkOptions = (() => {
+    if (s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0) {
+      return depositCollectNetworkOptions;
+    }
+    if (s.depositAsset === "eurc") {
+      return depositCollectNetworkOptions.length > 0
+        ? depositCollectNetworkOptions
+        : depositCatalogNetworks;
+    }
+    // USDT: Base/Polygon accounts + Stellar Aquarius when Collect rail is live.
+    if (depositCollectNetworkOptions.length === 0) return depositCatalogNetworks;
+    const seen = new Set<string>(depositCatalogNetworks.map((n) => n.key));
+    return [
+      ...depositCatalogNetworks,
+      ...depositCollectNetworkOptions.filter((n) => !seen.has(n.key)),
+    ];
+  })();
   const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset, depositNetworkOptions);
   const depositNetworks = depositNetworkOptions.map((n) => ({
     key: n.key,
@@ -4551,7 +4586,20 @@ export default function DashboardApp(props: Props = {}) {
       summaryQuery.data?.totals.wallet_address,
     stablecoinAccounts: stablecoinAccountsList,
   });
-  const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
+  const depositAssetKeys = [
+    "usdc",
+    "usdt",
+    ...(fundStablecoinRails.some((r) => r.currency.trim().toUpperCase() === "EURC")
+      ? (["eurc"] as const)
+      : []),
+  ];
+  const depositAssets = depositAssetKeys.map((k) => ({
+    key: k,
+    label: k.toUpperCase(),
+    select: setDepositAsset(k),
+    bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)",
+    color: s.depositAsset === k ? "var(--bg)" : "var(--ink)",
+  }));
   const pinnedOnRampDest = resolveOnRampDestination({
     accounts: stablecoinAccountsList,
     selectedAccountId: s.fundTargetAccountId,
@@ -4629,10 +4677,12 @@ export default function DashboardApp(props: Props = {}) {
   // there even when the chosen network is a CCTP bridge (Base, etc.) — the
   // rail match (by the *selected network*, not the pinned account) is the
   // correct source for both the address and its label in that case.
-  const depositCollectRailMatch =
-    s.depositAsset === "usdc"
-      ? findUsdcRailForNetwork(fundStablecoinRails, depositNetworkUiKey)
-      : undefined;
+  // Same for Stellar USDT/EURC Collect rails (Aquarius → USDC home).
+  const depositCollectRailMatch = findRailForAssetNetwork(
+    fundStablecoinRails,
+    s.depositAsset,
+    depositNetworkUiKey,
+  );
   const depositNetworkLabel = depositCollectRailMatch
     ? depositCollectRailMatch.networkLabel
     : pinnedOnRampDest

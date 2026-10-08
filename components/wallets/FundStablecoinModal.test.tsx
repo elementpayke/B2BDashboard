@@ -105,4 +105,29 @@ describe("FundStablecoinModal Stellar wallet", () => {
     ]);
     expect(screen.queryByText("Or send from a wallet")).not.toBeInTheDocument();
   });
+
+  it("lists Stellar USDT Aquarius rail beside USDC", () => {
+    const usdt: FundStablecoinRail = {
+      id: "s1:usdt",
+      currency: "USDT",
+      network: "Stellar",
+      networkLabel: "Stellar",
+      walletAddress: stellar.walletAddress,
+      chainDisclaimer: "Deposit USDT on Stellar. Converts to USDC via Aquarius.",
+      checkoutUrl: null,
+    };
+    render(
+      <FundStablecoinModal
+        targetCurrency="USDC"
+        targetName="USDC · Stellar"
+        rails={[stellar, usdt]}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("USDT")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /USDT/i }));
+    expect(
+      screen.getByText("Deposit USDT on Stellar. Converts to USDC via Aquarius."),
+    ).toBeInTheDocument();
+  });
 });

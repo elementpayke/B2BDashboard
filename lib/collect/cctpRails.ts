@@ -82,10 +82,38 @@ export function findUsdcRailForNetwork(
   rails: FundStablecoinRail[],
   networkKey: string,
 ): FundStablecoinRail | undefined {
+  return findRailForAssetNetwork(rails, "USDC", networkKey);
+}
+
+/** Match a Collect/fund rail by asset + UI network key (stellar / base / …). */
+export function findRailForAssetNetwork(
+  rails: FundStablecoinRail[],
+  asset: string,
+  networkKey: string,
+): FundStablecoinRail | undefined {
+  const currency = asset.trim().toUpperCase();
   const want = networkKey.trim().toLowerCase();
   return rails.find(
-    (r) => r.currency.trim().toUpperCase() === "USDC" && railNetworkKey(r.network) === want,
+    (r) => r.currency.trim().toUpperCase() === currency && railNetworkKey(r.network) === want,
   );
+}
+
+/** Network chips for a Top-up asset that already has Collect rails loaded. */
+export function networkOptionsForAssetFromRails(
+  rails: FundStablecoinRail[],
+  asset: string,
+): { key: string; label: string }[] {
+  const currency = asset.trim().toUpperCase();
+  const seen = new Set<string>();
+  const out: { key: string; label: string }[] = [];
+  for (const r of rails) {
+    if (r.currency.trim().toUpperCase() !== currency) continue;
+    const key = railNetworkKey(r.network);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label: r.networkLabel });
+  }
+  return out;
 }
 
 /** Prefer Collect EVM rails first, then Stellar home (dedupe by network+address). */
@@ -156,15 +184,20 @@ export function buildCollectFundModalRails(opts: {
         homeAccountId: String(home.id),
       })
     : [];
-  const eurcRails = home ? stellarEurcFundRail(home, opts.depositInstructions) : [];
-  // Collect EVM first, then Stellar USDC, then Stellar EURC (same G, separate asset).
-  return mergeFundStablecoinRails([...collectRails, ...stellarRails], eurcRails);
+  const aquariusRails = home
+    ? [
+        ...stellarAquariusFundRail(home, opts.depositInstructions, "EURC"),
+        ...stellarAquariusFundRail(home, opts.depositInstructions, "USDT"),
+      ]
+    : [];
+  // Collect EVM first, then Stellar USDC, then Stellar EURC/USDT (same G, Aquarius → USDC).
+  return mergeFundStablecoinRails([...collectRails, ...stellarRails], aquariusRails);
 }
 
 /**
  * Deposit rails for the account the user is funding.
  * Stellar USDC (and fiat "deposit to a stablecoin") keep the Collect set:
- * USDC on Base, USDC on Stellar, EURC on Stellar.
+ * USDC on Base/EVM, USDC on Stellar, EURC/USDT on Stellar (Aquarius → USDC).
  * Any other chain wallet gets only its own asset and address.
  */
 export function fundRailsForAccount(opts: {
@@ -207,34 +240,36 @@ export function fundRailsForAccount(opts: {
   return buildCollectFundModalRails(opts);
 }
 
-function stellarEurcFundRail(
+function stellarAquariusFundRail(
   home: {
     id: string;
     network: string;
     walletAddress?: string | null;
   },
   depositInstructions: unknown,
+  asset: "EURC" | "USDT",
 ): FundStablecoinRail[] {
   if (!depositInstructions || typeof depositInstructions !== "object") return [];
   const collect = (depositInstructions as Record<string, unknown>).collect;
   if (!collect || typeof collect !== "object") return [];
-  const eurc = (collect as Record<string, unknown>).stellar_eurc;
-  if (!eurc || typeof eurc !== "object") return [];
-  const row = eurc as Record<string, unknown>;
+  const blockKey = asset === "EURC" ? "stellar_eurc" : "stellar_usdt";
+  const block = (collect as Record<string, unknown>)[blockKey];
+  if (!block || typeof block !== "object") return [];
+  const row = block as Record<string, unknown>;
   if (row.trustline_open !== true) return [];
   const address = String(row.address || home.walletAddress || "").trim();
   if (!address) return [];
   const networkLabel = formatNetworkLabel(home.network);
   return [
     {
-      id: `${home.id}:eurc`,
-      currency: "EURC",
+      id: `${home.id}:${asset.toLowerCase()}`,
+      currency: asset,
       network: home.network,
       networkLabel,
       walletAddress: address,
       chainDisclaimer: fundStablecoinRailSummary({
         targetName: "USDC",
-        currency: "EURC",
+        currency: asset,
         networkLabel,
       }),
       checkoutUrl: null,

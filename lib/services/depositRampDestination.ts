@@ -65,25 +65,40 @@ export const DEPOSIT_STABLECOIN_NETWORKS = [
 export type DepositStablecoinNetworkKey =
   (typeof DEPOSIT_STABLECOIN_NETWORKS)[number]["key"];
 
-/** Stellar USDC is live; Stellar USDT is not offered. */
+/**
+ * Network chips for Top-up / Receive by asset.
+ * USDC: Base / Polygon / Stellar. USDT: Base / Polygon only here — Stellar USDT
+ * is added by Collect rails in Top-up when the Aquarius trustline is open.
+ * EURC: Stellar only (Aquarius → USDC).
+ */
 export function stablecoinNetworksForAsset<T extends { key: string }>(
   networks: readonly T[],
   asset: string | null | undefined,
 ): T[] {
   const currency = assetCurrency(asset);
+  if (currency === "EURC") {
+    return networks.filter((n) => isStellarNetworkKey(n.key));
+  }
   if (currency === "USDT") {
     return networks.filter((n) => !isStellarNetworkKey(n.key));
   }
   return [...networks];
 }
 
-/** Snap a leftover UI network key onto a chip that exists for this asset. */
+/**
+ * Snap a leftover UI network key onto a chip that exists for this asset.
+ * When `networks` is omitted, apply the catalog asset filter. When the caller
+ * already built the chip list (Collect rails merge, etc.), trust that list.
+ */
 export function coerceStablecoinNetworkKey(
   networkKey: string | null | undefined,
   asset: string | null | undefined,
-  networks: readonly { key: string }[] = DEPOSIT_STABLECOIN_NETWORKS,
+  networks?: readonly { key: string }[] | null,
 ): string {
-  const options = stablecoinNetworksForAsset(networks, asset);
+  const options =
+    networks != null && networks.length > 0
+      ? [...networks]
+      : stablecoinNetworksForAsset(DEPOSIT_STABLECOIN_NETWORKS, asset);
   const want = (networkKey || "").trim().toLowerCase();
   if (want && options.some((n) => n.key === want)) return want;
   return options[0]?.key ?? "base";
@@ -95,6 +110,7 @@ export type StablecoinPickerDestination = {
   /**
    * When true, Receive / Top-up may offer Create Account for this rail
    * (Base / Polygon USDC|USDT, or Stellar USDC, with no listed account yet).
+   * Stellar USDT/EURC are Collect rails on the USDC home — never Create Account.
    */
   offerCreate: boolean;
   /** Partner network code for pre-filling Create Account (`STELLAR`, …). */
@@ -113,7 +129,9 @@ function isCreatableStablecoinNetwork(networkKey: string, currency: string): boo
 
 /**
  * Address shown on Receive / Top-up stablecoin pickers.
- * Stellar always uses a ready entity USDC wallet (G…) — never the EVM treasury.
+ * Stellar USDC uses a ready entity USDC wallet (G…) — never the EVM treasury.
+ * Stellar USDT/EURC addresses come from Collect rails (DashboardApp); this
+ * helper only returns the empty/trustline copy when those rails are absent.
  */
 export function resolveStablecoinPickerDestination(input: {
   accounts: FinancialAccount[];
@@ -128,9 +146,16 @@ export function resolveStablecoinPickerDestination(input: {
   const canCreate = isCreatableStablecoinNetwork(input.networkKey, currency);
 
   if (stellar && currency !== "USDC") {
+    if (currency === "USDT" || currency === "EURC") {
+      return {
+        address: null,
+        emptyMessage: `${currency} on Stellar converts to USDC via Aquarius. The deposit address appears once your Collect trustline is ready.`,
+        offerCreate: false,
+      };
+    }
     return {
       address: null,
-      emptyMessage: "USDT is not available on Stellar. Choose USDC or another network.",
+      emptyMessage: `${currency} is not available on Stellar. Choose USDC or another network.`,
       offerCreate: false,
     };
   }
