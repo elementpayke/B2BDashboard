@@ -245,10 +245,11 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   // to a raw wallet) — without this, every one collapsed to the generic
   // "Payout · USDC", identical for a send to Base and a send to Arc.
   const cryptoSend = (transaction.source || "").trim().toLowerCase() === "stablecoin_send";
+  // Collect EURC/USDT: exchange-style deposit copy — never "Convert" / "swap".
   const client = collect
     ? "Deposit · USDC"
     : swap
-      ? `Convert · ${swapSource}`
+      ? `Deposit · ${swapSource}`
       : partyName
         ? partyName
         : cryptoSend && cryptoNetworkLabel
@@ -262,12 +263,20 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
       transaction.status === "completed" ? "from Base" : collectStagePhrase(transaction.stage),
     );
   }
-  if (swap && transaction.status === "completed") {
-    metaParts.unshift(`from ${swapSource}`);
+  if (swap) {
+    metaParts.unshift(
+      transaction.status === "completed"
+        ? "Credited"
+        : "Awaiting on-chain confirmation",
+    );
   }
   // Prefer the PSP confirmation code on fiat rails; else the order reference.
   metaParts.push(`Ref ${shortReference(paymentRef || ref)}`);
   const meta = metaParts.filter(Boolean).join(" · ");
+
+  // Collect Stellar deposits in flight read as Processing (not generic Pending).
+  const statusLabel =
+    swap && transaction.status === "processing" ? "Processing" : status.label;
 
   return {
     ...transaction,
@@ -278,7 +287,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     ref,
     meta,
     dateLabel,
-    statusLabel: status.label,
+    statusLabel,
     statusIcon: status.icon,
     statusColor: status.color,
     statusSoft: status.soft,

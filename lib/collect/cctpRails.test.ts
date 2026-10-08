@@ -170,8 +170,8 @@ describe("buildCollectFundModalRails", () => {
       },
     });
     expect(open.map((r) => r.currency)).toEqual(["USDC", "EURC", "USDT"]);
-    expect(open[1].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
-    expect(open[2].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
+    expect(open[1].chainDisclaimer).toMatch(/Credits after on-chain confirmation/);
+    expect(open[2].chainDisclaimer).toMatch(/Credits after on-chain confirmation/);
     expect(open[1].walletAddress).toBe("GHOMEADDRESS");
     expect(open[2].walletAddress).toBe("GHOMEADDRESS");
 
@@ -385,7 +385,7 @@ describe("Top Up Aquarius USDT rail match", () => {
       network: "stellar_testnet",
       networkLabel: "Stellar",
       walletAddress: "GCNPEB",
-      chainDisclaimer: "Deposit USDT on Stellar. Converts to USDC via Aquarius.",
+      chainDisclaimer: "Deposit USDT on Stellar. Credits after on-chain confirmation.",
       checkoutUrl: null,
     },
   ];

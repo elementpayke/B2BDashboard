@@ -393,7 +393,7 @@ describe("resolveStablecoinPickerDestination", () => {
     expect(dest.emptyMessage).toMatch(/No USDT wallet/i);
   });
 
-  it("does not offer Stellar create for USDT — Aquarius Collect rail instead", () => {
+  it("does not offer Stellar create for USDT — Collect rail instead", () => {
     const dest = resolveStablecoinPickerDestination({
       accounts: [],
       asset: "usdt",
@@ -401,10 +401,10 @@ describe("resolveStablecoinPickerDestination", () => {
     });
     expect(dest.offerCreate).toBe(false);
     expect(dest.address).toBeNull();
-    expect(dest.emptyMessage).toMatch(/Aquarius/i);
+    expect(dest.emptyMessage).toMatch(/on-chain confirmation/i);
   });
 
-  it("does not offer Stellar create for EURC — Aquarius Collect rail instead", () => {
+  it("does not offer Stellar create for EURC — Collect rail instead", () => {
     const dest = resolveStablecoinPickerDestination({
       accounts: [],
       asset: "eurc",
@@ -412,7 +412,7 @@ describe("resolveStablecoinPickerDestination", () => {
     });
     expect(dest.offerCreate).toBe(false);
     expect(dest.address).toBeNull();
-    expect(dest.emptyMessage).toMatch(/Aquarius/i);
+    expect(dest.emptyMessage).toMatch(/on-chain confirmation/i);
   });
 
   it("does not invent a Stellar address from a pending account", () => {

@@ -113,7 +113,7 @@ describe("FundStablecoinModal Stellar wallet", () => {
       network: "Stellar",
       networkLabel: "Stellar",
       walletAddress: stellar.walletAddress,
-      chainDisclaimer: "Deposit USDT on Stellar. Converts to USDC via Aquarius.",
+      chainDisclaimer: "Deposit USDT on Stellar. Credits after on-chain confirmation.",
       checkoutUrl: null,
     };
     render(
@@ -127,7 +127,7 @@ describe("FundStablecoinModal Stellar wallet", () => {
     expect(screen.getByText("USDT")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: /USDT/i }));
     expect(
-      screen.getByText("Deposit USDT on Stellar. Converts to USDC via Aquarius."),
+      screen.getByText("Deposit USDT on Stellar. Credits after on-chain confirmation."),
     ).toBeInTheDocument();
   });
 });
