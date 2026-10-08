@@ -5,6 +5,8 @@ vi.mock("@/lib/apiClient", () => ({
 }));
 
 import {
+  explainDisbursementFailure,
+  normalizeBulkBatch,
   parseBulkStellarPayoutCsv,
   parseBulkStellarPayoutCsvLoose,
   stellarDisbursementsApi,
@@ -82,6 +84,35 @@ describe("parseBulkStellarPayoutCsvLoose", () => {
     expect(() => parseBulkStellarPayoutCsvLoose("destination,amount")).toThrow(
       /at least one payout after the csv header/i,
     );
+  });
+});
+
+describe("explainDisbursementFailure", () => {
+  it("maps trustline failures to actionable copy", () => {
+    expect(explainDisbursementFailure("destination_missing_trustline")).toMatch(/trustline/i);
+  });
+
+  it("humanizes unknown codes", () => {
+    expect(explainDisbursementFailure("custom_code_x")).toMatch(/custom code x/i);
+  });
+});
+
+describe("normalizeBulkBatch", () => {
+  it("keeps failure_code / last_error as item.error for the result UI", () => {
+    const batch = normalizeBulkBatch({
+      batch_id: "3",
+      status: "failed",
+      items: [
+        {
+          destination_address: "GA123",
+          amount: "2",
+          status: "failed",
+          last_error: "destination_missing_trustline",
+        },
+      ],
+    });
+    expect(batch.items[0].error).toBe("destination_missing_trustline");
+    expect(batch.items[0].destination).toBe("GA123");
   });
 });
 

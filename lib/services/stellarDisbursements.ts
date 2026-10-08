@@ -126,6 +126,34 @@ export function parseBulkStellarPayoutCsvLoose(csv: string): BulkStellarPayoutRo
   }));
 }
 
+/** Map Aggregator / Mboka machine codes to plain-language copy for merchants. */
+export function explainDisbursementFailure(code: string | null | undefined): string | null {
+  const key = (code || "").trim().toLowerCase();
+  if (!key) return null;
+  const copy: Record<string, string> = {
+    destination_missing_trustline:
+      "This wallet hasn’t added a USDC trustline yet. Ask the recipient to trust Circle USDC on Stellar, then retry.",
+    destination_account_not_found:
+      "This Stellar address isn’t active on the network yet. The recipient needs to create/fund the account first.",
+    insufficient_balance:
+      "Your source wallet doesn’t have enough USDC (plus fees) for this payout.",
+    funding_account_unusable:
+      "We couldn’t sign from your Stellar wallet. Refresh and try again, or contact support if it persists.",
+    stellar_submit_failed:
+      "Stellar rejected this payment. Check the destination and try again.",
+    stellar_submit_unconfirmed:
+      "Payment was broadcast but not confirmed yet. Refresh batch status in a moment.",
+    sdp_adapter_unavailable:
+      "Payouts are in dry-run mode here — nothing was sent on-chain.",
+    stellar_disbursement_submit_failed:
+      "We couldn’t submit this batch. Try again or contact support.",
+  };
+  if (copy[key]) return copy[key];
+  // Unknown codes: surface a readable sentence, not a bare snake_case token.
+  const readable = key.replace(/_/g, " ");
+  return `This payout failed (${readable}).`;
+}
+
 function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -133,12 +161,19 @@ function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
     .filter((row): row is Record<string, unknown> => row !== null)
     .map((row) => ({
       destination:
-        asText(row.destination ?? row.to_address ?? row.wallet_address) || "",
+        asText(
+          row.destination ??
+            row.destination_address ??
+            row.to_address ??
+            row.wallet_address,
+        ) || "",
       amount: asText(row.amount) || "",
       memo: asText(row.memo),
-      reference: asText(row.reference ?? row.client_reference),
+      reference: asText(row.reference ?? row.client_reference ?? row.partner_item_ref),
       status: asText(row.status),
-      error: asText(row.error ?? row.message),
+      error: asText(
+        row.error ?? row.failure_code ?? row.failureCode ?? row.last_error ?? row.message,
+      ),
     }));
 }
 
