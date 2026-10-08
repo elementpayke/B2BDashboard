@@ -114,6 +114,29 @@ describe("normalizeBulkBatch", () => {
     expect(batch.items[0].error).toBe("destination_missing_trustline");
     expect(batch.items[0].destination).toBe("GA123");
   });
+
+  it("maps tx_hash / external_item_id for View onchain links", () => {
+    const batch = normalizeBulkBatch({
+      batch_id: "4",
+      status: "completed",
+      items: [
+        {
+          destination_address: "GA123",
+          amount: "3",
+          status: "completed",
+          tx_hash: "abc123hash",
+        },
+        {
+          destination: "GB456",
+          amount: "2",
+          status: "completed",
+          external_item_id: "def456hash",
+        },
+      ],
+    });
+    expect(batch.items[0].tx_hash).toBe("abc123hash");
+    expect(batch.items[1].tx_hash).toBe("def456hash");
+  });
 });
 
 describe("stellarDisbursementsApi", () => {

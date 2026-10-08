@@ -18,7 +18,14 @@ export type BulkStellarPayoutPreview = {
 export type BulkStellarPayoutBatch = {
   batch_id: string;
   status: string;
-  items: Array<BulkStellarPayoutRow & { status?: string | null; error?: string | null }>;
+  items: Array<
+    BulkStellarPayoutRow & {
+      status?: string | null;
+      error?: string | null;
+      /** Stellar payment hash when submitted on-chain. */
+      tx_hash?: string | null;
+    }
+  >;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -173,6 +180,14 @@ function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
       status: asText(row.status),
       error: asText(
         row.error ?? row.failure_code ?? row.failureCode ?? row.last_error ?? row.message,
+      ),
+      tx_hash: asText(
+        row.tx_hash ??
+          row.txHash ??
+          row.transaction_hash ??
+          row.transactionHash ??
+          row.external_item_id ??
+          row.externalItemId,
       ),
     }));
 }

@@ -3997,6 +3997,29 @@ button.ep-home__stat:focus-visible {
   line-height: 1.2;
 }
 
+.ep-bulk-result__onchain {
+  display: inline-flex;
+  align-items: center;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--indigo-text);
+  text-decoration: none;
+  padding: 3px 2px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.ep-bulk-result__onchain:hover {
+  text-decoration: underline;
+}
+
+.ep-bulk-result__onchain:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--indigo) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .ep-bulk-result__why-btn:hover {
   background: var(--red-tint);
 }

@@ -21,6 +21,7 @@ import {
   type BulkStellarPayoutPreview,
   type BulkStellarPayoutRow,
 } from "@/lib/services/stellarDisbursements";
+import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 
 // Local-only identity for React keys / focus stability across edits, add,
 // and remove — never sent to the API (stripped in previewBatch).
@@ -148,10 +149,12 @@ function failureWhy(error: string | null | undefined): string {
 function BulkPayoutBatchResult({
   batch,
   currency,
+  network,
   onDone,
 }: {
   batch: BulkStellarPayoutBatch;
   currency: string;
+  network?: string | null;
   onDone: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -207,6 +210,10 @@ function BulkPayoutBatchResult({
                 : "pending";
             const rowKey = `${item.destination}-${index}`;
             const open = openKey === rowKey;
+            const explorerUrl =
+              itemTone === "ok"
+                ? stellarExplorerTxUrl({ txHash: item.tx_hash, network: network || "Stellar" })
+                : null;
             return (
               <li
                 key={rowKey}
@@ -234,6 +241,16 @@ function BulkPayoutBatchResult({
                         >
                           {open ? "Hide" : "Why?"}
                         </button>
+                      ) : null}
+                      {explorerUrl ? (
+                        <a
+                          className="ep-bulk-result__onchain"
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View onchain ↗
+                        </a>
                       ) : null}
                     </span>
                   </div>
@@ -563,6 +580,7 @@ export default function BulkStellarPayoutWizard({
       <BulkPayoutBatchResult
         batch={batch}
         currency={selectedAccount?.currency || "USDC"}
+        network={selectedAccount?.network || "Stellar"}
         onDone={onDone}
       />
     );
