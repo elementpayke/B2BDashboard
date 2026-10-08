@@ -136,6 +136,127 @@ function SubmittingHourglass() {
   );
 }
 
+function failureWhy(error: string | null | undefined): string {
+  return (
+    explainDisbursementFailure(error) ||
+    (error
+      ? `This payout failed (${error.replace(/_/g, " ")}).`
+      : "This payout failed. Check the destination on Stellar or fix the recipient wallet, then retry.")
+  );
+}
+
+function BulkPayoutBatchResult({
+  batch,
+  currency,
+  onDone,
+}: {
+  batch: BulkStellarPayoutBatch;
+  currency: string;
+  onDone: () => void;
+}) {
+  const [openKey, setOpenKey] = useState<string | null>(null);
+
+  const statusKey = (batch.status || "").toLowerCase();
+  const failedCount = batch.items.filter((i) =>
+    ["failed", "error", "rejected"].includes((i.status || "").toLowerCase()),
+  ).length;
+  const okCount = batch.items.filter((i) =>
+    ["completed", "complete", "success", "succeeded", "submitted"].includes(
+      (i.status || "").toLowerCase(),
+    ),
+  ).length;
+  const batchTone =
+    statusKey.includes("partial") || (failedCount > 0 && okCount > 0)
+      ? "partial"
+      : failedCount > 0 || statusKey === "failed"
+        ? "failed"
+        : "ok";
+  const title =
+    batchTone === "failed"
+      ? "Batch failed"
+      : batchTone === "partial"
+        ? "Partially sent"
+        : "Submitted";
+  const summary =
+    batchTone === "failed"
+      ? `Batch ${batch.batch_id || "—"} didn’t complete. Tap Why on a row for details.`
+      : batchTone === "partial"
+        ? `Batch ${batch.batch_id || "—"}: ${okCount} sent, ${failedCount} failed.`
+        : `Batch ${batch.batch_id || "pending"} is ${batch.status}.`;
+
+  return (
+    <div className="ep-money-flow ep-bulk-payout">
+      <div className={`ep-bulk-result ep-bulk-result--${batchTone}`}>
+        <div className="ep-bulk-result__hero">
+          <span className="ep-bulk-result__hero-icon" aria-hidden>
+            {batchTone === "ok" ? "✓" : batchTone === "partial" ? "!" : "✕"}
+          </span>
+          <div>
+            <div className="ep-bulk-result__title">{title}</div>
+            <div className="ep-bulk-result__summary">{summary}</div>
+          </div>
+        </div>
+
+        <ul className="ep-bulk-result__list" aria-label="Payout results">
+          {batch.items.map((item, index) => {
+            const itemStatus = (item.status || "").toLowerCase();
+            const itemTone = ["failed", "error", "rejected"].includes(itemStatus)
+              ? "failed"
+              : ["completed", "complete", "success", "succeeded", "submitted"].includes(itemStatus)
+                ? "ok"
+                : "pending";
+            const rowKey = `${item.destination}-${index}`;
+            const open = openKey === rowKey;
+            return (
+              <li
+                key={rowKey}
+                className={`ep-bulk-result__row ep-bulk-result__row--${itemTone}`}
+              >
+                <span className="ep-bulk-result__icon" aria-hidden>
+                  {itemTone === "ok" ? "✓" : itemTone === "failed" ? "✕" : "…"}
+                </span>
+                <div className="ep-bulk-result__main">
+                  <div className="ep-bulk-result__top">
+                    <span className="ep-bulk-payout__addr" title={item.destination}>
+                      {item.destination}
+                    </span>
+                    <span className="ep-bulk-result__meta">
+                      <span className="ep-bulk-result__amount">
+                        {item.amount} {currency}
+                      </span>
+                      <span className="ep-bulk-result__badge">{item.status || "pending"}</span>
+                      {itemTone === "failed" ? (
+                        <button
+                          type="button"
+                          className="ep-bulk-result__why-btn"
+                          aria-expanded={open}
+                          onClick={() => setOpenKey(open ? null : rowKey)}
+                        >
+                          {open ? "Hide" : "Why?"}
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                  {open ? (
+                    <div className="ep-bulk-result__why-panel" role="region" aria-label="Failure reason">
+                      {failureWhy(item.error)}
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      <div className="ep-money-actions ep-bulk-payout__actions">
+        <button type="button" className="ep-btn-primary" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BulkStellarPayoutWizard({
   sourceAccounts,
   draftScopeId = null,
@@ -438,96 +559,12 @@ export default function BulkStellarPayoutWizard({
   }
 
   if (batch) {
-    const currency = selectedAccount?.currency || "USDC";
-    const statusKey = (batch.status || "").toLowerCase();
-    const failedCount = batch.items.filter((i) =>
-      ["failed", "error", "rejected"].includes((i.status || "").toLowerCase()),
-    ).length;
-    const okCount = batch.items.filter((i) =>
-      ["completed", "complete", "success", "succeeded", "submitted"].includes(
-        (i.status || "").toLowerCase(),
-      ),
-    ).length;
-    const batchTone =
-      statusKey.includes("partial") || (failedCount > 0 && okCount > 0)
-        ? "partial"
-        : failedCount > 0 || statusKey === "failed"
-          ? "failed"
-          : "ok";
-    const title =
-      batchTone === "failed"
-        ? "Batch failed"
-        : batchTone === "partial"
-          ? "Partially sent"
-          : "Submitted";
-    const summary =
-      batchTone === "failed"
-        ? `Batch ${batch.batch_id || "—"} didn’t complete. See why each payout failed below.`
-        : batchTone === "partial"
-          ? `Batch ${batch.batch_id || "—"}: ${okCount} sent, ${failedCount} failed.`
-          : `Batch ${batch.batch_id || "pending"} is ${batch.status}.`;
-
     return (
-      <div className="ep-money-flow ep-bulk-payout">
-        <div className={`ep-bulk-result ep-bulk-result--${batchTone}`}>
-          <div className="ep-bulk-result__hero">
-            <span className="ep-bulk-result__hero-icon" aria-hidden>
-              {batchTone === "ok" ? "✓" : batchTone === "partial" ? "!" : "✕"}
-            </span>
-            <div>
-              <div className="ep-bulk-result__title">{title}</div>
-              <div className="ep-bulk-result__summary">{summary}</div>
-            </div>
-          </div>
-
-          <ul className="ep-bulk-result__list" aria-label="Payout results">
-            {batch.items.map((item, index) => {
-              const itemStatus = (item.status || "").toLowerCase();
-              const itemTone = ["failed", "error", "rejected"].includes(itemStatus)
-                ? "failed"
-                : ["completed", "complete", "success", "succeeded", "submitted"].includes(
-                      itemStatus,
-                    )
-                  ? "ok"
-                  : "pending";
-              const why =
-                itemTone === "failed"
-                  ? explainDisbursementFailure(item.error) ||
-                    (item.error
-                      ? `This payout failed (${item.error.replace(/_/g, " ")}).`
-                      : "This payout failed. Open the destination on Stellar Expert or retry after fixing the recipient wallet.")
-                  : null;
-              return (
-                <li
-                  key={`${item.destination}-${index}`}
-                  className={`ep-bulk-result__row ep-bulk-result__row--${itemTone}`}
-                >
-                  <span className="ep-bulk-result__icon" aria-hidden>
-                    {itemTone === "ok" ? "✓" : itemTone === "failed" ? "✕" : "…"}
-                  </span>
-                  <div className="ep-bulk-result__main">
-                    <div className="ep-bulk-result__top">
-                      <span className="ep-bulk-payout__addr" title={item.destination}>
-                        {item.destination}
-                      </span>
-                      <span className="ep-bulk-result__meta">
-                        {item.amount} {currency}
-                        <span className="ep-bulk-result__badge">{item.status || "pending"}</span>
-                      </span>
-                    </div>
-                    {why ? <p className="ep-bulk-result__why">{why}</p> : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-        <div className="ep-money-actions ep-bulk-payout__actions">
-          <button type="button" className="ep-btn-primary" onClick={onDone}>
-            Done
-          </button>
-        </div>
-      </div>
+      <BulkPayoutBatchResult
+        batch={batch}
+        currency={selectedAccount?.currency || "USDC"}
+        onDone={onDone}
+      />
     );
   }
 

@@ -3888,8 +3888,8 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-bulk-result__row--failed {
-  border-color: color-mix(in srgb, var(--red) 28%, var(--border));
-  background: color-mix(in srgb, var(--red-tint) 70%, var(--panel));
+  border-color: color-mix(in srgb, var(--red) 18%, var(--border));
+  background: var(--surface2);
 }
 
 .ep-bulk-result__row--ok {
@@ -3953,6 +3953,10 @@ button.ep-home__stat:focus-visible {
   flex-shrink: 0;
 }
 
+.ep-bulk-result__amount {
+  font-variant-numeric: tabular-nums;
+}
+
 .ep-bulk-result__badge {
   display: inline-flex;
   align-items: center;
@@ -3979,12 +3983,40 @@ button.ep-home__stat:focus-visible {
   color: var(--amber);
 }
 
-.ep-bulk-result__why {
+.ep-bulk-result__why-btn {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  background: var(--panel);
+  color: var(--red);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.ep-bulk-result__why-btn:hover {
+  background: var(--red-tint);
+}
+
+.ep-bulk-result__why-btn[aria-expanded="true"] {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.ep-bulk-result__why-panel {
   margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--red) 22%, var(--border));
   font-size: 12.5px;
   font-weight: 600;
   line-height: 1.45;
-  color: var(--red);
+  color: var(--ink);
 }
 
 @media (max-width: 520px) {
