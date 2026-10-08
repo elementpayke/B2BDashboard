@@ -298,10 +298,16 @@ describe("stablecoinNetworksForAsset", () => {
     ]);
   });
 
-  it("hides Stellar for USDT", () => {
+  it("hides Stellar for USDT in the catalog (Collect Top-up merges it in)", () => {
     expect(stablecoinNetworksForAsset(networks, "usdt").map((n) => n.key)).toEqual([
       "base",
       "polygon",
+    ]);
+  });
+
+  it("keeps only Stellar for EURC", () => {
+    expect(stablecoinNetworksForAsset(networks, "eurc").map((n) => n.key)).toEqual([
+      "stellar",
     ]);
   });
 });
@@ -316,8 +322,22 @@ describe("coerceStablecoinNetworkKey", () => {
     expect(coerceStablecoinNetworkKey("solana", "usdt")).toBe("base");
   });
 
-  it("snaps Stellar away when the asset is USDT", () => {
+  it("snaps Stellar away when the asset is USDT and Stellar is not in the chip list", () => {
     expect(coerceStablecoinNetworkKey("stellar", "usdt")).toBe("base");
+  });
+
+  it("keeps Stellar for USDT when Collect options include it", () => {
+    expect(
+      coerceStablecoinNetworkKey("stellar", "usdt", [
+        { key: "base" },
+        { key: "stellar" },
+        { key: "polygon" },
+      ]),
+    ).toBe("stellar");
+  });
+
+  it("snaps Base away when the asset is EURC", () => {
+    expect(coerceStablecoinNetworkKey("base", "eurc")).toBe("stellar");
   });
 });
 
@@ -373,14 +393,26 @@ describe("resolveStablecoinPickerDestination", () => {
     expect(dest.emptyMessage).toMatch(/No USDT wallet/i);
   });
 
-  it("does not offer Stellar create for USDT", () => {
+  it("does not offer Stellar create for USDT — Aquarius Collect rail instead", () => {
     const dest = resolveStablecoinPickerDestination({
       accounts: [],
       asset: "usdt",
       networkKey: "stellar",
     });
     expect(dest.offerCreate).toBe(false);
-    expect(dest.emptyMessage).toMatch(/USDT is not available on Stellar/i);
+    expect(dest.address).toBeNull();
+    expect(dest.emptyMessage).toMatch(/Aquarius/i);
+  });
+
+  it("does not offer Stellar create for EURC — Aquarius Collect rail instead", () => {
+    const dest = resolveStablecoinPickerDestination({
+      accounts: [],
+      asset: "eurc",
+      networkKey: "stellar",
+    });
+    expect(dest.offerCreate).toBe(false);
+    expect(dest.address).toBeNull();
+    expect(dest.emptyMessage).toMatch(/Aquarius/i);
   });
 
   it("does not invent a Stellar address from a pending account", () => {
