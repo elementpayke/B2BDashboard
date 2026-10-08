@@ -158,11 +158,13 @@ describe("buildCollectFundModalRails", () => {
             trustline_open: true,
             address: "GHOMEADDRESS",
             asset: "EURC",
+            convertible: true,
           },
           stellar_usdt: {
             trustline_open: true,
             address: "GHOMEADDRESS",
             asset: "USDT",
+            convertible: true,
           },
         },
       },
@@ -172,6 +174,29 @@ describe("buildCollectFundModalRails", () => {
     expect(open[2].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
     expect(open[1].walletAddress).toBe("GHOMEADDRESS");
     expect(open[2].walletAddress).toBe("GHOMEADDRESS");
+
+    const gated = buildCollectFundModalRails({
+      ...base,
+      depositInstructions: {
+        collect: {
+          stellar_eurc: {
+            trustline_open: true,
+            address: null,
+            asset: "EURC",
+            convertible: false,
+            convertible_reason: "thin_liquidity",
+          },
+          stellar_usdt: {
+            trustline_open: true,
+            address: null,
+            asset: "USDT",
+            convertible: false,
+            convertible_reason: "rate_sanity_failed",
+          },
+        },
+      },
+    });
+    expect(gated.map((r) => r.currency)).toEqual(["USDC"]);
   });
 });
 
@@ -205,11 +230,13 @@ describe("fundRailsForAccount", () => {
         trustline_open: true,
         address: "GHOMEADDRESS",
         asset: "EURC",
+        convertible: true,
       },
       stellar_usdt: {
         trustline_open: true,
         address: "GHOMEADDRESS",
         asset: "USDT",
+        convertible: true,
       },
     },
   };

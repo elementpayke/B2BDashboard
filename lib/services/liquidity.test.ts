@@ -12,6 +12,33 @@ beforeEach(() => {
 });
 
 describe("normalizeStellarLiquidity", () => {
+  it("normalizes aggregator snapshot rows with depth mid", () => {
+    expect(
+      normalizeStellarLiquidity({
+        snapshots: [
+          {
+            pair: "EURC/USDC",
+            venue: "aquarius_amm",
+            captured_at: "2026-10-08T12:00:00Z",
+            depth: { mid: "1.001", best_bid: "1.001", best_ask: "1.001" },
+          },
+        ],
+      }),
+    ).toEqual({
+      refreshed_at: "2026-10-08T12:00:00Z",
+      pairs: [
+        {
+          id: "EURC/USDC",
+          base: "EURC",
+          quote: "USDC",
+          pair: "EURC/USDC",
+          bid: "1.001",
+          ask: "1.001",
+        },
+      ],
+    });
+  });
+
   it("normalizes pair rows from envelope-style payloads", () => {
     expect(
       normalizeStellarLiquidity({
