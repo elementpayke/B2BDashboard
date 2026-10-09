@@ -18,6 +18,11 @@ export type BulkStellarPayoutPreview = {
 export type BulkStellarPayoutBatch = {
   batch_id: string;
   status: string;
+  currency?: string | null;
+  total_amount?: string | null;
+  item_count?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
   items: Array<
     BulkStellarPayoutRow & {
       status?: string | null;
@@ -26,6 +31,24 @@ export type BulkStellarPayoutBatch = {
       tx_hash?: string | null;
     }
   >;
+};
+
+export type DisbursementReconciliationReport = {
+  items_checked: number;
+  items_matched: number;
+  items_corrected: Array<{
+    partner_item_ref: string;
+    tx_hash?: string | null;
+    previous_status: string;
+    corrected_status: string;
+  }>;
+  items_unverifiable: Array<{
+    partner_item_ref: string;
+    status: string;
+    tx_hash?: string | null;
+    reason: string;
+  }>;
+  drift_found: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -210,10 +233,51 @@ export function normalizeBulkPreview(raw: unknown): BulkStellarPayoutPreview {
 
 export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
   const obj = asRecord(raw) ?? {};
+  const items = normalizeItems(obj.items ?? obj.rows);
   return {
     batch_id: asText(obj.batch_id ?? obj.id) || "",
     status: asText(obj.status) || "submitted",
-    items: normalizeItems(obj.items ?? obj.rows),
+    currency: asText(obj.currency ?? obj.source_currency),
+    total_amount: asText(obj.total_amount ?? obj.totalAmount),
+    item_count: typeof obj.total_items === "number" ? obj.total_items : items.length,
+    created_at: asText(obj.created_at ?? obj.createdAt),
+    updated_at: asText(obj.updated_at ?? obj.updatedAt),
+    items,
+  };
+}
+
+export function normalizeBulkBatchList(raw: unknown): BulkStellarPayoutBatch[] {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.batches) ? obj.batches : [];
+  return list.map(normalizeBulkBatch);
+}
+
+export function normalizeReconciliationReport(raw: unknown): DisbursementReconciliationReport {
+  const obj = asRecord(raw) ?? {};
+  const corrected = Array.isArray(obj.items_corrected) ? obj.items_corrected : [];
+  const unverifiable = Array.isArray(obj.items_unverifiable) ? obj.items_unverifiable : [];
+  return {
+    items_checked: typeof obj.items_checked === "number" ? obj.items_checked : 0,
+    items_matched: typeof obj.items_matched === "number" ? obj.items_matched : 0,
+    items_corrected: corrected.map((raw) => {
+      const row = asRecord(raw) ?? {};
+      return {
+        partner_item_ref: asText(row.partner_item_ref) || "",
+        tx_hash: asText(row.tx_hash),
+        previous_status: asText(row.previous_status) || "",
+        corrected_status: asText(row.corrected_status) || "",
+      };
+    }),
+    items_unverifiable: unverifiable.map((raw) => {
+      const row = asRecord(raw) ?? {};
+      return {
+        partner_item_ref: asText(row.partner_item_ref) || "",
+        status: asText(row.status) || "",
+        tx_hash: asText(row.tx_hash),
+        reason: asText(row.reason) || "",
+      };
+    }),
+    drift_found: Boolean(obj.drift_found),
   };
 }
 
@@ -286,5 +350,35 @@ export const stellarDisbursementsApi = {
       `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}`,
     );
     return normalizeBulkBatch(raw);
+  },
+
+  async listBatches(entity_id: string, account_id: string, limit = 50) {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements?limit=${encodeURIComponent(String(limit))}`,
+    );
+    return normalizeBulkBatchList(raw);
+  },
+
+  /** Resolves items still ambiguous after submission (Horizon not yet indexed). */
+  async syncBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}/sync`,
+    );
+    return normalizeBulkBatch(raw);
+  },
+
+  /** Re-verifies every item against Horizon regardless of current status. */
+  async reconcileBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}/reconcile`,
+    );
+    const obj = asRecord(raw) ?? {};
+    return {
+      batch: normalizeBulkBatch(raw),
+      reconciliation: normalizeReconciliationReport(obj.reconciliation),
+    };
   },
 };

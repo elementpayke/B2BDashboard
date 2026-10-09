@@ -257,4 +257,73 @@ describe("stellarDisbursementsApi", () => {
     expect(batch.batch_id).toBe("batch_9");
     expect(batch.items[0].tx_hash).toBe("hash_abc");
   });
+
+  it("lists batches for an entity/account", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({
+      batches: [
+        { id: "batch_1", status: "completed", total_items: 2, items: [] },
+        { id: "batch_2", status: "processing", total_items: 1, items: [] },
+      ],
+    } as never);
+
+    const batches = await stellarDisbursementsApi.listBatches("ent_1", "acct_1");
+
+    expect(mocked).toHaveBeenCalledWith(
+      "GET",
+      "/v1/entities/ent_1/accounts/acct_1/disbursements?limit=50",
+    );
+    expect(batches).toHaveLength(2);
+    expect(batches[0].batch_id).toBe("batch_1");
+    expect(batches[1].status).toBe("processing");
+  });
+
+  it("posts to the sync endpoint and returns the refreshed batch", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({ id: "batch_9", status: "completed", items: [] } as never);
+
+    const batch = await stellarDisbursementsApi.syncBatch("ent_1", "acct_1", "batch_9");
+
+    expect(mocked).toHaveBeenCalledWith(
+      "POST",
+      "/v1/entities/ent_1/accounts/acct_1/disbursements/batch_9/sync",
+    );
+    expect(batch.status).toBe("completed");
+  });
+
+  it("posts to the reconcile endpoint and surfaces the report alongside the batch", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    const mocked = vi.mocked(apiEnvelope);
+    mocked.mockResolvedValue({
+      id: "batch_9",
+      status: "partially_failed",
+      items: [],
+      reconciliation: {
+        items_checked: 2,
+        items_matched: 1,
+        items_corrected: [
+          {
+            partner_item_ref: "item-1",
+            tx_hash: "hash_abc",
+            previous_status: "processing",
+            corrected_status: "failed",
+          },
+        ],
+        items_unverifiable: [],
+        drift_found: true,
+      },
+    } as never);
+
+    const result = await stellarDisbursementsApi.reconcileBatch("ent_1", "acct_1", "batch_9");
+
+    expect(mocked).toHaveBeenCalledWith(
+      "POST",
+      "/v1/entities/ent_1/accounts/acct_1/disbursements/batch_9/reconcile",
+    );
+    expect(result.batch.status).toBe("partially_failed");
+    expect(result.reconciliation.drift_found).toBe(true);
+    expect(result.reconciliation.items_corrected[0].corrected_status).toBe("failed");
+  });
 });
