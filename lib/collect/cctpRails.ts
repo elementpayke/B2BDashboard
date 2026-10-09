@@ -257,7 +257,10 @@ function stellarAquariusFundRail(
   if (!block || typeof block !== "object") return [];
   const row = block as Record<string, unknown>;
   if (row.trustline_open !== true) return [];
-  const address = String(row.address || home.walletAddress || "").trim();
+  // Aggregator fail-closed gate: hide Aquarius rails when conversion probe fails.
+  if (row.convertible === false) return [];
+  // Never fall back to the home USDC address — that would invite stuck non-USDC.
+  const address = String(row.address || "").trim();
   if (!address) return [];
   const networkLabel = formatNetworkLabel(home.network);
   return [

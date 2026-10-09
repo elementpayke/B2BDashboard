@@ -247,20 +247,25 @@ describe("presentTransaction", () => {
     expect(settled.meta).toContain("from Base");
   });
 
-  it("shows one EURC convert row, pending then settled USDC", () => {
+  it("shows one EURC deposit row as Processing, then Settled USDC — no convert/swap copy", () => {
     const pending = presentTransaction(
       transaction({
         id: "swap_1",
         direction: "in",
         status: "processing",
         currency: "EURC",
-        amount_fiat: "10.00",
+        amount_fiat: "20.00",
         source: "collect_swap",
         source_currency: "EURC",
       }),
     );
-    expect(pending.client).toBe("Convert · EURC");
-    expect(pending.statusLabel).toBe("Pending");
+    expect(pending.client).toBe("Deposit · EURC");
+    expect(pending.statusLabel).toBe("Processing");
+    expect(pending.amount).toContain("20.00");
+    expect(pending.amount).toContain("EURC");
+    expect(pending.meta).toMatch(/Awaiting on-chain confirmation/i);
+    expect(pending.client).not.toMatch(/convert|swap/i);
+    expect(pending.meta).not.toMatch(/convert|swap|aquarius/i);
 
     const settled = presentTransaction(
       transaction({
@@ -273,11 +278,29 @@ describe("presentTransaction", () => {
         source_currency: "EURC",
       }),
     );
-    expect(settled.client).toBe("Convert · EURC");
+    expect(settled.client).toBe("Deposit · EURC");
     expect(settled.statusLabel).toBe("Settled");
     expect(settled.amount).toContain("10.80");
     expect(settled.amount).toContain("USDC");
-    expect(settled.meta).toContain("from EURC");
+    expect(settled.meta).toContain("Credited");
+    expect(settled.meta).not.toMatch(/convert|swap/i);
+  });
+
+  it("shows Stellar USDT deposit the same way while confirming", () => {
+    const pending = presentTransaction(
+      transaction({
+        id: "swap_2",
+        direction: "in",
+        status: "processing",
+        currency: "USDT",
+        amount_fiat: "50.00",
+        source: "collect_swap",
+        source_currency: "USDT",
+      }),
+    );
+    expect(pending.client).toBe("Deposit · USDT");
+    expect(pending.statusLabel).toBe("Processing");
+    expect(pending.meta).toMatch(/Awaiting on-chain confirmation/i);
   });
 
   it("shows a Stellar USDC send as Payout to Stellar · USDC", () => {

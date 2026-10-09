@@ -16,10 +16,13 @@ import {
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { nextPollIntervalMs } from "@/lib/orderStatusPolling";
 
-export type CreditWatchPhase = "submitted" | "credited" | "timed_out";
+export type CreditWatchPhase = "submitted" | "processing" | "credited" | "timed_out";
 
 /** ~2s → 4s → … capped at 30s; stop after this many unsuccessful polls. */
 export const CREDIT_WATCH_TIMEOUT_ATTEMPTS = 12;
+
+/** Steady poll once we know the deposit arrived and is converting/parked — no timeout. */
+const PROCESSING_POLL_MS = 10_000;
 
 export type MatchedCredit = {
   id: string | number;
@@ -27,6 +30,12 @@ export type MatchedCredit = {
   amount?: string | null;
   currency?: string | null;
   financial_account_id?: string | null;
+  /**
+   * Only set for a `transactions` match (a collect-swap row can be
+   * "processing" while converting/parked). Absent for an `account-credits`
+   * match, which only ever represents an already-settled credit.
+   */
+  status?: Transaction["status"] | null;
 };
 
 function normalizeHash(value: string | null | undefined): string {
@@ -62,19 +71,32 @@ export function findCreditByTxHash(opts: {
         amount: tx.amount_fiat,
         currency: tx.currency,
         financial_account_id: tx.financial_account_id ?? null,
+        status: tx.status,
       };
     }
   }
   return null;
 }
 
+/**
+ * A `transactions` match with status still "processing" means the deposit
+ * landed on-chain and Mboka has it (a collect-swap converting or parked on
+ * thin liquidity) but hasn't settled to USDC yet — not credited, but very
+ * much not "nothing happened" either. Only an `account-credits` match
+ * (status undefined) or an already-"completed" transaction counts as
+ * actually credited.
+ */
 export function nextCreditWatchPhase(opts: {
   phase: CreditWatchPhase;
   matched: MatchedCredit | null;
   attempt: number;
 }): CreditWatchPhase {
   if (opts.phase === "credited" || opts.phase === "timed_out") return opts.phase;
-  if (opts.matched) return "credited";
+  if (opts.matched) {
+    const status = opts.matched.status;
+    return !status || status === "completed" ? "credited" : "processing";
+  }
+  if (opts.phase === "processing") return "processing";
   if (opts.attempt >= CREDIT_WATCH_TIMEOUT_ATTEMPTS) return "timed_out";
   return "submitted";
 }
@@ -82,6 +104,9 @@ export function nextCreditWatchPhase(opts: {
 /** Status copy aligned with Freighter “should credit shortly” / Top-up patterns. */
 export function creditWatchStatusMessage(phase: CreditWatchPhase): string {
   if (phase === "credited") return "Credited";
+  if (phase === "processing") {
+    return "Deposit received and is being processed. This can take a few minutes — no action needed.";
+  }
   if (phase === "timed_out") {
     return "Payment submitted on Stellar, but ElementPay has not confirmed the credit yet. Check Activity shortly — balance updates only after confirmation.";
   }
@@ -148,7 +173,8 @@ export function useStellarCreditWatch(
     enabled: Boolean(hash) && enabled,
     retry: false,
     refetchInterval: () => {
-      if (phaseRef.current !== "submitted") return false;
+      if (phaseRef.current === "credited" || phaseRef.current === "timed_out") return false;
+      if (phaseRef.current === "processing") return PROCESSING_POLL_MS;
       return nextPollIntervalMs(attemptRef.current);
     },
   });
@@ -161,7 +187,7 @@ export function useStellarCreditWatch(
   });
 
   useEffect(() => {
-    if (phase === "credited" || phase === "timed_out") {
+    if (phase === "credited" || phase === "timed_out" || phase === "processing") {
       phaseRef.current = phase;
     }
   }, [phase]);

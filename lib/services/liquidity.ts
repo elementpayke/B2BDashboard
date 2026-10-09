@@ -32,13 +32,30 @@ function extractRows(raw: unknown): Record<string, unknown>[] {
   }
   const obj = asRecord(raw);
   if (!obj) return [];
-  for (const key of ["pairs", "items", "data"] as const) {
+  for (const key of ["pairs", "items", "data", "snapshots"] as const) {
     const nested = obj[key];
     if (Array.isArray(nested)) {
       return nested.map(asRecord).filter((row): row is Record<string, unknown> => row !== null);
     }
   }
+  const provider = asRecord(obj.provider_data);
+  if (provider) {
+    for (const key of ["pairs", "items", "data", "snapshots"] as const) {
+      const nested = provider[key];
+      if (Array.isArray(nested)) {
+        return nested
+          .map(asRecord)
+          .filter((row): row is Record<string, unknown> => row !== null);
+      }
+    }
+  }
   return [];
+}
+
+function depthMid(depth: unknown): string | null {
+  const obj = asRecord(depth);
+  if (!obj) return null;
+  return asText(obj.mid ?? obj.best_bid ?? obj.best_ask ?? obj.bid ?? obj.ask);
 }
 
 function normalizePair(row: Record<string, unknown>, index: number): StellarLiquidityPair | null {
@@ -48,21 +65,27 @@ function normalizePair(row: Record<string, unknown>, index: number): StellarLiqu
   const resolvedBase = base || pairLabel?.split("/")[0]?.trim() || null;
   const resolvedQuote = quote || pairLabel?.split("/")[1]?.trim() || null;
   if (!resolvedBase || !resolvedQuote) return null;
+  const fromDepth = depthMid(row.depth ?? row.depth_json);
   return {
     id: asText(row.id) || pairLabel || `${resolvedBase}-${resolvedQuote}-${index}`,
     base: resolvedBase.toUpperCase(),
     quote: resolvedQuote.toUpperCase(),
     pair: `${resolvedBase.toUpperCase()}/${resolvedQuote.toUpperCase()}`,
-    bid: asText(row.bid ?? row.best_bid ?? row.buy),
-    ask: asText(row.ask ?? row.best_ask ?? row.sell),
+    bid: asText(row.bid ?? row.best_bid ?? row.buy) || fromDepth,
+    ask: asText(row.ask ?? row.best_ask ?? row.sell) || fromDepth,
   };
 }
 
 export function normalizeStellarLiquidity(raw: unknown): StellarLiquiditySnapshot {
   const obj = asRecord(raw);
+  const provider = asRecord(obj?.provider_data);
   const rows = extractRows(raw);
+  const refreshed =
+    asText(obj?.refreshed_at ?? obj?.refreshedAt ?? obj?.updated_at) ||
+    asText(rows[0]?.captured_at) ||
+    asText(provider?.refreshed_at);
   return {
-    refreshed_at: asText(obj?.refreshed_at ?? obj?.refreshedAt ?? obj?.updated_at),
+    refreshed_at: refreshed,
     pairs: rows
       .map((row, index) => normalizePair(row, index))
       .filter((pair): pair is StellarLiquidityPair => pair !== null),

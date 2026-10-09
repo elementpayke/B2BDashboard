@@ -149,7 +149,7 @@ export function resolveStablecoinPickerDestination(input: {
     if (currency === "USDT" || currency === "EURC") {
       return {
         address: null,
-        emptyMessage: `${currency} on Stellar converts to USDC via Aquarius. The deposit address appears once your Collect trustline is ready.`,
+        emptyMessage: `${currency} on Stellar credits after on-chain confirmation. The deposit address appears once your Collect trustline is ready.`,
         offerCreate: false,
       };
     }
