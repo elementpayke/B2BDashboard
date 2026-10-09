@@ -42,6 +42,7 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
+  const [itemsLoadingId, setItemsLoadingId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
   const [reconciliation, setReconciliation] = useState<
@@ -79,6 +80,34 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
     void loadBatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount?.id]);
+
+  // The list endpoint returns batch summaries with empty `items`; fetch the
+  // full batch (with item rows + tx hashes) lazily when a row is expanded.
+  useEffect(() => {
+    if (!openBatchId || !selectedAccount) return;
+    const current = batches.find((b) => b.batch_id === openBatchId);
+    if (!current || current.items.length > 0) return;
+    let cancelled = false;
+    setItemsLoadingId(openBatchId);
+    stellarDisbursementsApi
+      .getBatch(selectedAccount.entityId, selectedAccount.id, openBatchId)
+      .then((full) => {
+        if (cancelled) return;
+        setBatches((prev) =>
+          prev.map((b) => (b.batch_id === openBatchId ? { ...b, ...full } : b)),
+        );
+      })
+      .catch(() => {
+        // Leave the summary row as-is; Sync/Reconcile still work without items.
+      })
+      .finally(() => {
+        if (!cancelled) setItemsLoadingId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openBatchId, selectedAccount?.id]);
 
   const runSync = async (batchId: string) => {
     if (!selectedAccount || actionBusy) return;
@@ -226,6 +255,12 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
                             ? `, corrected ${report.items_corrected.length} that had drifted.`
                             : ", no drift found."}
                         </div>
+                      ) : null}
+
+                      {itemsLoadingId === batch.batch_id ? (
+                        <p className="ep-muted">Loading items…</p>
+                      ) : !batch.items.length ? (
+                        <p className="ep-muted">No item detail available.</p>
                       ) : null}
 
                       <ul className="ep-bulk-result__list" aria-label="Batch items">
