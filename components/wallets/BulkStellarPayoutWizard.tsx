@@ -59,16 +59,22 @@ function sumAmounts(rows: BulkStellarPayoutRow[]): string {
 }
 
 function emptyRow(): BulkStellarPayoutRow {
-  return { destination: "", amount: "", memo: "", reference: "" };
+  return { destination: "", amount: "", memo: "", reference: "", email: "" };
 }
 
 function stripLocalId(row: EditableRow): BulkStellarPayoutRow {
-  const { destination, amount, memo, reference } = row;
-  return { destination, amount, memo, reference };
+  const { destination, amount, memo, reference, email } = row;
+  return { destination, amount, memo, reference, email };
 }
 
 function isBlankRow(row: BulkStellarPayoutRow): boolean {
-  return !row.destination.trim() && !row.amount.trim() && !row.memo?.trim() && !row.reference?.trim();
+  return (
+    !row.destination.trim() &&
+    !row.amount.trim() &&
+    !row.memo?.trim() &&
+    !row.reference?.trim() &&
+    !row.email?.trim()
+  );
 }
 
 function stepIndex(stage: WizardStage): number {
@@ -473,10 +479,10 @@ export default function BulkStellarPayoutWizard({
 
   const downloadSampleCsv = () => {
     const sample = [
-      "destination,amount,memo,reference",
-      'GAIZK4AKUTPECFCZVLAZ47JDBMAGFXLTA465SWE7O3GXQOZ5C5O26YAW,2,"SDP smoke · row A",EP-SDP-SMOKE-01',
-      'GDYZIDXIMLWBUKSZUH42RFVGJIUDR6TXDSUTKGUWSWWVWOROPZEFQFZQ,3,"SDP smoke · row B",EP-SDP-SMOKE-02',
-      'GB5W37KTU623IMKY5XQ6UDPE3JLRYL4RFESNLGMP67PG7FOAUUNPVKVF,1,"SDP smoke · row C",EP-SDP-SMOKE-03',
+      "destination,amount,memo,reference,email",
+      'GAIZK4AKUTPECFCZVLAZ47JDBMAGFXLTA465SWE7O3GXQOZ5C5O26YAW,2,"SDP smoke · row A",EP-SDP-SMOKE-01,recipient-a@example.com',
+      'GDYZIDXIMLWBUKSZUH42RFVGJIUDR6TXDSUTKGUWSWWVWOROPZEFQFZQ,3,"SDP smoke · row B",EP-SDP-SMOKE-02,',
+      'GB5W37KTU623IMKY5XQ6UDPE3JLRYL4RFESNLGMP67PG7FOAUUNPVKVF,1,"SDP smoke · row C",EP-SDP-SMOKE-03,',
     ].join("\n");
     const blob = new Blob([sample + "\n"], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -748,7 +754,8 @@ export default function BulkStellarPayoutWizard({
           Bulk disburse on Stellar from {sourceLabel}.
         </p>
         <p className="ep-muted" role="note">
-          CSV columns: destination, amount, memo, reference.
+          CSV columns: destination, amount, memo, reference, email (optional — sends the
+          recipient a receipt once their payment lands).
         </p>
 
         <label className="ep-field">
@@ -780,7 +787,7 @@ export default function BulkStellarPayoutWizard({
               <span className="ep-dropzone__title">
                 {busy === "upload" ? "Reading CSV…" : "Drop a CSV file here, or click to browse"}
               </span>
-              <span className="ep-dropzone__hint">destination, amount, memo, reference</span>
+              <span className="ep-dropzone__hint">destination, amount, memo, reference, email</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
@@ -809,7 +816,7 @@ export default function BulkStellarPayoutWizard({
               <textarea
                 value={csvText}
                 onChange={(event) => setCsvText(event.target.value)}
-                placeholder={"destination,amount,memo,reference\nG...,2.00,Payroll,ops-001"}
+                placeholder={"destination,amount,memo,reference,email\nG...,2.00,Payroll,ops-001,jane@example.com"}
                 rows={8}
                 disabled={busy === "upload"}
               />
@@ -825,6 +832,7 @@ export default function BulkStellarPayoutWizard({
                     <th>Amount</th>
                     <th>Memo</th>
                     <th>Reference</th>
+                    <th>Email</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -865,6 +873,16 @@ export default function BulkStellarPayoutWizard({
                           onChange={(event) => updateRow(index, "reference", event.target.value)}
                           placeholder="Optional"
                           aria-label={`Row ${index + 1} reference`}
+                          disabled={busy === "preview" || busy === "confirm"}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={row.email || ""}
+                          onChange={(event) => updateRow(index, "email", event.target.value)}
+                          placeholder="Optional — sends a receipt"
+                          type="email"
+                          aria-label={`Row ${index + 1} email`}
                           disabled={busy === "preview" || busy === "confirm"}
                         />
                       </td>
@@ -913,6 +931,7 @@ export default function BulkStellarPayoutWizard({
                 <span className="ep-money-review__v">
                   {row.amount} {currency}
                   {row.memo ? ` · ${row.memo}` : ""}
+                  {row.email ? ` · receipt → ${row.email}` : ""}
                 </span>
               </div>
             ))}

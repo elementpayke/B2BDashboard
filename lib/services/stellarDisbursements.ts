@@ -6,6 +6,8 @@ export type BulkStellarPayoutRow = {
   amount: string;
   memo?: string | null;
   reference?: string | null;
+  /** Optional recipient email — when set, Mboka sends a receipt once the payment lands on-chain. */
+  email?: string | null;
 };
 
 export type BulkStellarPayoutPreview = {
@@ -123,6 +125,7 @@ export function parseBulkStellarPayoutCsv(csv: string): BulkStellarPayoutRow[] {
       amount,
       memo: (cells[2] || "").trim() || null,
       reference: (cells[3] || "").trim() || null,
+      email: (cells[4] || "").trim() || null,
     };
   });
 }
@@ -153,6 +156,7 @@ export function parseBulkStellarPayoutCsvLoose(csv: string): BulkStellarPayoutRo
     amount: (cells[1] || "").trim(),
     memo: (cells[2] || "").trim() || null,
     reference: (cells[3] || "").trim() || null,
+    email: (cells[4] || "").trim() || null,
   }));
 }
 
