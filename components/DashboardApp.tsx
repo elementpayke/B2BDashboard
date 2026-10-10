@@ -907,7 +907,7 @@ export default function DashboardApp(props: Props = {}) {
       usdFundingQuery.data?.entityId &&
       usdFundingQuery.data?.accountId,
   );
-  const { streamActive } = useCardTransactionsLive(
+  useCardTransactionsLive(
     usdFundingQuery.data?.entityId,
     usdFundingQuery.data?.accountId,
     cardTxnStreamEnabled,
@@ -939,13 +939,11 @@ export default function DashboardApp(props: Props = {}) {
     ),
     retry: false,
     staleTime: 15_000,
-    // SSE is primary for live spend; polling stays as a slow safety net.
+    // SSE is primary for live spend; keep a tight poll even when the stream
+    // reports active (multi-replica SSE can miss events; Aggregator/Mboka GET
+    // reconcile recovers within one interval).
     refetchInterval:
-      cardTxnSurfaceOpen || activityPoll
-        ? streamActive
-          ? 60_000
-          : 30_000
-        : false,
+      cardTxnSurfaceOpen || activityPoll ? 15_000 : false,
   });
 
   // Prefill convert accounts once lists load so the form isn't empty.
