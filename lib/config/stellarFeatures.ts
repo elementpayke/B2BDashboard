@@ -14,6 +14,13 @@ export const SHOW_STELLAR_LIQUIDITY_PANEL = true;
  */
 export const STELLAR_BULK_PAYOUTS_ENABLED = true;
 
+/**
+ * Mixed-rail bulk payouts (Stellar + mobile money in one CSV). When true, the
+ * Bulk payouts tile opens PayoutBatchWizard and Transactions→Batches reads
+ * from /v1/payouts. Flip false to instantly revert to Stellar-only.
+ */
+export const MIXED_RAIL_BULK_PAYOUTS_ENABLED = true;
+
 export function isStellarNetworkKey(network: string | null | undefined): boolean {
   return STELLAR_NETWORK_KEYS.has((network || "").trim().toUpperCase());
 }
