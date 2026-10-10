@@ -41,20 +41,38 @@ describe("parseBulkStellarPayoutCsv", () => {
         amount: "25.50",
         memo: "Payroll, Sept",
         reference: "ops-001",
+        email: null,
       },
       {
         destination: "GB456",
         amount: "10.00",
         memo: null,
         reference: "ops-002",
+        email: null,
       },
     ]);
   });
 
   it("accepts rows without a header", () => {
     expect(parseBulkStellarPayoutCsv("GA123,1.00\nGB456,2.00")).toEqual([
-      { destination: "GA123", amount: "1.00", memo: null, reference: null },
-      { destination: "GB456", amount: "2.00", memo: null, reference: null },
+      { destination: "GA123", amount: "1.00", memo: null, reference: null, email: null },
+      { destination: "GB456", amount: "2.00", memo: null, reference: null, email: null },
+    ]);
+  });
+
+  it("parses an optional trailing email column", () => {
+    expect(
+      parseBulkStellarPayoutCsv(
+        "destination,amount,memo,reference,email\nGA123,1.00,,,jane@example.com",
+      ),
+    ).toEqual([
+      {
+        destination: "GA123",
+        amount: "1.00",
+        memo: null,
+        reference: null,
+        email: "jane@example.com",
+      },
     ]);
   });
 
@@ -72,23 +90,31 @@ describe("parseBulkStellarPayoutCsv", () => {
 describe("parseBulkStellarPayoutCsvLoose", () => {
   it("parses valid rows the same way the strict parser does", () => {
     expect(parseBulkStellarPayoutCsvLoose("GA123,1.00\nGB456,2.00")).toEqual([
-      { destination: "GA123", amount: "1.00", memo: null, reference: null },
-      { destination: "GB456", amount: "2.00", memo: null, reference: null },
+      { destination: "GA123", amount: "1.00", memo: null, reference: null, email: null },
+      { destination: "GB456", amount: "2.00", memo: null, reference: null, email: null },
     ]);
   });
 
   it("keeps a row with a missing destination instead of throwing", () => {
     expect(parseBulkStellarPayoutCsvLoose("destination,amount\n,5.00")).toEqual([
-      { destination: "", amount: "5.00", memo: null, reference: null },
+      { destination: "", amount: "5.00", memo: null, reference: null, email: null },
     ]);
   });
 
   it("keeps a row with an invalid or below-minimum amount instead of throwing", () => {
     expect(parseBulkStellarPayoutCsvLoose("destination,amount\nGA123,0.50")).toEqual([
-      { destination: "GA123", amount: "0.50", memo: null, reference: null },
+      { destination: "GA123", amount: "0.50", memo: null, reference: null, email: null },
     ]);
     expect(parseBulkStellarPayoutCsvLoose("destination,amount\nGA123,notanumber")).toEqual([
-      { destination: "GA123", amount: "notanumber", memo: null, reference: null },
+      { destination: "GA123", amount: "notanumber", memo: null, reference: null, email: null },
+    ]);
+  });
+
+  it("parses an optional trailing email column", () => {
+    expect(
+      parseBulkStellarPayoutCsvLoose("destination,amount,memo,reference,email\nGA123,1.00,,,jane@example.com"),
+    ).toEqual([
+      { destination: "GA123", amount: "1.00", memo: null, reference: null, email: "jane@example.com" },
     ]);
   });
 
