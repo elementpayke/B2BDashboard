@@ -260,6 +260,26 @@ function parseDirection(value: unknown): TransactionDirection | null {
 
 function parseStatus(value: unknown): TransactionStatus | null {
   const key = optionalString(value)?.toLowerCase();
+  // Card ledger statuses (settled/pending) map onto the same UI chips as
+  // order completed/processing — labels are already "Settled" / "Pending".
+  if (
+    key === "settled" ||
+    key === "captured" ||
+    key === "successful" ||
+    key === "success" ||
+    key === "approved"
+  ) {
+    return "completed";
+  }
+  if (
+    key === "pending" ||
+    key === "authorized" ||
+    key === "authorised" ||
+    key === "clearing"
+  ) {
+    return "processing";
+  }
+  if (key === "cancelled" || key === "void") return "canceled";
   if (
     key === "processing" ||
     key === "completed" ||
