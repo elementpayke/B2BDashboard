@@ -4,24 +4,33 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DisbursementBatchHistory from "./DisbursementBatchHistory";
 import type { FinancialAccount } from "@/lib/services/entities";
-import type { BulkStellarPayoutBatch } from "@/lib/services/stellarDisbursements";
+import type { MixedPayoutBatch } from "@/lib/services/payoutBatches";
 
-vi.mock("@/lib/services/stellarDisbursements", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/services/stellarDisbursements")>(
-    "@/lib/services/stellarDisbursements",
+vi.mock("@/lib/config/stellarFeatures", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/config/stellarFeatures")>(
+    "@/lib/config/stellarFeatures",
   );
   return {
     ...actual,
-    stellarDisbursementsApi: {
+    MIXED_RAIL_BULK_PAYOUTS_ENABLED: true,
+  };
+});
+
+vi.mock("@/lib/services/payoutBatches", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/services/payoutBatches")>(
+    "@/lib/services/payoutBatches",
+  );
+  return {
+    ...actual,
+    payoutBatchesApi: {
       listBatches: vi.fn(),
       getBatch: vi.fn(),
       syncBatch: vi.fn(),
-      reconcileBatch: vi.fn(),
     },
   };
 });
 
-import { stellarDisbursementsApi } from "@/lib/services/stellarDisbursements";
+import { payoutBatchesApi } from "@/lib/services/payoutBatches";
 
 const account: FinancialAccount = {
   id: "acct_1",
@@ -32,24 +41,24 @@ const account: FinancialAccount = {
   status: "active",
 };
 
-function batch(overrides: Partial<BulkStellarPayoutBatch> = {}): BulkStellarPayoutBatch {
+function batch(overrides: Partial<MixedPayoutBatch> = {}): MixedPayoutBatch {
   return {
     batch_id: "7",
     status: "completed",
-    currency: "USDC",
-    total_amount: "7",
-    item_count: 1,
+    total_items: 1,
+    stellar_item_count: 1,
+    fiat_item_count: 0,
     items: [],
     ...overrides,
   };
 }
 
-describe("DisbursementBatchHistory", () => {
-  it("shows a sync hint banner and actionable empty state for a non-terminal batch", async () => {
-    vi.mocked(stellarDisbursementsApi.listBatches).mockResolvedValue([
-      batch({ batch_id: "9", status: "processing" }),
+describe("DisbursementBatchHistory (mixed-rail)", () => {
+  it("shows Refresh status for batches with Stellar rows", async () => {
+    vi.mocked(payoutBatchesApi.listBatches).mockResolvedValue([
+      batch({ batch_id: "9", status: "processing", stellar_item_count: 1 }),
     ]);
-    vi.mocked(stellarDisbursementsApi.getBatch).mockResolvedValue(
+    vi.mocked(payoutBatchesApi.getBatch).mockResolvedValue(
       batch({ batch_id: "9", status: "processing", items: [] }),
     );
 
@@ -58,43 +67,69 @@ describe("DisbursementBatchHistory", () => {
     const toggle = await screen.findByRole("button", { name: /Batch 9/i });
     fireEvent.click(toggle);
 
-    expect(
-      await screen.findByText(/Still processing — tap Sync status for the latest/i),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Item detail isn't ready yet — tap Sync status above/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Refresh status/i })).toBeInTheDocument();
   });
 
-  it("hides the sync hint banner and shows a terminal empty state for a completed batch", async () => {
-    vi.mocked(stellarDisbursementsApi.listBatches).mockResolvedValue([
-      batch({ batch_id: "7", status: "completed" }),
+  it("hides Refresh status for fiat-only batches", async () => {
+    vi.mocked(payoutBatchesApi.listBatches).mockResolvedValue([
+      batch({
+        batch_id: "8",
+        status: "processing",
+        stellar_item_count: 0,
+        fiat_item_count: 1,
+      }),
     ]);
-    vi.mocked(stellarDisbursementsApi.getBatch).mockResolvedValue(
-      batch({ batch_id: "7", status: "completed", items: [] }),
+    vi.mocked(payoutBatchesApi.getBatch).mockResolvedValue(
+      batch({
+        batch_id: "8",
+        status: "processing",
+        stellar_item_count: 0,
+        fiat_item_count: 1,
+        items: [],
+      }),
     );
 
     render(<DisbursementBatchHistory sourceAccounts={[account]} onDone={vi.fn()} />);
 
-    const toggle = await screen.findByRole("button", { name: /Batch 7/i });
+    const toggle = await screen.findByRole("button", { name: /Batch 8/i });
     fireEvent.click(toggle);
 
     await waitFor(() =>
       expect(screen.getByText(/No item detail available for this batch/i)).toBeInTheDocument(),
     );
-    expect(screen.queryByText(/Still processing/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refresh status/i })).not.toBeInTheDocument();
   });
 
-  it("renders item rows once detail loads, without a fallback message", async () => {
-    vi.mocked(stellarDisbursementsApi.listBatches).mockResolvedValue([
+  it("renders mixed-rail item badges once detail loads", async () => {
+    vi.mocked(payoutBatchesApi.listBatches).mockResolvedValue([
       batch({ batch_id: "7", status: "completed", items: [] }),
     ]);
-    vi.mocked(stellarDisbursementsApi.getBatch).mockResolvedValue(
+    vi.mocked(payoutBatchesApi.getBatch).mockResolvedValue(
       batch({
         batch_id: "7",
         status: "completed",
+        stellar_item_count: 1,
+        fiat_item_count: 1,
+        total_items: 2,
         items: [
-          { destination: "GAAA", amount: "2", status: "completed", tx_hash: "hash_abc" },
+          {
+            row_index: 1,
+            rail: "stellar",
+            recipient_label: "GAAA",
+            amount: "2",
+            currency: "USDC",
+            status: "completed",
+            tx_hash: "hash_abc",
+          },
+          {
+            row_index: 2,
+            rail: "mobile_money",
+            recipient_label: "+254711111111",
+            amount: "1500",
+            currency: "KES",
+            status: "failed",
+            failure_code: "quote_expired",
+          },
         ],
       }),
     );
@@ -105,6 +140,7 @@ describe("DisbursementBatchHistory", () => {
     fireEvent.click(toggle);
 
     expect(await screen.findByText("GAAA")).toBeInTheDocument();
-    expect(screen.queryByText(/No item detail available/i)).not.toBeInTheDocument();
+    expect(screen.getByText("+254711111111")).toBeInTheDocument();
+    expect(screen.getAllByText(/Mobile money|Stellar/).length).toBeGreaterThanOrEqual(2);
   });
 });

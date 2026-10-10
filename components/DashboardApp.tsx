@@ -292,9 +292,11 @@ import FundPaymentRequestModal from "@/components/wallets/FundPaymentRequestModa
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import PayoutModal from "@/components/wallets/PayoutModal";
 import BulkStellarPayoutWizard from "@/components/wallets/BulkStellarPayoutWizard";
+import PayoutBatchWizard from "@/components/wallets/PayoutBatchWizard";
 import DisbursementBatchHistory from "@/components/wallets/DisbursementBatchHistory";
 import StellarLiquidityPanel from "@/components/developer/StellarLiquidityPanel";
 import {
+  MIXED_RAIL_BULK_PAYOUTS_ENABLED,
   SHOW_STELLAR_LIQUIDITY_PANEL,
   STELLAR_BULK_PAYOUTS_ENABLED,
   isAllowlistedStellarStable,
@@ -3858,7 +3860,7 @@ export default function DashboardApp(props: Props = {}) {
   );
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: STELLAR_BULK_PAYOUTS_ENABLED ? "CSV disbursements from your Stellar wallet." : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Bulk payouts", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "CSV payouts to Stellar wallets and mobile money." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -6038,7 +6040,13 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 
 {(isModalBulk) ? (<>
-{STELLAR_BULK_PAYOUTS_ENABLED ? (
+{MIXED_RAIL_BULK_PAYOUTS_ENABLED ? (
+<PayoutBatchWizard
+  sourceAccounts={bulkPayoutSourceAccounts}
+  onDone={closeModal}
+  onCancel={closeModal}
+/>
+) : STELLAR_BULK_PAYOUTS_ENABLED ? (
 <BulkStellarPayoutWizard
   sourceAccounts={bulkPayoutSourceAccounts}
   draftScopeId={businessId}
