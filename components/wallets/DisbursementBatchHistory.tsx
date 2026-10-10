@@ -109,28 +109,6 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openBatchId, selectedAccount?.id]);
 
-  const runSync = async (batchId: string) => {
-    if (!selectedAccount || actionBusy) return;
-    setActionBusy(`sync:${batchId}`);
-    setActionError("");
-    try {
-      const next = await stellarDisbursementsApi.syncBatch(
-        selectedAccount.entityId,
-        selectedAccount.id,
-        batchId,
-      );
-      setBatches((prev) => prev.map((b) => (b.batch_id === batchId ? next : b)));
-    } catch (err) {
-      setActionError(
-        err instanceof ApiRequestError || err instanceof Error
-          ? err.message
-          : "Couldn't sync batch status.",
-      );
-    } finally {
-      setActionBusy(null);
-    }
-  };
-
   const runReconcile = async (batchId: string) => {
     if (!selectedAccount || actionBusy) return;
     setActionBusy(`reconcile:${batchId}`);
@@ -232,8 +210,8 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
                           role="status"
                           style={{ marginBottom: 12 }}
                         >
-                          Still {descriptor.label.toLowerCase()} — tap Sync status for the latest, or
-                          Reconcile to re-check every item against Horizon.
+                          Still {descriptor.label.toLowerCase()} — tap Refresh status to check the
+                          latest.
                         </div>
                       ) : null}
                       <div className="ep-money-actions" style={{ marginBottom: 12 }}>
@@ -241,19 +219,11 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
                           type="button"
                           className="ep-btn-secondary"
                           disabled={actionBusy !== null}
-                          onClick={() => void runSync(batch.batch_id)}
-                        >
-                          {actionBusy === `sync:${batch.batch_id}` ? "Syncing…" : "Sync status"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ep-btn-secondary"
-                          disabled={actionBusy !== null}
                           onClick={() => void runReconcile(batch.batch_id)}
                         >
                           {actionBusy === `reconcile:${batch.batch_id}`
-                            ? "Reconciling…"
-                            : "Reconcile against Horizon"}
+                            ? "Checking…"
+                            : "Refresh status"}
                         </button>
                       </div>
 
@@ -273,7 +243,7 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
                         <p className="ep-muted">
                           {descriptor.terminal
                             ? "No item detail available for this batch."
-                            : "Item detail isn't ready yet — tap Sync status above to pull the latest."}
+                            : "Item detail isn't ready yet — tap Refresh status above to pull the latest."}
                         </p>
                       ) : null}
 

@@ -15,7 +15,6 @@ vi.mock("@/lib/services/stellarDisbursements", async () => {
     stellarDisbursementsApi: {
       listBatches: vi.fn(),
       getBatch: vi.fn(),
-      syncBatch: vi.fn(),
       reconcileBatch: vi.fn(),
     },
   };
@@ -59,10 +58,10 @@ describe("DisbursementBatchHistory", () => {
     fireEvent.click(toggle);
 
     expect(
-      await screen.findByText(/Still processing — tap Sync status for the latest/i),
+      await screen.findByText(/Still processing — tap Refresh status to check the latest/i),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(/Item detail isn't ready yet — tap Sync status above/i),
+      await screen.findByText(/Item detail isn't ready yet — tap Refresh status above/i),
     ).toBeInTheDocument();
   });
 

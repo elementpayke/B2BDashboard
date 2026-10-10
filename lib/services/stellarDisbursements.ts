@@ -360,15 +360,6 @@ export const stellarDisbursementsApi = {
     return normalizeBulkBatchList(raw);
   },
 
-  /** Resolves items still ambiguous after submission (Horizon not yet indexed). */
-  async syncBatch(entity_id: string, account_id: string, batch_id: string) {
-    const raw = await apiEnvelope<unknown>(
-      "POST",
-      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}/sync`,
-    );
-    return normalizeBulkBatch(raw);
-  },
-
   /** Re-verifies every item against Horizon regardless of current status. */
   async reconcileBatch(entity_id: string, account_id: string, batch_id: string) {
     const raw = await apiEnvelope<unknown>(

@@ -279,20 +279,6 @@ describe("stellarDisbursementsApi", () => {
     expect(batches[1].status).toBe("processing");
   });
 
-  it("posts to the sync endpoint and returns the refreshed batch", async () => {
-    const { apiEnvelope } = await import("@/lib/apiClient");
-    const mocked = vi.mocked(apiEnvelope);
-    mocked.mockResolvedValue({ id: "batch_9", status: "completed", items: [] } as never);
-
-    const batch = await stellarDisbursementsApi.syncBatch("ent_1", "acct_1", "batch_9");
-
-    expect(mocked).toHaveBeenCalledWith(
-      "POST",
-      "/v1/entities/ent_1/accounts/acct_1/disbursements/batch_9/sync",
-    );
-    expect(batch.status).toBe("completed");
-  });
-
   it("posts to the reconcile endpoint and surfaces the report alongside the batch", async () => {
     const { apiEnvelope } = await import("@/lib/apiClient");
     const mocked = vi.mocked(apiEnvelope);
