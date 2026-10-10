@@ -177,12 +177,12 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
       ) : null}
 
       {loadError ? (
-        <div className="ep-money-banner ep-money-banner--error" role="alert">
+        <div className="ep-money-banner ep-money-banner--danger" role="alert">
           {loadError}
         </div>
       ) : null}
       {actionError ? (
-        <div className="ep-money-banner ep-money-banner--error" role="alert">
+        <div className="ep-money-banner ep-money-banner--danger" role="alert">
           {actionError}
         </div>
       ) : null}
@@ -226,6 +226,16 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
 
                   {open ? (
                     <div className="ep-bulk-result__why-panel" role="region" aria-label="Batch detail">
+                      {!descriptor.terminal ? (
+                        <div
+                          className="ep-money-banner ep-money-banner--warn"
+                          role="status"
+                          style={{ marginBottom: 12 }}
+                        >
+                          Still {descriptor.label.toLowerCase()} — tap Sync status for the latest, or
+                          Reconcile to re-check every item against Horizon.
+                        </div>
+                      ) : null}
                       <div className="ep-money-actions" style={{ marginBottom: 12 }}>
                         <button
                           type="button"
@@ -260,7 +270,11 @@ export default function DisbursementBatchHistory({ sourceAccounts, onDone }: Pro
                       {itemsLoadingId === batch.batch_id ? (
                         <p className="ep-muted">Loading items…</p>
                       ) : !batch.items.length ? (
-                        <p className="ep-muted">No item detail available.</p>
+                        <p className="ep-muted">
+                          {descriptor.terminal
+                            ? "No item detail available for this batch."
+                            : "Item detail isn't ready yet — tap Sync status above to pull the latest."}
+                        </p>
                       ) : null}
 
                       <ul className="ep-bulk-result__list" aria-label="Batch items">
