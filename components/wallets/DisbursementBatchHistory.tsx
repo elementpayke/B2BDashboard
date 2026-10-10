@@ -40,11 +40,9 @@ function itemTone(status: string | null | undefined): "ok" | "failed" | "pending
 }
 
 function RailBadge({ rail }: { rail: PayoutRail }) {
-  return (
-    <span className={`ep-bulk-result__badge ep-rail-badge ep-rail-badge--${rail}`}>
-      {railLabel(rail)}
-    </span>
-  );
+  const tone =
+    rail === "stellar" ? "stellar" : rail === "mobile_money" ? "momo" : rail === "bank" ? "bank" : "none";
+  return <span className={`ep-rail-badge ep-rail-badge--${tone}`}>{railLabel(rail)}</span>;
 }
 
 function MixedRailHistory({ sourceAccounts, onDone }: Props) {
