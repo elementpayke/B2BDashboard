@@ -376,6 +376,7 @@ export default function DashboardApp(props: Props = {}) {
     convertFiatPair: ["EUR", "USD"] as [string, string],
     stableSel: "USDC",
     txFilter: "all" as PrimaryTransactionFilter,
+    txView: "payments" as "payments" | "batches",
     txSearch: "",
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
@@ -3858,18 +3859,6 @@ export default function DashboardApp(props: Props = {}) {
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: STELLAR_BULK_PAYOUTS_ENABLED ? "CSV disbursements from your Stellar wallet." : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        ...(STELLAR_BULK_PAYOUTS_ENABLED
-          ? [
-              {
-                label: "Disbursement batches",
-                icon: "☰",
-                desc: "Track status and reconcile every bulk payout batch.",
-                open: guardMoneyModal("disbursementHistory"),
-                iconBg: "var(--ink-panel)",
-                iconColor: "#fff",
-              },
-            ]
-          : []),
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -4347,8 +4336,7 @@ export default function DashboardApp(props: Props = {}) {
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
-    createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account",
-    disbursementHistory: "Disbursement batches" }[s.modal] || "";
+    createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isModalSupport = s.modal === "support";
   const isSendFlow = s.modal === "send";
@@ -4357,7 +4345,6 @@ export default function DashboardApp(props: Props = {}) {
   const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
   const [bulkModalExpanded, setBulkModalExpanded] = useState(false);
-  const isModalDisbursementHistory = s.modal === "disbursementHistory";
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -5396,6 +5383,32 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isTransactions) ? (<>
+{STELLAR_BULK_PAYOUTS_ENABLED ? (
+<div className="ep-txn-filters" role="group" aria-label="Switch between payments and disbursement batches" style={{ marginBottom: "4px" }}>
+  <button
+    type="button"
+    onClick={() => setState({ txView: "payments" })}
+    className={`ep-txn-filter${s.txView !== "batches" ? " ep-txn-filter--active" : ""}`}
+    aria-pressed={s.txView !== "batches"}
+  >
+    Payments
+  </button>
+  <button
+    type="button"
+    onClick={() => setState({ txView: "batches" })}
+    className={`ep-txn-filter${s.txView === "batches" ? " ep-txn-filter--active" : ""}`}
+    aria-pressed={s.txView === "batches"}
+  >
+    Batches
+  </button>
+</div>
+) : null}
+{(s.txView === "batches" && STELLAR_BULK_PAYOUTS_ENABLED) ? (
+<DisbursementBatchHistory
+  sourceAccounts={bulkPayoutSourceAccounts}
+  onDone={() => setState({ txView: "payments" })}
+/>
+) : (
 <TransactionsScreen
   txFilters={txFilters}
   filteredTransactions={filteredTransactions}
@@ -5423,6 +5436,7 @@ export default function DashboardApp(props: Props = {}) {
   onDateRangeChange={(value) => setState({ txDateRange: value })}
   usesLatestFifty={txUsesLatestFifty}
 />
+) }
 </>) : null}
 
 {(isInvoices) ? (<>
@@ -6039,13 +6053,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   description="CSV bulk payouts aren’t live yet. Join the waitlist and we’ll email you when you can pay many recipients in one go."
 />
 ) }
-</>) : null}
-
-{(isModalDisbursementHistory) ? (<>
-<DisbursementBatchHistory
-  sourceAccounts={bulkPayoutSourceAccounts}
-  onDone={closeModal}
-/>
 </>) : null}
 
 {(isModalTxDetail) ? (<>
