@@ -141,6 +141,6 @@ describe("DisbursementBatchHistory (mixed-rail)", () => {
 
     expect(await screen.findByText("GAAA")).toBeInTheDocument();
     expect(screen.getByText("+254711111111")).toBeInTheDocument();
-    expect(screen.getAllByText(/Mobile money|Stellar/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Mobile money|Wallet/).length).toBeGreaterThanOrEqual(2);
   });
 });

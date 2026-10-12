@@ -141,7 +141,7 @@ function MixedRailHistory({ sourceAccounts, onDone }: Props) {
   return (
     <div className="ep-money-flow ep-bulk-payout">
       <p className="ep-fund-chooser__intro">
-        Mixed-rail payout batches for this wallet — Stellar and mobile money in one place.
+        Payout batches from this USDC balance — wallets, mobile money, and banks in one place.
       </p>
 
       {sourceAccounts.length > 1 ? (
@@ -193,7 +193,7 @@ function MixedRailHistory({ sourceAccounts, onDone }: Props) {
                     </button>
                     <span className="ep-bulk-result__meta">
                       <span className="ep-bulk-result__amount">
-                        {batch.total_items} items · {batch.stellar_item_count} Stellar ·{" "}
+                        {batch.total_items} people · {batch.stellar_item_count} wallet ·{" "}
                         {batch.fiat_item_count} fiat
                       </span>
                       <StatusBadge

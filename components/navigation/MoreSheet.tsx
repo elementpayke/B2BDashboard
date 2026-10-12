@@ -130,7 +130,7 @@ export default function MoreSheet({
           </button>
           <button type="button" className="ep-more-sheet__item" onClick={onOpenBulk}>
             <span aria-hidden>⇉</span>
-            <span>Bulk payouts</span>
+            <span>Pay many people</span>
             {bulkEnabled ? <span aria-hidden>›</span> : <span className="ep-more-sheet__soon">Soon</span>}
           </button>
           <button type="button" className="ep-more-sheet__item" onClick={onOpenHelp}>
