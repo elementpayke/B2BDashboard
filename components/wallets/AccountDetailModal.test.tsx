@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import AccountDetailModal, { formatSensitiveValue } from "./AccountDetailModal";
@@ -8,6 +10,15 @@ import AccountDetailModal, { formatSensitiveValue } from "./AccountDetailModal";
 vi.mock("@/lib/documents/brandedDocument", () => ({
   openBrandedDocument: vi.fn(),
 }));
+
+vi.mock("@/lib/services/accountActivity", () => ({
+  accountActivityApi: { listPage: vi.fn().mockResolvedValue({ entries: [], total: 0, limit: 10, offset: 0 }) },
+}));
+
+function renderWithClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 describe("formatSensitiveValue", () => {
   it("groups a real IBAN and leaves short account numbers alone", () => {
@@ -109,5 +120,93 @@ describe("AccountDetailModal", () => {
     expect(doc.sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
       "Available balance",
     );
+  });
+
+  it("shows no Refresh details button without both an accountId and an onRefreshAccount handler", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          status: "active",
+          rows: [{ label: "IBAN", value: "391881521473" }],
+        }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Refresh details/i })).toBeNull();
+  });
+
+  it("shows no Refresh details button for a non-active account even with a handler", () => {
+    renderWithClient(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          status: "pending",
+          accountId: "acc_1",
+          rows: [{ label: "IBAN", value: "391881521473" }],
+        }}
+        onRefreshAccount={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Refresh details/i })).toBeNull();
+  });
+
+  it("calls onRefreshAccount with the account id, shows a busy label, then recovers", async () => {
+    let resolveRefresh: () => void = () => undefined;
+    const onRefreshAccount = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    renderWithClient(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          status: "active",
+          accountId: "acc_1",
+          rows: [{ label: "IBAN", value: "391881521473" }],
+        }}
+        onRefreshAccount={onRefreshAccount}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh details" }));
+    expect(onRefreshAccount).toHaveBeenCalledWith("acc_1");
+    expect(screen.getByRole("button", { name: "Refreshing…" })).toBeTruthy();
+
+    resolveRefresh();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Refresh details" })).toBeTruthy(),
+    );
+  });
+
+  it("shows an error message when onRefreshAccount rejects", async () => {
+    const onRefreshAccount = vi.fn().mockRejectedValue(new Error("Sync failed"));
+    renderWithClient(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          status: "active",
+          accountId: "acc_1",
+          rows: [{ label: "IBAN", value: "391881521473" }],
+        }}
+        onRefreshAccount={onRefreshAccount}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh details" }));
+    await waitFor(() => expect(screen.getByText("Sync failed")).toBeTruthy());
   });
 });

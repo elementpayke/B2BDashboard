@@ -3205,6 +3205,11 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
+  const refreshDepositAccount = async (accountId: string) => {
+    await depositAccountsApi.sync(accountId);
+    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+  };
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
     queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -6107,6 +6112,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   copiedField={s.copiedField}
   copyField={copyField}
   openModalSwapFromAcct={openModalSwapFromAcct}
+  onRefreshAccount={refreshDepositAccount}
 />
 </>) : null}
 
