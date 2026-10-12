@@ -65,45 +65,23 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   return sections.length ? sections : [{ title: "Details", rows }];
 }
 
-/**
- * Bank letter is for recipient verification only. Keep Settlement / Available
- * balance (and related settle-to rows) on the account-details modal — not the PDF.
- */
-export function coordinateSectionsForBankLetter(
-  sections: AccountDetailSection[],
-): AccountDetailSection[] {
-  return sections
-    .filter((sec) => !/^settlement$/i.test(sec.title.trim()))
-    .map((sec) => ({
-      ...sec,
-      rows: sec.rows.filter((row) => {
-        const label = row.label.trim();
-        return (
-          !/^available balance$/i.test(label) &&
-          !/^settles to\b/i.test(label) &&
-          !/^settlement asset$/i.test(label)
-        );
-      }),
-    }))
-    .filter((sec) => sec.rows.length > 0);
-}
-
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
   const accountHolder = acctDetail.beneficiary?.trim() || null;
-  // Mirror the same section breakdown shown in the modal (e.g. Domestic
-  // transfer / International wire for USD) instead of one flat coordinate
-  // blob, so the letter documents both rails' instructions distinctly —
-  // but drop Settlement / balances (letter-only).
-  const coordinateSections = coordinateSectionsForBankLetter(
-    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows),
-  ).map((sec) => ({
-    title: sec.title,
-    rows: sec.rows.map((row) => ({
-      label: row.label,
-      value: formatSensitiveValue(row.label, row.value),
-      mono: true,
-    })),
-  }));
+  // Mirror modal bank-rail sections (Domestic / International / Bank details)
+  // only — do not copy Settlement (balance / settles-to); that stays on the modal.
+  const sourceSections = acctDetail.sections?.length
+    ? acctDetail.sections
+    : defaultSections(acctDetail.rows);
+  const coordinateSections = sourceSections
+    .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
+    .map((sec) => ({
+      title: sec.title,
+      rows: sec.rows.map((row) => ({
+        label: row.label,
+        value: formatSensitiveValue(row.label, row.value),
+        mono: true,
+      })),
+    }));
   openBrandedDocument(
     {
       fileTitle: `Mboka — ${acctDetail.currency} bank letter`,

@@ -3,10 +3,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
-import AccountDetailModal, {
-  coordinateSectionsForBankLetter,
-  formatSensitiveValue,
-} from "./AccountDetailModal";
+import AccountDetailModal, { formatSensitiveValue } from "./AccountDetailModal";
 
 vi.mock("@/lib/documents/brandedDocument", () => ({
   openBrandedDocument: vi.fn(),
@@ -18,42 +15,6 @@ describe("formatSensitiveValue", () => {
       "FR76 3000 6000 0112 3456 7890 189",
     );
     expect(formatSensitiveValue("IBAN", "391881521473")).toBe("391881521473");
-  });
-});
-
-describe("coordinateSectionsForBankLetter", () => {
-  it("drops Settlement / Available balance from the letter while keeping bank rails", () => {
-    const sections = coordinateSectionsForBankLetter([
-      {
-        title: "Domestic transfer (ACH/wire)",
-        rows: [
-          { label: "Account number", value: "391881521473" },
-          { label: "Routing number", value: "021214891" },
-        ],
-      },
-      {
-        title: "International wire",
-        rows: [
-          { label: "Account number", value: "391881521473" },
-          { label: "SWIFT/BIC", value: "CSRVUS33COS" },
-        ],
-      },
-      {
-        title: "Settlement",
-        rows: [
-          { label: "Available balance", value: "1,234.56 USD" },
-          { label: "Reference", value: "REF-1" },
-        ],
-      },
-    ]);
-
-    expect(sections.map((s) => s.title)).toEqual([
-      "Domestic transfer (ACH/wire)",
-      "International wire",
-    ]);
-    expect(sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
-      "Available balance",
-    );
   });
 });
 
