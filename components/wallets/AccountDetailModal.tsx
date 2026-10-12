@@ -66,13 +66,11 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
 }
 
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
-  const accountHolder = acctDetail.beneficiary?.trim() || null;
-  // Mirror modal bank-rail sections (Domestic / International / Bank details)
-  // only — do not copy Settlement (balance / settles-to); that stays on the modal.
-  const sourceSections = acctDetail.sections?.length
-    ? acctDetail.sections
-    : defaultSections(acctDetail.rows);
-  const coordinateSections = sourceSections
+  const beneficiary = acctDetail.beneficiary?.trim() || null;
+  // Mirror modal bank-rail sections only — Settlement (Available balance) stays on the modal.
+  const coordinateSections = (
+    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
+  )
     .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
     .map((sec) => ({
       title: sec.title,
@@ -93,7 +91,7 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
           rows: [
             { label: "Account", value: acctDetail.name },
             { label: "Rail", value: acctDetail.railLabel ?? acctDetail.currency },
-            ...(accountHolder ? [{ label: "Account holder", value: accountHolder }] : []),
+            ...(beneficiary ? [{ label: "Beneficiary", value: beneficiary }] : []),
           ],
         },
         ...coordinateSections,

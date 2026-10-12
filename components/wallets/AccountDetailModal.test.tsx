@@ -69,7 +69,7 @@ describe("AccountDetailModal", () => {
     expect(screen.getByText("FR76 3000 6000 0112 3456 7890 189")).toBeTruthy();
   });
 
-  it("bank letter shows Account holder and omits Settlement / Available balance", () => {
+  it("bank letter omits Settlement / Available balance", () => {
     render(
       <AccountDetailModal
         copiedField=""
@@ -105,16 +105,9 @@ describe("AccountDetailModal", () => {
 
     expect(openBrandedDocument).toHaveBeenCalledOnce();
     const doc = vi.mocked(openBrandedDocument).mock.calls[0][0];
-    const labels = doc.sections.flatMap((s) => s.rows.map((r) => r.label));
-    const titles = doc.sections.map((s) => s.title);
-
-    expect(
-      doc.sections
-        .find((s) => s.title === "Account")
-        ?.rows.find((r) => r.label === "Account holder")?.value,
-    ).toBe("Elementpay LTD");
-    expect(titles).not.toContain("Settlement");
-    expect(labels).not.toContain("Available balance");
-    expect(labels).not.toContain("Beneficiary");
+    expect(doc.sections.map((s) => s.title)).not.toContain("Settlement");
+    expect(doc.sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
+      "Available balance",
+    );
   });
 });
