@@ -46,9 +46,17 @@ export function formatSensitiveValue(label: string, value: string): string {
   return value;
 }
 
+/**
+ * Fallback classifier for callers that pass raw `rows` without `sections`
+ * (e.g. tests, or any future caller that hasn't adopted
+ * `buildDepositAccountDetailSections`). Vocabulary mirrors that function's
+ * `BANK_ROW_LABEL_RE` in `lib/services/depositAccounts.ts` — keep both in
+ * sync when a new rail field/label is added.
+ */
 function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   if (!rows.length) return [];
-  const bankKeys = /^(iban|bic|swift|bank|account name)/i;
+  const bankKeys =
+    /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
   const settleKeys = /^(settles|settlement|reference|asset|network|account id|status)/i;
   const bank: AccountDetailRow[] = [];
   const settle: AccountDetailRow[] = [];
@@ -155,9 +163,8 @@ export default function AccountDetailModal({
   if (!acctDetail) return null;
 
   const beneficiary = acctDetail.beneficiary?.trim() || null;
-  const bankRows = (acctDetail.sections?.length
-    ? acctDetail.sections
-    : defaultSections(acctDetail.rows)
+  const bankRows = (
+    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
   )
     .map((sec) =>
       beneficiary
