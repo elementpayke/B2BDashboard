@@ -116,8 +116,8 @@ export function authMePlaceholderFromLogin(
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    authEnvelope<LoginResult>("POST", "/api/auth/login", { email, password }),
+  login: (email: string, password: string, turnstileToken?: string) =>
+    authEnvelope<LoginResult>("POST", "/api/auth/login", { email, password, turnstileToken }),
 
   signup: (business_name: string, email: string, password: string, country?: string) =>
     authEnvelope<{ business_id: number; owner_user_id: number; verification_required: boolean }>(
