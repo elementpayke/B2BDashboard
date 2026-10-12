@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
+import AccountActivityList from "./AccountActivityList";
 
 export type AccountDetailRow = {
   label: string;
@@ -28,6 +29,10 @@ export type AccountDetailModalProps = {
     showConvert?: boolean;
     /** Client-side bank letter download (fiat coordinates). */
     showDownloadLetter?: boolean;
+    /** Deposit-account id — set only for fiat/bank accounts. Drives the
+     * Activity section; omitted entirely for stablecoin accounts, which
+     * have no `/v1/iban/accounts/{id}/activity` equivalent. */
+    accountId?: string | null;
   } | null;
   /** details = coords; fund = same coords with bank-transfer guidance */
   intent?: "details" | "fund";
@@ -245,6 +250,10 @@ export default function AccountDetailModal({
           </div>
         </div>
       )}
+
+      {acctDetail.accountId ? (
+        <AccountActivityList accountId={acctDetail.accountId} />
+      ) : null}
 
       {showLetter && !depositUnavailable ? (
         <button

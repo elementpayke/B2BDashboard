@@ -3638,6 +3638,7 @@ export default function DashboardApp(props: Props = {}) {
             railLabel: fiatRailForCurrency(view.currency),
             showConvert: true,
             showDownloadLetter: rows.length > 0,
+            accountId: selectedDepositAccount.id ? String(selectedDepositAccount.id) : null,
           };
         })()
       : selectedStablecoinAccount
