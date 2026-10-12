@@ -506,4 +506,14 @@ export const depositAccountsApi = {
       "/v1/iban/accounts",
       buildCreateBankAccountPayload(input),
     ),
+  /**
+   * On-demand sync: queries Nuvion live and reconciles Mboka's/the
+   * aggregator's stored copy if stale, returning the refreshed account.
+   * Endpoint doesn't exist yet — this is the frontend contract for it.
+   */
+  sync: (accountId: string) =>
+    apiEnvelope<DepositAccount>(
+      "POST",
+      `/v1/iban/accounts/${encodeURIComponent(accountId)}/sync`,
+    ),
 };
