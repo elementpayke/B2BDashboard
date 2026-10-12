@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import AccountActivityList from "./AccountActivityList";
 
@@ -39,6 +39,14 @@ export type AccountDetailModalProps = {
   copiedField: string;
   copyField: (fieldKey: string, value: string) => () => void;
   openModalSwapFromAcct?: () => void;
+  /**
+   * Queries Nuvion live via Mboka's sync endpoint and reconciles the stored
+   * copy if stale. The caller owns re-fetching/updating `acctDetail` on
+   * success — this modal only tracks its own busy/error state around the
+   * call. Button is gated on `acctDetail.accountId` and `status === "active"`
+   * so it never appears before both the account exists and this prop is wired.
+   */
+  onRefreshAccount?: (accountId: string) => Promise<void>;
 };
 
 /** Display-only IBAN grouping — copy still uses the raw `copyValue`. */
@@ -156,8 +164,26 @@ export default function AccountDetailModal({
   copiedField,
   copyField,
   openModalSwapFromAcct,
+  onRefreshAccount,
 }: AccountDetailModalProps) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+
   if (!acctDetail) return null;
+
+  async function handleRefresh() {
+    const accountId = acctDetail?.accountId;
+    if (!accountId || !onRefreshAccount || refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await onRefreshAccount(accountId);
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : "Couldn't refresh this account.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const beneficiary = acctDetail.beneficiary?.trim() || null;
   const bankRows = (acctDetail.sections?.length
@@ -282,6 +308,24 @@ export default function AccountDetailModal({
         >
           Convert balance
         </button>
+      ) : null}
+
+      {acctDetail.accountId && acctDetail.status === "active" && onRefreshAccount ? (
+        <>
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className="ep-wallets-detail__letter"
+          >
+            {refreshing ? "Refreshing…" : "Refresh details"}
+          </button>
+          {refreshError ? (
+            <p className="ep-wallets-detail__pending-body" role="alert">
+              {refreshError}
+            </p>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
