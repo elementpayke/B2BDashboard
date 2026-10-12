@@ -65,6 +65,8 @@ export type MixedPayoutBatchItem = {
   rail: PayoutRail;
   recipient_label: string;
   recipient_name?: string | null;
+  /** Operator / bank label when present (momo brand or bank name). */
+  network?: string | null;
   amount: string;
   currency: string;
   status: string;
@@ -568,6 +570,7 @@ export function normalizeMixedBatch(raw: unknown): MixedPayoutBatch {
         rail: (asText(row.rail) || "stellar") as PayoutRail,
         recipient_label: asText(row.recipient_label) || "",
         recipient_name: asText(row.recipient_name),
+        network: asText(row.network),
         amount: asText(row.amount) || "",
         currency: asText(row.currency) || "USDC",
         status: asText(row.status) || "pending",
