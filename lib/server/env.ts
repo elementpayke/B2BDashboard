@@ -4,3 +4,10 @@
 export function getMbokaApiBase(): string {
   return process.env.MBOKA_API_BASE_URL || "http://localhost:8000";
 }
+
+/** Server-only. Unset in local dev — `verifyTurnstileToken` treats that as
+ * "Turnstile disabled" rather than failing closed, so login still works
+ * without Cloudflare keys configured. */
+export function getTurnstileSecretKey(): string | null {
+  return process.env.TURNSTILE_SECRET_KEY || null;
+}

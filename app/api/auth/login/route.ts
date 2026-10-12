@@ -6,6 +6,7 @@ import {
   setMfaSetupCookie,
 } from "@/lib/server/cookies";
 import { rejectCrossOrigin } from "@/lib/server/sameOrigin";
+import { verifyTurnstileToken } from "@/lib/server/turnstile";
 
 type MfaState = { status: "required" | "setup_required" } | null;
 
@@ -37,10 +38,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const blocked = rejectCrossOrigin(request);
   if (blocked) return blocked as NextResponse;
 
-  const body = await request.text();
+  const { turnstileToken, ...credentials } = (await request.json()) as {
+    turnstileToken?: string;
+    [key: string]: unknown;
+  };
+
+  const remoteip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const turnstileOk = await verifyTurnstileToken(turnstileToken, remoteip);
+  if (!turnstileOk) {
+    return NextResponse.json(
+      { status: "error", message: "Verification failed. Please try again.", data: null },
+      { status: 400 },
+    );
+  }
+
   const upstream = await callMboka("/api/auth/businesses/login", {
     method: "POST",
-    body,
+    body: JSON.stringify(credentials),
   });
 
   let json: Envelope;
