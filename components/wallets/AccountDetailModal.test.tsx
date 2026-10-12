@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import AccountDetailModal, { formatSensitiveValue } from "./AccountDetailModal";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { openBrandedDocument } from "@/lib/documents/brandedDocument";
+import AccountDetailModal, {
+  coordinateSectionsForBankLetter,
+  formatSensitiveValue,
+} from "./AccountDetailModal";
+
+vi.mock("@/lib/documents/brandedDocument", () => ({
+  openBrandedDocument: vi.fn(),
+}));
 
 describe("formatSensitiveValue", () => {
   it("groups a real IBAN and leaves short account numbers alone", () => {
@@ -13,7 +21,47 @@ describe("formatSensitiveValue", () => {
   });
 });
 
+describe("coordinateSectionsForBankLetter", () => {
+  it("drops Settlement / Available balance from the letter while keeping bank rails", () => {
+    const sections = coordinateSectionsForBankLetter([
+      {
+        title: "Domestic transfer (ACH/wire)",
+        rows: [
+          { label: "Account number", value: "391881521473" },
+          { label: "Routing number", value: "021214891" },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "Account number", value: "391881521473" },
+          { label: "SWIFT/BIC", value: "CSRVUS33COS" },
+        ],
+      },
+      {
+        title: "Settlement",
+        rows: [
+          { label: "Available balance", value: "1,234.56 USD" },
+          { label: "Reference", value: "REF-1" },
+        ],
+      },
+    ]);
+
+    expect(sections.map((s) => s.title)).toEqual([
+      "Domestic transfer (ACH/wire)",
+      "International wire",
+    ]);
+    expect(sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
+      "Available balance",
+    );
+  });
+});
+
 describe("AccountDetailModal", () => {
+  afterEach(() => {
+    vi.mocked(openBrandedDocument).mockClear();
+  });
+
   it("renders API beneficiary and bank rows horizontally with copy", () => {
     const copyField = vi.fn(() => vi.fn());
     render(
@@ -58,5 +106,54 @@ describe("AccountDetailModal", () => {
     expect(screen.queryByText("Beneficiary")).toBeNull();
     expect(screen.queryByText("Euro")).toBeNull();
     expect(screen.getByText("FR76 3000 6000 0112 3456 7890 189")).toBeTruthy();
+  });
+
+  it("bank letter shows Account holder and omits Settlement / Available balance", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          beneficiary: "Elementpay LTD",
+          showDownloadLetter: true,
+          railLabel: "Account number · ACH / SWIFT",
+          rows: [
+            { label: "Account number", value: "391881521473" },
+            { label: "Available balance", value: "12.00 USD" },
+          ],
+          sections: [
+            {
+              title: "Domestic transfer (ACH/wire)",
+              rows: [
+                { label: "Account number", value: "391881521473" },
+                { label: "Routing number", value: "021214891" },
+              ],
+            },
+            {
+              title: "Settlement",
+              rows: [{ label: "Available balance", value: "12.00 USD" }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Download bank letter/i }));
+
+    expect(openBrandedDocument).toHaveBeenCalledOnce();
+    const doc = vi.mocked(openBrandedDocument).mock.calls[0][0];
+    const labels = doc.sections.flatMap((s) => s.rows.map((r) => r.label));
+    const titles = doc.sections.map((s) => s.title);
+
+    expect(
+      doc.sections
+        .find((s) => s.title === "Account")
+        ?.rows.find((r) => r.label === "Account holder")?.value,
+    ).toBe("Elementpay LTD");
+    expect(titles).not.toContain("Settlement");
+    expect(labels).not.toContain("Available balance");
+    expect(labels).not.toContain("Beneficiary");
   });
 });

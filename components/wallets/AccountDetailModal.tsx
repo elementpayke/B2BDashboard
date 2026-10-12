@@ -65,13 +65,37 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   return sections.length ? sections : [{ title: "Details", rows }];
 }
 
+/**
+ * Bank letter is for recipient verification only. Keep Settlement / Available
+ * balance (and related settle-to rows) on the account-details modal — not the PDF.
+ */
+export function coordinateSectionsForBankLetter(
+  sections: AccountDetailSection[],
+): AccountDetailSection[] {
+  return sections
+    .filter((sec) => !/^settlement$/i.test(sec.title.trim()))
+    .map((sec) => ({
+      ...sec,
+      rows: sec.rows.filter((row) => {
+        const label = row.label.trim();
+        return (
+          !/^available balance$/i.test(label) &&
+          !/^settles to\b/i.test(label) &&
+          !/^settlement asset$/i.test(label)
+        );
+      }),
+    }))
+    .filter((sec) => sec.rows.length > 0);
+}
+
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
-  const beneficiary = acctDetail.beneficiary?.trim() || null;
+  const accountHolder = acctDetail.beneficiary?.trim() || null;
   // Mirror the same section breakdown shown in the modal (e.g. Domestic
   // transfer / International wire for USD) instead of one flat coordinate
-  // blob, so the letter documents both rails' instructions distinctly.
-  const coordinateSections = (
-    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
+  // blob, so the letter documents both rails' instructions distinctly —
+  // but drop Settlement / balances (letter-only).
+  const coordinateSections = coordinateSectionsForBankLetter(
+    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows),
   ).map((sec) => ({
     title: sec.title,
     rows: sec.rows.map((row) => ({
@@ -91,7 +115,7 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
           rows: [
             { label: "Account", value: acctDetail.name },
             { label: "Rail", value: acctDetail.railLabel ?? acctDetail.currency },
-            ...(beneficiary ? [{ label: "Beneficiary", value: beneficiary }] : []),
+            ...(accountHolder ? [{ label: "Account holder", value: accountHolder }] : []),
           ],
         },
         ...coordinateSections,
