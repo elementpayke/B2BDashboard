@@ -71,7 +71,8 @@ function isBlankRow(row: MixedPayoutRow): boolean {
     row.amount?.trim() ||
     row.recipient_name?.trim() ||
     row.memo?.trim() ||
-    row.reference?.trim()
+    row.reference?.trim() ||
+    (row.country || "").trim()
   );
 }
 
@@ -79,13 +80,78 @@ function stepIndex(stage: WizardStage): number {
   return STEPS.findIndex((s) => s.id === stage);
 }
 
+function sumUsdcAmounts(rows: MixedPayoutRow[]): string {
+  const total = rows.reduce((sum, row) => {
+    if ((row.currency || "").toUpperCase() !== "USDC") return sum;
+    return sum + Number(row.amount || 0);
+  }, 0);
+  return total.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function RailBadge({ rail }: { rail: PayoutRail | null }) {
   const tone =
-    rail === "stellar" ? "stellar" : rail === "mobile_money" ? "momo" : rail === "bank" ? "bank" : "none";
+    rail === "stellar"
+      ? "stellar"
+      : rail === "mobile_money"
+        ? "momo"
+        : rail === "bank"
+          ? "bank"
+          : "none";
   return (
-    <span className={`ep-bulk-result__badge ep-rail-badge ep-rail-badge--${tone}`}>
-      {railLabel(rail)}
-    </span>
+    <span className={`ep-rail-badge ep-rail-badge--${tone}`}>{railLabel(rail)}</span>
+  );
+}
+
+function BulkPayoutStepper({
+  stage,
+  onStepClick,
+  subline,
+}: {
+  stage: WizardStage;
+  onStepClick: (target: WizardStage) => void;
+  subline: string;
+}) {
+  const current = stepIndex(stage);
+  return (
+    <div className="ep-bulk-stepper">
+      <ol className="ep-bulk-stepper__list" aria-label="Bulk payout steps">
+        {STEPS.map((step, index) => {
+          const done = index < current;
+          const active = index === current;
+          const clickable = done;
+          return (
+            <li
+              key={step.id}
+              className={[
+                "ep-bulk-stepper__item",
+                active ? "ep-bulk-stepper__item--current" : "",
+                done ? "ep-bulk-stepper__item--done" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {index > 0 ? <span className="ep-bulk-stepper__rail" aria-hidden /> : null}
+              <button
+                type="button"
+                className="ep-bulk-stepper__btn"
+                disabled={!clickable}
+                onClick={() => clickable && onStepClick(step.id)}
+                aria-current={active ? "step" : undefined}
+              >
+                <span className="ep-bulk-stepper__mark" aria-hidden>
+                  {done ? "✓" : index + 1}
+                </span>
+                <span className="ep-bulk-stepper__label">{step.label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="ep-bulk-stepper__subline">{subline}</p>
+    </div>
   );
 }
 
@@ -101,6 +167,15 @@ function SubmittingHourglass() {
         unoptimized
       />
     </span>
+  );
+}
+
+function failureWhy(code: string | null | undefined, rail: PayoutRail): string {
+  return (
+    explainPayoutFailure(code, rail) ||
+    (code
+      ? `This payout failed (${code.replace(/_/g, " ")}).`
+      : "This payout failed. Check the recipient details and try again.")
   );
 }
 
@@ -121,6 +196,36 @@ function BatchResult({
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+
+  const statusKey = (batch.status || "").toLowerCase();
+  const failedCount = batch.items.filter((i) =>
+    ["failed", "error", "rejected"].includes((i.status || "").toLowerCase()),
+  ).length;
+  const okCount = batch.items.filter((i) =>
+    ["completed", "complete", "success", "succeeded", "submitted"].includes(
+      (i.status || "").toLowerCase(),
+    ),
+  ).length;
+  const batchTone =
+    statusKey.includes("partial") || (failedCount > 0 && okCount > 0)
+      ? "partial"
+      : failedCount > 0 || statusKey === "failed"
+        ? "failed"
+        : "ok";
+  const title =
+    batchTone === "failed"
+      ? "Batch failed"
+      : batchTone === "partial"
+        ? "Partially sent"
+        : statusKey === "processing"
+          ? "Processing"
+          : "Submitted";
+  const summary =
+    batchTone === "failed"
+      ? `Batch ${batch.batch_id || "—"} didn’t complete. Tap Why on a row for details.`
+      : batchTone === "partial"
+        ? `Batch ${batch.batch_id || "—"}: ${okCount} sent, ${failedCount} failed.`
+        : `Batch ${batch.batch_id || "pending"} is ${batch.status} · ${batch.stellar_item_count} Stellar · ${batch.fiat_item_count} mobile money.`;
 
   const refreshStatus = async () => {
     if (!entityId || !accountId || !batch.batch_id || refreshing) return;
@@ -144,29 +249,44 @@ function BatchResult({
 
   return (
     <div className="ep-money-flow ep-bulk-payout">
-      <div className="ep-bulk-result">
+      <div className={`ep-bulk-result ep-bulk-result--${batchTone}`}>
         <div className="ep-bulk-result__hero">
+          <span className="ep-bulk-result__hero-icon" aria-hidden>
+            {batchTone === "ok" ? "✓" : batchTone === "partial" ? "!" : "✕"}
+          </span>
           <div>
-            <div className="ep-bulk-result__title">Batch {batch.batch_id}</div>
-            <div className="ep-bulk-result__summary">
-              Status: {batch.status} · {batch.stellar_item_count} Stellar ·{" "}
-              {batch.fiat_item_count} mobile money
-            </div>
+            <div className="ep-bulk-result__title">{title}</div>
+            <div className="ep-bulk-result__summary">{summary}</div>
           </div>
         </div>
+
         <ul className="ep-bulk-result__list" aria-label="Payout results">
           {batch.items.map((item) => {
+            const itemStatus = (item.status || "").toLowerCase();
+            const itemTone = ["failed", "error", "rejected"].includes(itemStatus)
+              ? "failed"
+              : ["completed", "complete", "success", "succeeded", "submitted"].includes(
+                    itemStatus,
+                  )
+                ? "ok"
+                : "pending";
             const rowKey = `${item.row_index}-${item.recipient_label}`;
             const open = openKey === rowKey;
-            const failed = ["failed", "error", "rejected"].includes(
-              (item.status || "").toLowerCase(),
-            );
             const explorerUrl =
-              item.rail === "stellar" && item.tx_hash
-                ? stellarExplorerTxUrl({ txHash: item.tx_hash, network: network || "Stellar" })
+              item.rail === "stellar" && itemTone === "ok"
+                ? stellarExplorerTxUrl({
+                    txHash: item.tx_hash,
+                    network: network || "Stellar",
+                  })
                 : null;
             return (
-              <li key={rowKey} className="ep-bulk-result__row">
+              <li
+                key={rowKey}
+                className={`ep-bulk-result__row ep-bulk-result__row--${itemTone}`}
+              >
+                <span className="ep-bulk-result__icon" aria-hidden>
+                  {itemTone === "ok" ? "✓" : itemTone === "failed" ? "✕" : "…"}
+                </span>
                 <div className="ep-bulk-result__main">
                   <div className="ep-bulk-result__top">
                     <span className="ep-bulk-payout__addr" title={item.recipient_label}>
@@ -177,11 +297,12 @@ function BatchResult({
                       <span className="ep-bulk-result__amount">
                         {item.amount} {item.currency}
                       </span>
-                      <span className="ep-bulk-result__badge">{item.status}</span>
-                      {failed ? (
+                      <span className="ep-bulk-result__badge">{item.status || "pending"}</span>
+                      {itemTone === "failed" ? (
                         <button
                           type="button"
                           className="ep-bulk-result__why-btn"
+                          aria-expanded={open}
                           onClick={() => setOpenKey(open ? null : rowKey)}
                         >
                           {open ? "Hide" : "Why?"}
@@ -200,10 +321,12 @@ function BatchResult({
                     </span>
                   </div>
                   {open ? (
-                    <div className="ep-bulk-result__why-panel" role="region">
-                      {explainPayoutFailure(item.failure_code || item.last_error, item.rail) ||
-                        item.last_error ||
-                        "No further detail available."}
+                    <div
+                      className="ep-bulk-result__why-panel"
+                      role="region"
+                      aria-label="Failure reason"
+                    >
+                      {failureWhy(item.failure_code || item.last_error, item.rail)}
                     </div>
                   ) : null}
                 </div>
@@ -213,7 +336,7 @@ function BatchResult({
         </ul>
       </div>
       {refreshError ? (
-        <div className="ep-money-banner ep-money-banner--error" role="alert">
+        <div className="ep-money-banner ep-money-banner--danger" role="alert">
           {refreshError}
         </div>
       ) : null}
@@ -274,6 +397,12 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     }
   };
 
+  const startManualEntry = () => {
+    setParsedRows(withLocalIds([emptyRow()]));
+    setRowsMode(true);
+    setError("");
+  };
+
   const readCsvFile = async (file: File) => {
     setBusy("upload");
     setError("");
@@ -288,8 +417,25 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     }
   };
 
+  const onUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await readCsvFile(file);
+    event.target.value = "";
+  };
+
+  const onDropCsv = async (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    await readCsvFile(file);
+  };
+
   const downloadSampleCsv = () => {
-    const blob = new Blob([sampleMixedPayoutCsv() + "\n"], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([sampleMixedPayoutCsv() + "\n"], {
+      type: "text/csv;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -301,29 +447,68 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   };
 
   const updateRow = (index: number, field: keyof MixedPayoutRow, value: string) => {
-    setParsedRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    setParsedRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
   };
 
-  const rowRailIssues = useMemo(() => {
-    return parsedRows.map((row) => {
-      if (isBlankRow(row)) return null;
-      const resolution = resolvePayoutRail(row);
-      if (resolution.error) return resolution.error;
-      if (resolution.rail === "bank") {
-        return "Bank transfers aren't supported in bulk payouts yet.";
-      }
-      return null;
-    });
-  }, [parsedRows]);
+  const removeRow = (index: number) => {
+    setParsedRows((rows) => rows.filter((_, i) => i !== index));
+  };
+
+  const addRow = () => {
+    setParsedRows((rows) => [...rows, ...withLocalIds([emptyRow()])]);
+  };
+
+  const clearRows = () => {
+    setParsedRows([]);
+    setCsvText("");
+    setError("");
+    setRowsMode(false);
+    setPreview(null);
+  };
+
+  const goToStep = (target: WizardStage) => {
+    if (stepIndex(target) >= stepIndex(stage)) return;
+    if (target === "input") {
+      setPreview(null);
+      setRowsMode(false);
+      return;
+    }
+    if (target === "edit") {
+      setPreview(null);
+      setRowsMode(true);
+    }
+  };
+
+  const rowRailIssues = useMemo(
+    () =>
+      parsedRows.map((row) => {
+        if (isBlankRow(row)) return null;
+        const resolution = resolvePayoutRail(row);
+        if (resolution.error) return resolution.error;
+        if (resolution.rail === "bank") {
+          return "Bank transfers aren't supported in bulk payouts yet.";
+        }
+        return null;
+      }),
+    [parsedRows],
+  );
 
   const previewBlocked = rowRailIssues.some(Boolean);
 
   const previewBatch = async () => {
-    const account = selectedAccount || sourceAccounts[0] || null;
+    const account =
+      selectedAccount ||
+      sourceAccounts.find((a) => a.id === sourceAccountId) ||
+      sourceAccounts[0] ||
+      null;
     if (!account) {
       setError("Choose the source account first.");
       return;
     }
+    if (account.id !== sourceAccountId) setSourceAccountId(account.id);
+
     const rows: MixedPayoutRow[] = [];
     for (let i = 0; i < parsedRows.length; i += 1) {
       const row = parsedRows[i];
@@ -340,7 +525,9 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
       try {
         validateConvertAmount(row.amount);
       } catch (err) {
-        setError(`Row ${i + 1}: ${err instanceof Error ? err.message : "invalid amount."}`);
+        setError(
+          `Row ${i + 1}: ${err instanceof Error ? err.message : "invalid amount."}`,
+        );
         return;
       }
       rows.push(stripLocalId(row));
@@ -349,18 +536,19 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
       setError("Add at least one payout row.");
       return;
     }
+
     setBusy("preview");
     setError("");
     setSafeConfirmRetry(false);
     idempotencyKeyRef.current = newBulkPayoutIdempotencyKey();
     try {
-      const next = await withTransientRetry(() =>
+      const nextPreview = await withTransientRetry(() =>
         payoutBatchesApi.preview(account.entityId, account.id, rows, {
           idempotencyKey: idempotencyKeyRef.current || undefined,
         }),
       );
       setParsedRows(withLocalIds(rows));
-      setPreview(next);
+      setPreview(nextPreview);
     } catch (err) {
       setError(
         err instanceof ApiRequestError || err instanceof Error
@@ -373,17 +561,21 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   };
 
   const confirmBatch = async () => {
-    const account = selectedAccount || sourceAccounts[0] || null;
+    const account =
+      selectedAccount ||
+      sourceAccounts.find((a) => a.id === sourceAccountId) ||
+      sourceAccounts[0] ||
+      null;
     if (!preview?.preview_token || !account) return;
     setBusy("confirm");
     setError("");
     setSafeConfirmRetry(false);
     try {
-      const next = await withTransientRetry(() =>
+      const nextBatch = await withTransientRetry(() =>
         payoutBatchesApi.confirm(account.entityId, account.id, preview.preview_token),
       );
       idempotencyKeyRef.current = null;
-      setBatch(next);
+      setBatch(nextBatch);
     } catch (err) {
       if (isTransientDisbursementError(err)) {
         setSafeConfirmRetry(true);
@@ -411,7 +603,7 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
             Open a ready Stellar stablecoin wallet before submitting a bulk payout batch.
           </div>
         </div>
-        <div className="ep-money-actions">
+        <div className="ep-money-actions ep-bulk-payout__actions">
           <button type="button" className="ep-btn-primary" onClick={onCancel}>
             Close
           </button>
@@ -432,267 +624,354 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     );
   }
 
+  const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your wallet";
+  const usdcTotal = sumUsdcAmounts(parsedRows);
+  const stepNum = stepIndex(stage) + 1;
+  const subline =
+    stage === "preview" && preview
+      ? `Step ${stepNum} · Confirm · ${preview.total_items} rows · ${preview.stellar_item_count} Stellar · ${preview.fiat_item_count} mobile money`
+      : stage === "edit"
+        ? `Step ${stepNum} · Review rows · ${parsedRows.filter((r) => !isBlankRow(r)).length} rows`
+        : `Step ${stepNum} · ${STEPS[stepIndex(stage)].label}`;
+
+  const secondaryLabel = stage === "input" ? "Cancel" : "Back";
+  const primaryLabel =
+    busy === "upload"
+      ? "Reading CSV…"
+      : busy === "preview"
+        ? "Previewing…"
+        : busy === "confirm"
+          ? "Submitting…"
+          : stage === "preview"
+            ? safeConfirmRetry
+              ? "Retry confirm"
+              : "Confirm batch"
+            : stage === "edit"
+              ? "Preview batch"
+              : "Review rows";
+
   const primaryDisabled =
-    busy !== null ||
+    busy === "preview" ||
+    busy === "confirm" ||
+    busy === "upload" ||
     (stage === "input" && !csvText.trim()) ||
     (stage === "edit" && (parsedRows.every(isBlankRow) || previewBlocked));
 
   return (
     <div className="ep-money-flow ep-bulk-payout">
-      <p className="ep-fund-chooser__intro">
-        Pay Stellar wallets and mobile-money recipients from one CSV. Each row picks its rail from
-        the columns you fill in.
-      </p>
+      <BulkPayoutStepper stage={stage} onStepClick={goToStep} subline={subline} />
 
-      {error ? (
-        <div className="ep-money-banner ep-money-banner--error" role="alert">
-          {error}
-        </div>
-      ) : null}
-
-      {busy === "confirm" ? (
-        <div className="ep-bulk-processing" role="status">
-          <SubmittingHourglass />
-          <div>
-            <div className="ep-bulk-processing__title">Submitting batch…</div>
-            <div className="ep-bulk-processing__body">Keep this window open.</div>
+      <div className="ep-bulk-payout__body">
+        {busy === "confirm" ? (
+          <div className="ep-bulk-processing" role="status" aria-live="polite">
+            <SubmittingHourglass />
+            <div>
+              <div className="ep-bulk-processing__title">Submitting batch…</div>
+              <div className="ep-bulk-processing__body">
+                Paying from {sourceLabel}. Keep this window open.
+              </div>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {stage === "input" ? (
-        <>
-          {sourceAccounts.length > 1 ? (
-            <label className="ep-field">
-              <span>Source wallet</span>
-              <select
-                value={sourceAccountId}
-                onChange={(e) => setSourceAccountId(e.target.value)}
-              >
-                {sourceAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {walletLabel(account)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label
-            className={`ep-bulk-payout__dropzone${dragActive ? " ep-bulk-payout__dropzone--active" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragActive(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) void readCsvFile(file);
-            }}
+        <p className="ep-fund-chooser__intro">
+          Bulk pay from {sourceLabel} — Stellar wallets and mobile money in one CSV.
+        </p>
+        {stage === "input" ? (
+          <p className="ep-muted" role="note">
+            Fill exactly one rail per row: Stellar <code>destination</code>, or mobile-money{" "}
+            <code>phone</code> + <code>country</code> + <code>recipient_name</code>.
+          </p>
+        ) : null}
+
+        <label className="ep-field">
+          <span>Source wallet</span>
+          <select
+            value={sourceAccountId}
+            onChange={(event) => setSourceAccountId(event.target.value)}
+            disabled={stage === "preview" || busy === "confirm"}
           >
-            <input type="file" accept=".csv,text/csv" hidden onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void readCsvFile(file);
-              e.target.value = "";
-            }} />
-            Drop a CSV here or click to upload
-          </label>
-          <textarea
-            className="ep-field"
-            rows={8}
-            placeholder={sampleMixedPayoutCsv()}
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-          />
-          <div className="ep-money-actions">
-            <button type="button" className="ep-btn-secondary" onClick={downloadSampleCsv}>
-              Download sample CSV
-            </button>
+            {sourceAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {walletLabel(account)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {stage === "input" ? (
+          <>
+            <label
+              className={`ep-dropzone${dragActive ? " ep-dropzone--active" : ""}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(event) => void onDropCsv(event)}
+            >
+              <span className="ep-dropzone__title">
+                {busy === "upload" ? "Reading CSV…" : "Drop a CSV file here, or click to browse"}
+              </span>
+              <span className="ep-dropzone__hint">
+                10 columns · sample CSV includes one Stellar and one mobile-money row
+              </span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={onUpload}
+                disabled={busy === "upload"}
+                style={{ display: "none" }}
+              />
+            </label>
+
+            <div className="ep-bulk-payout__helpers">
+              <button type="button" className="ep-btn-secondary" onClick={downloadSampleCsv}>
+                Download sample CSV
+              </button>
+              <button
+                type="button"
+                className="ep-btn-secondary"
+                onClick={startManualEntry}
+                disabled={busy === "upload"}
+              >
+                + Add a recipient manually
+              </button>
+            </div>
+
+            <label className="ep-field">
+              <span>Or paste CSV</span>
+              <textarea
+                value={csvText}
+                onChange={(event) => setCsvText(event.target.value)}
+                placeholder={
+                  "destination,phone,...,country,amount,currency,recipient_name,memo,reference\n" +
+                  "G…,,,,,5.00,USDC,,,ref-1\n" +
+                  ",+2547…,,,KE,1500,KES,Jane,,ref-2"
+                }
+                rows={8}
+                disabled={busy === "upload"}
+              />
+            </label>
+          </>
+        ) : stage === "edit" ? (
+          <>
+            <p className="ep-muted ep-row-table-scroll-hint" role="note">
+              Wide table — scroll sideways to see name and reference.
+            </p>
+            <div className="ep-row-table-wrap ep-row-table-wrap--mixed">
+              <table className="ep-row-table ep-row-table--mixed" aria-label="Bulk payout rows">
+                <thead>
+                  <tr>
+                    <th>Rail</th>
+                    <th>Destination</th>
+                    <th>Phone</th>
+                    <th>Country</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                    <th>Name</th>
+                    <th>Reference</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedRows.map((row, index) => {
+                    const resolution = isBlankRow(row) ? null : resolvePayoutRail(row);
+                    return (
+                      <tr key={row.__id}>
+                        <td>
+                          <RailBadge rail={resolution?.rail ?? null} />
+                          {rowRailIssues[index] ? (
+                            <div className="ep-rail-badge__error">{rowRailIssues[index]}</div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <input
+                            value={row.destination || ""}
+                            onChange={(event) =>
+                              updateRow(index, "destination", event.target.value)
+                            }
+                            placeholder=""
+                            aria-label={`Row ${index + 1} destination`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.phone || ""}
+                            onChange={(event) => updateRow(index, "phone", event.target.value)}
+                            placeholder=""
+                            aria-label={`Row ${index + 1} phone`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.country || ""}
+                            onChange={(event) => updateRow(index, "country", event.target.value)}
+                            placeholder=""
+                            aria-label={`Row ${index + 1} country`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.amount}
+                            onChange={(event) => updateRow(index, "amount", event.target.value)}
+                            placeholder=""
+                            inputMode="decimal"
+                            aria-label={`Row ${index + 1} amount`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.currency}
+                            onChange={(event) => updateRow(index, "currency", event.target.value)}
+                            placeholder=""
+                            aria-label={`Row ${index + 1} currency`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.recipient_name || ""}
+                            onChange={(event) =>
+                              updateRow(index, "recipient_name", event.target.value)
+                            }
+                            placeholder=""
+                            aria-label={`Row ${index + 1} name`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={row.reference || ""}
+                            onChange={(event) =>
+                              updateRow(index, "reference", event.target.value)
+                            }
+                            placeholder=""
+                            aria-label={`Row ${index + 1} reference`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="ep-row-table__remove"
+                            onClick={() => removeRow(index)}
+                            aria-label={`Remove row ${index + 1}`}
+                            disabled={busy === "preview" || busy === "confirm"}
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             <button
               type="button"
-              className="ep-btn-secondary"
-              onClick={() => {
-                setParsedRows(withLocalIds([emptyRow()]));
-                setRowsMode(true);
-              }}
+              className="ep-btn-secondary ep-bulk-payout__add-row"
+              onClick={addRow}
+              disabled={busy === "preview" || busy === "confirm"}
             >
-              Enter rows manually
+              + Add row
             </button>
+          </>
+        ) : preview ? (
+          <div className="ep-money-review" role="group" aria-label="Bulk payout preview">
+            <div className="ep-money-review__row">
+              <span className="ep-money-review__k">Rows</span>
+              <span className="ep-money-review__v">{preview.total_items}</span>
+            </div>
+            <div className="ep-money-review__row">
+              <span className="ep-money-review__k">Rails</span>
+              <span className="ep-money-review__v">
+                {preview.stellar_item_count} Stellar · {preview.fiat_item_count} mobile money
+              </span>
+            </div>
+            {preview.items.map((item) => (
+              <div key={item.row_index} className="ep-money-review__row">
+                <span
+                  className="ep-money-review__k ep-bulk-payout__addr"
+                  title={item.recipient_label}
+                >
+                  {item.recipient_label}
+                </span>
+                <span className="ep-money-review__v">
+                  <RailBadge rail={item.rail} /> {item.amount} {item.currency}
+                </span>
+              </div>
+            ))}
           </div>
-        </>
-      ) : null}
+        ) : null}
 
-      {stage === "edit" ? (
-        <div className="ep-bulk-payout__edit">
-          <div className="ep-bulk-payout__table-wrap">
-            <table className="ep-bulk-payout__table">
-              <thead>
-                <tr>
-                  <th>Rail</th>
-                  <th>Destination</th>
-                  <th>Phone</th>
-                  <th>Country</th>
-                  <th>Amount</th>
-                  <th>Currency</th>
-                  <th>Name</th>
-                  <th>Reference</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {parsedRows.map((row, index) => {
-                  const resolution = isBlankRow(row) ? null : resolvePayoutRail(row);
-                  return (
-                    <tr key={row.__id}>
-                      <td>
-                        <RailBadge rail={resolution?.rail ?? null} />
-                        {rowRailIssues[index] ? (
-                          <div className="ep-muted" style={{ fontSize: 12, maxWidth: 140 }}>
-                            {rowRailIssues[index]}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <input
-                          value={row.destination || ""}
-                          onChange={(e) => updateRow(index, "destination", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.phone || ""}
-                          onChange={(e) => updateRow(index, "phone", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.country || ""}
-                          onChange={(e) => updateRow(index, "country", e.target.value)}
-                          style={{ width: 56 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.amount}
-                          onChange={(e) => updateRow(index, "amount", e.target.value)}
-                          style={{ width: 88 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.currency}
-                          onChange={(e) => updateRow(index, "currency", e.target.value)}
-                          style={{ width: 64 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.recipient_name || ""}
-                          onChange={(e) => updateRow(index, "recipient_name", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={row.reference || ""}
-                          onChange={(e) => updateRow(index, "reference", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="ep-btn-secondary"
-                          onClick={() =>
-                            setParsedRows((rows) => rows.filter((_, i) => i !== index))
-                          }
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {error ? (
+          <div className="ep-money-banner ep-money-banner--danger" role="alert">
+            <span>{error}</span>
+            {safeConfirmRetry && stage === "preview" ? (
+              <button
+                type="button"
+                className="ep-bulk-payout__retry"
+                onClick={() => void confirmBatch()}
+                disabled={busy === "confirm"}
+              >
+                Retry
+              </button>
+            ) : null}
           </div>
+        ) : null}
+      </div>
+
+      <footer className="ep-bulk-payout__footer">
+        {stage === "preview" && busy !== "confirm" ? (
+          <p className="ep-bulk-payout__caption" role="note">
+            Confirms payouts from {sourceLabel}
+            {usdcTotal !== "0.00" ? ` · ~${usdcTotal} USDC in Stellar rows` : ""}.
+          </p>
+        ) : null}
+        <div className="ep-money-actions ep-bulk-payout__actions">
           <button
             type="button"
             className="ep-btn-secondary"
-            onClick={() => setParsedRows((rows) => [...rows, ...withLocalIds([emptyRow()])])}
+            onClick={
+              stage === "preview"
+                ? () => setPreview(null)
+                : stage === "edit"
+                  ? clearRows
+                  : onCancel
+            }
+            disabled={busy === "preview" || busy === "confirm"}
           >
-            Add row
+            {secondaryLabel}
+          </button>
+          <button
+            type="button"
+            className="ep-btn-primary"
+            onClick={
+              stage === "preview"
+                ? () => void confirmBatch()
+                : stage === "edit"
+                  ? () => void previewBatch()
+                  : () => loadRowsFromCsv(csvText)
+            }
+            disabled={primaryDisabled}
+            aria-busy={busy === "preview" || busy === "confirm" || busy === "upload" || undefined}
+          >
+            {busy === "confirm" ? (
+              <span className="ep-btn-busy">
+                <SubmittingHourglass />
+                Submitting…
+              </span>
+            ) : (
+              primaryLabel
+            )}
           </button>
         </div>
-      ) : null}
-
-      {stage === "preview" && preview ? (
-        <ul className="ep-bulk-result__list" aria-label="Preview rows">
-          {preview.items.map((item) => (
-            <li key={item.row_index} className="ep-bulk-result__row">
-              <div className="ep-bulk-result__main">
-                <div className="ep-bulk-result__top">
-                  <span className="ep-bulk-payout__addr">{item.recipient_label}</span>
-                  <span className="ep-bulk-result__meta">
-                    <RailBadge rail={item.rail} />
-                    <span className="ep-bulk-result__amount">
-                      {item.amount} {item.currency}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <div className="ep-money-actions ep-bulk-payout__actions">
-        <button
-          type="button"
-          className="ep-btn-secondary"
-          onClick={() => {
-            if (stage === "preview") {
-              setPreview(null);
-              return;
-            }
-            if (stage === "edit") {
-              setRowsMode(false);
-              return;
-            }
-            onCancel();
-          }}
-          disabled={busy === "confirm"}
-        >
-          {stage === "input" ? "Cancel" : "Back"}
-        </button>
-        <button
-          type="button"
-          className="ep-btn-primary"
-          disabled={primaryDisabled}
-          onClick={() => {
-            if (stage === "input") {
-              loadRowsFromCsv(csvText);
-              return;
-            }
-            if (stage === "edit") {
-              void previewBatch();
-              return;
-            }
-            void confirmBatch();
-          }}
-        >
-          {busy === "preview"
-            ? "Previewing…"
-            : busy === "confirm"
-              ? "Submitting…"
-              : stage === "preview"
-                ? safeConfirmRetry
-                  ? "Retry confirm"
-                  : "Confirm batch"
-                : stage === "edit"
-                  ? "Preview batch"
-                  : "Review rows"}
-        </button>
-      </div>
+      </footer>
     </div>
   );
 }

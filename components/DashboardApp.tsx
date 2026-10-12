@@ -2434,8 +2434,6 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  // Bulk payouts UI is waitlisted.
-
   const setStable = (k) => () => setState({ stableSel: k });
   const setConvertMode = (mode: ConvertMode) =>
     setState({
@@ -4346,7 +4344,8 @@ export default function DashboardApp(props: Props = {}) {
   const isReceiveFlow = s.modal === "receive";
   const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
-  const [bulkModalExpanded, setBulkModalExpanded] = useState(false);
+  // Mixed-rail edit table is wide — open expanded by default when that flag is on.
+  const [bulkModalExpanded, setBulkModalExpanded] = useState(MIXED_RAIL_BULK_PAYOUTS_ENABLED);
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -5385,7 +5384,7 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isTransactions) ? (<>
-{STELLAR_BULK_PAYOUTS_ENABLED ? (
+{(MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (
 <div className="ep-txn-filters" role="group" aria-label="Switch between payments and disbursement batches" style={{ marginBottom: "4px" }}>
   <button
     type="button"
@@ -5405,7 +5404,7 @@ export default function DashboardApp(props: Props = {}) {
   </button>
 </div>
 ) : null}
-{(s.txView === "batches" && STELLAR_BULK_PAYOUTS_ENABLED) ? (
+{(s.txView === "batches" && (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED)) ? (
 <DisbursementBatchHistory
   sourceAccounts={bulkPayoutSourceAccounts}
   onDone={() => setState({ txView: "payments" })}
@@ -5727,7 +5726,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onNavigate={navigateToScreen}
   onOpenHelp={() => openHelp()}
   onOpenBulk={guardMoneyModal("bulk")}
-  bulkEnabled={STELLAR_BULK_PAYOUTS_ENABLED}
+  bulkEnabled={MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED}
   onOpenTopUp={guardMoneyModal("deposit")}
   onToggleTheme={toggleTheme}
   onLogout={logout}
