@@ -16,7 +16,7 @@ export const SUPPORTED_IBAN_CURRENCIES = ["USD", "EUR"] as const;
 export type CurrencyOption = {
   code: string;
   label: string;
-  iso: string; // 2-letter, for the flag image
+  iso: string | null; // 2-letter, for the flag image — null when unknown
 };
 
 /** Order mirrors the Add Account mockup. */
@@ -34,10 +34,45 @@ export const CURRENCY_OPTIONS: CurrencyOption[] = [
   { code: "AUD", label: "Australian Dollar", iso: "au" },
 ];
 
-export function isCurrencySupported(code: string): boolean {
-  return (SUPPORTED_IBAN_CURRENCIES as readonly string[]).includes(
-    code.trim().toUpperCase(),
-  );
+export function isCurrencySupported(
+  code: string,
+  supportedCurrencies: readonly string[] = SUPPORTED_IBAN_CURRENCIES,
+): boolean {
+  return supportedCurrencies.includes(code.trim().toUpperCase());
+}
+
+/**
+ * One entry per currency/country/rail the backend currently allows this
+ * business to open — from `GET /v1/iban/accounts/eligibility`. Absent/empty
+ * on today's backend; the dashboard falls back to `SUPPORTED_IBAN_CURRENCIES`
+ * until a Nuvion-backed rail beyond USD/EUR ships.
+ */
+export type SupportedAccountDescriptor = {
+  currency: string;
+  country_code?: string | null;
+  rail_type: string;
+  fields: string[];
+  label?: string | null;
+  monthly_maintenance_fee?: { amount: string; currency: string } | null;
+};
+
+/**
+ * Resolves the live, backend-declared currency list, falling back to the
+ * static `SUPPORTED_IBAN_CURRENCIES` constant when the backend hasn't shipped
+ * `supported_accounts` yet (or sends a malformed entry) — this is what lets
+ * new currencies appear with no frontend redeploy once backend adds them.
+ */
+export function supportedCurrenciesFromEligibility(
+  eligibility: DepositAccountEligibility | null | undefined,
+): readonly string[] {
+  const list = eligibility?.supported_accounts;
+  if (!list || !list.length) return SUPPORTED_IBAN_CURRENCIES;
+  const codes: string[] = [];
+  for (const descriptor of list) {
+    const code = (descriptor?.currency || "").trim().toUpperCase();
+    if (code && !codes.includes(code)) codes.push(code);
+  }
+  return codes.length ? codes : SUPPORTED_IBAN_CURRENCIES;
 }
 
 /**
@@ -76,6 +111,24 @@ export function currencyLabel(code: string | null | undefined): string {
   if (!code) return "—";
   const norm = code.trim().toUpperCase();
   return CURRENCY_OPTIONS.find((c) => c.code === norm)?.label ?? norm;
+}
+
+/**
+ * `CURRENCY_OPTIONS` plus a synthetic entry (raw code as its own label, no
+ * flag) for any backend-declared currency this dashboard has no display
+ * metadata for yet — so a brand-new Nuvion-backed currency still renders in
+ * the picker instead of being silently dropped.
+ */
+export function currencyOptionsFor(supportedCurrencies: readonly string[]): CurrencyOption[] {
+  const known = new Set(CURRENCY_OPTIONS.map((c) => c.code));
+  const extras: CurrencyOption[] = [];
+  for (const raw of supportedCurrencies) {
+    const code = raw.trim().toUpperCase();
+    if (!code || known.has(code)) continue;
+    known.add(code);
+    extras.push({ code, label: code, iso: null });
+  }
+  return extras.length ? [...CURRENCY_OPTIONS, ...extras] : CURRENCY_OPTIONS;
 }
 
 export type StablecoinOption = { code: string; label: string };
@@ -165,6 +218,17 @@ export type DepositAccount = {
   bic?: string | null;
   /** US ACH/wire routing number. Distinct from `bic` — USD accounts only. */
   routing_number?: string | null;
+  /** Generic local account number for non-IBAN rails (UK, Canada, Ghana, ...). */
+  account_number?: string | null;
+  /** UK local bank rail. */
+  sort_code?: string | null;
+  /** Canadian local bank rail — always paired with `transit_number`. */
+  institution_number?: string | null;
+  transit_number?: string | null;
+  /** Ghana and similar local bank rails. */
+  bank_code?: string | null;
+  /** Mexico. */
+  clabe?: string | null;
   bank_name?: string | null;
   bank_address?: Record<string, unknown> | null;
   reference?: string | null;
@@ -174,6 +238,10 @@ export type DepositAccount = {
   instructions?: string | null;
   last_updated_at?: string | null;
   balance?: DepositAccountBalance | null;
+  /** Recurring charge for holding this account. Not available from Nuvion's
+   * API today (only a boolean opt-out flag exists there) — this is Mboka's
+   * own fee-schedule config once it ships. */
+  monthly_maintenance_fee?: { amount: string; currency: string } | null;
 };
 
 function nonEmpty(value: unknown): string | null {
@@ -254,6 +322,8 @@ export type DepositAccountListResult = {
 export type DepositAccountEligibility = {
   eligible: boolean;
   verification_status: string;
+  /** Live currency/rail list — see `SupportedAccountDescriptor`. */
+  supported_accounts?: SupportedAccountDescriptor[];
 };
 
 const STATUS_LABELS: Record<DepositAccountStatus, string> = {
@@ -354,26 +424,52 @@ export type DepositAccountDetailRow = {
  * account-detail modal. Omits any field the backend didn't return rather
  * than rendering an empty/placeholder row for it.
  */
+/**
+ * Routing/identifier fields in display order. One map entry per field is all
+ * a new local bank rail needs — no per-currency branch required.
+ */
+const IDENTIFIER_FIELDS: Array<{ field: keyof DepositAccount; label: string }> = [
+  { field: "iban", label: "IBAN" },
+  { field: "bic", label: "BIC / SWIFT" },
+  { field: "routing_number", label: "Routing number" },
+  { field: "sort_code", label: "Sort code" },
+  { field: "institution_number", label: "Institution number" },
+  { field: "transit_number", label: "Transit number" },
+  { field: "bank_code", label: "Bank code" },
+  { field: "clabe", label: "CLABE" },
+  { field: "account_number", label: "Account number" },
+];
+
+function formatMonthlyFee(
+  fee: DepositAccount["monthly_maintenance_fee"] | undefined,
+): string | null {
+  if (!fee) return null;
+  const amount = nonEmpty(fee.amount);
+  const currency = nonEmpty(fee.currency);
+  if (!amount) return null;
+  return currency ? `${amount} ${currency}/month` : `${amount}/month`;
+}
+
 export function buildDepositAccountDetailRows(account: DepositAccount): DepositAccountDetailRow[] {
   const rows: DepositAccountDetailRow[] = [];
-  const iban = nonEmpty(account.iban);
-  const bic = nonEmpty(account.bic);
-  const routingNumber = nonEmpty(account.routing_number);
+  for (const { field, label } of IDENTIFIER_FIELDS) {
+    const value = nonEmpty(account[field] as string | null | undefined);
+    if (value) rows.push({ label, value, copyValue: value });
+  }
   const bankName = nonEmpty(account.bank_name);
   const holder = nonEmpty(account.account_holder_name);
   const reference = nonEmpty(account.reference);
   const wallet = nonEmpty(account.destination_wallet);
   const bankAddress = formatBankAddress(account.bank_address);
-  if (iban) rows.push({ label: "IBAN", value: iban, copyValue: iban });
-  if (bic) rows.push({ label: "BIC / SWIFT", value: bic, copyValue: bic });
-  if (routingNumber) {
-    rows.push({ label: "Routing number", value: routingNumber, copyValue: routingNumber });
-  }
   if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
   if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
   if (holder) rows.push({ label: "Account name", value: holder, copyValue: holder });
   if (reference) {
     rows.push({ label: "Reference", value: reference, copyValue: reference });
+  }
+  const monthlyFee = formatMonthlyFee(account.monthly_maintenance_fee);
+  if (monthlyFee) {
+    rows.push({ label: "Monthly fee", value: monthlyFee });
   }
   // Format through the shared helper so the detail row and the card view
   // never disagree (raw `25` vs formatted `25.00`) on the same account.
@@ -404,22 +500,25 @@ export type DepositAccountDetailSection = {
   rows: DepositAccountDetailRow[];
 };
 
-const BANK_ROW_LABEL_RE = /^(iban|bic|swift|bank|account name|routing number)/i;
+const BANK_ROW_LABEL_RE =
+  /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
 
 /**
- * Currency-aware grouping for the account-detail modal and bank letter.
+ * Field-driven grouping for the account-detail modal and bank letter.
  *
- * USD accounts get the two-rail breakdown a US bank actually requires
- * (domestic ACH/wire needs the routing number; international wire needs
- * SWIFT/BIC instead) since the same account number pairs with a different
- * second identifier depending on which rail the sender uses. Every other
- * currency keeps the existing single "Bank details" grouping — IBAN + BIC
- * already fully identify a SEPA/international account on their own.
+ * `routing_number` is the signal — not currency — that an account needs the
+ * two-rail breakdown a US-style bank actually requires (domestic ACH/wire
+ * needs the routing number; international wire needs SWIFT/BIC instead),
+ * since the same account number pairs with a different second identifier
+ * depending on which rail the sender uses. No other rail in use today pairs
+ * a routing number with an optional SWIFT/BIC, so this generalizes safely:
+ * every other currency/rail (IBAN+BIC, UK sort code, local bank fields, ...)
+ * keeps a single "Bank details" grouping — its one identifier already fully
+ * describes the account on its own.
  */
 export function buildDepositAccountDetailSections(
   account: DepositAccount,
 ): DepositAccountDetailSection[] {
-  const currency = (account.currency || "").trim().toUpperCase();
   const rows = buildDepositAccountDetailRows(account);
   const bankRows = rows.filter((r) => BANK_ROW_LABEL_RE.test(r.label));
   const otherRows = rows.filter((r) => !BANK_ROW_LABEL_RE.test(r.label));
@@ -431,18 +530,16 @@ export function buildDepositAccountDetailSections(
   const bankName = nonEmpty(account.bank_name);
   const bankAddress = formatBankAddress(account.bank_address);
 
-  if (currency === "USD" && iban && (routingNumber || bic)) {
-    if (routingNumber) {
-      const domestic: DepositAccountDetailRow[] = [
-        { label: "Account number", value: iban, copyValue: iban },
-        { label: "Routing number", value: routingNumber, copyValue: routingNumber },
-      ];
-      if (bankName) domestic.push({ label: "Bank", value: bankName, copyValue: bankName });
-      if (bankAddress) {
-        domestic.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
-      }
-      sections.push({ title: "Domestic transfer (ACH/wire)", rows: domestic });
+  if (iban && routingNumber) {
+    const domestic: DepositAccountDetailRow[] = [
+      { label: "Account number", value: iban, copyValue: iban },
+      { label: "Routing number", value: routingNumber, copyValue: routingNumber },
+    ];
+    if (bankName) domestic.push({ label: "Bank", value: bankName, copyValue: bankName });
+    if (bankAddress) {
+      domestic.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
     }
+    sections.push({ title: "Domestic transfer (ACH/wire)", rows: domestic });
     if (bic) {
       const international: DepositAccountDetailRow[] = [
         { label: "Account number", value: iban, copyValue: iban },
@@ -470,6 +567,9 @@ export type CreateBankAccountInput = {
    */
   accountName?: string;
   walletAddress?: string;
+  /** Only sent when the chosen currency's descriptor declares a country —
+   * most currencies map to exactly one country and don't need this. */
+  countryCode?: string;
 };
 
 /**
@@ -478,17 +578,25 @@ export type CreateBankAccountInput = {
  * Deliberately omits the account name: `DepositAccountCreateIn` has no such
  * field and Pydantic drops unknown keys, so sending it would look like it
  * saved while silently discarding it.
+ *
+ * `supportedCurrencies` defaults to the static USD/EUR constant; callers
+ * with live eligibility data should pass the resolved list from
+ * `supportedCurrenciesFromEligibility` instead.
  */
-export function buildCreateBankAccountPayload(input: CreateBankAccountInput) {
+export function buildCreateBankAccountPayload(
+  input: CreateBankAccountInput,
+  supportedCurrencies: readonly string[] = SUPPORTED_IBAN_CURRENCIES,
+) {
   const currency = input.currency.trim().toUpperCase();
   if (!currency) throw new Error("Choose a currency for the account.");
-  if (!isCurrencySupported(currency)) {
-    throw new Error(
-      `${currency} accounts aren't available yet — currently EUR and USD only.`,
-    );
+  if (!isCurrencySupported(currency, supportedCurrencies)) {
+    throw new Error(`${currency} accounts aren't available yet.`);
   }
-  const body: { currency: string; wallet_address?: string } = { currency };
+  const body: { currency: string; wallet_address?: string; country_code?: string } = {
+    currency,
+  };
   if (input.walletAddress) body.wallet_address = input.walletAddress;
+  if (input.countryCode) body.country_code = input.countryCode;
   return body;
 }
 
@@ -500,11 +608,11 @@ export const depositAccountsApi = {
     ),
   list: () =>
     apiEnvelope<DepositAccountListResult>("GET", "/v1/iban/accounts"),
-  create: (input: CreateBankAccountInput) =>
+  create: (input: CreateBankAccountInput, supportedCurrencies?: readonly string[]) =>
     apiEnvelope<DepositAccount>(
       "POST",
       "/v1/iban/accounts",
-      buildCreateBankAccountPayload(input),
+      buildCreateBankAccountPayload(input, supportedCurrencies),
     ),
   /**
    * On-demand sync: queries Nuvion live and reconciles Mboka's/the

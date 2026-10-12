@@ -1,6 +1,10 @@
 import { apiEnvelope } from "@/lib/apiClient";
 import type { AuthMe } from "@/lib/services/auth";
-import type { DepositAccount, DepositAccountEligibility } from "@/lib/services/depositAccounts";
+import type {
+  DepositAccount,
+  DepositAccountEligibility,
+  SupportedAccountDescriptor,
+} from "@/lib/services/depositAccounts";
 import type { ExchangeRates } from "@/lib/services/dashboard";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { normalizeExchangeRates } from "@/lib/services/dashboard";
@@ -49,6 +53,9 @@ export type BootstrapEligibility = {
   can_open_stablecoin: boolean;
   primary_entity_id: string | null;
   verification_status: string;
+  /** Mirrors `GET /v1/iban/accounts/eligibility`'s field of the same name —
+   * absent on today's backend. See `supportedCurrenciesFromEligibility`. */
+  supported_accounts?: SupportedAccountDescriptor[];
 };
 
 export type BootstrapOut = {
@@ -180,6 +187,7 @@ export function mapBootstrap(raw: BootstrapOut): DashboardBootstrap {
     eligibility: {
       eligible: Boolean(raw.eligibility?.eligible),
       verification_status: String(raw.eligibility?.verification_status || "pending"),
+      supported_accounts: raw.eligibility?.supported_accounts,
     },
     primaryEntityId: raw.eligibility?.primary_entity_id ?? null,
     treasuryWallet: raw.treasury?.wallet_address ?? null,

@@ -72,6 +72,7 @@ import {
   currencyLabel,
   occupiedFiatCurrencyCodes,
   SUPPORTED_IBAN_CURRENCIES,
+  supportedCurrenciesFromEligibility,
   allSupportedStablecoinSlots,
   networksForStablecoin,
 } from "@/lib/services/depositAccounts";
@@ -765,6 +766,18 @@ export default function DashboardApp(props: Props = {}) {
   const depositEligible = bootstrapReady
     ? Boolean(bootstrapQuery.data?.eligibility.eligible)
     : depositEligibilityQuery.data?.eligible === true;
+  // Live currency list once Mboka ships Nuvion-backed rails beyond USD/EUR —
+  // falls back to the static constant until then, same source on both the
+  // bootstrap-happy-path and the eligibility-fallback path.
+  const supportedFiatCurrencies = supportedCurrenciesFromEligibility(
+    bootstrapReady ? bootstrapQuery.data?.eligibility : depositEligibilityQuery.data,
+  );
+  // Full descriptors (same source) — lets Create Account look up a
+  // per-currency monthly_maintenance_fee. Empty until backend ships it.
+  const supportedAccountDescriptors =
+    (bootstrapReady
+      ? bootstrapQuery.data?.eligibility.supported_accounts
+      : depositEligibilityQuery.data?.supported_accounts) ?? [];
   const needsFullFiatCoords =
     state.selectedAcctKind === "fiat" &&
     (state.modal === "acctDetail" ||
@@ -2629,7 +2642,7 @@ export default function DashboardApp(props: Props = {}) {
       });
       return;
     }
-    const availableFiat = SUPPORTED_IBAN_CURRENCIES.filter(
+    const availableFiat = supportedFiatCurrencies.filter(
       (code) => !fiatOccupied.has(code),
     );
     setState({
@@ -3191,10 +3204,13 @@ export default function DashboardApp(props: Props = {}) {
     }
     setState({ createAccountSaving: true, createAccountError: "" });
     try {
-      await depositAccountsApi.create({
-        currency: state.createAccountCurrency,
-        accountName: state.createAccountName.trim(),
-      });
+      await depositAccountsApi.create(
+        {
+          currency: state.createAccountCurrency,
+          accountName: state.createAccountName.trim(),
+        },
+        supportedFiatCurrencies,
+      );
       queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       setState({ createAccountSaving: false, modal: null });
@@ -5113,7 +5129,7 @@ export default function DashboardApp(props: Props = {}) {
   }
   canCreateBank={
     occupiedFiatCurrencyCodes(depositAccountsList).size <
-    SUPPORTED_IBAN_CURRENCIES.length
+    supportedFiatCurrencies.length
   }
   accounts={accounts}
   eligible={depositEligible}
@@ -6353,6 +6369,8 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   createAccountSaving={s.createAccountSaving}
   occupiedSlots={[...occupiedStablecoinSlots(stablecoinAccountsList)]}
   occupiedCurrencies={[...occupiedFiatCurrencyCodes(depositAccountsList)]}
+  supportedCurrencies={supportedFiatCurrencies}
+  supportedAccounts={supportedAccountDescriptors}
   closeModal={closeModal}
   submitCreateAccount={submitCreateAccount}
 />
