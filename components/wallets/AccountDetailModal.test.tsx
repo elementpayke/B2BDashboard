@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import AccountDetailModal, { formatSensitiveValue } from "./AccountDetailModal";
+
+vi.mock("@/lib/documents/brandedDocument", () => ({
+  openBrandedDocument: vi.fn(),
+}));
 
 describe("formatSensitiveValue", () => {
   it("groups a real IBAN and leaves short account numbers alone", () => {
@@ -14,6 +19,10 @@ describe("formatSensitiveValue", () => {
 });
 
 describe("AccountDetailModal", () => {
+  afterEach(() => {
+    vi.mocked(openBrandedDocument).mockClear();
+  });
+
   it("renders API beneficiary and bank rows horizontally with copy", () => {
     const copyField = vi.fn(() => vi.fn());
     render(
@@ -58,5 +67,47 @@ describe("AccountDetailModal", () => {
     expect(screen.queryByText("Beneficiary")).toBeNull();
     expect(screen.queryByText("Euro")).toBeNull();
     expect(screen.getByText("FR76 3000 6000 0112 3456 7890 189")).toBeTruthy();
+  });
+
+  it("bank letter omits Settlement / Available balance", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "USD",
+          name: "US Dollar",
+          beneficiary: "Elementpay LTD",
+          showDownloadLetter: true,
+          railLabel: "Account number · ACH / SWIFT",
+          rows: [
+            { label: "Account number", value: "391881521473" },
+            { label: "Available balance", value: "12.00 USD" },
+          ],
+          sections: [
+            {
+              title: "Domestic transfer (ACH/wire)",
+              rows: [
+                { label: "Account number", value: "391881521473" },
+                { label: "Routing number", value: "021214891" },
+              ],
+            },
+            {
+              title: "Settlement",
+              rows: [{ label: "Available balance", value: "12.00 USD" }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Download bank letter/i }));
+
+    expect(openBrandedDocument).toHaveBeenCalledOnce();
+    const doc = vi.mocked(openBrandedDocument).mock.calls[0][0];
+    expect(doc.sections.map((s) => s.title)).not.toContain("Settlement");
+    expect(doc.sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
+      "Available balance",
+    );
   });
 });

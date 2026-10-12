@@ -67,19 +67,19 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
 
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
   const beneficiary = acctDetail.beneficiary?.trim() || null;
-  // Mirror the same section breakdown shown in the modal (e.g. Domestic
-  // transfer / International wire for USD) instead of one flat coordinate
-  // blob, so the letter documents both rails' instructions distinctly.
+  // Mirror modal bank-rail sections only — Settlement (Available balance) stays on the modal.
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
-  ).map((sec) => ({
-    title: sec.title,
-    rows: sec.rows.map((row) => ({
-      label: row.label,
-      value: formatSensitiveValue(row.label, row.value),
-      mono: true,
-    })),
-  }));
+  )
+    .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
+    .map((sec) => ({
+      title: sec.title,
+      rows: sec.rows.map((row) => ({
+        label: row.label,
+        value: formatSensitiveValue(row.label, row.value),
+        mono: true,
+      })),
+    }));
   openBrandedDocument(
     {
       fileTitle: `Mboka — ${acctDetail.currency} bank letter`,
