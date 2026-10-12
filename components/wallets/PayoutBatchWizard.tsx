@@ -6,25 +6,33 @@ import { ApiRequestError } from "@/lib/apiClient";
 import { validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
+import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
+import { offRampProvidersForRail } from "@/lib/services/catalog";
+import { mobileMoneyDisplayLabel } from "@/lib/services/mobileMoneyBrands";
 import {
   explainPayoutFailure,
   isTransientDisbursementError,
+  hasResolvableNetworkAlias,
+  matchOffRampProviderForNetwork,
   newBulkPayoutIdempotencyKey,
   parseMixedPayoutCsvLoose,
   payoutBatchesApi,
-  railLabel,
+  payoutMethodLabel,
   resolvePayoutRail,
-  sampleMixedPayoutCsv,
+  resolveRowNetworkId,
+  sampleCsvFilename,
+  samplePayoutCsv,
   withTransientRetry,
   type MixedPayoutBatch,
   type MixedPayoutPreview,
   type MixedPayoutRow,
+  type PayoutIntent,
   type PayoutRail,
 } from "@/lib/services/payoutBatches";
 import { stellarExplorerTxUrl } from "@/lib/stellar/network";
 
 type EditableRow = MixedPayoutRow & { __id: number };
-type WizardStage = "input" | "edit" | "preview";
+type WizardStage = "intent" | "input" | "edit" | "preview";
 
 type Props = {
   sourceAccounts: FinancialAccount[];
@@ -33,9 +41,27 @@ type Props = {
 };
 
 const STEPS = [
+  { id: "intent" as const, label: "Choose" },
   { id: "input" as const, label: "Recipients" },
   { id: "edit" as const, label: "Review rows" },
-  { id: "preview" as const, label: "Confirm" },
+  { id: "preview" as const, label: "Send" },
+];
+
+const INTENT_OPTIONS: {
+  id: PayoutIntent;
+  title: string;
+  body: string;
+}[] = [
+  {
+    id: "wallets",
+    title: "Stellar wallets only",
+    body: "Pay 100+ user wallets on-chain instantly. Everyone gets USDC on Stellar.",
+  },
+  {
+    id: "wallets_and_phones",
+    title: "Wallets, phones, and banks",
+    body: "Pay across KE, NG, GH, UG, and TZ — wallet, mobile money, or bank. One way per person.",
+  },
 ];
 
 function walletLabel(account: FinancialAccount): string {
@@ -49,6 +75,8 @@ function emptyRow(): MixedPayoutRow {
     bank_account_number: "",
     bank_code: "",
     country: "",
+    network: "",
+    network_id: "",
     amount: "",
     currency: "USDC",
     recipient_name: "",
@@ -68,6 +96,7 @@ function isBlankRow(row: MixedPayoutRow): boolean {
     row.phone?.trim() ||
     row.bank_account_number?.trim() ||
     row.bank_code?.trim() ||
+    row.network?.trim() ||
     row.amount?.trim() ||
     row.recipient_name?.trim() ||
     row.memo?.trim() ||
@@ -91,7 +120,13 @@ function sumUsdcAmounts(rows: MixedPayoutRow[]): string {
   });
 }
 
-function RailBadge({ rail }: { rail: PayoutRail | null }) {
+function RailBadge({
+  rail,
+  network,
+}: {
+  rail: PayoutRail | null;
+  network?: string | null;
+}) {
   const tone =
     rail === "stellar"
       ? "stellar"
@@ -101,7 +136,9 @@ function RailBadge({ rail }: { rail: PayoutRail | null }) {
           ? "bank"
           : "none";
   return (
-    <span className={`ep-rail-badge ep-rail-badge--${tone}`}>{railLabel(rail)}</span>
+    <span className={`ep-rail-badge ep-rail-badge--${tone}`}>
+      {payoutMethodLabel(rail, network)}
+    </span>
   );
 }
 
@@ -117,7 +154,7 @@ function BulkPayoutStepper({
   const current = stepIndex(stage);
   return (
     <div className="ep-bulk-stepper">
-      <ol className="ep-bulk-stepper__list" aria-label="Bulk payout steps">
+      <ol className="ep-bulk-stepper__list" aria-label="Pay many people steps">
         {STEPS.map((step, index) => {
           const done = index < current;
           const active = index === current;
@@ -225,7 +262,9 @@ function BatchResult({
       ? `Batch ${batch.batch_id || "—"} didn’t complete. Tap Why on a row for details.`
       : batchTone === "partial"
         ? `Batch ${batch.batch_id || "—"}: ${okCount} sent, ${failedCount} failed.`
-        : `Batch ${batch.batch_id || "pending"} is ${batch.status} · ${batch.stellar_item_count} Stellar · ${batch.fiat_item_count} mobile money.`;
+        : statusKey === "processing"
+          ? `Batch ${batch.batch_id || "pending"} is sending. Status updates as each person is paid · ${batch.stellar_item_count} wallet · ${batch.fiat_item_count} mobile money.`
+          : `Batch ${batch.batch_id || "pending"} · ${batch.stellar_item_count} wallet · ${batch.fiat_item_count} mobile money.`;
 
   const refreshStatus = async () => {
     if (!entityId || !accountId || !batch.batch_id || refreshing) return;
@@ -293,7 +332,7 @@ function BatchResult({
                       {item.recipient_label}
                     </span>
                     <span className="ep-bulk-result__meta">
-                      <RailBadge rail={item.rail} />
+                      <RailBadge rail={item.rail} network={item.network} />
                       <span className="ep-bulk-result__amount">
                         {item.amount} {item.currency}
                       </span>
@@ -358,6 +397,7 @@ function BatchResult({
 }
 
 export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: Props) {
+  const [intent, setIntent] = useState<PayoutIntent | null>(null);
   const [sourceAccountId, setSourceAccountId] = useState(sourceAccounts[0]?.id || "");
   const [csvText, setCsvText] = useState("");
   const [parsedRows, setParsedRows] = useState<EditableRow[]>([]);
@@ -370,6 +410,9 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   const idempotencyKeyRef = useRef<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const nextRowId = useRef(0);
+  const showPhoneCols = intent === "wallets_and_phones";
+  const catalogQuery = useSendCatalog({ enabled: showPhoneCols });
+  const catalog = catalogQuery.data ?? null;
 
   const selectedAccount = useMemo(
     () => sourceAccounts.find((account) => account.id === sourceAccountId) || null,
@@ -385,11 +428,37 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   const withLocalIds = (rows: MixedPayoutRow[]): EditableRow[] =>
     rows.map((row) => ({ ...row, __id: nextRowId.current++ }));
 
-  const stage: WizardStage = preview ? "preview" : rowsMode ? "edit" : "input";
+  const stage: WizardStage = !intent
+    ? "intent"
+    : preview
+      ? "preview"
+      : rowsMode
+        ? "edit"
+        : "input";
+
+  const chooseIntent = (next: PayoutIntent) => {
+    setIntent(next);
+    setError("");
+    setCsvText("");
+    setParsedRows([]);
+    setRowsMode(false);
+    setPreview(null);
+  };
 
   const loadRowsFromCsv = (text: string) => {
     try {
-      setParsedRows(withLocalIds(parseMixedPayoutCsvLoose(text)));
+      const rows = parseMixedPayoutCsvLoose(text);
+      if (intent === "wallets") {
+        for (let i = 0; i < rows.length; i += 1) {
+          if (rows[i].phone?.trim() || rows[i].bank_account_number?.trim()) {
+            setError(
+              `Row ${i + 1}: this path is wallets only — remove phone/bank fields or choose “Wallets, phones, and banks”.`,
+            );
+            return;
+          }
+        }
+      }
+      setParsedRows(withLocalIds(rows));
       setRowsMode(true);
       setError("");
     } catch (err) {
@@ -433,13 +502,14 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   };
 
   const downloadSampleCsv = () => {
-    const blob = new Blob([sampleMixedPayoutCsv() + "\n"], {
+    if (!intent) return;
+    const blob = new Blob([samplePayoutCsv(intent) + "\n"], {
       type: "text/csv;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "mixed-rail-bulk-payout-sample.csv";
+    a.download = sampleCsvFilename(intent);
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -449,6 +519,12 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
   const updateRow = (index: number, field: keyof MixedPayoutRow, value: string) => {
     setParsedRows((rows) =>
       rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const updateRowFields = (index: number, patch: Partial<MixedPayoutRow>) => {
+    setParsedRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
     );
   };
 
@@ -470,6 +546,14 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
 
   const goToStep = (target: WizardStage) => {
     if (stepIndex(target) >= stepIndex(stage)) return;
+    if (target === "intent") {
+      setIntent(null);
+      setPreview(null);
+      setRowsMode(false);
+      setParsedRows([]);
+      setCsvText("");
+      return;
+    }
     if (target === "input") {
       setPreview(null);
       setRowsMode(false);
@@ -485,14 +569,32 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     () =>
       parsedRows.map((row) => {
         if (isBlankRow(row)) return null;
+        if (intent === "wallets" && (row.phone?.trim() || row.bank_account_number?.trim())) {
+          return "Wallets-only path — use a wallet address, not a phone.";
+        }
         const resolution = resolvePayoutRail(row);
         if (resolution.error) return resolution.error;
-        if (resolution.rail === "bank") {
-          return "Bank transfers aren't supported in bulk payouts yet.";
+        if (resolution.rail === "mobile_money" || resolution.rail === "bank") {
+          // Alias present → OK for review; Mboka resolves network_id at preview.
+          if (hasResolvableNetworkAlias(resolution.rail, row)) return null;
+          // Only nudge when the catalog clearly lists providers and the cell is empty.
+          if (!catalogQuery.isFetched) return null;
+          const railType = resolution.rail === "bank" ? "bank" : "mobile";
+          const providers =
+            offRampProvidersForRail(
+              catalog,
+              (row.country || "").trim(),
+              railType,
+              row.currency,
+            ) || [];
+          if (providers.length === 0) return null;
+          return resolution.rail === "bank"
+            ? "Choose a bank for this country."
+            : "Choose a mobile money network for this country.";
         }
         return null;
       }),
-    [parsedRows],
+    [parsedRows, intent, catalog, catalogQuery.isFetched],
   );
 
   const previewBlocked = rowRailIssues.some(Boolean);
@@ -518,8 +620,8 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
         setError(`Row ${i + 1}: ${resolution.error || "unresolved rail."}`);
         return;
       }
-      if (resolution.rail === "bank") {
-        setError(`Row ${i + 1}: bank transfers aren't supported yet.`);
+      if (intent === "wallets" && resolution.rail !== "stellar") {
+        setError(`Row ${i + 1}: wallets-only path — use a Stellar wallet address.`);
         return;
       }
       try {
@@ -530,7 +632,44 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
         );
         return;
       }
-      rows.push(stripLocalId(row));
+      const outbound = stripLocalId(row);
+      if (resolution.rail === "mobile_money" || resolution.rail === "bank") {
+        if (!hasResolvableNetworkAlias(resolution.rail, outbound)) {
+          setError(
+            resolution.rail === "bank"
+              ? `Row ${i + 1}: add a bank name in Network (e.g. Equity Bank).`
+              : `Row ${i + 1}: add a network (e.g. mpesa or airtel).`,
+          );
+          return;
+        }
+        const railType = resolution.rail === "bank" ? "bank" : "mobile";
+        const matched = matchOffRampProviderForNetwork(
+          catalog,
+          outbound.country,
+          outbound.network || outbound.bank_code,
+          railType,
+          outbound.currency,
+        );
+        const networkId = resolveRowNetworkId(catalog, outbound, resolution.rail);
+        // Prefer a local catalog UUID when available; otherwise Mboka resolves the alias.
+        if (networkId) outbound.network_id = networkId;
+        if (matched?.name) outbound.network = matched.name;
+        else if (!(outbound.network || "").trim() && (outbound.bank_code || "").trim()) {
+          outbound.network = outbound.bank_code;
+        }
+        // Older Mboka builds required bank_code — mirror network into it for bank rows.
+        if (
+          resolution.rail === "bank" &&
+          !(outbound.bank_code || "").trim() &&
+          (outbound.network || "").trim()
+        ) {
+          outbound.bank_code = outbound.network;
+        }
+      } else {
+        outbound.network = null;
+        outbound.network_id = null;
+      }
+      rows.push(outbound);
     }
     if (!rows.length) {
       setError("Add at least one payout row.");
@@ -598,9 +737,9 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     return (
       <div className="ep-money-flow ep-bulk-payout">
         <div className="ep-wallets__empty">
-          <div className="ep-wallets__empty-title">Stellar wallet needed</div>
+          <div className="ep-wallets__empty-title">USDC wallet needed</div>
           <div className="ep-wallets__empty-body">
-            Open a ready Stellar stablecoin wallet before submitting a bulk payout batch.
+            Open a ready USDC (Stellar) balance before you pay many people.
           </div>
         </div>
         <div className="ep-money-actions ep-bulk-payout__actions">
@@ -624,38 +763,49 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
     );
   }
 
-  const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your wallet";
+  const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your USDC balance";
   const usdcTotal = sumUsdcAmounts(parsedRows);
   const stepNum = stepIndex(stage) + 1;
   const subline =
-    stage === "preview" && preview
-      ? `Step ${stepNum} · Confirm · ${preview.total_items} rows · ${preview.stellar_item_count} Stellar · ${preview.fiat_item_count} mobile money`
-      : stage === "edit"
-        ? `Step ${stepNum} · Review rows · ${parsedRows.filter((r) => !isBlankRow(r)).length} rows`
-        : `Step ${stepNum} · ${STEPS[stepIndex(stage)].label}`;
+    stage === "intent"
+      ? "Step 1 · Choose how you’re making this payout"
+      : stage === "preview" && preview
+        ? `Step ${stepNum} · Send · ${preview.total_items} people · ${preview.stellar_item_count} wallet · ${preview.fiat_item_count} mobile money`
+        : stage === "edit"
+          ? `Step ${stepNum} · Review rows · ${parsedRows.filter((r) => !isBlankRow(r)).length} people`
+          : `Step ${stepNum} · ${STEPS[stepIndex(stage)].label}`;
 
-  const secondaryLabel = stage === "input" ? "Cancel" : "Back";
+  const secondaryLabel =
+    stage === "intent" ? "Cancel" : stage === "input" ? "Back" : "Back";
   const primaryLabel =
     busy === "upload"
       ? "Reading CSV…"
       : busy === "preview"
         ? "Previewing…"
         : busy === "confirm"
-          ? "Submitting…"
+          ? "Sending…"
           : stage === "preview"
             ? safeConfirmRetry
-              ? "Retry confirm"
-              : "Confirm batch"
+              ? "Retry send"
+              : "Send payout"
             : stage === "edit"
-              ? "Preview batch"
-              : "Review rows";
+              ? "Review payout"
+              : stage === "intent"
+                ? "Continue"
+                : "Review rows";
 
   const primaryDisabled =
     busy === "preview" ||
     busy === "confirm" ||
     busy === "upload" ||
+    stage === "intent" ||
     (stage === "input" && !csvText.trim()) ||
     (stage === "edit" && (parsedRows.every(isBlankRow) || previewBlocked));
+
+  const pastePlaceholder =
+    intent === "wallets"
+      ? "destination,amount,currency,recipient_name,memo,reference\nG…,5.00,USDC,Alex,,ref-1"
+      : "destination,phone,bank_account_number,country,network,amount,currency,recipient_name,memo,reference\nG…,,,,,5.00,USDC,Alex,,ref-1\n,+2541111111111,,KE,mpesa,1500,KES,Jane,,ref-2\n,,1111111111,KE,Equity Bank,2200,KES,Grace,,ref-3";
 
   return (
     <div className="ep-money-flow ep-bulk-payout">
@@ -666,7 +816,7 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
           <div className="ep-bulk-processing" role="status" aria-live="polite">
             <SubmittingHourglass />
             <div>
-              <div className="ep-bulk-processing__title">Submitting batch…</div>
+              <div className="ep-bulk-processing__title">Sending payout…</div>
               <div className="ep-bulk-processing__body">
                 Paying from {sourceLabel}. Keep this window open.
               </div>
@@ -674,30 +824,58 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
           </div>
         ) : null}
 
-        <p className="ep-fund-chooser__intro">
-          Bulk pay from {sourceLabel} — Stellar wallets and mobile money in one CSV.
-        </p>
-        {stage === "input" ? (
-          <p className="ep-muted" role="note">
-            Fill exactly one rail per row: Stellar <code>destination</code>, or mobile-money{" "}
-            <code>phone</code> + <code>country</code> + <code>recipient_name</code>.
-          </p>
-        ) : null}
+        {stage === "intent" ? (
+          <>
+            <p className="ep-fund-chooser__intro">
+              Pay many people from your USDC balance. Pick the list type that matches your
+              recipients.
+            </p>
+            <div className="ep-bulk-intent" role="listbox" aria-label="Payout type">
+              {INTENT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="option"
+                  className="ep-fund-chooser__option"
+                  onClick={() => chooseIntent(option.id)}
+                >
+                  <span className="ep-fund-chooser__option-title">{option.title}</span>
+                  <span className="ep-fund-chooser__option-body">{option.body}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="ep-fund-chooser__intro">
+              {intent === "wallets"
+                ? `Pay to Stellar wallets from ${sourceLabel}.`
+                : `Pay to wallets, phones, or banks from ${sourceLabel}. One way per person.`}
+            </p>
+            {stage === "input" ? (
+              <p className="ep-muted" role="note">
+                {intent === "wallets"
+                  ? "Each row needs a wallet address (destination) and amount."
+                  : "Each row: wallet, phone, or bank (+ country, network, name). First batch: KE, NG, GH, UG, TZ."}
+              </p>
+            ) : null}
 
-        <label className="ep-field">
-          <span>Source wallet</span>
-          <select
-            value={sourceAccountId}
-            onChange={(event) => setSourceAccountId(event.target.value)}
-            disabled={stage === "preview" || busy === "confirm"}
-          >
-            {sourceAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {walletLabel(account)}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label className="ep-field">
+              <span>Pay from</span>
+              <select
+                value={sourceAccountId}
+                onChange={(event) => setSourceAccountId(event.target.value)}
+                disabled={stage === "preview" || busy === "confirm"}
+              >
+                {sourceAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {walletLabel(account)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
 
         {stage === "input" ? (
           <>
@@ -714,7 +892,9 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                 {busy === "upload" ? "Reading CSV…" : "Drop a CSV file here, or click to browse"}
               </span>
               <span className="ep-dropzone__hint">
-                10 columns · sample CSV includes one Stellar and one mobile-money row
+                {intent === "wallets"
+                  ? "Sample has wallet addresses only"
+                  : "Sample uses YC sandbox numbers only (…1111111111 success / …0000000000 fail) — real phones can pend"}
               </span>
               <input
                 type="file"
@@ -744,11 +924,7 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
               <textarea
                 value={csvText}
                 onChange={(event) => setCsvText(event.target.value)}
-                placeholder={
-                  "destination,phone,...,country,amount,currency,recipient_name,memo,reference\n" +
-                  "G…,,,,,5.00,USDC,,,ref-1\n" +
-                  ",+2547…,,,KE,1500,KES,Jane,,ref-2"
-                }
+                placeholder={pastePlaceholder}
                 rows={8}
                 disabled={busy === "upload"}
               />
@@ -760,13 +936,15 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
               Wide table — scroll sideways to see name and reference.
             </p>
             <div className="ep-row-table-wrap ep-row-table-wrap--mixed">
-              <table className="ep-row-table ep-row-table--mixed" aria-label="Bulk payout rows">
+              <table className="ep-row-table ep-row-table--mixed" aria-label="Payout rows">
                 <thead>
                   <tr>
-                    <th>Rail</th>
-                    <th>Destination</th>
-                    <th>Phone</th>
-                    <th>Country</th>
+                    <th>How</th>
+                    <th>Wallet</th>
+                    {showPhoneCols ? <th>Phone</th> : null}
+                    {showPhoneCols ? <th>Bank acct</th> : null}
+                    {showPhoneCols ? <th>Country</th> : null}
+                    {showPhoneCols ? <th>Network</th> : null}
                     <th>Amount</th>
                     <th>Currency</th>
                     <th>Name</th>
@@ -777,10 +955,40 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                 <tbody>
                   {parsedRows.map((row, index) => {
                     const resolution = isBlankRow(row) ? null : resolvePayoutRail(row);
+                    const networkRailType =
+                      resolution?.rail === "bank"
+                        ? "bank"
+                        : resolution?.rail === "mobile_money" || (row.phone || "").trim()
+                          ? "mobile"
+                          : (row.bank_account_number || "").trim()
+                            ? "bank"
+                            : "mobile";
+                    const networkProviders =
+                      showPhoneCols && (row.country || "").trim()
+                        ? offRampProvidersForRail(
+                            catalog,
+                            (row.country || "").trim(),
+                            networkRailType,
+                            row.currency,
+                          ) || []
+                        : [];
+                    const networkValue = (row.network || row.bank_code || "").trim();
+                    const networkInList = networkProviders.some(
+                      (p) =>
+                        p.name === networkValue ||
+                        p.code === networkValue ||
+                        (p.id || "") === networkValue,
+                    );
+                    const networkSelectEnabled =
+                      Boolean((row.phone || "").trim()) ||
+                      Boolean((row.bank_account_number || "").trim());
                     return (
                       <tr key={row.__id}>
                         <td>
-                          <RailBadge rail={resolution?.rail ?? null} />
+                          <RailBadge
+                            rail={resolution?.rail ?? null}
+                            network={row.network || row.bank_code}
+                          />
                           {rowRailIssues[index] ? (
                             <div className="ep-rail-badge__error">{rowRailIssues[index]}</div>
                           ) : null}
@@ -792,28 +1000,106 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                               updateRow(index, "destination", event.target.value)
                             }
                             placeholder=""
-                            aria-label={`Row ${index + 1} destination`}
+                            aria-label={`Row ${index + 1} wallet`}
                             disabled={busy === "preview" || busy === "confirm"}
                           />
                         </td>
-                        <td>
-                          <input
-                            value={row.phone || ""}
-                            onChange={(event) => updateRow(index, "phone", event.target.value)}
-                            placeholder=""
-                            aria-label={`Row ${index + 1} phone`}
-                            disabled={busy === "preview" || busy === "confirm"}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={row.country || ""}
-                            onChange={(event) => updateRow(index, "country", event.target.value)}
-                            placeholder=""
-                            aria-label={`Row ${index + 1} country`}
-                            disabled={busy === "preview" || busy === "confirm"}
-                          />
-                        </td>
+                        {showPhoneCols ? (
+                          <td>
+                            <input
+                              value={row.phone || ""}
+                              onChange={(event) => updateRow(index, "phone", event.target.value)}
+                              placeholder=""
+                              aria-label={`Row ${index + 1} phone`}
+                              disabled={busy === "preview" || busy === "confirm"}
+                            />
+                          </td>
+                        ) : null}
+                        {showPhoneCols ? (
+                          <td>
+                            <input
+                              value={row.bank_account_number || ""}
+                              onChange={(event) =>
+                                updateRow(index, "bank_account_number", event.target.value)
+                              }
+                              placeholder=""
+                              aria-label={`Row ${index + 1} bank account`}
+                              disabled={busy === "preview" || busy === "confirm"}
+                            />
+                          </td>
+                        ) : null}
+                        {showPhoneCols ? (
+                          <td>
+                            <input
+                              value={row.country || ""}
+                              onChange={(event) =>
+                                updateRow(index, "country", event.target.value)
+                              }
+                              placeholder=""
+                              aria-label={`Row ${index + 1} country`}
+                              disabled={busy === "preview" || busy === "confirm"}
+                            />
+                          </td>
+                        ) : null}
+                        {showPhoneCols ? (
+                          <td>
+                            <select
+                              value={
+                                networkInList
+                                  ? networkProviders.find(
+                                      (p) =>
+                                        p.name === networkValue ||
+                                        p.code === networkValue ||
+                                        (p.id || "") === networkValue,
+                                    )?.name || ""
+                                  : networkValue
+                                    ? `__custom__:${networkValue}`
+                                    : ""
+                              }
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                if (value.startsWith("__custom__:")) {
+                                  updateRowFields(index, {
+                                    network: value.slice("__custom__:".length),
+                                    network_id: "",
+                                  });
+                                  return;
+                                }
+                                if (!value) {
+                                  updateRowFields(index, { network: "", network_id: "" });
+                                  return;
+                                }
+                                const provider = networkProviders.find((p) => p.name === value);
+                                updateRowFields(index, {
+                                  network: provider?.name || value,
+                                  network_id: provider?.id || "",
+                                });
+                              }}
+                              aria-label={`Row ${index + 1} network`}
+                              disabled={
+                                busy === "preview" ||
+                                busy === "confirm" ||
+                                !networkSelectEnabled
+                              }
+                            >
+                              <option value="">Select network</option>
+                              {networkValue && !networkInList ? (
+                                <option value={`__custom__:${networkValue}`}>
+                                  {networkRailType === "mobile"
+                                    ? mobileMoneyDisplayLabel(networkValue)
+                                    : networkValue}
+                                </option>
+                              ) : null}
+                              {networkProviders.map((provider) => (
+                                <option key={provider.id || provider.code} value={provider.name}>
+                                  {networkRailType === "mobile"
+                                    ? mobileMoneyDisplayLabel(provider.name)
+                                    : provider.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        ) : null}
                         <td>
                           <input
                             value={row.amount}
@@ -884,13 +1170,13 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
         ) : preview ? (
           <div className="ep-money-review" role="group" aria-label="Bulk payout preview">
             <div className="ep-money-review__row">
-              <span className="ep-money-review__k">Rows</span>
+              <span className="ep-money-review__k">People</span>
               <span className="ep-money-review__v">{preview.total_items}</span>
             </div>
             <div className="ep-money-review__row">
-              <span className="ep-money-review__k">Rails</span>
+              <span className="ep-money-review__k">How they get paid</span>
               <span className="ep-money-review__v">
-                {preview.stellar_item_count} Stellar · {preview.fiat_item_count} mobile money
+                {preview.stellar_item_count} wallet · {preview.fiat_item_count} mobile money
               </span>
             </div>
             {preview.items.map((item) => (
@@ -902,7 +1188,8 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                   {item.recipient_label}
                 </span>
                 <span className="ep-money-review__v">
-                  <RailBadge rail={item.rail} /> {item.amount} {item.currency}
+                  <RailBadge rail={item.rail} network={item.network} /> {item.amount}{" "}
+                  {item.currency}
                 </span>
               </div>
             ))}
@@ -929,8 +1216,9 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
       <footer className="ep-bulk-payout__footer">
         {stage === "preview" && busy !== "confirm" ? (
           <p className="ep-bulk-payout__caption" role="note">
-            Confirms payouts from {sourceLabel}
-            {usdcTotal !== "0.00" ? ` · ~${usdcTotal} USDC in Stellar rows` : ""}.
+            Sends from {sourceLabel}
+            {usdcTotal !== "0.00" ? ` · ~${usdcTotal} USDC in wallet rows` : ""}. Status keeps
+            updating after you send.
           </p>
         ) : null}
         <div className="ep-money-actions ep-bulk-payout__actions">
@@ -942,34 +1230,38 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                 ? () => setPreview(null)
                 : stage === "edit"
                   ? clearRows
-                  : onCancel
+                  : stage === "input"
+                    ? () => goToStep("intent")
+                    : onCancel
             }
             disabled={busy === "preview" || busy === "confirm"}
           >
             {secondaryLabel}
           </button>
-          <button
-            type="button"
-            className="ep-btn-primary"
-            onClick={
-              stage === "preview"
-                ? () => void confirmBatch()
-                : stage === "edit"
-                  ? () => void previewBatch()
-                  : () => loadRowsFromCsv(csvText)
-            }
-            disabled={primaryDisabled}
-            aria-busy={busy === "preview" || busy === "confirm" || busy === "upload" || undefined}
-          >
-            {busy === "confirm" ? (
-              <span className="ep-btn-busy">
-                <SubmittingHourglass />
-                Submitting…
-              </span>
-            ) : (
-              primaryLabel
-            )}
-          </button>
+          {stage === "intent" ? null : (
+            <button
+              type="button"
+              className="ep-btn-primary"
+              onClick={
+                stage === "preview"
+                  ? () => void confirmBatch()
+                  : stage === "edit"
+                    ? () => void previewBatch()
+                    : () => loadRowsFromCsv(csvText)
+              }
+              disabled={primaryDisabled}
+              aria-busy={busy === "preview" || busy === "confirm" || busy === "upload" || undefined}
+            >
+              {busy === "confirm" ? (
+                <span className="ep-btn-busy">
+                  <SubmittingHourglass />
+                  Sending…
+                </span>
+              ) : (
+                primaryLabel
+              )}
+            </button>
+          )}
         </div>
       </footer>
     </div>

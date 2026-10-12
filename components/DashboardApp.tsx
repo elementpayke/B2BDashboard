@@ -1735,6 +1735,7 @@ export default function DashboardApp(props: Props = {}) {
     // repopulate cardSecrets behind a shut modal.
     revealGuard.invalidate(MODAL_REVEAL_KEY);
     setBulkModalExpanded(false);
+    setBulkModalSize(null);
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
       return;
@@ -3858,7 +3859,7 @@ export default function DashboardApp(props: Props = {}) {
   );
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "CSV payouts to Stellar wallets and mobile money." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Pay many people", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -4333,7 +4334,7 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Pay many people", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
@@ -4346,6 +4347,78 @@ export default function DashboardApp(props: Props = {}) {
   const isModalBulk = s.modal === "bulk";
   // Mixed-rail edit table is wide — open expanded by default when that flag is on.
   const [bulkModalExpanded, setBulkModalExpanded] = useState(MIXED_RAIL_BULK_PAYOUTS_ENABLED);
+  const [bulkModalSize, setBulkModalSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const bulkResizeRef = useRef<{
+    edge: "e" | "w" | "se";
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (s.modal === "bulk" && MIXED_RAIL_BULK_PAYOUTS_ENABLED) {
+      setBulkModalExpanded(true);
+    }
+  }, [s.modal]);
+
+  const clampBulkModalSize = useCallback((width: number, height: number) => {
+    if (typeof window === "undefined") return { width, height };
+    const minW = 480;
+    const minH = 420;
+    const maxW = Math.max(minW, Math.floor(window.innerWidth * 0.98));
+    const maxH = Math.max(minH, Math.floor(window.innerHeight * 0.96));
+    return {
+      width: Math.min(maxW, Math.max(minW, Math.round(width))),
+      height: Math.min(maxH, Math.max(minH, Math.round(height))),
+    };
+  }, []);
+
+  const onBulkResizePointerDown = useCallback(
+    (edge: "e" | "w" | "se") => (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!modalRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = modalRef.current.getBoundingClientRect();
+      bulkResizeRef.current = {
+        edge,
+        startX: event.clientX,
+        startY: event.clientY,
+        startW: rect.width,
+        startH: rect.height,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [],
+  );
+
+  const onBulkResizePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const drag = bulkResizeRef.current;
+      if (!drag) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      let nextW = drag.startW;
+      let nextH = drag.startH;
+      if (drag.edge === "e" || drag.edge === "se") nextW = drag.startW + dx;
+      if (drag.edge === "w") nextW = drag.startW - dx;
+      if (drag.edge === "se") nextH = drag.startH + dy;
+      setBulkModalSize(clampBulkModalSize(nextW, nextH));
+    },
+    [clampBulkModalSize],
+  );
+
+  const onBulkResizePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!bulkResizeRef.current) return;
+    bulkResizeRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
+  }, []);
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -5735,7 +5808,31 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div ref={modalRef} onClick={stopClick} className={`ep-modal${isModalBulk && bulkModalExpanded ? " ep-modal--expanded" : ""}`} role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+<div
+  ref={modalRef}
+  onClick={stopClick}
+  className={[
+    "ep-modal",
+    isModalBulk ? "ep-modal--bulk" : "",
+    isModalBulk && bulkModalExpanded ? "ep-modal--expanded" : "",
+    isModalBulk && bulkModalExpanded ? "ep-modal--resizable" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")}
+  style={
+    isModalBulk && bulkModalExpanded && bulkModalSize
+      ? {
+          width: bulkModalSize.width,
+          maxWidth: bulkModalSize.width,
+          height: bulkModalSize.height,
+          maxHeight: bulkModalSize.height,
+        }
+      : undefined
+  }
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="ep-modal-title"
+>
 
 <div className="ep-modal__grabber" aria-hidden="true">
 <span className="ep-modal__grabber-bar" />
@@ -5747,10 +5844,17 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 {isModalBulk ? (
 <button
   type="button"
-  onClick={() => setBulkModalExpanded((expanded) => !expanded)}
+  onClick={() => {
+    setBulkModalExpanded((expanded) => !expanded);
+    setBulkModalSize(null);
+  }}
   className="ep-modal__expand"
   aria-label={bulkModalExpanded ? "Collapse" : "Expand"}
-  title={bulkModalExpanded ? "Collapse" : "Expand"}
+  title={
+    bulkModalExpanded
+      ? "Collapse — or drag the side edges to resize"
+      : "Expand to fit your screen"
+  }
 >
   {bulkModalExpanded ? "⤡" : "⤢"}
 </button>
@@ -5758,6 +5862,40 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
 </div>
 </div>
+{isModalBulk && bulkModalExpanded ? (
+  <>
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--w"
+      aria-label="Resize dialog from the left"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("w")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--e"
+      aria-label="Resize dialog from the right"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("e")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--se"
+      aria-label="Resize dialog from the corner"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("se")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+  </>
+) : null}
 
 {(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
 <SendModal
@@ -6056,8 +6194,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <ComingSoonPanel
   compact
   featureKey="bulk-payouts"
-  title="Bulk payouts"
-  description="CSV bulk payouts aren’t live yet. Join the waitlist and we’ll email you when you can pay many recipients in one go."
+  title="Pay many people"
+  description="Paying many people from one list isn’t live yet. Join the waitlist and we’ll email you when it’s ready."
 />
 ) }
 </>) : null}

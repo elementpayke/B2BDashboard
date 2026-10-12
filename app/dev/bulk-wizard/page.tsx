@@ -40,7 +40,7 @@ export default function DevBulkWizardPage() {
         }}
       >
         <div className="ep-modal__header">
-          <h3 className="ep-modal__title">Bulk payouts (dev preview)</h3>
+          <h3 className="ep-modal__title">Pay many people (dev preview)</h3>
         </div>
         <div style={{ padding: "0 20px 20px" }}>
           <PayoutBatchWizard

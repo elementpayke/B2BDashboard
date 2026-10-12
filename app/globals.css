@@ -3232,7 +3232,93 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-modal--expanded {
-  max-width: min(1040px, 94vw);
+  width: min(96vw, 1280px);
+  max-width: min(96vw, 1280px);
+  max-height: min(92dvh, 920px);
+}
+
+/* Bulk payout: fill the viewport for wide tables; fonts stay fixed (not scaled). */
+.ep-modal--expanded.ep-modal--bulk {
+  width: min(96vw, 1360px);
+  max-width: min(96vw, 1360px);
+  height: min(92dvh, 960px);
+  max-height: min(92dvh, 960px);
+  font-size: 14px;
+}
+
+.ep-modal--expanded.ep-modal--bulk .ep-modal__title {
+  font-size: clamp(15px, 1.4vw, 17px);
+}
+
+.ep-modal--resizable {
+  position: relative;
+}
+
+.ep-modal__resize-handle {
+  position: absolute;
+  z-index: 6;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.ep-modal--resizable:hover .ep-modal__resize-handle,
+.ep-modal__resize-handle:hover,
+.ep-modal__resize-handle:focus-visible {
+  opacity: 1;
+}
+
+.ep-modal__resize-handle--e,
+.ep-modal__resize-handle--w {
+  top: 28px;
+  bottom: 28px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.ep-modal__resize-handle--e {
+  right: -2px;
+}
+
+.ep-modal__resize-handle--w {
+  left: -2px;
+}
+
+.ep-modal__resize-handle--e::after,
+.ep-modal__resize-handle--w::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--indigo) 55%, var(--border));
+}
+
+.ep-modal__resize-handle--se {
+  right: 2px;
+  bottom: 2px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  border-radius: 0 0 12px 0;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 45%,
+      color-mix(in srgb, var(--indigo) 45%, var(--border)) 45%,
+      color-mix(in srgb, var(--indigo) 45%, var(--border)) 55%,
+      transparent 55%
+    ),
+    linear-gradient(
+      135deg,
+      transparent 65%,
+      color-mix(in srgb, var(--indigo) 45%, var(--border)) 65%,
+      color-mix(in srgb, var(--indigo) 45%, var(--border)) 75%,
+      transparent 75%
+    );
 }
 
 .ep-modal__grabber {
@@ -3275,8 +3361,16 @@ button.ep-home__stat:focus-visible {
   }
 
   .ep-modal--expanded {
-    max-width: min(1040px, 94vw);
-    max-height: calc(100dvh - 48px);
+    width: min(96vw, 1280px);
+    max-width: min(96vw, 1280px);
+    max-height: calc(100dvh - 40px);
+  }
+
+  .ep-modal--expanded.ep-modal--bulk {
+    width: min(96vw, 1360px);
+    max-width: min(96vw, 1360px);
+    height: min(calc(100dvh - 40px), 960px);
+    max-height: calc(100dvh - 40px);
   }
 }
 
@@ -3460,7 +3554,30 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-modal--expanded .ep-row-table-wrap {
-  max-height: min(64vh, 680px);
+  max-height: min(58vh, 620px);
+  flex: 1 1 auto;
+}
+
+.ep-modal--expanded.ep-modal--bulk .ep-row-table-wrap {
+  max-height: none;
+  min-height: 220px;
+  flex: 1 1 auto;
+}
+
+.ep-modal--expanded.ep-modal--bulk .ep-row-table input,
+.ep-modal--expanded.ep-modal--bulk .ep-row-table select {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ep-modal--expanded.ep-modal--bulk .ep-row-table th {
+  font-size: 10px;
+}
+
+.ep-modal--expanded.ep-modal--bulk .ep-fund-chooser__intro,
+.ep-modal--expanded.ep-modal--bulk .ep-muted {
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .ep-row-table {
@@ -3545,7 +3662,8 @@ button.ep-home__stat:focus-visible {
   font-size: 12px;
 }
 
-.ep-row-table input {
+.ep-row-table input,
+.ep-row-table select {
   width: 100%;
   min-height: 36px;
   padding: 7px 9px;
@@ -3559,7 +3677,8 @@ button.ep-home__stat:focus-visible {
   font-family: 'DM Sans', sans-serif;
 }
 
-.ep-row-table input:focus-visible {
+.ep-row-table input:focus-visible,
+.ep-row-table select:focus-visible {
   outline: 2px solid var(--indigo);
   outline-offset: 2px;
 }
@@ -3577,6 +3696,19 @@ button.ep-home__stat:focus-visible {
 }
 
 /* Bulk Stellar payouts — match Send/Deposit action hierarchy */
+.ep-bulk-intent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.ep-bulk-intent .ep-fund-chooser__option {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
 .ep-bulk-payout {
   display: flex;
   flex-direction: column;

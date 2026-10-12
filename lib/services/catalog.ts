@@ -160,12 +160,18 @@ function findMethodByQuoteType(
   methods: Record<string, CatalogPaymentMethod> | undefined,
   quoteType: string,
 ): CatalogPaymentMethod | undefined {
-  return Object.values(methods ?? {}).find((m) => m.quote_type === quoteType);
+  if (!methods) return undefined;
+  const byQuote = Object.values(methods).find((m) => m.quote_type === quoteType);
+  if (byQuote) return byQuote;
+  // Some catalog payloads key the method as mobile_money/bank without a matching quote_type.
+  const byKey = methods[quoteType];
+  if (byKey) return byKey;
+  return undefined;
 }
 
 function enabledProviders(method: CatalogPaymentMethod | undefined): CatalogProvider[] {
-  if (!method?.enabled) return [];
-  return method.providers.filter((p) => p.enabled);
+  if (!method || method.enabled === false) return [];
+  return (method.providers || []).filter((p) => p.enabled !== false);
 }
 
 function railsFromPaymentMethods(
