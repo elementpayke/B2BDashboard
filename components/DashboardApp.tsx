@@ -772,6 +772,12 @@ export default function DashboardApp(props: Props = {}) {
   const supportedFiatCurrencies = supportedCurrenciesFromEligibility(
     bootstrapReady ? bootstrapQuery.data?.eligibility : depositEligibilityQuery.data,
   );
+  // Full descriptors (same source) — lets Create Account look up a
+  // per-currency monthly_maintenance_fee. Empty until backend ships it.
+  const supportedAccountDescriptors =
+    (bootstrapReady
+      ? bootstrapQuery.data?.eligibility.supported_accounts
+      : depositEligibilityQuery.data?.supported_accounts) ?? [];
   const needsFullFiatCoords =
     state.selectedAcctKind === "fiat" &&
     (state.modal === "acctDetail" ||
@@ -6357,6 +6363,7 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   occupiedSlots={[...occupiedStablecoinSlots(stablecoinAccountsList)]}
   occupiedCurrencies={[...occupiedFiatCurrencyCodes(depositAccountsList)]}
   supportedCurrencies={supportedFiatCurrencies}
+  supportedAccounts={supportedAccountDescriptors}
   closeModal={closeModal}
   submitCreateAccount={submitCreateAccount}
 />
