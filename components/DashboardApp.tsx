@@ -3859,7 +3859,7 @@ export default function DashboardApp(props: Props = {}) {
   );
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Pay many people", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
         { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
@@ -4334,7 +4334,7 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Pay many people", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
@@ -6194,8 +6194,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <ComingSoonPanel
   compact
   featureKey="bulk-payouts"
-  title="Pay many people"
-  description="Paying many people from one list isn’t live yet. Join the waitlist and we’ll email you when it’s ready."
+  title="Bulk payout"
+  description="Bulk payouts from one list aren’t live yet. Join the waitlist and we’ll email you when it’s ready."
 />
 ) }
 </>) : null}

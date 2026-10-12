@@ -3695,18 +3695,89 @@ button.ep-home__stat:focus-visible {
   font-weight: 700;
 }
 
-/* Bulk Stellar payouts — match Send/Deposit action hierarchy */
+/* Bulk payout — intent picker: icon cards, responsive grid, clear affordance */
 .ep-bulk-intent {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
   margin: 4px 0 8px;
 }
 
+@media (min-width: 560px) {
+  .ep-bulk-intent {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .ep-bulk-intent .ep-fund-chooser__option {
+  position: relative;
   text-align: left;
   width: 100%;
+  height: 100%;
   cursor: pointer;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 38px 16px 16px;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(19, 17, 38, 0.04);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.ep-bulk-intent .ep-fund-chooser__option::after {
+  content: "→";
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted2);
+  transition: transform 150ms ease, color 150ms ease;
+}
+
+.ep-bulk-intent .ep-fund-chooser__option:hover,
+.ep-bulk-intent .ep-fund-chooser__option:focus-visible {
+  border-color: var(--indigo);
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--indigo) 45%, transparent);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.ep-bulk-intent .ep-fund-chooser__option:hover::after,
+.ep-bulk-intent .ep-fund-chooser__option:focus-visible::after {
+  transform: translateX(3px);
+  color: var(--indigo);
+}
+
+.ep-bulk-intent .ep-fund-chooser__option:active {
+  transform: translateY(0);
+}
+
+.ep-bulk-intent__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--ink-panel);
+  color: #fff;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.ep-bulk-intent__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ep-bulk-intent .ep-fund-chooser__option-title {
+  font-size: 14.5px;
 }
 
 .ep-bulk-payout {
@@ -3785,6 +3856,24 @@ button.ep-home__stat:focus-visible {
 
 .ep-bulk-payout__actions > .ep-btn-primary {
   flex: 2.2;
+}
+
+/* Default --surface2 is a near-invisible 4.5% tint that washes out against
+   the white modal panel — give the bulk payout footer's secondary action a
+   border/background it can actually be seen and pressed at. */
+.ep-bulk-payout__actions > .ep-btn-secondary {
+  background: var(--panel);
+  border-color: var(--border);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.ep-bulk-payout__actions > .ep-btn-secondary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
+  background: var(--indigo-tint);
+}
+
+.ep-bulk-payout__actions > .ep-btn-secondary:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 @media (max-width: 420px) {
@@ -4303,6 +4392,25 @@ button.ep-home__stat:focus-visible {
     width: 22px;
     height: 22px;
     font-size: 10px;
+  }
+}
+
+/* Narrow phones: ellipsis-truncated labels read as broken UI — drop the
+   text and let dots + the subline (full step name) carry the progress. */
+@media (max-width: 380px) {
+  .ep-bulk-stepper__btn {
+    justify-content: center;
+    padding: 4px;
+  }
+
+  .ep-bulk-stepper__label {
+    display: none;
+  }
+
+  .ep-bulk-stepper__mark {
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
   }
 }
 

@@ -44,7 +44,7 @@ describe("compact navigation", () => {
     expect(screen.getByRole("dialog", { name: "More" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /invoices/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cards/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /pay many people/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /bulk payout/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^help$/i })).toBeInTheDocument();
     expect(screen.queryByText(/live rates/i)).not.toBeInTheDocument();
   });

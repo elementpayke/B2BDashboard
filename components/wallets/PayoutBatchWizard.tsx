@@ -51,16 +51,19 @@ const INTENT_OPTIONS: {
   id: PayoutIntent;
   title: string;
   body: string;
+  icon: string;
 }[] = [
   {
     id: "wallets",
     title: "Stellar wallets only",
     body: "Pay 100+ user wallets on-chain instantly. Everyone gets USDC on Stellar.",
+    icon: "◎",
   },
   {
     id: "wallets_and_phones",
     title: "Wallets, phones, and banks",
     body: "Pay across KE, NG, GH, UG, and TZ — wallet, mobile money, or bank. One way per person.",
+    icon: "▦",
   },
 ];
 
@@ -154,7 +157,7 @@ function BulkPayoutStepper({
   const current = stepIndex(stage);
   return (
     <div className="ep-bulk-stepper">
-      <ol className="ep-bulk-stepper__list" aria-label="Pay many people steps">
+      <ol className="ep-bulk-stepper__list" aria-label="Bulk payout steps">
         {STEPS.map((step, index) => {
           const done = index < current;
           const active = index === current;
@@ -827,7 +830,7 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
         {stage === "intent" ? (
           <>
             <p className="ep-fund-chooser__intro">
-              Pay many people from your USDC balance. Pick the list type that matches your
+              Send a bulk payout from your USDC balance. Pick the list type that matches your
               recipients.
             </p>
             <div className="ep-bulk-intent" role="listbox" aria-label="Payout type">
@@ -839,8 +842,13 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                   className="ep-fund-chooser__option"
                   onClick={() => chooseIntent(option.id)}
                 >
-                  <span className="ep-fund-chooser__option-title">{option.title}</span>
-                  <span className="ep-fund-chooser__option-body">{option.body}</span>
+                  <span className="ep-bulk-intent__icon" aria-hidden>
+                    {option.icon}
+                  </span>
+                  <span className="ep-bulk-intent__text">
+                    <span className="ep-fund-chooser__option-title">{option.title}</span>
+                    <span className="ep-fund-chooser__option-body">{option.body}</span>
+                  </span>
                 </button>
               ))}
             </div>
