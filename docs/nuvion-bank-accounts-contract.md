@@ -7,11 +7,16 @@ expects instead of digging through 5 PR descriptions. Mirrors the format
 of `docs/api-contract.md` — read that first for the proxy/auth architecture
 these endpoints sit behind.
 
-**Nothing here is built on the backend yet.** Every field and endpoint
-below is additive and optional: today's backend (USD/EUR only, no fee,
-no activity log, no sync) continues to work unchanged, since the frontend
-falls back to current behavior whenever a new field/endpoint is absent.
-There is no forced migration timeline — ship pieces in any order.
+**Status as of 2026-10-13:** backend implementation is underway, not yet
+merged. [Mboka-Backend #274](https://github.com/elementpayHQ/Mboka-Backend/pull/274)
+implements everything below against `elementpayHQ/Mboka-Backend` `main`,
+and a companion fix on `elementpayHQ/element-pay-aggregator`
+(`feat/nuvion-bank-coords-extraction`) is in progress to unblock §4/open
+question 4 (see that section). Every field and endpoint below is additive
+and optional: today's backend (USD/EUR only, no fee, no activity log, no
+sync) continues to work unchanged on `main` until these merge, since the
+frontend falls back to current behavior whenever a new field/endpoint is
+absent. There is no forced migration timeline — ship pieces in any order.
 
 | PR | Branch | What it added |
 |---|---|---|
@@ -150,9 +155,21 @@ GET /v1/iban/accounts/{id}/activity?limit=&offset=
   section on the account detail modal renders nothing (no error banner) —
   this is treated as a pure enhancement, not a required feature. Backend
   can ship it whenever ready with no frontend coordination needed.
-- See §5 (open question 2) on the exact Nuvion webhook event list backing
-  this (`entities.*`, `accounts.*`, `account_details.*`) — needs direct
-  verification against Nuvion's current docs before implementation.
+- **Resolved (verified against the aggregator's actual code, not Nuvion's
+  docs):** Mboka never receives a raw Nuvion webhook at all. Nuvion's
+  `entities.*`/`accounts.*`/`account_details.*` events are consumed
+  internally by the aggregator (`element-pay-aggregator`'s
+  `app/routes/nuvion/nuvion_webhook_routes.py`), which re-emits only three
+  coarse typed events to partners: `account.opened`, `account.ready`,
+  `account.credited` (`_notify_partner_account` in
+  `app/services/psp/nuvion/accounts.py`). Mboka's existing
+  `webhook_inbox_worker.ENTITY_ACCOUNT_EVENT_TYPES` →
+  `entities_ctrl.apply_webhook` pipeline already receives exactly these
+  three. PR #274 wires the activity log into that real pipeline instead of
+  a speculative raw-Nuvion stub. If finer-grained entries are wanted later
+  (e.g. distinguishing "bank details issued" from "account opened"), that
+  requires the aggregator to start emitting a new typed partner event —
+  out of scope for Mboka alone, not attempted in #274.
 
 ## 5. Account refresh/sync (`POST /v1/iban/accounts/{id}/sync`) — PR #189
 
@@ -198,13 +215,12 @@ from the 5 PR descriptions:
 1. **Where does `supported_accounts` live?** Should it extend the existing
    `GET /v1/iban/accounts/eligibility` endpoint (as drafted in §1), or does
    it make more sense as a separate endpoint?
-2. **Exact current Nuvion webhook event list.** Two `docs.nuvion.co` fetches
-   during planning returned slightly different account-event names (one
-   surfaced `accounts.updated`/`accounts.deleted` that the other didn't
-   list). This needs direct verification against
-   `docs.nuvion.co/webhooks/event-types` before implementing §4 — don't
-   trust this document's `entities.*`/`accounts.*`/`account_details.*`
-   wildcards as exhaustive or current.
+2. ~~**Exact current Nuvion webhook event list.**~~ **Resolved** — turned
+   out doc verification was never the right tool for this; the aggregator's
+   own code is. Nuvion's raw events never reach Mboka: the aggregator
+   consumes them internally and re-emits only `account.opened`/
+   `account.ready`/`account.credited` to partners. See §4 above for the
+   exact file/function references. Implemented in Mboka-Backend #274.
 3. **Monthly maintenance fee amount has no Nuvion API source.** Checked
    against Nuvion's full documented API surface — there is no fee/pricing
    endpoint anywhere; the only fee-related field on their Account object is
@@ -212,11 +228,27 @@ from the 5 PR descriptions:
    schedule. Backend will need to source real fee figures from Mboka's
    commercial/contract terms with Nuvion and maintain them as **Mboka-side
    config** — this cannot be a live Nuvion API call.
-4. **Are field names consistent across local bank rails?** Does Nuvion
-   return one generic `account_number`/`bank_code` pair for every country,
-   or does each country need its own field names? This determines whether
-   the frontend's field-presence-driven label mapping (§2) can stay generic
-   or needs per-country handling added later.
+4. ~~**Are field names consistent across local bank rails?**~~ **Resolved,
+   no — they are not.** Confirmed in the aggregator's own outbound-payout
+   code (`app/services/psp/nuvion/transfers/bank_payout.py`): Canadian
+   EFT/Interac needs `bank_institution_number` (3 digits) +
+   `transit_number` (5 digits) as a distinct pair, separate from US
+   `routing_number` and UK-style `sort_code`. That's fine for the frontend
+   either way, since its field-presence-driven label mapping (§2) already
+   renders whichever fields are actually present — no per-country branching
+   needed there regardless of the answer.
+   The real blocker this surfaced: the aggregator's *inbound/partner-facing*
+   path (as opposed to its outbound-payout path, which already knew about
+   this) was collapsing `routing_number`/`sort_code` into one ambiguous
+   `bank_code` and had no extraction at all for the Canadian pair or
+   Mexico's `clabe` — so Mboka's new distinct columns had no live data
+   source. Fix in progress on `element-pay-aggregator` branch
+   `feat/nuvion-bank-coords-extraction`, which extends
+   `_coords_from_details`/`account_to_partner_dict` to expose
+   `routing_number`, `sort_code`, `institution_number`, `transit_number`,
+   and `clabe` as their own fields (keeping `bank_code` unchanged for
+   existing consumers). Mboka's schema in #274 needs no further change
+   once that merges.
 5. **Will `country_code` on `DepositAccountCreateIn` actually be
    validated/used**, or will it be silently dropped the way the existing
    `accountName` field already is (Pydantic drops unknown keys)? The
