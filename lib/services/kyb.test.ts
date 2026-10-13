@@ -82,6 +82,34 @@ function validDraft(): KybWizardProfileDraft {
   return draft;
 }
 
+describe("normalizeKybReviewFindings", () => {
+  it("keeps pass and fail items with partner-facing reasons", async () => {
+    const { normalizeKybReviewFindings } = await import("./kyb");
+    const out = normalizeKybReviewFindings({
+      items: [
+        { key: "identity", label: "Photo ID", result: "fail", reason: "Blurry" },
+        { key: "address", result: "pass" },
+        { key: "bad", result: "maybe" },
+      ],
+      summary: "Photo ID: Blurry",
+    });
+    expect(out?.items).toHaveLength(2);
+    expect(out?.items[0]).toMatchObject({
+      key: "identity",
+      result: "fail",
+      reason: "Blurry",
+    });
+    expect(out?.items[1]?.result).toBe("pass");
+    expect(out?.summary).toBe("Photo ID: Blurry");
+  });
+
+  it("returns null for empty or invalid payloads", async () => {
+    const { normalizeKybReviewFindings } = await import("./kyb");
+    expect(normalizeKybReviewFindings(null)).toBeNull();
+    expect(normalizeKybReviewFindings({ items: [] })).toBeNull();
+  });
+});
+
 describe("kyb status helpers", () => {
   it("maps known statuses to clear feedback labels", () => {
     expect(describeKybStatus("approved")).toBe("Verified");

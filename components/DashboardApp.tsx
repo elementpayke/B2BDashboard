@@ -4169,6 +4169,8 @@ export default function DashboardApp(props: Props = {}) {
     typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string"
       ? meQuery.data.kyb_summary.profile.reviewer_notes
       : null;
+  const kybReviewFindings =
+    meQuery.data?.kyb_summary?.profile?.review_findings ?? null;
   const kybActionLabel =
     kybStatus === "rejected" || kybStatus === "expired"
       ? "Fix and resubmit"
@@ -5370,6 +5372,7 @@ export default function DashboardApp(props: Props = {}) {
   onStartKyb={openModalKyb}
   actionLabel={kybActionLabel}
   reviewerNotes={kybReviewerNotes}
+  reviewFindings={kybReviewFindings}
   submittedAt={typeof meQuery.data?.kyb_summary?.profile?.submitted_at === "string" ? meQuery.data.kyb_summary.profile.submitted_at : null}
   reviewedAt={typeof meQuery.data?.kyb_summary?.profile?.reviewed_at === "string" ? meQuery.data.kyb_summary.profile.reviewed_at : null}
 />

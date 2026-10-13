@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
-import type { KybStatus } from "@/lib/services/kyb";
+import type { KybReviewFindings, KybStatus } from "@/lib/services/kyb";
 import {
   canOpenKybWizard,
   describeKybStatusDetail,
   isKybApproved,
   isKybInReview,
   kybStatusPresentation,
+  normalizeKybReviewFindings,
 } from "@/lib/services/kyb";
 
 export type VerificationScreenProps = {
@@ -18,6 +19,8 @@ export type VerificationScreenProps = {
   actionLabel?: string;
   /** From KYB profile when status is rejected / needs more info. */
   reviewerNotes?: string | null;
+  /** Structured pass/fail checklist from compliance (rejected). */
+  reviewFindings?: KybReviewFindings | null;
   /** Optional submitted-at / reviewed-at ISO strings for context. */
   submittedAt?: string | null;
   reviewedAt?: string | null;
@@ -52,12 +55,18 @@ export default function VerificationScreen(p: VerificationScreenProps) {
   const status = (p.status || "pending") as KybStatus;
   const presentation = kybStatusPresentation(p.loading ? undefined : status);
   const notes = p.reviewerNotes?.trim() || null;
+  const findings = normalizeKybReviewFindings(p.reviewFindings);
   const detail = describeKybStatusDetail(p.loading ? undefined : status, notes);
   const canSubmit = !p.loading && canOpenKybWizard(status);
   const passed = !p.loading && isKybApproved(status);
   const inReview = !p.loading && isKybInReview(status);
   const submittedWhen = formatWhen(p.submittedAt);
   const reviewedWhen = formatWhen(p.reviewedAt);
+  const showFindings =
+    !p.loading &&
+    (status === "rejected" || status === "expired") &&
+    !!findings &&
+    findings.items.length > 0;
 
   const checklist = [
     "Business profile & registered address",
@@ -141,7 +150,104 @@ export default function VerificationScreen(p: VerificationScreenProps) {
           {detail}
         </p>
 
-        {notes && (status === "rejected" || status === "expired") ? (
+        {showFindings ? (
+          <div
+            role="status"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              padding: "14px",
+              borderRadius: "14px",
+              background: "var(--red-tint)",
+              border: "1px solid color-mix(in srgb, var(--red) 28%, var(--border))",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--red)",
+              }}
+            >
+              Compliance checklist
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                padding: 0,
+                listStyle: "none",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              {findings!.items.map((item) => {
+                const ok = item.result === "pass";
+                return (
+                  <li
+                    key={item.key}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                      padding: "10px 12px",
+                      borderRadius: "12px",
+                      background: "var(--panel)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 650,
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {item.label || item.key}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "3px 8px",
+                          borderRadius: "999px",
+                          background: ok ? "var(--indigo-tint)" : "var(--red-tint)",
+                          color: ok ? "var(--indigo-text)" : "var(--red)",
+                        }}
+                      >
+                        {ok ? "Looks good" : "Needs fix"}
+                      </span>
+                    </div>
+                    {!ok && item.reason ? (
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "12.5px",
+                          lineHeight: 1.45,
+                          color: "var(--muted)",
+                        }}
+                      >
+                        {item.reason}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : notes && (status === "rejected" || status === "expired") ? (
           <div
             role="status"
             style={{
