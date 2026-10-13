@@ -53,7 +53,7 @@ describe("supportedCurrenciesFromEligibility", () => {
     ).toEqual(SUPPORTED_IBAN_CURRENCIES);
   });
 
-  it("derives the live currency list from supported_accounts when present", () => {
+  it("adds supported_accounts currencies on top of USD/EUR rather than replacing them", () => {
     const eligibility: DepositAccountEligibility = {
       eligible: true,
       verification_status: "approved",
@@ -63,8 +63,14 @@ describe("supportedCurrenciesFromEligibility", () => {
         { currency: "KES", country_code: "KE", rail_type: "local_bank", fields: ["account_number", "bank_code"] },
       ],
     };
+    // supported_accounts is backend-declared *extra* rails, not the full
+    // list — a backend that only ever declares GBP must not make EUR
+    // disappear from the picker for a business that already has a EUR
+    // account, or silently block Bank account creation once USD+GBP are
+    // both occupied even though EUR remains available.
     expect(supportedCurrenciesFromEligibility(eligibility)).toEqual([
       "USD",
+      "EUR",
       "GBP",
       "KES",
     ]);
@@ -79,7 +85,11 @@ describe("supportedCurrenciesFromEligibility", () => {
         { currency: "GBP", rail_type: "local_bank", fields: ["sort_code"] },
       ],
     } as DepositAccountEligibility;
-    expect(supportedCurrenciesFromEligibility(eligibility)).toEqual(["GBP"]);
+    expect(supportedCurrenciesFromEligibility(eligibility)).toEqual([
+      "USD",
+      "EUR",
+      "GBP",
+    ]);
   });
 });
 

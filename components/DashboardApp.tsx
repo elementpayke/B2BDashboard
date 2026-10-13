@@ -3534,6 +3534,8 @@ export default function DashboardApp(props: Props = {}) {
     const stablecoinAccountsList = bootstrapReady
       ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
       : (stablecoinAccountsQuery.data ?? []);
+    const occupiedFiatCodes = occupiedFiatCurrencyCodes(depositAccountsList);
+    const occupiedStablecoinSlotKeys = occupiedStablecoinSlots(stablecoinAccountsList);
     const selectedFiatCurrency =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
         ? s.selectedAcctKey.slice("fiat:".length)
@@ -5132,14 +5134,12 @@ export default function DashboardApp(props: Props = {}) {
   toggleAddAccountMenu={toggleAddAccountMenu}
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
-  canCreateStablecoin={
-    occupiedStablecoinSlots(stablecoinAccountsList).size <
-    allSupportedStablecoinSlots().length
-  }
-  canCreateBank={
-    occupiedFiatCurrencyCodes(depositAccountsList).size <
-    supportedFiatCurrencies.length
-  }
+  canCreateStablecoin={allSupportedStablecoinSlots().some(
+    (slot) => !occupiedStablecoinSlotKeys.has(`${slot.currency}:${slot.network}`),
+  )}
+  canCreateBank={supportedFiatCurrencies.some(
+    (code) => !occupiedFiatCodes.has(code),
+  )}
   accounts={accounts}
   eligible={depositEligible}
   eligibilityLoading={

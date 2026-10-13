@@ -35,7 +35,7 @@ export type WalletsScreenProps = {
   ) => () => void;
   /** When false, Stablecoin Account menu item is disabled (all slots open). */
   canCreateStablecoin?: boolean;
-  /** When false, Bank account menu item is disabled (USD+EUR already open). */
+  /** When false, Bank account menu item is disabled (every supported currency already open). */
   canCreateBank?: boolean;
   accounts: WalletsAccountCard[];
   /** True once verification has confirmed this principal can hold currency accounts. */
@@ -175,7 +175,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                       disabled={p.canCreateBank === false}
                       title={
                         p.canCreateBank === false
-                          ? "USD and EUR accounts are already open"
+                          ? "Every available currency already has an open account"
                           : undefined
                       }
                       className="ep-wallets__menu-item"
@@ -187,7 +187,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                         <span className="ep-wallets__menu-label">Bank account</span>
                         <span className="ep-wallets__menu-hint">
                           {p.canCreateBank === false
-                            ? "USD and EUR already open"
+                            ? "All available currencies already open"
                             : "Fiat rails · IBAN / local deposit"}
                         </span>
                       </span>
