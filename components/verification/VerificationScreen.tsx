@@ -151,102 +151,33 @@ export default function VerificationScreen(p: VerificationScreenProps) {
         </p>
 
         {showFindings ? (
-          <div
+          <ul
             role="status"
             style={{
+              margin: 0,
+              padding: "12px 14px",
+              listStyle: "none",
               display: "flex",
               flexDirection: "column",
-              gap: "10px",
-              padding: "14px",
+              gap: "8px",
               borderRadius: "14px",
               background: "var(--red-tint)",
               border: "1px solid color-mix(in srgb, var(--red) 28%, var(--border))",
+              fontSize: "13px",
+              lineHeight: 1.45,
             }}
           >
-            <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "var(--red)",
-              }}
-            >
-              Compliance checklist
-            </div>
-            <ul
-              style={{
-                margin: 0,
-                padding: 0,
-                listStyle: "none",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
-              {findings!.items.map((item) => {
-                const ok = item.result === "pass";
-                return (
-                  <li
-                    key={item.key}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "4px",
-                      padding: "10px 12px",
-                      borderRadius: "12px",
-                      background: "var(--panel)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "10px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: 650,
-                          color: "var(--ink)",
-                        }}
-                      >
-                        {item.label || item.key}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          padding: "3px 8px",
-                          borderRadius: "999px",
-                          background: ok ? "var(--indigo-tint)" : "var(--red-tint)",
-                          color: ok ? "var(--indigo-text)" : "var(--red)",
-                        }}
-                      >
-                        {ok ? "Looks good" : "Needs fix"}
-                      </span>
-                    </div>
-                    {!ok && item.reason ? (
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: "12.5px",
-                          lineHeight: 1.45,
-                          color: "var(--muted)",
-                        }}
-                      >
-                        {item.reason}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+            {findings!.items.map((item) => (
+              <li key={item.key} style={{ color: "var(--ink)" }}>
+                <strong style={{ color: item.result === "pass" ? "var(--indigo-text)" : "var(--red)" }}>
+                  {item.result === "pass" ? "OK" : "Fix"}
+                </strong>
+                {" — "}
+                {item.label || item.key}
+                {item.result === "fail" && item.reason ? `: ${item.reason}` : ""}
+              </li>
+            ))}
+          </ul>
         ) : notes && (status === "rejected" || status === "expired") ? (
           <div
             role="status"

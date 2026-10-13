@@ -150,12 +150,10 @@ export type KybProfileInput = {
   associates?: AssociateInput[] | null;
 };
 
-export type KybReviewFindingResult = "pass" | "fail";
-
 export type KybReviewFindingItem = {
   key: string;
   label?: string;
-  result: KybReviewFindingResult;
+  result: "pass" | "fail";
   reason?: string | null;
 };
 
@@ -170,7 +168,6 @@ export type KybProfile = KybProfileInput & {
   submitted_at?: string | null;
   reviewed_at?: string | null;
   reviewer_notes?: string | null;
-  /** Structured EP reject checklist (pass/fail + why). */
   review_findings?: KybReviewFindings | null;
   registered_address?: BusinessAddress | null;
   associates?: AssociateInput[] | null;
@@ -230,13 +227,13 @@ export type KybStatusResult = {
   review_findings?: KybReviewFindings | null;
 };
 
-/** Normalize API review_findings for Verification UI. */
+/** Keep only pass/fail checklist items from KYB profile payload. */
 export function normalizeKybReviewFindings(
   raw: unknown,
 ): KybReviewFindings | null {
   if (!raw || typeof raw !== "object") return null;
   const itemsIn = (raw as { items?: unknown }).items;
-  if (!Array.isArray(itemsIn) || itemsIn.length === 0) return null;
+  if (!Array.isArray(itemsIn)) return null;
   const items: KybReviewFindingItem[] = [];
   for (const entry of itemsIn) {
     if (!entry || typeof entry !== "object") continue;
@@ -245,30 +242,16 @@ export function normalizeKybReviewFindings(
       .trim()
       .toLowerCase();
     if (!key || (result !== "pass" && result !== "fail")) continue;
-    const labelRaw = (entry as { label?: unknown }).label;
-    const reasonRaw = (entry as { reason?: unknown }).reason;
+    const label = (entry as { label?: unknown }).label;
+    const reason = (entry as { reason?: unknown }).reason;
     items.push({
       key,
-      label:
-        typeof labelRaw === "string" && labelRaw.trim()
-          ? labelRaw.trim()
-          : key.replace(/_/g, " "),
+      label: typeof label === "string" && label.trim() ? label.trim() : key,
       result,
-      reason:
-        typeof reasonRaw === "string" && reasonRaw.trim()
-          ? reasonRaw.trim()
-          : null,
+      reason: typeof reason === "string" && reason.trim() ? reason.trim() : null,
     });
   }
-  if (items.length === 0) return null;
-  const summaryRaw = (raw as { summary?: unknown }).summary;
-  return {
-    items,
-    summary:
-      typeof summaryRaw === "string" && summaryRaw.trim()
-        ? summaryRaw.trim()
-        : null,
-  };
+  return items.length ? { items } : null;
 }
 
 export type KybShareholderList = { shareholders: Record<string, unknown>[] };
