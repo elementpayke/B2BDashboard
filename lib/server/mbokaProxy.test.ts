@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { proxyRequest } from "./mbokaProxy";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "./cookies";
+import {
+  MBOKA_SIGNATURE_HEADER,
+  MBOKA_SIGNATURE_TIMESTAMP_HEADER,
+  hashRequestBody,
+  signMbokaRequest,
+} from "./mbokaSignature";
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -40,6 +46,62 @@ describe("proxyRequest", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  describe("backend request signing", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("attaches no signature headers when no shared secret is configured (today's default)", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
+      const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" } });
+      await proxyRequest(req, "/api/v1/dashboard/summary");
+
+      const sentHeaders = fetchMock.mock.calls[0][1].headers as Headers;
+      expect(sentHeaders.get(MBOKA_SIGNATURE_HEADER)).toBeNull();
+      expect(sentHeaders.get(MBOKA_SIGNATURE_TIMESTAMP_HEADER)).toBeNull();
+    });
+
+    it("signs the request when a shared secret is configured, matching signMbokaRequest over the same inputs", async () => {
+      vi.stubEnv("MBOKA_PROXY_SHARED_SECRET", "test-secret");
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
+      const payload = JSON.stringify({ foo: "bar" });
+
+      const req = makeRequest({
+        method: "POST",
+        path: "/api/v1/iban/accounts",
+        cookies: { [ACCESS_COOKIE]: "token" },
+        body: payload,
+      });
+      await proxyRequest(req, "/api/v1/iban/accounts");
+
+      const sentHeaders = fetchMock.mock.calls[0][1].headers as Headers;
+      const timestamp = sentHeaders.get(MBOKA_SIGNATURE_TIMESTAMP_HEADER);
+      expect(timestamp).toBeTruthy();
+      const expected = signMbokaRequest(
+        "test-secret",
+        "POST",
+        "/api/v1/iban/accounts",
+        hashRequestBody(payload),
+        timestamp!,
+      );
+      expect(sentHeaders.get(MBOKA_SIGNATURE_HEADER)).toBe(expected);
+    });
+
+    it("overrides a client-supplied signature header rather than forwarding it", async () => {
+      vi.stubEnv("MBOKA_PROXY_SHARED_SECRET", "test-secret");
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
+
+      const req = makeRequest({
+        cookies: { [ACCESS_COOKIE]: "token" },
+        headers: { [MBOKA_SIGNATURE_HEADER]: "attacker-forged-signature" },
+      });
+      await proxyRequest(req, "/api/v1/dashboard/summary");
+
+      const sentHeaders = fetchMock.mock.calls[0][1].headers as Headers;
+      expect(sentHeaders.get(MBOKA_SIGNATURE_HEADER)).not.toBe("attacker-forged-signature");
+    });
   });
 
   it("never forwards a client-supplied Authorization or X-API-Key header — only the cookie-derived token", async () => {
