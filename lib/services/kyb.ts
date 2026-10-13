@@ -150,12 +150,25 @@ export type KybProfileInput = {
   associates?: AssociateInput[] | null;
 };
 
+export type KybReviewFindingItem = {
+  key: string;
+  label?: string;
+  result: "pass" | "fail";
+  reason?: string | null;
+};
+
+export type KybReviewFindings = {
+  items: KybReviewFindingItem[];
+  summary?: string | null;
+};
+
 export type KybProfile = KybProfileInput & {
   business_id?: number;
   kyb_status?: KybStatus;
   submitted_at?: string | null;
   reviewed_at?: string | null;
   reviewer_notes?: string | null;
+  review_findings?: KybReviewFindings | null;
   registered_address?: BusinessAddress | null;
   associates?: AssociateInput[] | null;
 };
@@ -211,7 +224,35 @@ export type KybStatusResult = {
   submitted_at?: string | null;
   reviewed_at?: string | null;
   reviewer_notes?: string | null;
+  review_findings?: KybReviewFindings | null;
 };
+
+/** Keep only pass/fail checklist items from KYB profile payload. */
+export function normalizeKybReviewFindings(
+  raw: unknown,
+): KybReviewFindings | null {
+  if (!raw || typeof raw !== "object") return null;
+  const itemsIn = (raw as { items?: unknown }).items;
+  if (!Array.isArray(itemsIn)) return null;
+  const items: KybReviewFindingItem[] = [];
+  for (const entry of itemsIn) {
+    if (!entry || typeof entry !== "object") continue;
+    const key = String((entry as { key?: unknown }).key || "").trim();
+    const result = String((entry as { result?: unknown }).result || "")
+      .trim()
+      .toLowerCase();
+    if (!key || (result !== "pass" && result !== "fail")) continue;
+    const label = (entry as { label?: unknown }).label;
+    const reason = (entry as { reason?: unknown }).reason;
+    items.push({
+      key,
+      label: typeof label === "string" && label.trim() ? label.trim() : key,
+      result,
+      reason: typeof reason === "string" && reason.trim() ? reason.trim() : null,
+    });
+  }
+  return items.length ? { items } : null;
+}
 
 export type KybShareholderList = { shareholders: Record<string, unknown>[] };
 
