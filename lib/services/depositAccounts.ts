@@ -57,22 +57,28 @@ export type SupportedAccountDescriptor = {
 };
 
 /**
- * Resolves the live, backend-declared currency list, falling back to the
- * static `SUPPORTED_IBAN_CURRENCIES` constant when the backend hasn't shipped
- * `supported_accounts` yet (or sends a malformed entry) — this is what lets
- * new currencies appear with no frontend redeploy once backend adds them.
+ * Resolves the live, backend-declared currency list, additive on top of the
+ * static `SUPPORTED_IBAN_CURRENCIES` constant — this is what lets new
+ * currencies appear with no frontend redeploy once backend adds them.
+ *
+ * `supported_accounts` is backend-declared *extra* rails, not the full list:
+ * the backend's own `supported_rails.py` docstring is explicit that it "only
+ * lists a rail ... beyond the EUR/USD the dashboard currently hardcodes."
+ * Treating it as a replacement (as an earlier revision of this function did)
+ * silently dropped USD/EUR from the Add Account picker the moment the
+ * backend shipped its first additional rail (GBP) — confirmed live
+ * 2026-10-13: a business with an open USD account saw Bank account creation
+ * gated off entirely once `supported_accounts: [GBP]` started arriving.
  */
 export function supportedCurrenciesFromEligibility(
   eligibility: DepositAccountEligibility | null | undefined,
 ): readonly string[] {
-  const list = eligibility?.supported_accounts;
-  if (!list || !list.length) return SUPPORTED_IBAN_CURRENCIES;
-  const codes: string[] = [];
-  for (const descriptor of list) {
+  const codes: string[] = [...SUPPORTED_IBAN_CURRENCIES];
+  for (const descriptor of eligibility?.supported_accounts ?? []) {
     const code = (descriptor?.currency || "").trim().toUpperCase();
     if (code && !codes.includes(code)) codes.push(code);
   }
-  return codes.length ? codes : SUPPORTED_IBAN_CURRENCIES;
+  return codes;
 }
 
 /**
