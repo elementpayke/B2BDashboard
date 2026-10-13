@@ -7,16 +7,17 @@ expects instead of digging through 5 PR descriptions. Mirrors the format
 of `docs/api-contract.md` — read that first for the proxy/auth architecture
 these endpoints sit behind.
 
-**Status as of 2026-10-13:** backend implementation is underway, not yet
-merged. [Mboka-Backend #274](https://github.com/elementpayHQ/Mboka-Backend/pull/274)
-implements everything below against `elementpayHQ/Mboka-Backend` `main`,
-and a companion fix on `elementpayHQ/element-pay-aggregator`
-(`feat/nuvion-bank-coords-extraction`) is in progress to unblock §4/open
-question 4 (see that section). Every field and endpoint below is additive
-and optional: today's backend (USD/EUR only, no fee, no activity log, no
-sync) continues to work unchanged on `main` until these merge, since the
-frontend falls back to current behavior whenever a new field/endpoint is
-absent. There is no forced migration timeline — ship pieces in any order.
+**Status as of 2026-10-13:** [Mboka-Backend #274](https://github.com/elementpayHQ/Mboka-Backend/pull/274)
+**merged** to `main` at 15:32 UTC today, implementing everything below —
+`supported_accounts` on eligibility/bootstrap (§1), the new `DepositAccountOut`
+identifier fields (§2), `country_code` on create (§3), the activity endpoint
+(§4), and the sync endpoint (§5). A companion fix on
+`elementpayHQ/element-pay-aggregator` (`feat/nuvion-bank-coords-extraction`)
+is still outstanding to unblock the inbound Canada/Mexico field extraction
+described in open question 4 below — not required for what's listed in
+§1 today (GBP only; see that section). Every field and endpoint below was
+additive and optional, so nothing in this merge is a breaking change for
+the frontend.
 
 | PR | Branch | What it added |
 |---|---|---|
@@ -60,8 +61,18 @@ supported_accounts?: Array<{
 - `monthly_maintenance_fee` here is what drives the Add Account modal's
   fee disclosure + required checkbox (PR #188) — see §2 for the shape and
   §4 (open question 3) for why this can't be sourced live from Nuvion.
-- See §5 (open question 1) for whether this belongs on this endpoint at
-  all versus a dedicated one.
+- **Shipped in #274:** lives on the existing eligibility endpoint as drafted
+  above, not a separate one (resolves open question 1). Today it declares
+  exactly one rail — `app.services.deposit_accounts.supported_rails
+  .SUPPORTED_LOCAL_RAILS` lists only
+  `{ currency: "GBP", country_code: "GB", rail_type: "uk_local_bank",
+  fields: ["account_number", "sort_code"], label: "UK local bank transfer" }`.
+  That module's docstring is explicit about staying conservative: a rail is
+  only added once there's in-code evidence of a working Nuvion
+  deposit-instructions path for it, so Canada/Mexico/Ghana are deliberately
+  not listed yet (see open question 4). This means live behavior today is
+  USD + EUR (hardcoded fallback) + GBP (via `supported_accounts`) — not the
+  full `CURRENCY_OPTIONS` list the Add Account picker renders.
 
 ## 2. New fields on `DepositAccountOut` (bank account detail/list shape)
 
@@ -212,22 +223,24 @@ already works once orders for those currencies exist.
 These need a backend-team decision before implementation — pulled directly
 from the 5 PR descriptions:
 
-1. **Where does `supported_accounts` live?** Should it extend the existing
-   `GET /v1/iban/accounts/eligibility` endpoint (as drafted in §1), or does
-   it make more sense as a separate endpoint?
+1. ~~**Where does `supported_accounts` live?**~~ **Resolved** — extends the
+   existing `GET /v1/iban/accounts/eligibility` endpoint, mirrored onto
+   `GET /v1/bootstrap`, exactly as drafted in §1. Implemented in
+   Mboka-Backend #274.
 2. ~~**Exact current Nuvion webhook event list.**~~ **Resolved** — turned
    out doc verification was never the right tool for this; the aggregator's
    own code is. Nuvion's raw events never reach Mboka: the aggregator
    consumes them internally and re-emits only `account.opened`/
    `account.ready`/`account.credited` to partners. See §4 above for the
    exact file/function references. Implemented in Mboka-Backend #274.
-3. **Monthly maintenance fee amount has no Nuvion API source.** Checked
-   against Nuvion's full documented API surface — there is no fee/pricing
-   endpoint anywhere; the only fee-related field on their Account object is
-   a boolean `maintenance_fee_opted_out`, with no amount, currency, or
-   schedule. Backend will need to source real fee figures from Mboka's
-   commercial/contract terms with Nuvion and maintain them as **Mboka-side
-   config** — this cannot be a live Nuvion API call.
+3. ~~**Monthly maintenance fee amount has no Nuvion API source.**~~
+   **Resolved, as a deliberate placeholder.** #274 adds
+   `app.services.deposit_accounts.fee_config` as Mboka-side config, exactly
+   as anticipated — but it ships with an **empty** lookup table and a
+   docstring warning not to fill in a plausible-looking number without a
+   real, signed-off figure from Finance/Commercial. Every currency currently
+   returns `None` (no fee shown), so the fee-disclosure UI from PR #188
+   stays dark until real numbers are handed over and added to that file.
 4. ~~**Are field names consistent across local bank rails?**~~ **Resolved,
    no — they are not.** Confirmed in the aggregator's own outbound-payout
    code (`app/services/psp/nuvion/transfers/bank_payout.py`): Canadian
@@ -249,12 +262,18 @@ from the 5 PR descriptions:
    and `clabe` as their own fields (keeping `bank_code` unchanged for
    existing consumers). Mboka's schema in #274 needs no further change
    once that merges.
-5. **Will `country_code` on `DepositAccountCreateIn` actually be
-   validated/used**, or will it be silently dropped the way the existing
-   `accountName` field already is (Pydantic drops unknown keys)? The
-   frontend sends it (§3) on the assumption it'll eventually be read.
-6. **`/sync` reconciliation semantics against Mboka's "aggregator" layer.**
-   This repo has no visibility into that backend concept — the owning
-   backend team needs to specify what "sync" actually does to the stored
-   copy (full overwrite? diff-and-patch? conflict handling if Nuvion and
-   the aggregator disagree?) before §5 can be implemented confidently.
+5. ~~**Will `country_code` on `DepositAccountCreateIn` actually be
+   validated/used**~~ **Resolved, yes.** #274 adds ISO-3166-1 alpha-2
+   validation (`_country_iso3166_alpha2`) and persists the value on the
+   local `FinancialAccount` mirror; it's also forwarded to the aggregator
+   open-account call. Whether the upstream Nuvion partner itself honors it
+   is still unconfirmed — the backend only guarantees it round-trips through
+   Mboka's own storage and response.
+6. ~~**`/sync` reconciliation semantics against Mboka's "aggregator"
+   layer.**~~ **Resolved.** There is no separate "aggregator layer" to diff
+   against — the local `FinancialAccount` row *is* the cached mirror, and
+   `sync_account` does a full-overwrite reconcile from a fresh live Nuvion
+   read, the same merge path `create_or_refresh`/`list_accounts` already
+   use. It also appends an `account_synced` activity entry (§4), but only
+   when a reconciliation-relevant field (status, identifiers, balance)
+   actually changed — not on every call.
