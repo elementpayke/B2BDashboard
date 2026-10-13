@@ -319,7 +319,13 @@ import VerificationScreen from "@/components/verification/VerificationScreen";
 import KybWizardModal from "@/components/verification/KybWizardModal";
 import KybGateBanner from "@/components/verification/KybGateBanner";
 import { useKybWizard } from "@/lib/hooks/useKybWizard";
-import { canOpenKybWizard, describeKybStatus, isKybApproved, mergeKybSummaryCache } from "@/lib/services/kyb";
+import {
+  canOpenKybWizard,
+  describeKybStatus,
+  isKybApproved,
+  mergeKybSummaryCache,
+  normalizeKybReviewFindings,
+} from "@/lib/services/kyb";
 import { mfaApi } from "@/lib/services/mfa";
 import MfaReminderBanner from "@/components/auth/MfaReminderBanner";
 import TotpEnrollment from "@/components/auth/TotpEnrollment";
@@ -4169,8 +4175,9 @@ export default function DashboardApp(props: Props = {}) {
     typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string"
       ? meQuery.data.kyb_summary.profile.reviewer_notes
       : null;
-  const kybReviewFindings =
-    meQuery.data?.kyb_summary?.profile?.review_findings ?? null;
+  const kybReviewFindings = normalizeKybReviewFindings(
+    meQuery.data?.kyb_summary?.profile?.review_findings,
+  );
   const kybActionLabel =
     kybStatus === "rejected" || kybStatus === "expired"
       ? "Fix and resubmit"
