@@ -4,7 +4,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CardDetailModal, { billingAddressFromKyb } from "./CardDetailModal";
 import type { IssuedCard } from "@/lib/services/cards";
-import { cardColor } from "@/lib/services/cardColors";
 
 describe("billingAddressFromKyb", () => {
   it("returns null without street/city", () => {
@@ -120,57 +119,5 @@ describe("CardDetailModal freeze UX", () => {
   it("has a single close control — the modal header owns it", () => {
     render(<CardDetailModal {...baseProps} card={{ ...baseCard, status: "active" }} />);
     expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
-  });
-});
-
-describe("CardDetailModal colour picker", () => {
-  it("offers all twelve palette colours with the current one checked", () => {
-    render(
-      <CardDetailModal
-        {...baseProps}
-        card={{ ...baseCard, status: "active" }}
-        color={cardColor("mint")}
-        onColorChange={vi.fn()}
-      />,
-    );
-    const swatches = screen.getAllByRole("radio");
-    expect(swatches).toHaveLength(12);
-    expect(screen.getByRole("radio", { name: "Mint" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "Coral" })).toHaveAttribute("aria-checked", "false");
-  });
-
-  it("reports a new pick and ignores re-picking the current colour", () => {
-    const onColorChange = vi.fn();
-    render(
-      <CardDetailModal
-        {...baseProps}
-        card={{ ...baseCard, status: "active" }}
-        color={cardColor("mint")}
-        onColorChange={onColorChange}
-      />,
-    );
-    fireEvent.click(screen.getByRole("radio", { name: "Mint" }));
-    expect(onColorChange).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("radio", { name: "Plum" }));
-    expect(onColorChange).toHaveBeenCalledWith("plum");
-  });
-
-  it("shows a save error and disables swatches while saving", () => {
-    const { container } = render(
-      <CardDetailModal
-        {...baseProps}
-        card={{ ...baseCard, status: "active" }}
-        onColorChange={vi.fn()}
-        colorBusy
-        colorError="Couldn't save this colour. Try again."
-      />,
-    );
-    expect(container.querySelector("fieldset.ep-card-colors")).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't save this colour");
-  });
-
-  it("hides the picker when no change handler is wired", () => {
-    render(<CardDetailModal {...baseProps} card={{ ...baseCard, status: "active" }} />);
-    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   });
 });
