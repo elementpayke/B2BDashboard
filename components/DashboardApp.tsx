@@ -208,7 +208,6 @@ import ConvertFlow, {
 import {
   cardsApi,
   cardholderPrefillFromKybProfile,
-  cardPlasticBg,
   describeCardStatus,
   describeUsdFunding,
   describeUsdFundingIssueNote,
@@ -240,6 +239,13 @@ import CardDetailModal, {
 } from "@/components/cards/CardDetailModal";
 import CardBrandMark from "@/components/cards/CardBrandMark";
 import CardFlipTile from "@/components/cards/CardFlipTile";
+import { listCardColors, saveCardColor, type CardColorMap } from "@/lib/clients/cardColorsApi";
+import {
+  cardColor,
+  nextCardColor,
+  resolveCardColors,
+  type CardColorKey,
+} from "@/lib/services/cardColors";
 import CardSpendList, { type CardSpendItem } from "@/components/cards/CardSpendList";
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
@@ -420,6 +426,8 @@ export default function DashboardApp(props: Props = {}) {
     cardSecrets: null as null | { number: string; cvv: string },
     cardSecretsBusy: false,
     cardSecretsError: "",
+    cardColorBusy: false,
+    cardColorError: "",
     /** Grid-tile flip UX — keyed by card id since two cards can be flipped at once. */
     cardTileFlipped: {} as Record<string, boolean>,
     cardTileSecrets: {} as Record<string, { number: string; cvv: string }>,
@@ -919,6 +927,14 @@ export default function DashboardApp(props: Props = {}) {
     ),
     retry: false,
     staleTime: 15_000,
+  });
+
+  // Card colours are cosmetic and owned by this dashboard (see app/api/card-colors).
+  const cardColorsQuery = useQuery({
+    queryKey: ["card-colors"],
+    queryFn: listCardColors,
+    enabled: cardsSurfaceOpen,
+    staleTime: 60_000,
   });
 
   const cardTxnStreamEnabled = Boolean(
@@ -1934,6 +1950,8 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsBusy: false,
       cardSecretsError: "",
+      cardColorBusy: false,
+      cardColorError: "",
       copiedField: "",
     });
   };
@@ -2036,7 +2054,6 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const openConvert = openMoneyFlow("convert");
-  const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendAmount = (e) => setState({ sendAmount: e.target.value });
@@ -2752,6 +2769,7 @@ export default function DashboardApp(props: Props = {}) {
           phone_number: phone,
         },
       });
+      assignNewCardColor(issued.id);
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
       setState({
         newCardIssuing: false,
@@ -2764,6 +2782,37 @@ export default function DashboardApp(props: Props = {}) {
         newCardIssuing: false,
         newCardError:
           err instanceof Error ? err.message : "Couldn't issue this card.",
+      });
+    }
+  };
+  /** A new card takes the first palette colour no other card uses (spec §5). */
+  const assignNewCardColor = (cardId: string) => {
+    const existing = (issuedCardsQuery.data?.cards ?? []).filter((c) => c.id !== cardId);
+    const resolved = resolveCardColors(existing, cardColorsQuery.data ?? {});
+    const newestFirst = [...existing]
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map((c) => ({ color: resolved[c.id] }));
+    const color = nextCardColor(newestFirst);
+    queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
+    // Fire and forget: a failed save leaves the card on its resolved fallback.
+    void saveCardColor(cardId, color)
+      .then((map) => queryClient.setQueryData(["card-colors"], map))
+      .catch(() => undefined);
+  };
+  const setCardColorFor = async (cardId: string, color: CardColorKey) => {
+    const previous = queryClient.getQueryData<CardColorMap>(["card-colors"]);
+    queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
+    setState({ cardColorBusy: true, cardColorError: "" });
+    try {
+      const map = await saveCardColor(cardId, color);
+      queryClient.setQueryData(["card-colors"], map);
+      setState({ cardColorBusy: false });
+    } catch (err) {
+      queryClient.setQueryData(["card-colors"], previous ?? {});
+      setState({
+        cardColorBusy: false,
+        cardColorError:
+          err instanceof Error ? err.message : "Couldn't save this colour. Try again.",
       });
     }
   };
@@ -2854,6 +2903,8 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsBusy: false,
       cardSecretsError: "",
+      cardColorBusy: false,
+      cardColorError: "",
       copiedField: "",
     });
   }, [revealGuard, setState]);
@@ -2992,9 +3043,6 @@ export default function DashboardApp(props: Props = {}) {
     e.stopPropagation();
     fundCard();
   };
-  const terminateCard = () =>
-    setState({ modal: null, cardSecrets: null, cardSecretsError: "" });
-
   const openInvite = () =>
     setState({
       inviteOpen: true,
@@ -3701,24 +3749,15 @@ export default function DashboardApp(props: Props = {}) {
             };
           })()
       : null;
-    const acctSummaryLines = (acctDetail?.rows ?? [])
-      .filter((row) => !row.copyValue)
+    // The hero already shows the balance and the identity line the rail and
+    // status, so the summary strip only carries rows that add something.
+    const repeatsHero = (label: string) => /balance|^rail$|^status$/i.test(label.trim());
+    const acctDetailLines = (acctDetail?.rows ?? [])
+      .filter((row) => !row.copyValue && !repeatsHero(row.label))
       .slice(0, 3)
       .map((row) => ({ k: row.label, v: row.value }));
-    // Prefer a short readable summary when coords-only rows would leave the strip empty.
-    const acctDetailLines =
-      acctSummaryLines.length > 0
-        ? acctSummaryLines
-        : acctDetail
-          ? [
-              { k: "Rail", v: acctDetail.railLabel ?? acctDetail.currency },
-              { k: "Status", v: acctDetail.statusLabel },
-              ...(acctDetail.rows[0]
-                ? [{ k: acctDetail.rows[0].label, v: acctDetail.rows[0].value }]
-                : []),
-            ]
-          : [];
     const issuedCardsList = issuedCardsQuery.data?.cards ?? [];
+    const cardColorKeys = resolveCardColors(issuedCardsList, cardColorsQuery.data ?? {});
     const cardSel =
       issuedCardsList.find((c) => c.id === s.selectedCardId) || null;
     const usdFunding: UsdFundingAccount | null = usdFundingQuery.data ?? null;
@@ -4106,7 +4145,7 @@ export default function DashboardApp(props: Props = {}) {
         statusColor: c.status === "live" ? "var(--indigo-text)" : "var(--amber)",
         statusSoft: c.status === "live" ? "var(--indigo-tint)" : "var(--amber-tint)",
       }));
-  const cards = issuedCardsList.map((c, i) => {
+  const cards = issuedCardsList.map((c) => {
     const frozen = isCardFrozenStatus(c.status);
     const actionable = isCardActionable(c);
     const failed = !actionable;
@@ -4121,10 +4160,9 @@ export default function DashboardApp(props: Props = {}) {
       exp: formatCardExpiry(c.expiration_month, c.expiration_year),
       brand,
       balance: usdSpendLabel,
-      bg: cardPlasticBg(i, frozen || failed),
+      color: cardColor(cardColorKeys[c.id]),
       status: failed ? "failed" : frozen ? "frozen" : "active",
       statusLabel: closed ? "Closed" : failed ? "Failed" : describeCardStatus(c.status),
-      filter: failed ? "grayscale(1) opacity(0.65)" : "none",
       actionDisabled: failed,
       actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
       fund: openFundCardDirect(c.id),
@@ -4888,13 +4926,7 @@ export default function DashboardApp(props: Props = {}) {
         label: cardSel.card_name || `Card ···· ${cardSel.last_four || ""}`,
         last4: cardSel.last_four || "",
         balance: usdSpendLabel,
-        bg: cardPlasticBg(
-          Math.max(
-            0,
-            issuedCardsList.findIndex((c) => c.id === cardSel.id),
-          ),
-          cardIsFrozen,
-        ),
+        color: cardColor(cardColorKeys[cardSel.id]),
         status: cardSel.status,
         freezeTrack: cardIsFrozen ? "var(--indigo)" : "var(--surface3)",
         freezeKnobLeft: cardIsFrozen ? "23px" : "3px",
@@ -5267,15 +5299,11 @@ export default function DashboardApp(props: Props = {}) {
 <CardFlipTile
   cardId={c.id}
   label={c.label}
-  bg={c.bg}
-  filter={c.filter}
+  color={c.color}
   status={c.status}
   statusLabel={c.statusLabel}
-  balance={c.balance}
   last4={c.last4}
   expiry={c.exp}
-  brand={c.brand}
-  cardholderLabel={cardholderDisplay}
   flipped={!!s.cardTileFlipped[c.id]}
   onFlip={flipCardTile(c.id)}
   secrets={s.cardTileSecrets[c.id] || null}
@@ -5286,12 +5314,12 @@ export default function DashboardApp(props: Props = {}) {
   actionDisabled={c.actionDisabled}
   actionDisabledReason={c.actionDisabledReason}
 />
-<div className="ep-cards__actions">
-<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__action" disabled={c.actionDisabled || c.status === "frozen"} title={c.actionDisabled ? c.actionDisabledReason : c.status === "frozen" ? "Unfreeze this card to view its details" : undefined}>{s.cardTileFlipped[c.id] ? "Hide details" : "Show details"}</button>
-<div className="ep-cards__actions-row">
-<button type="button" onClick={() => void toggleFreezeCard(c.id)} className="ep-cards__action" disabled={c.actionDisabled || (s.cardFreezeBusy && s.selectedCardId === c.id)} title={c.actionDisabled ? c.actionDisabledReason : s.cardFreezeError && s.selectedCardId === c.id ? s.cardFreezeError : undefined}>{c.status === "frozen" ? "Unfreeze" : "Freeze"}</button>
-<button type="button" onClick={c.fund} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
-<button type="button" onClick={c.manage} className="ep-cards__action" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
+<div className="ep-cards__below">
+<span className="ep-cards__balance">{c.balance}</span>
+<div className="ep-cards__pills">
+<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__pill" disabled={c.actionDisabled || c.status === "frozen"} aria-pressed={!!s.cardTileFlipped[c.id]} title={c.actionDisabled ? c.actionDisabledReason : c.status === "frozen" ? "Unfreeze this card to view its details" : undefined}>{s.cardTileFlipped[c.id] ? "Hide" : "Details"}</button>
+<button type="button" onClick={c.fund} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
+<button type="button" onClick={c.manage} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
 </div>
 </div>
 </div>
@@ -6133,7 +6161,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   intent={s.acctDetailIntent === "fund" ? "fund" : "details"}
   copiedField={s.copiedField}
   copyField={copyField}
-  openModalSwapFromAcct={openModalSwapFromAcct}
   onRefreshAccount={refreshDepositAccount}
 />
 </>) : null}
@@ -6144,7 +6171,10 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   cardholderName={cardholderDisplay}
   accountLabel={cardSel.card_name || `···· ${cardSel.last_four || ""}`}
   balance={cardDetail.balance || usdSpendLabel}
-  cardBg={cardDetail.bg}
+  color={cardDetail.color}
+  colorBusy={s.cardColorBusy}
+  colorError={s.cardColorError}
+  onColorChange={(key) => void setCardColorFor(cardSel.id, key)}
   billing={cardBilling}
   recent={cardsSpendAll
     .filter(
@@ -6160,7 +6190,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onCopy={copyField}
   onToggleReveal={toggleCardSecrets}
   onToggleFreeze={() => void toggleFreezeCard()}
-  onClose={terminateCard}
 />
 </>) : null}
 

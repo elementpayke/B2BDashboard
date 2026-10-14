@@ -94,3 +94,41 @@ describe("WalletsScreen — Bank account gating with a backend-declared extra cu
     expect(openCreateAccount).toHaveBeenCalledWith("bank");
   });
 });
+
+describe("WalletsScreen — currency account cards", () => {
+  const account = {
+    name: "US Dollar",
+    currency: "USD",
+    rail: "IBAN · SWIFT",
+    balance: "1,250.40",
+    detail: "GB33 BUKB ·· 5555",
+    flagUrl: null,
+    openDetail: vi.fn(),
+  };
+
+  it("offers New account once — from the header menu, not a second card in the list", () => {
+    render(
+      <WalletsScreen
+        {...baseProps({ addAccountMenu: false, accounts: [account] as never, accountsCount: 1 })}
+      />,
+    );
+    expect(screen.getAllByText(/New account/)).toHaveLength(1);
+    const list = screen.getByLabelText("Currency accounts");
+    expect(list.querySelector(".ep-wallets__new-card")).toBeNull();
+  });
+
+  it("opens an account's detail when its card is tapped", () => {
+    const openDetail = vi.fn();
+    render(
+      <WalletsScreen
+        {...baseProps({
+          addAccountMenu: false,
+          accounts: [{ ...account, openDetail }] as never,
+          accountsCount: 1,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /US Dollar account/ }));
+    expect(openDetail).toHaveBeenCalledTimes(1);
+  });
+});

@@ -2,19 +2,16 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import CardFlipTile from "./CardFlipTile";
+import CardFlipTile, { shortExpiry } from "./CardFlipTile";
+import { cardColor } from "@/lib/services/cardColors";
 
 const baseProps = {
   cardId: "card_1",
   label: "Marketing Ads",
-  bg: "linear-gradient(135deg,#1B1733,#3B2ED3)",
   status: "active",
   statusLabel: "Active",
-  balance: "$1,240.00",
   last4: "4471",
   expiry: "09/29",
-  brand: "mastercard" as const,
-  cardholderLabel: "MBOKA BUSINESS LTD",
   flipped: false,
   onFlip: vi.fn(),
   secrets: null as null | { number: string; cvv: string },
@@ -24,57 +21,70 @@ const baseProps = {
   onCopy: () => () => {},
 };
 
+const revealed = { number: "5412 7534 9021 4471", cvv: "318" };
+
 describe("CardFlipTile", () => {
-  it("renders the front face with label, status, and balance", () => {
+  it("renders the spec front face: Mboka mark, card name and masked last four", () => {
     render(<CardFlipTile {...baseProps} />);
+    expect(screen.getByText("MBOKA")).toBeInTheDocument();
     expect(screen.getByText("Marketing Ads")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("$1,240.00")).toBeInTheDocument();
+    expect(screen.getByText("•••• 4471")).toBeInTheDocument();
+    // Removed on purpose by the spec.
+    expect(screen.queryByText(/virtual/i)).not.toBeInTheDocument();
+  });
+
+  it("paints both faces with the card's palette bg and ink", () => {
+    const { container } = render(<CardFlipTile {...baseProps} color={cardColor("marigold")} />);
+    const faces = container.querySelectorAll<HTMLElement>(".ep-card-flip__face");
+    expect(faces).toHaveLength(2);
+    for (const face of faces) {
+      expect(face.style.background).toMatch(/255, 178, 36|#ffb224/i);
+      expect(face.style.color).toMatch(/19, 17, 38|#131126/i);
+    }
   });
 
   it("flips on click and reflects state via aria-pressed / aria-hidden", () => {
     const onFlip = vi.fn();
-    const { container, rerender } = render(
-      <CardFlipTile {...baseProps} onFlip={onFlip} />,
-    );
-    const flipButton = screen.getByRole("button", { name: "Show card details" });
-    fireEvent.click(flipButton);
+    const { container, rerender } = render(<CardFlipTile {...baseProps} onFlip={onFlip} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show card details" }));
     expect(onFlip).toHaveBeenCalledTimes(1);
 
-    const backFaceHidden = container.querySelector(".ep-card-flip__face--back");
-    expect(backFaceHidden).toHaveAttribute("aria-hidden", "true");
-    expect(backFaceHidden).toHaveAttribute("inert");
+    const back = () => container.querySelector(".ep-card-flip__face--back");
+    expect(back()).toHaveAttribute("aria-hidden", "true");
+    expect(back()).toHaveAttribute("inert");
 
     rerender(<CardFlipTile {...baseProps} onFlip={onFlip} flipped />);
-    expect(
-      screen.getByRole("button", { name: "Hide card details" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    const backFaceShown = container.querySelector(".ep-card-flip__face--back");
-    expect(backFaceShown).toHaveAttribute("aria-hidden", "false");
-    expect(backFaceShown).not.toHaveAttribute("inert");
+    expect(screen.getByRole("button", { name: "Hide card details" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(back()).toHaveAttribute("aria-hidden", "false");
+    expect(back()).not.toHaveAttribute("inert");
   });
 
-  it("shows a masked PAN before reveal, and 'Loading…' while fetching", () => {
+  it("tapping the revealed back face flips the card home", () => {
+    const onFlip = vi.fn();
+    const { container } = render(
+      <CardFlipTile {...baseProps} flipped onFlip={onFlip} secrets={revealed} />,
+    );
+    fireEvent.click(container.querySelector(".ep-card-flip__face--back")!);
+    expect(onFlip).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows 'Loading…' in the number slot while credentials are fetched", () => {
     render(<CardFlipTile {...baseProps} flipped secretsBusy />);
     expect(screen.getByText("Loading…")).toBeInTheDocument();
+    // Nothing is copyable until the real values arrive.
+    expect(screen.queryByRole("button", { name: /^Copy / })).not.toBeInTheDocument();
   });
 
-  it("shows formatted PAN/expiry/CVV as independently copyable once revealed", () => {
+  it("each revealed value is a copy button that strips spaces", () => {
     const onCopy = vi.fn(() => vi.fn());
-    render(
-      <CardFlipTile
-        {...baseProps}
-        flipped
-        secrets={{ number: "5412753490214471", cvv: "318" }}
-        onCopy={onCopy}
-      />,
-    );
+    render(<CardFlipTile {...baseProps} flipped secrets={revealed} onCopy={onCopy} />);
     expect(screen.getByText("5412 7534 9021 4471")).toBeInTheDocument();
-    expect(screen.getByText("09/29")).toBeInTheDocument();
-    expect(screen.getByText("318")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy Card number" }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy Expiry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy card number" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy expiry" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy CVV" }));
 
     expect(onCopy).toHaveBeenCalledWith("card:card_1:num", "5412753490214471");
@@ -82,59 +92,44 @@ describe("CardFlipTile", () => {
     expect(onCopy).toHaveBeenCalledWith("card:card_1:cvv", "318");
   });
 
-  it("only marks the copied field as copied, not the others (regression guard)", () => {
-    render(
-      <CardFlipTile
-        {...baseProps}
-        flipped
-        secrets={{ number: "5412753490214471", cvv: "318" }}
-        copiedField="card:card_1:cvv"
-      />,
-    );
-    expect(screen.getByRole("button", { name: "CVV copied" })).toHaveAttribute(
-      "data-copied",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "Copy Expiry" })).toHaveAttribute(
-      "data-copied",
-      "false",
-    );
-    expect(screen.getByRole("button", { name: "Copy Card number" })).toHaveAttribute(
-      "data-copied",
-      "false",
-    );
-  });
-
-  it("copy clicks stop propagation so they don't also flip the card", () => {
+  it("copy clicks stop propagation so the card does not flip back", () => {
     const onFlip = vi.fn();
-    render(
-      <CardFlipTile
-        {...baseProps}
-        flipped
-        onFlip={onFlip}
-        secrets={{ number: "5412753490214471", cvv: "318" }}
-      />,
-    );
+    render(<CardFlipTile {...baseProps} flipped onFlip={onFlip} secrets={revealed} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy card number" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy CVV" }));
     expect(onFlip).not.toHaveBeenCalled();
   });
 
+  it("announces a copy to screen readers only, with no visible chip", () => {
+    render(
+      <CardFlipTile {...baseProps} flipped secrets={revealed} copiedField="card:card_1:cvv" />,
+    );
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("CVV copied");
+    expect(status).toHaveClass("ep-sr-only");
+    expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+  });
+
+  it("ignores another card's copy when announcing", () => {
+    render(
+      <CardFlipTile {...baseProps} flipped secrets={revealed} copiedField="card:card_2:cvv" />,
+    );
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("disables the front face and shows the disabled reason when actionDisabled", () => {
     render(
-      <CardFlipTile
-        {...baseProps}
-        actionDisabled
-        actionDisabledReason="This card is closed."
-      />,
+      <CardFlipTile {...baseProps} actionDisabled actionDisabledReason="This card is closed." />,
     );
     const flipButton = screen.getByRole("button", { name: "Show card details" });
     expect(flipButton).toBeDisabled();
     expect(flipButton).toHaveAttribute("title", "This card is closed.");
   });
 
-  it("locks the flip on a frozen card instead of rotating", () => {
+  it("covers a frozen card with the Frozen pill and locks the flip", () => {
     const onFlip = vi.fn();
     render(<CardFlipTile {...baseProps} status="frozen" statusLabel="Frozen" onFlip={onFlip} />);
+    expect(screen.getByText("Frozen")).toHaveClass("ep-card-face__frozen-pill");
     const flipButton = screen.getByRole("button", { name: "Show card details" });
     expect(flipButton).toBeDisabled();
     expect(flipButton).toHaveAttribute("title", "Unfreeze this card to view its details");
@@ -148,15 +143,17 @@ describe("CardFlipTile", () => {
   });
 
   it("surfaces a reveal error inside the fixed card face, not as extra height below it", () => {
-    const { container } = render(
-      <CardFlipTile {...baseProps} flipped secretsError="Couldn't load card details." />,
-    );
-    // The visible face shows a short message in the existing PAN slot...
+    render(<CardFlipTile {...baseProps} flipped secretsError="Couldn't load card details." />);
     expect(screen.getByText("Couldn't load")).toBeInTheDocument();
-    // ...and the full message is only announced via an off-screen live region,
-    // never a visible element that would grow the tile and push the page down.
-    const announcement = screen.getByText("Couldn't load card details.");
-    expect(announcement).toHaveClass("ep-sr-only");
-    expect(container.querySelector(".ep-card-flip__hint")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveClass("ep-sr-only");
+  });
+});
+
+describe("shortExpiry", () => {
+  it("shortens four-digit years and pads months", () => {
+    expect(shortExpiry("9/2029")).toBe("09/29");
+    expect(shortExpiry("09/29")).toBe("09/29");
+    expect(shortExpiry(null)).toBeNull();
+    expect(shortExpiry("bad")).toBeNull();
   });
 });
