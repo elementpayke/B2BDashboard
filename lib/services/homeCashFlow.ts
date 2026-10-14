@@ -57,6 +57,33 @@ export function moneyFlowFromTransactions(
   return { moneyInUsd: moneyIn, moneyOutUsd: moneyOut };
 }
 
+/**
+ * Sum processing-status transactions (any direction, all time) into USD using
+ * real FX. Mirrors the Transactions screen's "Pending" filter
+ * (`status === "processing"`, no date window) so the Home card and its
+ * click-through agree. Returns `0` when nothing is pending; `null` when any
+ * pending row can't be converted (fail closed — never invent rates).
+ */
+export function pendingAmountFromTransactions(
+  transactions: Transaction[],
+  fx: ExchangeRates | null | undefined,
+): number | null {
+  let pending = 0;
+
+  for (const tx of transactions) {
+    if (tx.status !== "processing") continue;
+
+    const amount = parseFiatAmount(tx.amount_fiat);
+    if (amount == null) return null;
+
+    const usd = convertAmountWithRates(amount, tx.currency, "USD", fx);
+    if (usd == null) return null;
+    pending += Math.abs(usd);
+  }
+
+  return pending;
+}
+
 /** Format a USD cash-flow figure for the home stat cards. */
 export function formatHomeCashFlowUsd(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";

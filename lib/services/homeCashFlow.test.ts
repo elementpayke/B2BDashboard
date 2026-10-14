@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatHomeCashFlowUsd,
   moneyFlowFromTransactions,
+  pendingAmountFromTransactions,
 } from "./homeCashFlow";
 import type { ExchangeRates } from "./dashboard";
 import type { Transaction } from "./transactions";
@@ -81,6 +82,46 @@ describe("moneyFlowFromTransactions", () => {
     );
     expect(flow.moneyInUsd).toBeCloseTo(300 / 130 + 540 / 1600);
     expect(flow.moneyInUsd).not.toBe(840);
+  });
+});
+
+describe("pendingAmountFromTransactions", () => {
+  it("sums processing-status rows regardless of direction or age", () => {
+    const pending = pendingAmountFromTransactions(
+      [
+        tx({ id: 1, status: "processing", direction: "in", amount_fiat: "1300", currency: "KES" }), // $10
+        tx({ id: 2, status: "processing", direction: "out", amount_fiat: "100", currency: "USD" }), // $100
+        tx({
+          id: 3,
+          status: "processing",
+          direction: "in",
+          amount_fiat: "10000",
+          currency: "USD",
+          created_at: "2026-01-01T00:00:00Z", // outside the 30d window used by moneyFlowFromTransactions
+        }),
+      ],
+      fx,
+    );
+    expect(pending).toBeCloseTo(10 + 100 + 10000);
+  });
+
+  it("ignores completed/failed rows", () => {
+    const pending = pendingAmountFromTransactions(
+      [
+        tx({ status: "completed", amount_fiat: "10000", currency: "USD" }),
+        tx({ status: "failed", amount_fiat: "10000", currency: "USD" }),
+      ],
+      fx,
+    );
+    expect(pending).toBe(0);
+  });
+
+  it("fails closed when a rate is missing", () => {
+    const pending = pendingAmountFromTransactions(
+      [tx({ status: "processing", currency: "GHS", amount_fiat: "100" })],
+      fx,
+    );
+    expect(pending).toBeNull();
   });
 });
 

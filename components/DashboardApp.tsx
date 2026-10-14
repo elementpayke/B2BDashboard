@@ -17,6 +17,7 @@ import {
 import {
   formatHomeCashFlowUsd,
   moneyFlowFromTransactions,
+  pendingAmountFromTransactions,
 } from "@/lib/services/homeCashFlow";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
@@ -193,7 +194,6 @@ import {
   formatUsdEquivalentSub,
   isDisplayCurrency,
   parseBalanceNumber,
-  pendingBalanceFromAccount,
   readStoredDisplayCurrency,
   resolveDisplayCurrency,
   totalBalanceInDisplayCurrency,
@@ -3810,12 +3810,6 @@ export default function DashboardApp(props: Props = {}) {
       : s.balanceView === "fiat"
         ? fiatLedgerItems
         : [...fiatLedgerItems, ...stableLedgerItems];
-  const pendingLedgerItems = homeAvailableLedgerItems
-    .map((item) => ({
-      currency: item.currency,
-      balance: pendingBalanceFromAccount(item.balance),
-    }))
-    .filter((item) => item.balance !== null);
   const homeFxRates = mergeExchangeRates(
     bootstrapQuery.data?.fxRates,
     summaryQuery.data?.fx_rates,
@@ -3848,20 +3842,14 @@ export default function DashboardApp(props: Props = {}) {
     displayCurrency === "USD"
       ? null
       : formatUsdEquivalentSub(homeUsdTotal.total);
-  const homePendingUsd = totalBalanceInDisplayCurrency(
-    pendingLedgerItems,
-    "USD",
-    homeFxRates,
-    { maximumFractionDigits: 0 },
-  );
-  const homePendingAmountComplete =
-    homeAvailableLedgerItems.length > 0 &&
-    pendingLedgerItems.length === homeAvailableLedgerItems.length;
-  const awaitingSettlementLabel = homePendingAmountComplete
-    ? (homePendingUsd.total == null
-        ? "—"
-        : `$${homePendingUsd.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`)
-    : "—";
+  // Sourced from processing-status transactions (same data the "Pending"
+  // filter on Transactions uses) rather than account balance deltas — a
+  // pending deposit often hasn't moved an account's current/available
+  // balance yet, so the delta-based total silently missed real pending rows.
+  const homePendingUsd = transactionsQuery.isSuccess
+    ? pendingAmountFromTransactions(transactionsQuery.data?.items ?? [], homeFxRates)
+    : null;
+  const awaitingSettlementLabel = formatHomeCashFlowUsd(homePendingUsd);
   // Fiat IBAN chips + partner stablecoin account chips.
   const fiatBalanceRows = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
