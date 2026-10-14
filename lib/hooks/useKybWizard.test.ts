@@ -186,6 +186,56 @@ describe("useKybWizard restore + submit poll", () => {
     );
   });
 
+  it("gives each director their own officer document rows", async () => {
+    const twoDirectors = {
+      ...completePendingProfile,
+      associates: [
+        completePendingProfile.associates[0],
+        {
+          ...completePendingProfile.associates[0],
+          id: "a2",
+          full_name: { first_name: "John", last_name: "Roe" },
+        },
+      ],
+    };
+    summary.mockResolvedValue({ profile: twoDirectors });
+    listDocuments.mockResolvedValue({
+      documents: [
+        { id: 9, provider_document_type: "identity", associate_ref_id: "a1", is_active: true },
+      ],
+    });
+    documentRequirements.mockResolvedValue({
+      ...emptyRequirements(),
+      shareholder_documents: [
+        {
+          type: "identity",
+          category: "shareholder",
+          label: "Officer ID",
+          requires_associate_ref_id: true,
+          issuing_country_required: true,
+          uploaded: true,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useKybWizard({
+        businessId: 3,
+        enabled: true,
+        kybSummary: { profile: twoDirectors },
+        business: { legal_name: "Acme", country: "KE", registration_number: "R1" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.docRows).toHaveLength(2);
+    });
+    expect(result.current.docRows.map((r) => [r.associateRefId, r.label, r.submitted])).toEqual([
+      ["a1", "Jane Doe — Officer ID", true],
+      ["a2", "John Roe — Officer ID", false],
+    ]);
+  });
+
   it("does not wipe step when reopening the same business mid-flow", async () => {
     summary.mockResolvedValue({ profile: { kyb_status: "pending", legal_name: "Acme" } });
     const { result, rerender } = renderHook(
