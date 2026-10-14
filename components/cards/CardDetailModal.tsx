@@ -4,13 +4,16 @@ import { useState } from "react";
 import {
   describeCardStatus,
   formatCardExpiry,
-  formatCardPan,
-  formatMaskedPan,
   isCardFrozenStatus,
-  resolveCardBrand,
   type IssuedCard,
 } from "@/lib/services/cards";
-import CardBrandMark from "@/components/cards/CardBrandMark";
+import {
+  CARD_COLORS,
+  DEFAULT_CARD_COLOR,
+  type CardColor,
+  type CardColorKey,
+} from "@/lib/services/cardColors";
+import CardFlipTile from "@/components/cards/CardFlipTile";
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import type { BusinessAddress } from "@/lib/services/kyb";
 
@@ -41,17 +44,6 @@ export function billingAddressFromKyb(
     line2,
     copyText,
   };
-}
-
-function formatExpiryFace(
-  month: string | null | undefined,
-  year: string | null | undefined,
-): string | null {
-  const full = formatCardExpiry(month, year);
-  if (!full) return null;
-  const [mm, yy] = full.split("/");
-  if (!mm || !yy) return full;
-  return `${mm.padStart(2, "0").slice(-2)}/${yy.slice(-2)}`;
 }
 
 function IconEye({ open }: { open: boolean }) {
@@ -95,19 +87,6 @@ function IconSnowflake() {
   );
 }
 
-function IconClose() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M6 6l12 12M18 6L6 18"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function IconCopy() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -130,39 +109,15 @@ function IconCopy() {
   );
 }
 
-function IconMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-      <path
-        d="M2.5 11.5c2.2-1.8 4.2-2.7 6.5-2.7 2.3 0 4.3.9 6.5 2.7"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M4 8.2c1.7-1.4 3.2-2.1 5-2.1s3.3.7 5 2.1"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        opacity="0.7"
-      />
-      <path
-        d="M5.8 5c1.1-.9 2.1-1.3 3.2-1.3s2.1.4 3.2 1.3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        opacity="0.45"
-      />
-    </svg>
-  );
-}
-
 type Props = {
   card: IssuedCard;
   cardholderName: string;
   accountLabel: string;
   balance: string;
-  cardBg?: string;
+  color?: CardColor;
+  colorBusy?: boolean;
+  colorError?: string;
+  onColorChange?: (key: CardColorKey) => void;
   billing: CardBillingAddress | null;
   recent?: ActivityItem[];
   secrets: { number: string; cvv: string } | null;
@@ -174,7 +129,6 @@ type Props = {
   onCopy: (fieldKey: string, value: string) => () => void;
   onToggleReveal: () => void;
   onToggleFreeze: () => void;
-  onClose: () => void;
 };
 
 export default function CardDetailModal({
@@ -182,7 +136,10 @@ export default function CardDetailModal({
   cardholderName,
   accountLabel,
   balance,
-  cardBg,
+  color = DEFAULT_CARD_COLOR,
+  colorBusy = false,
+  colorError = "",
+  onColorChange,
   billing,
   recent = [],
   secrets,
@@ -194,31 +151,16 @@ export default function CardDetailModal({
   onCopy,
   onToggleReveal,
   onToggleFreeze,
-  onClose,
 }: Props) {
   const [flipped, setFlipped] = useState(false);
   const revealed = Boolean(secrets?.number && secrets?.cvv);
   const last4 = card.last_four || "";
-  const panMasked = formatMaskedPan(last4).replace(/•/g, ".");
-  const last4Short = last4 ? `···· ${last4}` : "···· ····";
-  const expFace = formatExpiryFace(
-    card.expiration_month,
-    card.expiration_year,
-  );
   const isFrozen = isCardFrozenStatus(card.status);
   const statusLabel = describeCardStatus(card.status);
   const cardholderLabel = cardholderName || "—";
   const cardName =
     card.card_name?.trim() ||
     (last4 ? `Card ···· ${last4}` : "Virtual card");
-  const scheme = resolveCardBrand({
-    brand: card.brand,
-    number: secrets?.number || card.number,
-  });
-  const faceStyle = {
-    background: cardBg || undefined,
-    filter: isFrozen ? "saturate(0.25) opacity(0.75)" : undefined,
-  };
 
   const flipCard = () => {
     if (secretsBusy) return;
@@ -231,130 +173,28 @@ export default function CardDetailModal({
     if (!revealed) onToggleReveal();
   };
 
-  const copyable = (
-    field: string,
-    value: string,
-    label: string,
-    opts?: { formatPan?: boolean },
-  ) => {
-    if (!revealed) {
-      return (
-        <span className="ep-card-face__secret" aria-label={label}>
-          {value}
-        </span>
-      );
-    }
-    const copied = copiedField === field;
-    const display = opts?.formatPan ? formatCardPan(value) : value;
-    const copyValue = opts?.formatPan ? value.replace(/\s+/g, "") : value;
-    return (
-      <button
-        type="button"
-        className="ep-card-face__secret ep-card-face__secret--copy"
-        data-copied={copied ? "true" : "false"}
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy(field, copyValue)();
-        }}
-        aria-label={copied ? `${label} copied` : `Copy ${label}`}
-        title={copied ? "Copied" : "Click to copy"}
-      >
-        {display}
-        <span className="ep-card-face__copied" aria-hidden>
-          Copied
-        </span>
-      </button>
-    );
-  };
-
   return (
     <div className="ep-cards__modal ep-cards__modal--detail">
-      <div className="ep-card-flip">
-        <div
-          className="ep-card-flip__inner"
-          data-flipped={flipped ? "true" : "false"}
-        >
-          <button
-            type="button"
-            className="ep-card-flip__face ep-card-flip__face--front ep-card-face ep-card-face--brand"
-            style={faceStyle}
-            onClick={flipCard}
-            disabled={secretsBusy}
-            aria-label="Show card number — flip to back"
-          >
-            <div className="ep-card-face__top">
-              <span className="ep-card-face__name">
-                <IconMark />
-                {cardName}
-              </span>
-              <span
-                className="ep-card-face__status"
-                data-frozen={isFrozen ? "true" : "false"}
-              >
-                {statusLabel}
-              </span>
-            </div>
-            <div className="ep-card-face__avail">
-              <span className="ep-card-face__avail-label">Available</span>
-              <span className="ep-card-face__avail-amount">{balance}</span>
-            </div>
-            <div className="ep-card-face__footer">
-              <span className="ep-card-face__last4">{last4Short}</span>
-              <CardBrandMark brand={scheme} className="ep-card-face__scheme" />
-            </div>
-          </button>
-
-          <div
-            className="ep-card-flip__face ep-card-flip__face--back ep-card-face ep-card-face--brand"
-            style={faceStyle}
-          >
-            <div className="ep-card-face__top">
-              <span className="ep-card-face__kind">
-                VIRTUAL
-                {isFrozen ? (
-                  <span className="ep-card-face__kind-chip" data-frozen="true">
-                    {statusLabel}
-                  </span>
-                ) : null}
-              </span>
-              <CardBrandMark brand={scheme} className="ep-card-face__scheme" />
-            </div>
-
-            <div className="ep-card-face__pan-wrap">
-              {revealed
-                ? copyable("card:number", secrets!.number, "Card number", {
-                    formatPan: true,
-                  })
-                : copyable(
-                    "card:number",
-                    secretsBusy ? "Loading…" : panMasked,
-                    "Card number",
-                  )}
-            </div>
-
-            <div className="ep-card-face__bottom">
-              <div className="ep-card-face__meta">
-                <div className="ep-card-face__meta-col">
-                  <span className="ep-card-face__meta-label">EXP</span>
-                  {revealed && expFace
-                    ? copyable("card:exp", expFace, "Expiry")
-                    : copyable("card:exp", "../..", "Expiry")}
-                </div>
-                <div className="ep-card-face__meta-col">
-                  <span className="ep-card-face__meta-label">CVV</span>
-                  {revealed
-                    ? copyable("card:cvv", secrets!.cvv, "CVV")
-                    : copyable("card:cvv", "...", "CVV")}
-                </div>
-              </div>
-              <span className="ep-card-face__brand">{cardholderLabel}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CardFlipTile
+        cardId={card.id}
+        label={cardName}
+        color={color}
+        // A frozen face can't be tapped open, matching the Cards grid; the eye
+        // button below still reveals details as it did before.
+        status={isFrozen ? "frozen" : "active"}
+        statusLabel={statusLabel}
+        last4={last4}
+        expiry={formatCardExpiry(card.expiration_month, card.expiration_year)}
+        flipped={flipped}
+        onFlip={flipCard}
+        secrets={secrets}
+        secretsBusy={secretsBusy}
+        copiedField={copiedField}
+        onCopy={onCopy}
+      />
 
       <p className="ep-card-flip__hint">
-        {flipped ? "Tap the eye to hide details" : "Tap card to flip & reveal"}
+        {flipped ? "Tap a number to copy it · tap the card to hide" : "Tap card to flip & reveal"}
       </p>
 
       <div className="ep-card-face__actions" role="group" aria-label="Card actions">
@@ -382,15 +222,6 @@ export default function CardDetailModal({
         >
           <IconSnowflake />
         </button>
-        <button
-          type="button"
-          className="ep-card-face__action"
-          onClick={onClose}
-          aria-label="Close"
-          title="Close"
-        >
-          <IconClose />
-        </button>
       </div>
 
       {secretsError ? (
@@ -404,7 +235,41 @@ export default function CardDetailModal({
         </div>
       ) : null}
 
+      {onColorChange ? (
+        <fieldset className="ep-card-colors" disabled={colorBusy}>
+          <legend className="ep-card-colors__legend">
+            Card colour <span>{color.name}</span>
+          </legend>
+          <div className="ep-card-colors__grid" role="radiogroup" aria-label="Card colour">
+            {CARD_COLORS.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                role="radio"
+                aria-checked={c.key === color.key}
+                aria-label={c.name}
+                title={c.name}
+                className="ep-card-colors__swatch"
+                style={{ background: c.bg, color: c.ink }}
+                onClick={() => {
+                  if (c.key !== color.key) onColorChange(c.key);
+                }}
+              />
+            ))}
+          </div>
+          {colorError ? (
+            <p className="ep-card-colors__error" role="alert">
+              {colorError}
+            </p>
+          ) : null}
+        </fieldset>
+      ) : null}
+
       <div className="ep-card-meta">
+        <div className="ep-card-meta__row">
+          <span>Available</span>
+          <b>{balance || "—"}</b>
+        </div>
         <div className="ep-card-meta__row">
           <span>Cardholder</span>
           <b>{cardholderLabel}</b>
