@@ -20,6 +20,7 @@ import {
   validateProfileDraft,
   validateSubmitStep,
   type KybDocumentRequirements,
+  type KybWizardAssociateDraft,
   type KybWizardProfileDraft,
 } from "@/lib/services/kyb";
 
@@ -62,6 +63,7 @@ export type KybSubmitOutcome = "submitted" | "approved" | "rejected";
 type ListedDoc = {
   id: number;
   provider_document_type: string;
+  associate_ref_id?: string | null;
   is_active: boolean;
   downloadable?: boolean;
 };
@@ -75,60 +77,70 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function listedByType(listedDocs: ListedDoc[]): Map<string, ListedDoc> {
-  const byType = new Map<string, ListedDoc>();
+/** One row per document type, keyed by type + owning associate ("" = business). */
+function docKey(type: string, associateRefId?: string | null): string {
+  return `${type.trim().toLowerCase()}|${associateRefId ?? ""}`;
+}
+
+function listedByKey(listedDocs: ListedDoc[]): Map<string, ListedDoc> {
+  const byKey = new Map<string, ListedDoc>();
   for (const d of listedDocs) {
     if (!d.is_active) continue;
-    const key = String(d.provider_document_type || "").trim().toLowerCase();
-    if (key && !byType.has(key)) byType.set(key, d);
+    const key = docKey(String(d.provider_document_type || ""), d.associate_ref_id);
+    if (!byKey.has(key)) byKey.set(key, d);
   }
-  return byType;
+  return byKey;
 }
 
 function mapRequirementRows(
   reqs: KybDocumentRequirements,
   listedDocs: ListedDoc[],
-  associateRef: string | undefined,
+  associates: Pick<KybWizardAssociateDraft, "id" | "firstName" | "lastName">[],
   previous?: DocumentUploadState[],
 ): DocumentUploadState[] {
-  const byType = listedByType(listedDocs);
-  const prevByType = new Map(
-    (previous || []).map((r) => [r.requirementType.trim().toLowerCase(), r]),
+  const listed = listedByKey(listedDocs);
+  const prevByKey = new Map(
+    (previous || []).map((r) => [docKey(r.requirementType, r.associateRefId), r]),
   );
+  const officers = associates.filter((a) => a.id);
 
   const mapDoc = (
     d: KybDocumentRequirements["business_documents"][number],
     category: "business" | "shareholder",
+    officer?: (typeof officers)[number],
   ): DocumentUploadState => {
     const type = d.type;
-    const key = type.trim().toLowerCase();
-    const listed = byType.get(key);
-    const uploadedId = d.uploaded_doc_id ?? listed?.id ?? null;
-    const prev = prevByType.get(key);
-    // Keep in-flight upload / local file when revisiting step 3.
-    if (prev && (prev.uploading || prev.file) && !uploadedId) {
-      return {
-        ...prev,
-        label: d.label?.trim() || labelForDocumentType(type),
-        description: d.description?.trim() || labelForDocumentType(type),
-        helpText: helpForDocumentType(type, d.help_text),
-        category,
-        associateRefId: category === "shareholder" ? associateRef : undefined,
-        issuingCountryRequired: d.issuing_country_required,
-      };
-    }
-    return {
-      requirementType: type,
-      label: d.label?.trim() || labelForDocumentType(type),
+    const associateRefId = officer?.id;
+    // Type-level fallbacks (legacy docs without an associate, `d.uploaded`) can only be
+    // attributed safely when there is a single owner: the business, or one officer.
+    const soleOwner = !officer || officers.length === 1;
+    const found =
+      listed.get(docKey(type, associateRefId)) ??
+      (soleOwner ? listed.get(docKey(type)) : undefined);
+    const uploadedId = found?.id ?? (soleOwner ? d.uploaded_doc_id ?? null : null);
+    const baseLabel = d.label?.trim() || labelForDocumentType(type);
+    const name = officer ? `${officer.firstName} ${officer.lastName}`.trim() : "";
+    const label = officers.length > 1 && name ? `${name} — ${baseLabel}` : baseLabel;
+    const prev = prevByKey.get(docKey(type, associateRefId));
+    const shared = {
+      label,
       description: d.description?.trim() || labelForDocumentType(type),
       helpText: helpForDocumentType(type, d.help_text),
       category,
-      associateRefId: category === "shareholder" ? associateRef : undefined,
+      associateRefId,
       issuingCountryRequired: d.issuing_country_required,
+    };
+    // Keep in-flight upload / local file when revisiting step 3.
+    if (prev && (prev.uploading || prev.file) && !uploadedId) {
+      return { ...prev, ...shared };
+    }
+    return {
+      requirementType: type,
+      ...shared,
       file: null,
       uploadedDocId: uploadedId,
-      downloadable: !!(listed?.downloadable ?? (uploadedId != null && d.uploaded)),
-      submitted: !!d.uploaded || uploadedId != null,
+      downloadable: !!(found?.downloadable ?? (uploadedId != null && d.uploaded)),
+      submitted: (soleOwner && !!d.uploaded) || uploadedId != null,
       uploading: false,
       error: "",
     };
@@ -136,7 +148,9 @@ function mapRequirementRows(
 
   return [
     ...reqs.business_documents.map((d) => mapDoc(d, "business")),
-    ...reqs.shareholder_documents.map((d) => mapDoc(d, "shareholder")),
+    ...officers.flatMap((officer) =>
+      reqs.shareholder_documents.map((d) => mapDoc(d, "shareholder", officer)),
+    ),
   ];
 }
 
@@ -259,11 +273,11 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       const hasDocumentRequirements = !!reqs && hasUploadedDocuments;
       if (reqs && (hasUploadedDocuments || reqs.business_documents.length || reqs.shareholder_documents.length)) {
         setRequirements(reqs);
-        const associateRef = profileDraftFromSummary(
+        const { associates } = profileDraftFromSummary(
           summaryProfile ? { profile: summaryProfile } : opts.kybSummary,
           business,
-        ).associates[0]?.id;
-        setDocRows(mapRequirementRows(reqs, listedDocs, associateRef));
+        );
+        setDocRows(mapRequirementRows(reqs, listedDocs, associates));
       }
 
       setStep(
@@ -383,8 +397,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         // Keep prior row state if list fails.
       }
 
-      const associateRef = draft.associates[0]?.id;
-      setDocRows((prev) => mapRequirementRows(reqs!, listedDocs, associateRef, prev));
+      setDocRows((prev) => mapRequirementRows(reqs!, listedDocs, draft.associates, prev));
       setBusy(false);
       return true;
     } catch (err) {
