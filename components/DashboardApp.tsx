@@ -184,7 +184,6 @@ import {
   DEFAULT_DISPLAY_CURRENCY,
   displayCurrencyOptionsFromCatalog,
   formatAccountBalance,
-  formatSummedBalance,
   formatHeroTotalLabel,
   formatUsdEquivalentSub,
   isDisplayCurrency,
@@ -381,7 +380,6 @@ export default function DashboardApp(props: Props = {}) {
     convertHop: 1 as 1 | 2,
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
-    stableSel: "USDC",
     txFilter: "all" as PrimaryTransactionFilter,
     txSearch: "",
     txCurrency: "all",
@@ -2442,7 +2440,6 @@ export default function DashboardApp(props: Props = {}) {
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
   // Bulk payouts UI is waitlisted.
 
-  const setStable = (k) => () => setState({ stableSel: k });
   const setConvertMode = (mode: ConvertMode) =>
     setState({
       convertMode: mode,
@@ -3373,7 +3370,7 @@ export default function DashboardApp(props: Props = {}) {
 
     const titles: Record<string, [string, string]> = {
       home: ["Home", "Your balances, actions, and activity at a glance"],
-      wallets: ["Accounts", "One main stablecoin wallet, currency accounts around it"],
+      wallets: ["Accounts", "Bank and stablecoin accounts for your business"],
       accountDetail: ["Account", "Balance, details, and activity for this account"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
@@ -3772,12 +3769,6 @@ export default function DashboardApp(props: Props = {}) {
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
-  // Total / available / pending: native per-account amounts — never FX-converted.
-  const usdcBalances = stablecoinAccountsList
-    .filter((a) => a.currency === "USDC")
-    .map((a) => a.balance);
-  const usdcTotalLabel = formatSummedBalance(usdcBalances, { maximumFractionDigits: 2 });
-  const anyStableBalance = usdcTotalLabel !== "—";
   const fiatLedgerItems = depositAccountsList.map((a) => ({
     currency: a.currency,
     balance: a.balance,
@@ -3933,12 +3924,6 @@ export default function DashboardApp(props: Props = {}) {
       ? `Across all wallets and accounts · excludes ${homeDisplayTotal.excluded.join(", ")}`
       : "Across all wallets and accounts";
   const homeRecent = mergePresentedActivityRows(decoratedAll, unmatchedOnchainRows, 4);
-  const mainWalletBalance =
-    usdcTotalLabel === "—" ? "—" : `${usdcTotalLabel} USDC`;
-  const mainWalletSub = anyStableBalance
-    ? "Available across ready USDC rails"
-    : "Stablecoin balance not yet available";
-  const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
   const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
@@ -5162,9 +5147,6 @@ export default function DashboardApp(props: Props = {}) {
 {(isWallets) ? (<>
 <WalletsScreen
   isMobile={isMobile}
-  mainWalletBalance={mainWalletBalance}
-  mainWalletSub={mainWalletSub}
-  stableTabs={stableTabs}
   accountsCount={accountsCount}
   addAccountMenu={s.addAccountMenu}
   toggleAddAccountMenu={toggleAddAccountMenu}
