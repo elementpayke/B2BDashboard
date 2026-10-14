@@ -132,3 +132,72 @@ describe("WalletsScreen — currency account cards", () => {
     expect(openDetail).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("WalletsScreen — accounts run in one horizontal row", () => {
+  const accounts = ["EUR", "GBP", "NGN", "GHS", "UGX", "TZS"].map((currency) => ({
+    name: currency,
+    currency,
+    rail: "Bank transfer",
+    balance: "0.00",
+    detail: "Coordinates pending",
+    flagUrl: null,
+    openDetail: vi.fn(),
+  }));
+
+  function overflowing(el: HTMLElement, scrollLeft: number) {
+    Object.defineProperty(el, "scrollWidth", { configurable: true, value: 1700 });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 1100 });
+    Object.defineProperty(el, "scrollLeft", { configurable: true, value: scrollLeft, writable: true });
+  }
+
+  it("puts every account card in the one scrollable strip", () => {
+    render(
+      <WalletsScreen
+        {...baseProps({ addAccountMenu: false, accounts: accounts as never, accountsCount: 6 })}
+      />,
+    );
+    const strip = screen.getByLabelText("Currency accounts");
+    expect(strip).toHaveClass("ep-wallets__strip");
+    expect(strip.querySelectorAll(".ep-wallets__card")).toHaveLength(6);
+  });
+
+  it("shows the arrows only toward the side that has more, and pages sideways", () => {
+    render(
+      <WalletsScreen
+        {...baseProps({ addAccountMenu: false, accounts: accounts as never, accountsCount: 6 })}
+      />,
+    );
+    const strip = screen.getByLabelText("Currency accounts");
+    const scrollBy = vi.fn();
+    strip.scrollBy = scrollBy as never;
+
+    overflowing(strip, 0);
+    fireEvent.scroll(strip);
+    const next = document.querySelector(".ep-wallets__strip-nav--next")!;
+    const prev = document.querySelector(".ep-wallets__strip-nav--prev")!;
+    expect(next).toHaveAttribute("aria-label", "More accounts");
+    expect(prev).toHaveAttribute("aria-label", "Previous accounts");
+    expect(next).not.toHaveAttribute("hidden");
+    expect(prev).toHaveAttribute("hidden");
+
+    fireEvent.click(next);
+    expect(scrollBy).toHaveBeenCalledWith({ left: 1100 * 0.85, behavior: "smooth" });
+
+    overflowing(strip, 600);
+    fireEvent.scroll(strip);
+    expect(next).toHaveAttribute("hidden");
+    expect(prev).not.toHaveAttribute("hidden");
+    fireEvent.click(prev);
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: -1100 * 0.85, behavior: "smooth" });
+  });
+
+  it("hides both arrows when everything fits", () => {
+    render(
+      <WalletsScreen
+        {...baseProps({ addAccountMenu: false, accounts: accounts.slice(0, 2) as never, accountsCount: 2 })}
+      />,
+    );
+    expect(document.querySelector(".ep-wallets__strip-nav--next")).toHaveAttribute("hidden");
+    expect(document.querySelector(".ep-wallets__strip-nav--prev")).toHaveAttribute("hidden");
+  });
+});

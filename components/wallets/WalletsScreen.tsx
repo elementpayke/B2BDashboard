@@ -1,6 +1,6 @@
 "use client";
 import MbokaMark from "@/components/brand/MbokaMark";
-import React from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ActivityList from "@/components/ui/ActivityList";
 
 export type WalletsAccountCard = {
@@ -84,10 +84,51 @@ function AccountCardSkeleton() {
   );
 }
 
+/**
+ * Tracks whether a horizontal scroller has more content to either side, so
+ * the arrow buttons only show when they'd move something.
+ */
+function useScrollEdges(dep: unknown) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    // 2px slack absorbs sub-pixel rounding at either end.
+    const next = { left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 };
+    setEdges((prev) => (prev.left === next.left && prev.right === next.right ? prev : next));
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      ro?.disconnect();
+    };
+  }, [measure, dep]);
+
+  const scrollByPage = (direction: 1 | -1) => {
+    const el = ref.current;
+    if (!el) return;
+    // Most of a viewport per click, so the last visible card stays as context.
+    el.scrollBy({ left: direction * el.clientWidth * 0.85, behavior: "smooth" });
+  };
+
+  return { ref, edges, scrollByPage };
+}
+
 export default function WalletsScreen(p: WalletsScreenProps) {
   const showGate = !p.eligibilityLoading && !p.eligible && !p.eligibilityErrorMessage;
   const showError = Boolean(p.eligibilityErrorMessage || p.accountsErrorMessage);
   const hasAccountCards = (p.accounts || []).length > 0;
+  const strip = useScrollEdges(`${(p.accounts || []).length}:${p.accountsLoading}`);
   // Show the strip whenever we have (or are loading) cards — including
   // stablecoin rows while IBAN is still gated by KYB. Gate banner stays above.
   const showAccountsRow =
@@ -265,6 +306,22 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       {showAccountsRow ? (
         <div
+          className="ep-wallets__strip-wrap"
+          data-more-left={strip.edges.left ? "true" : "false"}
+          data-more-right={strip.edges.right ? "true" : "false"}
+        >
+        <button
+          type="button"
+          className="ep-wallets__strip-nav ep-wallets__strip-nav--prev"
+          onClick={() => strip.scrollByPage(-1)}
+          aria-label="Previous accounts"
+          tabIndex={-1}
+          hidden={!strip.edges.left}
+        >
+          ‹
+        </button>
+        <div
+          ref={strip.ref}
           className="ep-wallets__strip"
           aria-busy={p.accountsLoading || Boolean(p.accountsPendingMore)}
           aria-label="Currency accounts"
@@ -315,6 +372,17 @@ export default function WalletsScreen(p: WalletsScreenProps) {
               {p.accountsPendingMore ? <AccountCardSkeleton /> : null}
             </>
           )}
+        </div>
+        <button
+          type="button"
+          className="ep-wallets__strip-nav ep-wallets__strip-nav--next"
+          onClick={() => strip.scrollByPage(1)}
+          aria-label="More accounts"
+          tabIndex={-1}
+          hidden={!strip.edges.right}
+        >
+          ›
+        </button>
         </div>
       ) : null}
 
