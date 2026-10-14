@@ -5,7 +5,7 @@ import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   flagUrl,
   ACCOUNTS,
-  CORRIDORS, STATUS_MAP,
+  CORRIDORS,
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
 import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
@@ -17,6 +17,7 @@ import {
 import {
   formatHomeCashFlowUsd,
   moneyFlowFromTransactions,
+  pendingAmountFromTransactions,
 } from "@/lib/services/homeCashFlow";
 import { transactionsApi, type Transaction } from "@/lib/services/transactions";
 import { recentActivityForFinancialAccount } from "@/lib/services/accountCredits";
@@ -50,7 +51,6 @@ import {
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
 import { authApi, type AuthMe } from "@/lib/services/auth";
 import { bootstrapApi } from "@/lib/services/bootstrap";
-import { invoicesApi, buildSimpleDraftPayload } from "@/lib/services/invoices";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import {
   teamApi,
@@ -193,7 +193,6 @@ import {
   formatUsdEquivalentSub,
   isDisplayCurrency,
   parseBalanceNumber,
-  pendingBalanceFromAccount,
   readStoredDisplayCurrency,
   resolveDisplayCurrency,
   totalBalanceInDisplayCurrency,
@@ -255,7 +254,6 @@ import CardSpendList, { type CardSpendItem } from "@/components/cards/CardSpendL
 
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
-import InvoiceList from "@/components/ui/InvoiceList";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatementsPanel from "@/components/reports/StatementsPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -439,7 +437,6 @@ export default function DashboardApp(props: Props = {}) {
     cardTileSecrets: {} as Record<string, { number: string; cvv: string }>,
     cardTileSecretsBusy: {} as Record<string, boolean>,
     cardTileSecretsError: {} as Record<string, string>,
-    invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false,
     cardFrozen: false, tierDone: false,
     balanceView: "all", sendGroup: "country",
     displayCurrency: DEFAULT_DISPLAY_CURRENCY as DisplayCurrency,
@@ -675,12 +672,6 @@ export default function DashboardApp(props: Props = {}) {
   const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
     enabled: screen === "transactions",
     refetchIntervalMs: orderTrackingActive ? 5_000 : 15_000,
-  });
-  const invoicesQuery = useQuery({
-    queryKey: ["invoices"],
-    queryFn: () => invoicesApi.list(),
-    retry: false,
-    enabled: screen === "invoices" || state.modal === "invoice",
   });
   const apiKeysQuery = useQuery({
     queryKey: ["api-keys"],
@@ -1979,7 +1970,6 @@ export default function DashboardApp(props: Props = {}) {
       newCardPhone: holder.phone,
     });
   };
-  const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
   const goVerification = () => setState({ screen: "verification", sidebarOpen: false, moreOpen: false });
   const openModalKyb = () => {
     if (meQuery.isLoading || meQuery.isPending) return;
@@ -3300,23 +3290,6 @@ export default function DashboardApp(props: Props = {}) {
     queryClient.invalidateQueries({ queryKey: ["api-keys"] });
   };
 
-  const setInvClient = (e) => setState({ invClient: e.target.value });
-  const setInvAmount = (e) => setState({ invAmount: e.target.value });
-  const submitInvoice = async () => {
-    if (!state.invClient.trim() || !state.invAmount.trim()) return;
-    setState({ invoiceSubmitting: true, invoiceError: "" });
-    try {
-      const draft = await invoicesApi.createDraft(null, buildSimpleDraftPayload(state.invClient, state.invAmount));
-      await invoicesApi.issue(draft.id, "none");
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      setState({ invoiceDone: true, invoiceSubmitting: false });
-    } catch (err) {
-      setState({
-        invoiceSubmitting: false,
-        invoiceError: err instanceof ApiRequestError ? err.message : "Couldn't create the invoice. Try again.",
-      });
-    }
-  };
   const setBalanceView = (v) => () => setState({ balanceView: v });
   const setDisplayCurrency = (currency: string) => {
     const code = currency.trim().toUpperCase();
@@ -3810,12 +3783,6 @@ export default function DashboardApp(props: Props = {}) {
       : s.balanceView === "fiat"
         ? fiatLedgerItems
         : [...fiatLedgerItems, ...stableLedgerItems];
-  const pendingLedgerItems = homeAvailableLedgerItems
-    .map((item) => ({
-      currency: item.currency,
-      balance: pendingBalanceFromAccount(item.balance),
-    }))
-    .filter((item) => item.balance !== null);
   const homeFxRates = mergeExchangeRates(
     bootstrapQuery.data?.fxRates,
     summaryQuery.data?.fx_rates,
@@ -3848,20 +3815,14 @@ export default function DashboardApp(props: Props = {}) {
     displayCurrency === "USD"
       ? null
       : formatUsdEquivalentSub(homeUsdTotal.total);
-  const homePendingUsd = totalBalanceInDisplayCurrency(
-    pendingLedgerItems,
-    "USD",
-    homeFxRates,
-    { maximumFractionDigits: 0 },
-  );
-  const homePendingAmountComplete =
-    homeAvailableLedgerItems.length > 0 &&
-    pendingLedgerItems.length === homeAvailableLedgerItems.length;
-  const awaitingSettlementLabel = homePendingAmountComplete
-    ? (homePendingUsd.total == null
-        ? "—"
-        : `$${homePendingUsd.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`)
-    : "—";
+  // Sourced from processing-status transactions (same data the "Pending"
+  // filter on Transactions uses) rather than account balance deltas — a
+  // pending deposit often hasn't moved an account's current/available
+  // balance yet, so the delta-based total silently missed real pending rows.
+  const homePendingUsd = transactionsQuery.isSuccess
+    ? pendingAmountFromTransactions(transactionsQuery.data?.items ?? [], homeFxRates)
+    : null;
+  const awaitingSettlementLabel = formatHomeCashFlowUsd(homePendingUsd);
   // Fiat IBAN chips + partner stablecoin account chips.
   const fiatBalanceRows = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
@@ -4219,16 +4180,6 @@ export default function DashboardApp(props: Props = {}) {
       ...(unmatchedOnchainRows.length ? ["USDC"] : []),
     ]),
   ).sort();
-  const invoices = (invoicesQuery.data?.items ?? []).map((inv) => {
-    const [l, c, soft] = STATUS_MAP[inv.status] || ["Draft", "var(--muted)", "var(--surface2)"];
-    const clientName = inv.payload?.client_name || "—";
-    const lineItem = inv.payload?.line_items?.[0];
-    const amount = lineItem
-      ? `${inv.payload.currency} ${lineItem.unit_amount ?? lineItem.amount ?? ""}`.trim()
-      : inv.payload?.currency || "";
-    return { id: inv.invoice_number, client: clientName, amount, statusLabel: l, statusColor: c, statusSoft: soft };
-  });
-
   // Reports screen hosts Statements (period PDF/CSV reconcile).
 
   // Single KYB case — no tier ladder. Submit once; then show clear compliance feedback.
@@ -4376,7 +4327,7 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", invoice: "Create invoice", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
@@ -4471,7 +4422,6 @@ export default function DashboardApp(props: Props = {}) {
   const isModalCloseAccount = s.modal === "closeAccount";
   const isModalCardDetail = s.modal === "cardDetail";
   const isModalNewCard = s.modal === "newCard";
-  const isModalInvoice = s.modal === "invoice";
   const isModalKyb = s.modal === "kyb";
   const isModalMfaSetup = s.modal === "mfaSetup";
   const isModalMfaDisable = s.modal === "mfaDisable";
@@ -5105,13 +5055,6 @@ export default function DashboardApp(props: Props = {}) {
     meQuery.data?.business?.legal_name ||
     meQuery.data?.business?.name ||
     "—";
-  const invClient = s.invClient;
-  const invAmount = s.invAmount;
-  const invoiceNotDone = !s.invoiceDone;
-  const invoiceDone = s.invoiceDone;
-  const invoiceError = s.invoiceError;
-  const invoiceSubmitting = s.invoiceSubmitting;
-
   // Fail closed: handle /me errors before cached data, and require success
   // so a non-session failure cannot keep painting a stale shell.
   if (meQuery.isError) {
@@ -5556,15 +5499,12 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
-<div data-screen-label="Invoices" style={{display: "flex", flexDirection: "column", gap: "14px"}}>
-<div className="ep-team__preview" role="note">
-<span className="ep-team__preview-badge">Early access</span>
-<span className="ep-team__preview-text">Invoicing is live for drafts and issue — richer workflows are on the way.</span>
-</div>
-<div style={{display: "flex", justifyContent: "flex-end"}}>
-<button onClick={openModalInvoice} style={{padding: "10px 18px", borderRadius: "999px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>+ New invoice</button>
-</div>
-<InvoiceList items={invoices} emptyLabel={invoicesQuery.isLoading ? "Loading…" : "No invoices yet"} />
+<div data-screen-label="Invoices" className="ep-invoices">
+<ComingSoonPanel
+  featureKey="invoices"
+  title="Invoices"
+  description="Requesting and tracking incoming payments isn’t live yet. Join the waitlist and we’ll email you when it’s ready."
+/>
 </div>
 </>) : null}
 
@@ -6566,25 +6506,6 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   <div className="ep-cards__note">Credentials were not returned (same reference replay). Use Manage → eye icon to reveal.</div>
 )}
 <button type="button" onClick={closeModal} className="ep-cards__modal-secondary">Done</button>
-</div>
-</>) : null}
-</>) : null}
-
-{(isModalInvoice) ? (<>
-{(invoiceNotDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
-<div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Client name</span><input value={invClient} onChange={setInvClient} placeholder="e.g. Acme GmbH" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
-<div><span style={{fontSize: "11px", fontWeight: "700", color: "var(--muted2)", textTransform: "uppercase"}}>Amount (USD)</span><input value={invAmount} onChange={setInvAmount} placeholder="0.00" style={{width: "100%", marginTop: "6px", padding: "12px 14px", borderRadius: "14px", border: "1.5px solid var(--input-border)", background: "var(--input-bg)", outline: "none", fontSize: "13.5px", color: "var(--ink)", boxSizing: "border-box"}} /></div>
-{invoiceError ? (<div style={{padding: "10px 12px", borderRadius: "12px", background: "var(--red-tint)", color: "var(--red)", fontSize: "11.5px", fontWeight: 600}}>{invoiceError}</div>) : null}
-<button onClick={submitInvoice} disabled={invoiceSubmitting} style={{padding: "13px", borderRadius: "14px", border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontSize: "13.5px", fontWeight: "700", cursor: invoiceSubmitting ? "wait" : "pointer", opacity: invoiceSubmitting ? 0.7 : 1}}>{invoiceSubmitting ? "Creating…" : "Create & get link"}</button>
-</div>
-</>) : null}
-{(invoiceDone) ? (<>
-<div style={{display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", padding: "12px 0 6px", textAlign: "center"}}>
-<span style={{width: "48px", height: "48px", borderRadius: "50%", background: "var(--indigo-tint)", color: "var(--indigo-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px"}}>✓</span>
-<span style={{fontFamily: "'Space Grotesk',sans-serif", fontSize: "14.5px", fontWeight: "700"}}>Invoice created</span>
-<span style={{fontSize: "12.5px", color: "var(--muted)"}}>{invClient} will get a payment link by email.</span>
-<button onClick={closeModal} style={{marginTop: "6px", padding: "10px 20px", borderRadius: "999px", border: "none", background: "var(--surface2)", color: "var(--ink)", fontSize: "12.5px", fontWeight: "700", cursor: "pointer"}}>Done</button>
 </div>
 </>) : null}
 </>) : null}
