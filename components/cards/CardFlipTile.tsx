@@ -5,7 +5,7 @@ import { formatCardPan, formatMaskedPan } from "@/lib/services/cards";
 import { cardShadow, DEFAULT_CARD_COLOR, type CardColor } from "@/lib/services/cardColors";
 
 /** Mboka mark (44×44). Inherits the card's ink via currentColor. */
-export function CardMbokaMark({ size = 22 }: { size?: number }) {
+export function CardMbokaMark({ size = "1.7em" }: { size?: number | string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 44 44" aria-hidden focusable="false">
       <path d="M17.8 17.8H35.1V35.1H17.8Z" fill="currentColor" fillOpacity="0.45" />
@@ -30,6 +30,58 @@ function CardBackdrop() {
         <path d="M58 6H134V44.9L107 82H58Z" fill="currentColor" />
       </svg>
     </>
+  );
+}
+
+function CardFrontContent({
+  label,
+  last4,
+  badge,
+}: {
+  label: string;
+  last4: string;
+  badge?: string;
+}) {
+  return (
+    <>
+      <CardBackdrop />
+      <span className="ep-card-face__brandline">
+        <CardMbokaMark />
+        MBOKA
+      </span>
+      {badge ? <span className="ep-card-face__status">{badge}</span> : null}
+      <span className="ep-card-face__identity">
+        <span className="ep-card-face__label" title={label}>
+          {label}
+        </span>
+        <span className="ep-card-face__last4">•••• {last4 || "····"}</span>
+      </span>
+    </>
+  );
+}
+
+/**
+ * Static front face for previews (e.g. the create-card modal): same plastic,
+ * no flip, no buttons.
+ */
+export function CardPreview({
+  label,
+  last4 = "",
+  color = DEFAULT_CARD_COLOR,
+}: {
+  label: string;
+  last4?: string;
+  color?: CardColor;
+}) {
+  return (
+    <div className="ep-card-preview" role="img" aria-label={`Card preview: ${label}, ${color.name}`}>
+      <div
+        className="ep-card-face"
+        style={{ background: color.bg, color: color.ink, boxShadow: cardShadow(color) }}
+      >
+        <CardFrontContent label={label} last4={last4} />
+      </div>
+    </div>
   );
 }
 
@@ -107,6 +159,8 @@ export default function CardFlipTile({
       <button
         type="button"
         className="ep-card-face__value ep-card-face__value--copy"
+        data-copied={copiedField === key ? "true" : "false"}
+        title={`Copy ${fieldLabel}`}
         onClick={(e) => {
           // The back face flips the card home on click; a copy must not.
           e.stopPropagation();
@@ -149,18 +203,11 @@ export default function CardFlipTile({
                 : undefined
           }
         >
-          <CardBackdrop />
-          <span className="ep-card-face__brandline">
-            <CardMbokaMark />
-            MBOKA
-          </span>
-          {!frozen && status !== "active" ? (
-            <span className="ep-card-face__status">{statusLabel}</span>
-          ) : null}
-          <span className="ep-card-face__identity">
-            <span className="ep-card-face__label">{label}</span>
-            <span className="ep-card-face__last4">•••• {last4 || "····"}</span>
-          </span>
+          <CardFrontContent
+            label={label}
+            last4={last4}
+            badge={!frozen && status !== "active" ? statusLabel : undefined}
+          />
           {frozen ? (
             <span className="ep-card-face__frozen">
               <span className="ep-card-face__frozen-pill">{statusLabel || "Frozen"}</span>
@@ -177,6 +224,10 @@ export default function CardFlipTile({
           inert={!flipped ? true : undefined}
         >
           <CardBackdrop />
+          {/* Visible confirmation: a copy that shows nothing reads as broken. */}
+          <span className="ep-card-face__copied" data-show={copiedLabel ? "true" : "false"} aria-hidden>
+            {copiedLabel ? `${copiedLabel} copied` : ""}
+          </span>
           <div className="ep-card-face__details">
             <div className="ep-card-face__field">
               <span className="ep-card-face__field-label">Card number</span>
