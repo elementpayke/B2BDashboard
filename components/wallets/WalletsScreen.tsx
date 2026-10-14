@@ -265,7 +265,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
 
       {showAccountsRow ? (
         <div
-          className="ep-wallets__strip ep-scroll-hint"
+          className="ep-wallets__strip"
           aria-busy={p.accountsLoading || Boolean(p.accountsPendingMore)}
           aria-label="Currency accounts"
         >
@@ -315,18 +315,6 @@ export default function WalletsScreen(p: WalletsScreenProps) {
               {p.accountsPendingMore ? <AccountCardSkeleton /> : null}
             </>
           )}
-          {p.eligible && !p.accountsLoading && p.canCreateBank !== false ? (
-            <button
-              type="button"
-              onClick={p.openCreateAccount("bank")}
-              className="ep-wallets__new-card"
-            >
-              <span className="ep-wallets__new-icon" aria-hidden>
-                +
-              </span>
-              <span className="ep-wallets__new-label">New account</span>
-            </button>
-          ) : null}
         </div>
       ) : null}
 

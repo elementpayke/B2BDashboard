@@ -11,6 +11,33 @@ export type AccountDetailSummaryLine = {
 const BALANCE_RANGES = ["7 Days", "30 Days", "90 Days"] as const;
 type BalanceRange = (typeof BALANCE_RANGES)[number];
 
+const ACTION_ICON_PATHS: Record<"send" | "fund" | "convert" | "details" | "more", string[]> = {
+  send: ["M21.5 2.5L11 13", "M21.5 2.5L15 21l-4-8-8-4 18.5-6.5z"],
+  fund: ["M12 5v14", "M5 12h14"],
+  convert: ["M7 7h11l-3-3", "M17 17H6l3 3"],
+  details: ["M12 11v6", "M12 7.5v.01", "M3.5 12a8.5 8.5 0 1017 0 8.5 8.5 0 00-17 0z"],
+  more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+};
+
+function ActionIcon({ name }: { name: keyof typeof ACTION_ICON_PATHS }) {
+  return (
+    <span className="ep-acct-detail__action-icon" aria-hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        {ACTION_ICON_PATHS[name].map((d) => (
+          <path
+            key={d}
+            d={d}
+            stroke="currentColor"
+            strokeWidth={name === "more" ? 3 : 2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+      </svg>
+    </span>
+  );
+}
+
 export type AccountDetailScreenProps = {
   name: string;
   currency: string;
@@ -38,9 +65,9 @@ export type AccountDetailScreenProps = {
   onOpenDetails: () => void;
   onFund: () => void;
   onSend: () => void;
-  /** Same-currency VA→VA move (fiat). */
+  /** Same-currency VA→VA move (fiat). Offered from the "More" menu. */
   onMove?: () => void;
-  /** External bank payout (fiat). */
+  /** External bank payout (fiat). Offered from the "More" menu. */
   onPayout?: () => void;
   onConvert?: () => void;
   onCloseAccount?: () => void;
@@ -139,10 +166,13 @@ export default function AccountDetailScreen({
           <div className="ep-acct-detail__actions" role="group" aria-label="Account actions">
             <button
               type="button"
-              onClick={onOpenDetails}
-              className="ep-acct-detail__action"
+              onClick={onSend}
+              className="ep-acct-detail__action ep-acct-detail__action--primary"
+              disabled={!canSend}
+              title={!canSend ? closedHint : undefined}
             >
-              Details
+              <ActionIcon name="send" />
+              <span className="ep-acct-detail__action-label">Send</span>
             </button>
             <button
               type="button"
@@ -151,51 +181,18 @@ export default function AccountDetailScreen({
               disabled={!canFund}
               title={!canFund ? fundHint : undefined}
             >
-              Fund <span aria-hidden>＋</span>
+              <ActionIcon name="fund" />
+              <span className="ep-acct-detail__action-label">Fund</span>
             </button>
             {canConvert && onConvert ? (
-              <button
-                type="button"
-                onClick={onConvert}
-                className="ep-acct-detail__action"
-              >
-                Convert
+              <button type="button" onClick={onConvert} className="ep-acct-detail__action">
+                <ActionIcon name="convert" />
+                <span className="ep-acct-detail__action-label">Convert</span>
               </button>
             ) : null}
-            {onMove ? (
-              <button type="button" onClick={onMove} className="ep-acct-detail__action">
-                Move
-              </button>
-            ) : null}
-            {onPayout ? (
-              <button type="button" onClick={onPayout} className="ep-acct-detail__action">
-                Payout
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onSend}
-              className="ep-acct-detail__action ep-acct-detail__action--primary"
-              disabled={!canSend}
-              title={!canSend ? closedHint : undefined}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M21.5 2.5L11 13"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M21.5 2.5L15 21l-4-8-8-4 18.5-6.5z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Send
+            <button type="button" onClick={onOpenDetails} className="ep-acct-detail__action">
+              <ActionIcon name="details" />
+              <span className="ep-acct-detail__action-label">Details</span>
             </button>
             <div className="ep-acct-detail__more-wrap">
               <button
@@ -206,7 +203,10 @@ export default function AccountDetailScreen({
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((open) => !open)}
               >
-                ⋯
+                <ActionIcon name="more" />
+                <span className="ep-acct-detail__action-label" aria-hidden>
+                  More
+                </span>
               </button>
               {menuOpen ? (
                 <>
@@ -215,7 +215,45 @@ export default function AccountDetailScreen({
                     onClick={() => setMenuOpen(false)}
                     aria-hidden
                   />
-                  <div className="ep-acct-detail__menu" role="menu" aria-label="Account actions">
+                  <div className="ep-acct-detail__menu" role="menu" aria-label="More account actions">
+                    {/* Less common ways to move money out live here so the main
+                        row stays to one action per job (Send covers payouts). */}
+                    {onMove ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="ep-acct-detail__menu-item"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onMove();
+                        }}
+                      >
+                        <span className="ep-acct-detail__menu-copy">
+                          <span className="ep-acct-detail__menu-label">Move between accounts</span>
+                          <span className="ep-acct-detail__menu-hint">
+                            Same-currency transfer to another of your accounts
+                          </span>
+                        </span>
+                      </button>
+                    ) : null}
+                    {onPayout ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="ep-acct-detail__menu-item"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onPayout();
+                        }}
+                      >
+                        <span className="ep-acct-detail__menu-copy">
+                          <span className="ep-acct-detail__menu-label">Bank payout</span>
+                          <span className="ep-acct-detail__menu-hint">
+                            Pay out to an external bank with this account&apos;s partner methods
+                          </span>
+                        </span>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       role="menuitem"
