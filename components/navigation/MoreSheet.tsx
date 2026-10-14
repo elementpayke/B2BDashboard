@@ -112,7 +112,7 @@ export default function MoreSheet({
               >
                 <span aria-hidden>{item.icon}</span>
                 <span>{item.label}</span>
-                {item.key === "reports" ? (
+                {item.key === "reports" || item.key === "invoices" ? (
                   <span className="ep-more-sheet__soon">Soon</span>
                 ) : (
                   <span aria-hidden>›</span>
