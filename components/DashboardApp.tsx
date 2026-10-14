@@ -5247,13 +5247,9 @@ export default function DashboardApp(props: Props = {}) {
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
 <div className="ep-cards__head">
-<div className="ep-cards__head-copy">
-<h2 className="ep-cards__title">Cards</h2>
-<p className="ep-cards__subtitle">Virtual USD cards for team spend</p>
-</div>
+<p className="ep-cards__funding-hint">{cardsFundingHint}</p>
 <button type="button" onClick={openNewCard} className="ep-cards__cta" disabled={!usdFunding}>+ New card</button>
 </div>
-<p className="ep-cards__funding-hint">{cardsFundingHint}</p>
 {cardsError ? (
   <div className="ep-cards__preview" role="alert">
     <span className="ep-cards__preview-badge">{cardsErrorBadge}</span>

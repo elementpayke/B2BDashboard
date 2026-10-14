@@ -8299,17 +8299,9 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__head {
-  align-items: flex-start;
+  align-items: center;
 }
 
-.ep-cards__head-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.ep-cards__title,
 .ep-team__title,
 .ep-developer__title {
   margin: 0;
@@ -8319,21 +8311,6 @@ select.ep-wallets-create__control {
   letter-spacing: 0.04em;
   color: var(--muted);
   text-transform: uppercase;
-}
-
-.ep-cards__title {
-  font-size: clamp(22px, 2.4vw, 28px);
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  text-transform: none;
-}
-
-.ep-cards__subtitle {
-  margin: 0;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13.5px;
-  line-height: 1.4;
-  color: var(--muted);
 }
 
 .ep-cards__cta,
