@@ -133,10 +133,10 @@ describe("currencyOptionsFor", () => {
 
   it("appends a backend-declared currency with no local display metadata, using the raw code", async () => {
     const { currencyOptionsFor } = await import("./depositAccounts");
-    const options = currencyOptionsFor(["USD", "EUR", "XOF"]);
-    expect(options.find((o) => o.code === "XOF")).toEqual({
-      code: "XOF",
-      label: "XOF",
+    const options = currencyOptionsFor(["USD", "EUR", "PHP"]);
+    expect(options.find((o) => o.code === "PHP")).toEqual({
+      code: "PHP",
+      label: "PHP",
       iso: null,
     });
   });
