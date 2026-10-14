@@ -1999,6 +1999,19 @@ export default function DashboardApp(props: Props = {}) {
     }
     setState({ modal: "kyb" });
   };
+  const openBankAccountFlow = () => {
+    // Wait for /auth/me before treating KYB as pending — otherwise approved
+    // businesses get bounced to verification while the profile is still loading.
+    if (meQuery.isLoading || meQuery.isPending) return;
+    const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    if (!isKybApproved(status)) {
+      goVerification();
+      if (canOpenKybWizard(status)) openModalKyb();
+      return;
+    }
+    navigateToScreen("wallets");
+    openCreateAccount("bank")();
+  };
   const guardMoneyModal = (name: string) => () => {
     // Wait for /auth/me before treating KYB as pending — otherwise approved
     // businesses get bounced to verification while the profile is still loading.
@@ -3866,7 +3879,7 @@ export default function DashboardApp(props: Props = {}) {
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payouts", icon: "⇉", desc: STELLAR_BULK_PAYOUTS_ENABLED ? "CSV disbursements from your Stellar wallet." : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Open bank account", icon: "🏦", desc: "Get an IBAN or local account for deposits.", open: openBankAccountFlow, iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const liveRates = liveRateRowsFromSummary(homeFxRates);
