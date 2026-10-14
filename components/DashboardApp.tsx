@@ -210,7 +210,6 @@ import {
   cardsApi,
   cardholderPrefillFromKybProfile,
   describeCardStatus,
-  describeUsdFunding,
   describeUsdFundingIssueNote,
   formatCardExpiry,
   formatCardPan,
@@ -3038,10 +3037,6 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsError: "",
     });
-  const openFundCardDirect = (_cardId: string) => (e) => {
-    e.stopPropagation();
-    fundCard();
-  };
   const openInvite = () =>
     setState({
       inviteOpen: true,
@@ -4160,14 +4155,25 @@ export default function DashboardApp(props: Props = {}) {
       brand,
       balance: usdSpendLabel,
       color: cardColor(cardColorKeys[c.id]),
-      status: failed ? "failed" : frozen ? "frozen" : "active",
+      status: (failed ? "failed" : frozen ? "frozen" : "active") as "failed" | "frozen" | "active",
       statusLabel: closed ? "Closed" : failed ? "Failed" : describeCardStatus(c.status),
       actionDisabled: failed,
       actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
-      fund: openFundCardDirect(c.id),
       manage: openCardDetail(c.id),
     };
   });
+  // Usable cards first, then frozen, then closed/failed at the end.
+  const cardRank = { active: 0, frozen: 1, failed: 2 } as const;
+  cards.sort((a, b) => cardRank[a.status] - cardRank[b.status]);
+  const activeCardCount = cards.filter((c) => c.status === "active").length;
+  const cardsSummarySub = usdFunding
+    ? [
+        cards.length
+          ? `${activeCardCount} active card${activeCardCount === 1 ? "" : "s"}`
+          : "No cards yet",
+        `USD${usdFunding.accountMask ? ` ${usdFunding.accountMask}` : ""}`,
+      ].join(" · ")
+    : "Cards spend from your active USD deposit account balance.";
   const cardsLoading = usdFundingQuery.isLoading || issuedCardsQuery.isLoading;
   const cardsMissingUsd = !usdFunding && !usdFundingQuery.isLoading && !usdFundingQuery.isError;
   const cardsError =
@@ -4181,7 +4187,6 @@ export default function DashboardApp(props: Props = {}) {
         ? "Open an active USD deposit account to issue cards."
         : "";
   const cardsErrorBadge = cardsMissingUsd ? "USD required" : "Error";
-  const cardsFundingHint = describeUsdFunding(usdFunding);
   const txFilters = PRIMARY_TX_FILTERS.map((filter) => ({
     key: filter.key,
     label: filter.label,
@@ -5278,8 +5283,17 @@ export default function DashboardApp(props: Props = {}) {
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
 <div className="ep-cards__head">
-<p className="ep-cards__funding-hint">{cardsFundingHint}</p>
+{/* Every card spends one shared USD balance, so it — and topping it up —
+    lives here once rather than repeated under each card. */}
+<div className="ep-cards__summary">
+<span className="ep-cards__summary-label">Card balance</span>
+<span className="ep-cards__summary-amount">{usdFunding ? usdSpendLabel : "—"}</span>
+<span className="ep-cards__summary-sub">{cardsSummarySub}</span>
+</div>
+<div className="ep-cards__head-actions">
+<button type="button" onClick={fundCard} className="ep-cards__cta ep-cards__cta--secondary" disabled={!usdFunding}>Top up</button>
 <button type="button" onClick={openNewCard} className="ep-cards__cta" disabled={!usdFunding}>+ New card</button>
+</div>
 </div>
 {cardsError ? (
   <div className="ep-cards__preview" role="alert">
@@ -5314,12 +5328,17 @@ export default function DashboardApp(props: Props = {}) {
   actionDisabledReason={c.actionDisabledReason}
 />
 <div className="ep-cards__below">
-<span className="ep-cards__balance">{c.balance}</span>
+<span className="ep-cards__state" data-state={c.status}>{c.statusLabel}</span>
+{c.actionDisabled ? null : (
 <div className="ep-cards__pills">
-<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__pill" disabled={c.actionDisabled || c.status === "frozen"} aria-pressed={!!s.cardTileFlipped[c.id]} title={c.actionDisabled ? c.actionDisabledReason : c.status === "frozen" ? "Unfreeze this card to view its details" : undefined}>{s.cardTileFlipped[c.id] ? "Hide" : "Details"}</button>
-<button type="button" onClick={c.fund} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
-<button type="button" onClick={c.manage} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
+{c.status === "frozen" ? (
+<button type="button" onClick={() => void toggleFreezeCard(c.id)} className="ep-cards__pill" disabled={s.cardFreezeBusy && s.selectedCardId === c.id} title={s.cardFreezeError && s.selectedCardId === c.id ? s.cardFreezeError : undefined}>{s.cardFreezeBusy && s.selectedCardId === c.id ? "Unfreezing…" : "Unfreeze"}</button>
+) : (
+<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__pill" aria-pressed={!!s.cardTileFlipped[c.id]}>{s.cardTileFlipped[c.id] ? "Hide details" : "Details"}</button>
+)}
+<button type="button" onClick={c.manage} className="ep-cards__pill">Manage</button>
 </div>
+)}
 </div>
 </div>
 ))}

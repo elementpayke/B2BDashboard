@@ -143,7 +143,8 @@ export default function CardFlipTile({
   const faceStyle = {
     background: color.bg,
     color: color.ink,
-    boxShadow: cardShadow(color),
+    // A frozen card shouldn't glow in its colour under the frozen overlay.
+    boxShadow: frozen ? "0 18px 36px -24px rgba(19,17,38,.45)" : cardShadow(color),
   } as CSSProperties;
 
   const value = (field: string, text: string, fieldLabel: string, copyText?: string) => {
