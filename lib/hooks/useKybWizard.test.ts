@@ -199,9 +199,10 @@ describe("useKybWizard restore + submit poll", () => {
       ],
     };
     summary.mockResolvedValue({ profile: twoDirectors });
+    // Only director 2 has uploaded; the type-level `uploaded` flag must not mark director 1.
     listDocuments.mockResolvedValue({
       documents: [
-        { id: 9, provider_document_type: "identity", associate_ref_id: "a1", is_active: true },
+        { id: 9, provider_document_type: "identity", associate_ref_id: "a2", is_active: true },
       ],
     });
     documentRequirements.mockResolvedValue({
@@ -231,8 +232,8 @@ describe("useKybWizard restore + submit poll", () => {
       expect(result.current.docRows).toHaveLength(2);
     });
     expect(result.current.docRows.map((r) => [r.associateRefId, r.label, r.submitted])).toEqual([
-      ["a1", "Jane Doe — Officer ID", true],
-      ["a2", "John Roe — Officer ID", false],
+      ["a1", "Jane Doe — Officer ID", false],
+      ["a2", "John Roe — Officer ID", true],
     ]);
   });
 

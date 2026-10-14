@@ -108,16 +108,16 @@ function mapRequirementRows(
     d: KybDocumentRequirements["business_documents"][number],
     category: "business" | "shareholder",
     officer?: (typeof officers)[number],
-    officerIndex = 0,
   ): DocumentUploadState => {
     const type = d.type;
     const associateRefId = officer?.id;
-    // Docs uploaded before per-officer slots have no associate; they belong to officer 0.
+    // Type-level fallbacks (legacy docs without an associate, `d.uploaded`) can only be
+    // attributed safely when there is a single owner: the business, or one officer.
+    const soleOwner = !officer || officers.length === 1;
     const found =
       listed.get(docKey(type, associateRefId)) ??
-      (officerIndex === 0 ? listed.get(docKey(type)) : undefined);
-    const uploadedId =
-      found?.id ?? (officerIndex === 0 ? d.uploaded_doc_id ?? null : null);
+      (soleOwner ? listed.get(docKey(type)) : undefined);
+    const uploadedId = found?.id ?? (soleOwner ? d.uploaded_doc_id ?? null : null);
     const baseLabel = d.label?.trim() || labelForDocumentType(type);
     const name = officer ? `${officer.firstName} ${officer.lastName}`.trim() : "";
     const label = officers.length > 1 && name ? `${name} — ${baseLabel}` : baseLabel;
@@ -140,7 +140,7 @@ function mapRequirementRows(
       file: null,
       uploadedDocId: uploadedId,
       downloadable: !!(found?.downloadable ?? (uploadedId != null && d.uploaded)),
-      submitted: (officerIndex === 0 && !!d.uploaded) || uploadedId != null,
+      submitted: (soleOwner && !!d.uploaded) || uploadedId != null,
       uploading: false,
       error: "",
     };
@@ -148,8 +148,8 @@ function mapRequirementRows(
 
   return [
     ...reqs.business_documents.map((d) => mapDoc(d, "business")),
-    ...officers.flatMap((officer, i) =>
-      reqs.shareholder_documents.map((d) => mapDoc(d, "shareholder", officer, i)),
+    ...officers.flatMap((officer) =>
+      reqs.shareholder_documents.map((d) => mapDoc(d, "shareholder", officer)),
     ),
   ];
 }
