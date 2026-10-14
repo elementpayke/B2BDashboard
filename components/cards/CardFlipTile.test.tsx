@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import CardFlipTile, { shortExpiry } from "./CardFlipTile";
+import CardFlipTile, { CardPreview, shortExpiry } from "./CardFlipTile";
 import { cardColor } from "@/lib/services/cardColors";
 
 const baseProps = {
@@ -100,21 +100,24 @@ describe("CardFlipTile", () => {
     expect(onFlip).not.toHaveBeenCalled();
   });
 
-  it("announces a copy to screen readers only, with no visible chip", () => {
-    render(
+  it("confirms a copy visibly on the card and to screen readers", () => {
+    const { container } = render(
       <CardFlipTile {...baseProps} flipped secrets={revealed} copiedField="card:card_1:cvv" />,
     );
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("CVV copied");
-    expect(status).toHaveClass("ep-sr-only");
-    expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("CVV copied");
+    const chip = container.querySelector(".ep-card-face__copied")!;
+    expect(chip).toHaveAttribute("data-show", "true");
+    expect(chip).toHaveTextContent("CVV copied");
+    expect(screen.getByRole("button", { name: "Copy CVV" })).toHaveAttribute("data-copied", "true");
+    expect(screen.getByRole("button", { name: "Copy expiry" })).toHaveAttribute("data-copied", "false");
   });
 
-  it("ignores another card's copy when announcing", () => {
-    render(
+  it("ignores another card's copy", () => {
+    const { container } = render(
       <CardFlipTile {...baseProps} flipped secrets={revealed} copiedField="card:card_2:cvv" />,
     );
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(container.querySelector(".ep-card-face__copied")).toHaveAttribute("data-show", "false");
   });
 
   it("disables the front face and shows the disabled reason when actionDisabled", () => {
@@ -137,6 +140,14 @@ describe("CardFlipTile", () => {
     expect(onFlip).not.toHaveBeenCalled();
   });
 
+  it("drops the coloured glow on a frozen card", () => {
+    const { container } = render(
+      <CardFlipTile {...baseProps} status="frozen" statusLabel="Frozen" color={cardColor("marigold")} />,
+    );
+    const face = container.querySelector<HTMLElement>(".ep-card-flip__face--front")!;
+    expect(face.style.boxShadow).not.toMatch(/#FFB224|255, 178, 36/i);
+  });
+
   it("does not disable the front face while secrets are loading, so it can still flip back", () => {
     render(<CardFlipTile {...baseProps} flipped secretsBusy />);
     expect(screen.getByRole("button", { name: "Hide card details" })).not.toBeDisabled();
@@ -155,5 +166,17 @@ describe("shortExpiry", () => {
     expect(shortExpiry("09/29")).toBe("09/29");
     expect(shortExpiry(null)).toBeNull();
     expect(shortExpiry("bad")).toBeNull();
+  });
+});
+
+describe("CardPreview", () => {
+  it("shows the front face in the chosen colour with no controls", () => {
+    render(<CardPreview label="Travel" color={cardColor("plum")} />);
+    const preview = screen.getByRole("img", { name: "Card preview: Travel, Plum" });
+    expect(preview).toHaveTextContent("Travel");
+    expect(preview).toHaveTextContent("MBOKA");
+    expect(preview.querySelector("button")).toBeNull();
+    const face = preview.querySelector<HTMLElement>(".ep-card-face")!;
+    expect(face.style.background).toMatch(/74, 29, 110|#4a1d6e/i);
   });
 });

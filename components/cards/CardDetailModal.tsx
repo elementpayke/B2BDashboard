@@ -7,12 +7,7 @@ import {
   isCardFrozenStatus,
   type IssuedCard,
 } from "@/lib/services/cards";
-import {
-  CARD_COLORS,
-  DEFAULT_CARD_COLOR,
-  type CardColor,
-  type CardColorKey,
-} from "@/lib/services/cardColors";
+import { DEFAULT_CARD_COLOR, type CardColor } from "@/lib/services/cardColors";
 import CardFlipTile from "@/components/cards/CardFlipTile";
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import type { BusinessAddress } from "@/lib/services/kyb";
@@ -115,9 +110,6 @@ type Props = {
   accountLabel: string;
   balance: string;
   color?: CardColor;
-  colorBusy?: boolean;
-  colorError?: string;
-  onColorChange?: (key: CardColorKey) => void;
   billing: CardBillingAddress | null;
   recent?: ActivityItem[];
   secrets: { number: string; cvv: string } | null;
@@ -137,9 +129,6 @@ export default function CardDetailModal({
   accountLabel,
   balance,
   color = DEFAULT_CARD_COLOR,
-  colorBusy = false,
-  colorError = "",
-  onColorChange,
   billing,
   recent = [],
   secrets,
@@ -233,36 +222,6 @@ export default function CardDetailModal({
         <div className="ep-cards__note" role="alert" style={{ color: "var(--red)" }}>
           {freezeError}
         </div>
-      ) : null}
-
-      {onColorChange ? (
-        <fieldset className="ep-card-colors" disabled={colorBusy}>
-          <legend className="ep-card-colors__legend">
-            Card colour <span>{color.name}</span>
-          </legend>
-          <div className="ep-card-colors__grid" role="radiogroup" aria-label="Card colour">
-            {CARD_COLORS.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                role="radio"
-                aria-checked={c.key === color.key}
-                aria-label={c.name}
-                title={c.name}
-                className="ep-card-colors__swatch"
-                style={{ background: c.bg, color: c.ink }}
-                onClick={() => {
-                  if (c.key !== color.key) onColorChange(c.key);
-                }}
-              />
-            ))}
-          </div>
-          {colorError ? (
-            <p className="ep-card-colors__error" role="alert">
-              {colorError}
-            </p>
-          ) : null}
-        </fieldset>
       ) : null}
 
       <div className="ep-card-meta">

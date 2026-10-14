@@ -9110,11 +9110,83 @@ select.ep-wallets-create__control {
   }
 }
 
-.ep-cards__funding-hint {
-  margin: 0;
-  font-size: 12.5px;
+/* Cards header: the one shared balance + Top up / New card. */
+.ep-cards__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ep-cards__summary-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--muted);
-  line-height: 1.45;
+}
+
+.ep-cards__summary-amount {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.ep-cards__summary-sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ep-cards__head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Doubled class: .ep-cards__cta is declared later with the same weight. */
+.ep-cards__cta.ep-cards__cta--secondary {
+  background: var(--surface2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.ep-cards__cta.ep-cards__cta--secondary:hover:not(:disabled) {
+  background: var(--surface3);
+  filter: none;
+}
+
+/* Below each card: its state on the left, actions on the right. */
+.ep-cards__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-cards__state::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted2, var(--muted));
+}
+
+.ep-cards__state[data-state="active"]::before {
+  background: var(--success, #16a34a);
+}
+
+.ep-cards__state[data-state="frozen"]::before {
+  background: var(--indigo);
+}
+
+.ep-cards__state[data-state="failed"]::before {
+  background: var(--red, #dc2626);
 }
 
 .ep-cards__empty {
@@ -9371,8 +9443,8 @@ select.ep-wallets-create__control {
 
 .ep-cards__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
-  gap: 26px 22px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 24px 20px;
   width: 100%;
 }
 
@@ -9590,16 +9662,6 @@ select.ep-wallets-create__control {
   min-width: 0;
 }
 
-.ep-cards__balance {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .ep-cards__pills {
   display: flex;
   gap: 6px;
@@ -9607,14 +9669,14 @@ select.ep-wallets-create__control {
 }
 
 .ep-cards__pill {
-  padding: 8px 13px;
-  min-height: 34px;
+  padding: 7px 12px;
+  min-height: 32px;
   border-radius: 999px;
   border: 1px solid var(--glass-border);
   background: var(--surface2);
   color: var(--ink);
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -9646,16 +9708,16 @@ select.ep-wallets-create__control {
   }
 
   .ep-cards__head {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .ep-cards__cta {
     width: 100%;
   }
 
-  .ep-cards__head .ep-cards__cta {
-    width: auto;
-    margin-left: auto;
+  .ep-cards__head-actions .ep-cards__cta {
+    flex: 1;
   }
 }
 
@@ -9712,9 +9774,21 @@ select.ep-wallets-create__control {
 
 /* ── Virtual card (Cards design spec) ─────────────────────────────────── */
 
+/* Card text and padding scale with the card's own width (cqi), so the name
+   sits the same in the grid, the Manage modal and the create preview. */
+.ep-card-flip,
+.ep-card-preview {
+  container-type: inline-size;
+  width: 100%;
+}
+
+.ep-card-preview .ep-card-face {
+  position: relative;
+  aspect-ratio: 1.586;
+}
+
 .ep-card-flip {
   perspective: 1400px;
-  width: 100%;
   transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
@@ -9752,6 +9826,21 @@ select.ep-wallets-create__control {
   inset: 0;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  /* Hide the turned-away face outright half-way through the flip. Safari
+     (iOS especially) hit-tests 3D faces unreliably even with pointer-events
+     off; a visibility:hidden face can never take a tap. */
+  transition: visibility 0s linear 0.35s;
+}
+
+.ep-card-flip__inner[data-flipped="true"] .ep-card-flip__face--front,
+.ep-card-flip__inner:not([data-flipped="true"]) .ep-card-flip__face--back {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-card-flip__face {
+    transition: none;
+  }
 }
 
 /* backface-visibility hides a face but does not stop it taking clicks: the
@@ -9786,7 +9875,7 @@ select.ep-wallets-create__control {
   margin: 0;
   border: none;
   border-radius: 20px;
-  padding: 20px 22px;
+  padding: clamp(14px, 6cqi, 22px) clamp(16px, 6.6cqi, 24px);
   font: inherit;
   text-align: left;
 }
@@ -9827,9 +9916,9 @@ button.ep-card-face:focus-visible {
 .ep-card-face__brandline {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.55em;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
+  font-size: clamp(10px, 3.2cqi, 12px);
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -9849,13 +9938,15 @@ button.ep-card-face:focus-visible {
 .ep-card-face__identity {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.4em;
   min-width: 0;
+  /* Keep a long name clear of the background mark's right edge. */
+  max-width: 88%;
 }
 
 .ep-card-face__label {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 23px;
+  font-size: clamp(15px, 5.4cqi, 20px);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.1;
@@ -9866,7 +9957,7 @@ button.ep-card-face:focus-visible {
 
 .ep-card-face__last4 {
   font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 13px;
+  font-size: clamp(11px, 3.3cqi, 12.5px);
   letter-spacing: 0.12em;
   opacity: 0.82;
 }
@@ -9896,12 +9987,12 @@ button.ep-card-face:focus-visible {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: clamp(8px, 3.6cqi, 14px);
 }
 
 .ep-card-face__field-row {
   display: flex;
-  gap: 28px;
+  gap: clamp(18px, 7cqi, 28px);
 }
 
 .ep-card-face__field {
@@ -9913,7 +10004,7 @@ button.ep-card-face:focus-visible {
 
 .ep-card-face__field-label {
   font-family: 'DM Sans', sans-serif;
-  font-size: 10.5px;
+  font-size: clamp(9px, 2.7cqi, 10px);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -9928,7 +10019,7 @@ button.ep-card-face:focus-visible {
   background: none;
   color: inherit;
   font-family: 'DM Mono', ui-monospace, monospace;
-  font-size: 13.5px;
+  font-size: clamp(12px, 3.8cqi, 14px);
   letter-spacing: 0.04em;
   line-height: 1.3;
   text-align: left;
@@ -9937,7 +10028,39 @@ button.ep-card-face:focus-visible {
 
 .ep-card-face__value--copy {
   cursor: copy;
-  transition: opacity 0.15s ease;
+  /* A finger-sized target without moving the text. */
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: 8px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ep-card-face__value--copy[data-copied="true"] {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.ep-card-face__copied {
+  position: absolute;
+  top: clamp(12px, 5cqi, 20px);
+  right: clamp(12px, 5.5cqi, 22px);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: #131126;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.ep-card-face__copied[data-show="true"] {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .ep-card-face__value--copy:hover {
@@ -9950,76 +10073,157 @@ button.ep-card-face:focus-visible {
   border-radius: 4px;
 }
 
-/* Card colour picker (Manage modal). */
-.ep-card-colors {
+/* Create-card modal: live preview, round colour swatches, name. */
+.ep-card-create {
+  gap: 16px;
+}
+
+.ep-card-create .ep-card-preview {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.ep-card-swatches {
+  display: grid;
+  /* Twelve in one row when there's room; two even rows of six otherwise. */
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 8px;
+  justify-items: center;
+  max-width: 460px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 479px) {
+  .ep-card-swatches {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    max-width: 300px;
+    gap: 12px 8px;
+  }
+}
+
+.ep-card-swatches__swatch {
+  width: 100%;
+  max-width: 32px;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ep-card-swatches__swatch:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+
+.ep-card-swatches__swatch[aria-checked="true"] {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--indigo);
+}
+
+.ep-card-swatches__swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--indigo);
+}
+
+.ep-card-swatches__swatch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ep-card-create__name {
+  display: block;
+}
+
+.ep-card-create__holder {
   margin: 0;
   padding: 0;
   border: none;
   min-width: 0;
 }
 
-.ep-card-colors__legend {
+.ep-card-create__holder-title {
   padding: 0;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--ink);
-}
-
-.ep-card-colors__legend span {
-  margin-left: 6px;
-  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
-.ep-card-colors__grid {
+.ep-card-create__holder-grid {
   display: grid;
-  /* 12 colours → two even rows of six at any width. */
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 10px;
 }
 
-.ep-card-colors__swatch {
-  aspect-ratio: 1.586;
-  min-height: 28px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
-  cursor: pointer;
-  position: relative;
+.ep-card-create__holder-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
 }
 
-.ep-card-colors__swatch[aria-checked="true"] {
-  outline: 2px solid var(--indigo);
-  outline-offset: 2px;
+.ep-card-create__holder-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.ep-card-colors__swatch[aria-checked="true"]::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  transform: translate(-50%, -50%);
+.ep-card-create__holder-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
-.ep-card-colors__swatch:focus-visible {
-  outline: 2px solid var(--indigo);
-  outline-offset: 2px;
+.ep-card-create__holder-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ep-card-colors:disabled .ep-card-colors__swatch {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-.ep-card-colors__error {
-  margin: 8px 0 0;
+.ep-card-create__holder-edit {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12px;
-  color: var(--red);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ep-card-create__submit {
+  flex: none;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 999px;
+}
+
+.ep-card-create__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ep-card-create__funding {
+  margin: -4px 0 0;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .ep-card-face__actions {

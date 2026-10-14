@@ -152,6 +152,7 @@ import {
   type CatalogCorridorCountry,
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
+import { copyText } from "@/lib/clipboard";
 import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
@@ -213,7 +214,6 @@ import {
   cardsApi,
   cardholderPrefillFromKybProfile,
   describeCardStatus,
-  describeUsdFunding,
   describeUsdFundingIssueNote,
   formatCardExpiry,
   formatCardPan,
@@ -242,7 +242,8 @@ import CardDetailModal, {
   billingAddressFromKyb,
 } from "@/components/cards/CardDetailModal";
 import CardBrandMark from "@/components/cards/CardBrandMark";
-import CardFlipTile from "@/components/cards/CardFlipTile";
+import CardFlipTile, { CardPreview } from "@/components/cards/CardFlipTile";
+import CardColorPicker from "@/components/cards/CardColorPicker";
 import { listCardColors, saveCardColor, type CardColorMap } from "@/lib/clients/cardColorsApi";
 import {
   cardColor,
@@ -429,8 +430,10 @@ export default function DashboardApp(props: Props = {}) {
     cardSecrets: null as null | { number: string; cvv: string },
     cardSecretsBusy: false,
     cardSecretsError: "",
-    cardColorBusy: false,
-    cardColorError: "",
+    /** Colour chosen in the create-card modal (palette key). */
+    newCardColor: "indigo" as CardColorKey,
+    /** Cardholder fields are collapsed to a summary when KYB prefilled them. */
+    newCardHolderOpen: false,
     /** Grid-tile flip UX — keyed by card id since two cards can be flipped at once. */
     cardTileFlipped: {} as Record<string, boolean>,
     cardTileSecrets: {} as Record<string, { number: string; cvv: string }>,
@@ -1940,8 +1943,6 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsBusy: false,
       cardSecretsError: "",
-      cardColorBusy: false,
-      cardColorError: "",
       copiedField: "",
     });
   };
@@ -1950,18 +1951,32 @@ export default function DashboardApp(props: Props = {}) {
       meQuery.data?.kyb_summary?.profile ?? null,
     );
     const sessionEmail = meQuery.data?.user?.email?.trim() || "";
+    const holder = {
+      first: prefill.first_name || "",
+      last: prefill.last_name || "",
+      email: prefill.email || sessionEmail,
+      phone: prefill.phone_number || "",
+    };
+    const holderComplete = Boolean(
+      holder.first &&
+        holder.last &&
+        isValidCardholderEmail(holder.email) &&
+        isValidCardE164(holder.phone),
+    );
     setState({
       modal: "newCard",
       newCardLabel: "",
+      newCardColor: nextColorForNewCard(),
+      newCardHolderOpen: !holderComplete,
       newCardDone: false,
       newCardIssuing: false,
       newCardError: "",
       newlyIssuedCard: null,
       // Cardholder must be a person — never the business legal name.
-      newCardFirstName: prefill.first_name || "",
-      newCardLastName: prefill.last_name || "",
-      newCardEmail: prefill.email || sessionEmail,
-      newCardPhone: prefill.phone_number || "",
+      newCardFirstName: holder.first,
+      newCardLastName: holder.last,
+      newCardEmail: holder.email,
+      newCardPhone: holder.phone,
     });
   };
   const openModalInvoice = () => setState({ modal: "invoice", invClient: "", invAmount: "", invoiceDone: false, invoiceError: "", invoiceSubmitting: false });
@@ -2726,19 +2741,17 @@ export default function DashboardApp(props: Props = {}) {
   const setCreateAccountNetwork = (e) => setState({ createAccountNetwork: e.target.value, createAccountError: "" });
 
   const copyField = (fieldKey, val) => async () => {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
-      await navigator.clipboard.writeText(val);
-      setState({ copiedField: fieldKey });
-      window.setTimeout(() => {
-        setState((s: { copiedField?: string }) =>
-          s.copiedField === fieldKey ? { copiedField: "" } : {},
-        );
-      }, 1500);
-    } catch {
-      // Don't show "Copied" when the write failed (permission / insecure context).
+    // Don't show "Copied" when nothing could write (permission / insecure context).
+    if (!(await copyText(String(val)))) {
       setState({ copiedField: "" });
+      return;
     }
+    setState({ copiedField: fieldKey });
+    window.setTimeout(() => {
+      setState((s: { copiedField?: string }) =>
+        s.copiedField === fieldKey ? { copiedField: "" } : {},
+      );
+    }, 1500);
   };
   const toggleRevealKey = (id) => () => setState(s => ({ apiKeyRevealed: { ...s.apiKeyRevealed, [id]: !s.apiKeyRevealed[id] } }));
   const toggleRevealSecret = (id) => () => setState(s => ({ secretRevealed: { ...s.secretRevealed, [id]: !s.secretRevealed[id] } }));
@@ -2768,15 +2781,16 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
     if (!firstName || !lastName) {
-      setState({ newCardError: "Enter the cardholder’s first and last name." });
+      setState({ newCardHolderOpen: true, newCardError: "Enter the cardholder’s first and last name." });
       return;
     }
     if (!isValidCardholderEmail(email)) {
-      setState({ newCardError: "Enter a valid cardholder email." });
+      setState({ newCardHolderOpen: true, newCardError: "Enter a valid cardholder email." });
       return;
     }
     if (!isValidCardE164(phone)) {
       setState({
+        newCardHolderOpen: true,
         newCardError: "Enter phone in E.164 format (e.g. +12125550198).",
       });
       return;
@@ -2794,7 +2808,7 @@ export default function DashboardApp(props: Props = {}) {
           phone_number: phone,
         },
       });
-      assignNewCardColor(issued.id);
+      persistCardColor(issued.id, state.newCardColor);
       await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
       setState({
         newCardIssuing: false,
@@ -2810,36 +2824,22 @@ export default function DashboardApp(props: Props = {}) {
       });
     }
   };
-  /** A new card takes the first palette colour no other card uses (spec §5). */
-  const assignNewCardColor = (cardId: string) => {
-    const existing = (issuedCardsQuery.data?.cards ?? []).filter((c) => c.id !== cardId);
+  /** Default for the create modal: first palette colour no card uses (spec §5). */
+  const nextColorForNewCard = (): CardColorKey => {
+    const existing = issuedCardsQuery.data?.cards ?? [];
     const resolved = resolveCardColors(existing, cardColorsQuery.data ?? {});
     const newestFirst = [...existing]
-      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .sort((x, y) => String(y.created_at || "").localeCompare(String(x.created_at || "")))
       .map((c) => ({ color: resolved[c.id] }));
-    const color = nextCardColor(newestFirst);
+    return nextCardColor(newestFirst);
+  };
+  /** Colour is chosen once, at issue time, and saved against the new card id. */
+  const persistCardColor = (cardId: string, color: CardColorKey) => {
     queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
     // Fire and forget: a failed save leaves the card on its resolved fallback.
     void saveCardColor(cardId, color)
       .then((map) => queryClient.setQueryData(["card-colors"], map))
       .catch(() => undefined);
-  };
-  const setCardColorFor = async (cardId: string, color: CardColorKey) => {
-    const previous = queryClient.getQueryData<CardColorMap>(["card-colors"]);
-    queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
-    setState({ cardColorBusy: true, cardColorError: "" });
-    try {
-      const map = await saveCardColor(cardId, color);
-      queryClient.setQueryData(["card-colors"], map);
-      setState({ cardColorBusy: false });
-    } catch (err) {
-      queryClient.setQueryData(["card-colors"], previous ?? {});
-      setState({
-        cardColorBusy: false,
-        cardColorError:
-          err instanceof Error ? err.message : "Couldn't save this colour. Try again.",
-      });
-    }
   };
   const toggleFreezeCard = async (cardId: string = state.selectedCardId) => {
     const funding = usdFundingQuery.data;
@@ -2928,8 +2928,6 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsBusy: false,
       cardSecretsError: "",
-      cardColorBusy: false,
-      cardColorError: "",
       copiedField: "",
     });
   }, [revealGuard, setState]);
@@ -3064,10 +3062,6 @@ export default function DashboardApp(props: Props = {}) {
       cardSecrets: null,
       cardSecretsError: "",
     });
-  const openFundCardDirect = (_cardId: string) => (e) => {
-    e.stopPropagation();
-    fundCard();
-  };
   const openInvite = () =>
     setState({
       inviteOpen: true,
@@ -4179,14 +4173,25 @@ export default function DashboardApp(props: Props = {}) {
       brand,
       balance: usdSpendLabel,
       color: cardColor(cardColorKeys[c.id]),
-      status: failed ? "failed" : frozen ? "frozen" : "active",
+      status: (failed ? "failed" : frozen ? "frozen" : "active") as "failed" | "frozen" | "active",
       statusLabel: closed ? "Closed" : failed ? "Failed" : describeCardStatus(c.status),
       actionDisabled: failed,
       actionDisabledReason: closed ? "This card is closed." : "This card is unavailable.",
-      fund: openFundCardDirect(c.id),
       manage: openCardDetail(c.id),
     };
   });
+  // Usable cards first, then frozen, then closed/failed at the end.
+  const cardRank = { active: 0, frozen: 1, failed: 2 } as const;
+  cards.sort((a, b) => cardRank[a.status] - cardRank[b.status]);
+  const activeCardCount = cards.filter((c) => c.status === "active").length;
+  const cardsSummarySub = usdFunding
+    ? [
+        cards.length
+          ? `${activeCardCount} active card${activeCardCount === 1 ? "" : "s"}`
+          : "No cards yet",
+        `USD${usdFunding.accountMask ? ` ${usdFunding.accountMask}` : ""}`,
+      ].join(" · ")
+    : "Cards spend from your active USD deposit account balance.";
   const cardsLoading = usdFundingQuery.isLoading || issuedCardsQuery.isLoading;
   const cardsMissingUsd = !usdFunding && !usdFundingQuery.isLoading && !usdFundingQuery.isError;
   const cardsError =
@@ -4200,7 +4205,6 @@ export default function DashboardApp(props: Props = {}) {
         ? "Open an active USD deposit account to issue cards."
         : "";
   const cardsErrorBadge = cardsMissingUsd ? "USD required" : "Error";
-  const cardsFundingHint = describeUsdFunding(usdFunding);
   const txFilters = PRIMARY_TX_FILTERS.map((filter) => ({
     key: filter.key,
     label: filter.label,
@@ -5416,13 +5420,18 @@ export default function DashboardApp(props: Props = {}) {
 {(isCards) ? (<>
 <div data-screen-label="Cards" className="ep-cards">
 <div className="ep-cards__head">
-<div className="ep-cards__head-copy">
-<h2 className="ep-cards__title">Cards</h2>
-<p className="ep-cards__subtitle">Virtual USD cards for team spend</p>
+{/* Every card spends one shared USD balance, so it — and topping it up —
+    lives here once rather than repeated under each card. */}
+<div className="ep-cards__summary">
+<span className="ep-cards__summary-label">Card balance</span>
+<span className="ep-cards__summary-amount">{usdFunding ? usdSpendLabel : "—"}</span>
+<span className="ep-cards__summary-sub">{cardsSummarySub}</span>
 </div>
+<div className="ep-cards__head-actions">
+<button type="button" onClick={fundCard} className="ep-cards__cta ep-cards__cta--secondary" disabled={!usdFunding}>Top up</button>
 <button type="button" onClick={openNewCard} className="ep-cards__cta" disabled={!usdFunding}>+ New card</button>
 </div>
-<p className="ep-cards__funding-hint">{cardsFundingHint}</p>
+</div>
 {cardsError ? (
   <div className="ep-cards__preview" role="alert">
     <span className="ep-cards__preview-badge">{cardsErrorBadge}</span>
@@ -5456,12 +5465,17 @@ export default function DashboardApp(props: Props = {}) {
   actionDisabledReason={c.actionDisabledReason}
 />
 <div className="ep-cards__below">
-<span className="ep-cards__balance">{c.balance}</span>
+<span className="ep-cards__state" data-state={c.status}>{c.statusLabel}</span>
+{c.actionDisabled ? null : (
 <div className="ep-cards__pills">
-<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__pill" disabled={c.actionDisabled || c.status === "frozen"} aria-pressed={!!s.cardTileFlipped[c.id]} title={c.actionDisabled ? c.actionDisabledReason : c.status === "frozen" ? "Unfreeze this card to view its details" : undefined}>{s.cardTileFlipped[c.id] ? "Hide" : "Details"}</button>
-<button type="button" onClick={c.fund} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Fund</button>
-<button type="button" onClick={c.manage} className="ep-cards__pill" disabled={c.actionDisabled} title={c.actionDisabled ? c.actionDisabledReason : undefined}>Manage</button>
+{c.status === "frozen" ? (
+<button type="button" onClick={() => void toggleFreezeCard(c.id)} className="ep-cards__pill" disabled={s.cardFreezeBusy && s.selectedCardId === c.id} title={s.cardFreezeError && s.selectedCardId === c.id ? s.cardFreezeError : undefined}>{s.cardFreezeBusy && s.selectedCardId === c.id ? "Unfreezing…" : "Unfreeze"}</button>
+) : (
+<button type="button" onClick={flipCardTile(c.id)} className="ep-cards__pill" aria-pressed={!!s.cardTileFlipped[c.id]}>{s.cardTileFlipped[c.id] ? "Hide details" : "Details"}</button>
+)}
+<button type="button" onClick={c.manage} className="ep-cards__pill">Manage</button>
 </div>
+)}
 </div>
 </div>
 ))}
@@ -6409,9 +6423,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   accountLabel={cardSel.card_name || `···· ${cardSel.last_four || ""}`}
   balance={cardDetail.balance || usdSpendLabel}
   color={cardDetail.color}
-  colorBusy={s.cardColorBusy}
-  colorError={s.cardColorError}
-  onColorChange={(key) => void setCardColorFor(cardSel.id, key)}
   billing={cardBilling}
   recent={cardsSpendAll
     .filter(
@@ -6441,43 +6452,66 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 
 {(isModalNewCard) ? (<>
 {(newCardNotDone) ? (<>
-<div className="ep-cards__modal">
-{!usdFunding ? (
-  <div className="ep-cards__note" role="alert">
-    Open an active USD deposit account before issuing cards. Every card must be linked to USD.
-  </div>
-) : (
-  <div className="ep-cards__note">
-    {describeUsdFundingIssueNote(usdFunding)}
-  </div>
-)}
-<label className="ep-cards__field">
-<span className="ep-cards__field-label">Card label</span>
-<input value={newCardLabel} onChange={setNewCardLabel} placeholder="e.g. Marketing Ads" className="ep-cards__input" autoComplete="off" />
+<form
+  className="ep-cards__modal ep-card-create"
+  onSubmit={(e) => {
+    e.preventDefault();
+    void issueCard();
+  }}
+>
+<CardPreview label={newCardLabel.trim() || "New card"} color={cardColor(s.newCardColor)} />
+<CardColorPicker
+  value={s.newCardColor}
+  onChange={(key) => setState({ newCardColor: key })}
+  disabled={newCardIssuing}
+/>
+<label className="ep-card-create__name">
+<span className="ep-sr-only">Card name</span>
+<input value={newCardLabel} onChange={setNewCardLabel} placeholder="Card name" maxLength={40} className="ep-cards__input" autoComplete="off" autoFocus />
 </label>
+{s.newCardHolderOpen ? (
+<fieldset className="ep-card-create__holder">
+<legend className="ep-card-create__holder-title">Cardholder</legend>
+<div className="ep-card-create__holder-grid">
 <label className="ep-cards__field">
-<span className="ep-cards__field-label">Cardholder first name</span>
+<span className="ep-cards__field-label">First name</span>
 <input value={newCardFirstName} onChange={setNewCardFirstName} placeholder="Jane" className="ep-cards__input" autoComplete="given-name" />
 </label>
 <label className="ep-cards__field">
-<span className="ep-cards__field-label">Cardholder last name</span>
+<span className="ep-cards__field-label">Last name</span>
 <input value={newCardLastName} onChange={setNewCardLastName} placeholder="Doe" className="ep-cards__input" autoComplete="family-name" />
 </label>
 <label className="ep-cards__field">
-<span className="ep-cards__field-label">Cardholder email</span>
+<span className="ep-cards__field-label">Email</span>
 <input value={newCardEmail} onChange={setNewCardEmail} type="email" placeholder="jane@company.com" className="ep-cards__input" autoComplete="email" />
 </label>
 <label className="ep-cards__field">
 <span className="ep-cards__field-label">Phone (E.164)</span>
 <input value={newCardPhone} onChange={setNewCardPhone} placeholder="+12125550198" className="ep-cards__input" inputMode="tel" autoComplete="tel" />
 </label>
+</div>
+</fieldset>
+) : (
+<div className="ep-card-create__holder-summary">
+<span className="ep-card-create__holder-copy">
+<span className="ep-card-create__holder-label">Cardholder</span>
+<span className="ep-card-create__holder-value">{`${newCardFirstName} ${newCardLastName}`.trim()} · {newCardEmail}</span>
+</span>
+<button type="button" className="ep-card-create__holder-edit" onClick={() => setState({ newCardHolderOpen: true })}>Edit</button>
+</div>
+)}
 {newCardError ? (
   <div className="ep-cards__note" role="alert" style={{color: "var(--red)"}}>{newCardError}</div>
 ) : null}
-<button type="button" onClick={() => void issueCard()} className="ep-cards__modal-primary" disabled={!usdFunding || newCardIssuing}>
-{newCardIssuing ? "Issuing…" : "Issue card on USD"}
+<button type="submit" className="ep-cards__modal-primary ep-card-create__submit" disabled={!usdFunding || newCardIssuing || !newCardLabel.trim()}>
+{newCardIssuing ? "Issuing…" : "Issue card"}
 </button>
-</div>
+<p className="ep-card-create__funding" role={!usdFunding ? "alert" : undefined}>
+{usdFunding
+  ? describeUsdFundingIssueNote(usdFunding)
+  : "Open an active USD deposit account before issuing cards. Every card must be linked to USD."}
+</p>
+</form>
 </>) : null}
 {(newCardDone) ? (<>
 <div className="ep-cards__success">
