@@ -140,6 +140,14 @@ describe("CardFlipTile", () => {
     expect(onFlip).not.toHaveBeenCalled();
   });
 
+  it("drops the coloured glow on a frozen card", () => {
+    const { container } = render(
+      <CardFlipTile {...baseProps} status="frozen" statusLabel="Frozen" color={cardColor("marigold")} />,
+    );
+    const face = container.querySelector<HTMLElement>(".ep-card-flip__face--front")!;
+    expect(face.style.boxShadow).not.toMatch(/#FFB224|255, 178, 36/i);
+  });
+
   it("does not disable the front face while secrets are loading, so it can still flip back", () => {
     render(<CardFlipTile {...baseProps} flipped secretsBusy />);
     expect(screen.getByRole("button", { name: "Hide card details" })).not.toBeDisabled();

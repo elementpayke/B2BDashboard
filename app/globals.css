@@ -9110,11 +9110,83 @@ select.ep-wallets-create__control {
   }
 }
 
-.ep-cards__funding-hint {
-  margin: 0;
-  font-size: 12.5px;
+/* Cards header: the one shared balance + Top up / New card. */
+.ep-cards__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ep-cards__summary-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--muted);
-  line-height: 1.45;
+}
+
+.ep-cards__summary-amount {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.ep-cards__summary-sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ep-cards__head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Doubled class: .ep-cards__cta is declared later with the same weight. */
+.ep-cards__cta.ep-cards__cta--secondary {
+  background: var(--surface2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.ep-cards__cta.ep-cards__cta--secondary:hover:not(:disabled) {
+  background: var(--surface3);
+  filter: none;
+}
+
+/* Below each card: its state on the left, actions on the right. */
+.ep-cards__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-cards__state::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted2, var(--muted));
+}
+
+.ep-cards__state[data-state="active"]::before {
+  background: var(--success, #16a34a);
+}
+
+.ep-cards__state[data-state="frozen"]::before {
+  background: var(--indigo);
+}
+
+.ep-cards__state[data-state="failed"]::before {
+  background: var(--red, #dc2626);
 }
 
 .ep-cards__empty {
@@ -9590,16 +9662,6 @@ select.ep-wallets-create__control {
   min-width: 0;
 }
 
-.ep-cards__balance {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .ep-cards__pills {
   display: flex;
   gap: 6px;
@@ -9646,16 +9708,16 @@ select.ep-wallets-create__control {
   }
 
   .ep-cards__head {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .ep-cards__cta {
     width: 100%;
   }
 
-  .ep-cards__head .ep-cards__cta {
-    width: auto;
-    margin-left: auto;
+  .ep-cards__head-actions .ep-cards__cta {
+    flex: 1;
   }
 }
 
