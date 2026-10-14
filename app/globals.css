@@ -4418,92 +4418,6 @@ button.ep-home__stat:focus-visible {
   gap: 24px;
 }
 
-.ep-wallets__hero {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  align-items: center;
-  border-radius: 24px;
-  padding: 20px 18px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-}
-
-@media (min-width: 640px) {
-  .ep-wallets__hero {
-    padding: 26px 30px;
-  }
-}
-
-.ep-wallets__hero-main {
-  flex: 1;
-  min-width: min(220px, 100%);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ep-wallets__eyebrow {
-  display: inline-flex;
-  align-self: flex-start;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--indigo-on);
-  background: var(--indigo);
-  padding: 6px 14px;
-  border-radius: 999px;
-  margin-bottom: 8px;
-}
-
-.ep-wallets__balance {
-  font-family: "DM Mono", monospace;
-  font-size: clamp(26px, 6vw, 34px);
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  color: var(--ink);
-}
-
-.ep-wallets__balance-sub {
-  font-family: "DM Mono", monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  margin-top: 2px;
-  line-height: 1.4;
-}
-
-.ep-wallets__asset-switch {
-  display: flex;
-  gap: 4px;
-  background: var(--surface2);
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-}
-
-.ep-wallets__asset-btn {
-  min-height: 44px;
-  min-width: 72px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: none;
-  font-family: "DM Mono", monospace;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.ep-wallets__asset-btn:hover {
-  filter: brightness(0.98);
-}
-
 .ep-wallets__section-head {
   display: flex;
   align-items: center;
@@ -4514,25 +4428,6 @@ button.ep-home__stat:focus-visible {
 
 /* Phones: stack title + action so "+ New account" never clips off-screen */
 @media (max-width: 639px) {
-  .ep-wallets__hero {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 16px;
-  }
-
-  .ep-wallets__hero-main {
-    min-width: 0;
-  }
-
-  .ep-wallets__asset-switch {
-    width: 100%;
-  }
-
-  .ep-wallets__asset-btn {
-    flex: 1;
-    min-width: 0;
-  }
-
   .ep-wallets__section-head {
     flex-direction: column;
     align-items: stretch;

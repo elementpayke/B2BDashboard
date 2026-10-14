@@ -21,9 +21,6 @@ export type WalletsAccountCard = {
 
 export type WalletsScreenProps = {
   isMobile: boolean;
-  mainWalletBalance: string;
-  mainWalletSub: string;
-  stableTabs: any[];
   accountsCount: number;
   addAccountMenu: boolean;
   toggleAddAccountMenu: () => void;
@@ -150,35 +147,6 @@ export default function WalletsScreen(p: WalletsScreenProps) {
       data-compact={p.isMobile ? "true" : "false"}
       className="ep-wallets"
     >
-      <section className="ep-wallets__hero" aria-label="Settlement wallet">
-        <div className="ep-wallets__hero-main">
-          <span className="ep-wallets__eyebrow">Main wallet · settlement layer</span>
-          <div className="ep-wallets__balance" aria-live="polite">
-            {p.mainWalletBalance}
-          </div>
-          <div className="ep-wallets__balance-sub">{p.mainWalletSub}</div>
-        </div>
-        <div
-          className="ep-wallets__asset-switch"
-          role="tablist"
-          aria-label="Settlement asset"
-        >
-          {(p.stableTabs || []).map((st: any, i: number) => (
-            <button
-              key={st.label ?? i}
-              type="button"
-              role="tab"
-              aria-selected={st.bg === "var(--indigo)"}
-              onClick={st.select}
-              className="ep-wallets__asset-btn"
-              style={{ background: st.bg, color: st.color }}
-            >
-              {st.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
       <div className="ep-wallets__section-head">
         <h2 className="ep-wallets__section-title">
           Currency accounts{" "}

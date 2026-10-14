@@ -12,9 +12,6 @@ import {
 function baseProps(overrides: Partial<WalletsScreenProps> = {}): WalletsScreenProps {
   return {
     isMobile: false,
-    mainWalletBalance: "20.82 USDC",
-    mainWalletSub: "",
-    stableTabs: [],
     accountsCount: 0,
     addAccountMenu: true,
     toggleAddAccountMenu: vi.fn(),
