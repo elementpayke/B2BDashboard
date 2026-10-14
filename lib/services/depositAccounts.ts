@@ -32,6 +32,27 @@ export const CURRENCY_OPTIONS: CurrencyOption[] = [
   { code: "KES", label: "Kenyan Shilling", iso: "ke" },
   { code: "TZS", label: "Tanzanian Shilling", iso: "tz" },
   { code: "AUD", label: "Australian Dollar", iso: "au" },
+  // Rest of Nuvion's Add Account list (same order as app.nuvion.co). Only
+  // selectable once eligibility `supported_accounts` lists them.
+  { code: "NZD", label: "New Zealand Dollar", iso: "nz" },
+  { code: "JPY", label: "Japanese Yen", iso: "jp" },
+  { code: "CNY", label: "Chinese Yuan", iso: "cn" },
+  { code: "HKD", label: "Hong Kong Dollar", iso: "hk" },
+  { code: "ILS", label: "Israeli New Shekel", iso: "il" },
+  { code: "MXN", label: "Mexican Peso", iso: "mx" },
+  { code: "SEK", label: "Swedish Krona", iso: "se" },
+  { code: "CHF", label: "Swiss Franc", iso: "ch" },
+  { code: "NOK", label: "Norwegian Krone", iso: "no" },
+  { code: "DKK", label: "Danish Krone", iso: "dk" },
+  { code: "SGD", label: "Singapore Dollar", iso: "sg" },
+  { code: "KRW", label: "South Korean Won", iso: "kr" },
+  { code: "THB", label: "Thai Baht", iso: "th" },
+  { code: "HUF", label: "Hungarian Forint", iso: "hu" },
+  { code: "PLN", label: "Polish Zloty", iso: "pl" },
+  { code: "RON", label: "Romanian Leu", iso: "ro" },
+  { code: "CZK", label: "Czech Koruna", iso: "cz" },
+  { code: "XOF", label: "West African CFA Franc", iso: null },
+  { code: "XAF", label: "Central African CFA Franc", iso: null },
 ];
 
 export function isCurrencySupported(
