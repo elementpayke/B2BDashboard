@@ -11,9 +11,10 @@ these endpoints sit behind.
 **merged** to `main` at 15:32 UTC today, implementing everything below —
 `supported_accounts` on eligibility/bootstrap (§1), the new `DepositAccountOut`
 identifier fields (§2), `country_code` on create (§3), the activity endpoint
-(§4), and the sync endpoint (§5). A companion fix on
-`elementpayHQ/element-pay-aggregator` (`feat/nuvion-bank-coords-extraction`)
-is still outstanding to unblock the inbound Canada/Mexico field extraction
+(§4), and the sync endpoint (§5). The companion fix on
+`elementpayHQ/element-pay-aggregator` is now up as
+[#1114](https://github.com/elementpayHQ/element-pay-aggregator/pull/1114)
+(not yet merged) to unblock the inbound Canada/Mexico field extraction
 described in open question 4 below — not required for what's listed in
 §1 today (GBP only; see that section). Every field and endpoint below was
 additive and optional, so nothing in this merge is a breaking change for
@@ -255,13 +256,15 @@ from the 5 PR descriptions:
    this) was collapsing `routing_number`/`sort_code` into one ambiguous
    `bank_code` and had no extraction at all for the Canadian pair or
    Mexico's `clabe` — so Mboka's new distinct columns had no live data
-   source. Fix in progress on `element-pay-aggregator` branch
-   `feat/nuvion-bank-coords-extraction`, which extends
-   `_coords_from_details`/`account_to_partner_dict` to expose
+   source. Fix now up as
+   [element-pay-aggregator#1114](https://github.com/elementpayHQ/element-pay-aggregator/pull/1114)
+   (branch `feat/nuvion-bank-coords-extraction`, not yet merged), which
+   extends `_coords_from_details`/`account_to_partner_dict` to expose
    `routing_number`, `sort_code`, `institution_number`, `transit_number`,
    and `clabe` as their own fields (keeping `bank_code` unchanged for
-   existing consumers). Mboka's schema in #274 needs no further change
-   once that merges.
+   existing consumers), plus a migration adding the matching nullable
+   columns on `nuvion_accounts`. Mboka's schema in #274 needs no further
+   change once that merges.
 5. ~~**Will `country_code` on `DepositAccountCreateIn` actually be
    validated/used**~~ **Resolved, yes.** #274 adds ISO-3166-1 alpha-2
    validation (`_country_iso3166_alpha2`) and persists the value on the
