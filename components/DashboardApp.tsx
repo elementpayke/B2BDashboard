@@ -2046,7 +2046,6 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const openConvert = openMoneyFlow("convert");
-  const openModalSwapFromAcct = openConvert;
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendMemo = (e) => setState({ sendMemo: e.target.value });
@@ -3768,23 +3767,13 @@ export default function DashboardApp(props: Props = {}) {
             };
           })()
       : null;
-    const acctSummaryLines = (acctDetail?.rows ?? [])
-      .filter((row) => !row.copyValue)
+    // The hero already shows the balance and the identity line the rail and
+    // status, so the summary strip only carries rows that add something.
+    const repeatsHero = (label: string) => /balance|^rail$|^status$/i.test(label.trim());
+    const acctDetailLines = (acctDetail?.rows ?? [])
+      .filter((row) => !row.copyValue && !repeatsHero(row.label))
       .slice(0, 3)
       .map((row) => ({ k: row.label, v: row.value }));
-    // Prefer a short readable summary when coords-only rows would leave the strip empty.
-    const acctDetailLines =
-      acctSummaryLines.length > 0
-        ? acctSummaryLines
-        : acctDetail
-          ? [
-              { k: "Rail", v: acctDetail.railLabel ?? acctDetail.currency },
-              { k: "Status", v: acctDetail.statusLabel },
-              ...(acctDetail.rows[0]
-                ? [{ k: acctDetail.rows[0].label, v: acctDetail.rows[0].value }]
-                : []),
-            ]
-          : [];
     const issuedCardsList = issuedCardsQuery.data?.cards ?? [];
     const cardColorKeys = resolveCardColors(issuedCardsList, cardColorsQuery.data ?? {});
     const cardSel =
@@ -6410,7 +6399,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   intent={s.acctDetailIntent === "fund" ? "fund" : "details"}
   copiedField={s.copiedField}
   copyField={copyField}
-  openModalSwapFromAcct={openModalSwapFromAcct}
 />
 </>) : null}
 

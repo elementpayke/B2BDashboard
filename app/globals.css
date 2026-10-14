@@ -5685,18 +5685,16 @@ button.ep-home__stat:focus-visible {
   flex-shrink: 0;
 }
 
+/* Currency accounts reflow instead of side-scrolling: one column on phones,
+   more as the screen widens. */
 .ep-wallets__strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
   gap: 14px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
 }
 
 .ep-wallets__card {
-  flex: 0 0 230px;
-  scroll-snap-align: start;
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 20px;
@@ -5710,6 +5708,33 @@ button.ep-home__stat:focus-visible {
   color: inherit;
   min-height: 0;
   transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+/* Narrow phones: each account is a compact row — name left, balance right. */
+@media (max-width: 479px) {
+  .ep-wallets__strip {
+    gap: 10px;
+  }
+
+  .ep-wallets__card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 6px;
+    padding: 14px 16px;
+    border-radius: 18px;
+  }
+
+  .ep-wallets__card-balance {
+    margin-top: 0;
+    font-size: 18px;
+    text-align: right;
+  }
+
+  .ep-wallets__card-detail {
+    grid-column: 1 / -1;
+  }
 }
 
 .ep-wallets__card:hover {
@@ -5804,8 +5829,6 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-wallets__skeleton {
-  flex: 0 0 min(248px, 82vw);
-  scroll-snap-align: start;
   border-radius: 20px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -5851,50 +5874,6 @@ button.ep-home__stat:focus-visible {
   100% {
     background-position: -100% 0;
   }
-}
-
-.ep-wallets__new-card {
-  flex: 0 0 150px;
-  scroll-snap-align: start;
-  min-height: 148px;
-  border: 2px dashed var(--border);
-  background: transparent;
-  border-radius: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  color: var(--muted);
-  cursor: pointer;
-  font-family: 'Space Grotesk', sans-serif;
-  transition: border-color 140ms ease, background 140ms ease;
-}
-
-.ep-wallets__new-card:hover,
-.ep-wallets__new-card:focus-visible {
-  border-color: color-mix(in srgb, var(--indigo) 40%, var(--border));
-  background: color-mix(in srgb, var(--indigo-tint) 35%, transparent);
-}
-
-.ep-wallets__new-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--indigo);
-  color: var(--indigo-on);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.ep-wallets__new-label {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
 }
 
 .ep-wallets__empty {
@@ -6626,47 +6605,60 @@ button.ep-home__stat:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 9px 16px;
+  gap: 7px;
+  padding: 9px 16px 9px 12px;
   min-height: 40px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 12.5px;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.ep-acct-detail__action:hover {
+.ep-acct-detail__action:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--indigo) 30%, var(--border));
 }
 
-.ep-acct-detail__action--primary {
-  border: none;
-  background: var(--ink);
-  color: var(--bg);
-  padding-inline: 18px;
+.ep-acct-detail__action:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
 }
 
-.ep-acct-detail__action--primary:hover {
-  border: none;
+.ep-acct-detail__action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ep-acct-detail__action--primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.ep-acct-detail__action--primary:hover:not(:disabled) {
+  border-color: var(--ink);
   opacity: 0.92;
 }
 
-.ep-acct-detail__action:disabled,
-.ep-acct-detail__action--primary:disabled {
+.ep-acct-detail__action:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* Desktop: "More" is an icon-only round button; the label is for phones. */
 .ep-acct-detail__action--more {
-  flex: 0 0 auto;
   width: 40px;
-  padding-inline: 0;
-  font-size: 18px;
-  letter-spacing: 0.08em;
-  line-height: 1;
+  padding: 0;
+}
+
+.ep-acct-detail__action--more .ep-acct-detail__action-label {
+  display: none;
 }
 
 .ep-acct-detail__more-wrap {
@@ -6842,21 +6834,64 @@ button.ep-home__stat:focus-visible {
     align-items: stretch;
   }
 
+  /* Phones: equal icon tiles with the label underneath — one row of up to
+     five, never squeezed text. */
   .ep-acct-detail__actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 6px;
     width: 100%;
-    flex-wrap: nowrap;
   }
 
-  .ep-acct-detail__action {
-    flex: 1 1 0;
-    min-width: 0;
-    padding-inline: 10px;
+  .ep-acct-detail__more-wrap {
+    display: flex;
   }
 
+  .ep-acct-detail__action,
   .ep-acct-detail__action--more {
-    flex: 0 0 40px;
-    width: 40px;
-    padding-inline: 0;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 14px;
+    font-size: 11.5px;
+    color: var(--ink);
+  }
+
+  .ep-acct-detail__action--more .ep-acct-detail__action-label {
+    display: inline;
+  }
+
+  .ep-acct-detail__action-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .ep-acct-detail__action--primary,
+  .ep-acct-detail__action--primary:hover:not(:disabled) {
+    background: none;
+    color: var(--ink);
+    opacity: 1;
+  }
+
+  .ep-acct-detail__action--primary .ep-acct-detail__action-icon {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--bg);
+  }
+
+  .ep-acct-detail__action:hover:not(:disabled) .ep-acct-detail__action-icon {
+    border-color: color-mix(in srgb, var(--indigo) 30%, var(--border));
+  }
+
+  .ep-acct-detail__menu {
+    width: min(300px, calc(100vw - 32px));
   }
 
   .ep-acct-detail__balance {
@@ -6868,7 +6903,7 @@ button.ep-home__stat:focus-visible {
   }
 
   .ep-acct-detail__chart {
-    height: 100px;
+    height: 72px;
   }
 
   .ep-acct-detail__summary-k {
