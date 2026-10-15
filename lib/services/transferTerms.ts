@@ -15,7 +15,7 @@ export type AmountLimits = {
   currency: string;
 };
 
-function toNumber(value: unknown): number | null {
+export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(String(value).replace(/,/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -87,6 +87,61 @@ export function limitViolation(amount: string, limits: AmountLimits | null): str
     return `Maximum is ${formatLimitAmount(limits.max, limits.currency)} per transaction. Split larger amounts.`;
   }
   return null;
+}
+
+/**
+ * Same check as {@link limitViolation}, but works when the box is in a
+ * different currency than the published range — either direction: typing USD
+ * against a BWP limit, or typing BWP against a USD limit (some providers
+ * publish USD-denominated minimums/maximums even on a local-currency
+ * corridor). `localPerUsdRate` is units of the corridor's local currency per
+ * 1 USD — the same indicative rate used to show the "≈" equivalent line.
+ * Only USD↔local is bridged; a third currency on either side skips the
+ * check rather than guess a verdict. Without a rate we cannot convert either.
+ */
+export function limitViolationAcrossCurrencies(
+  amount: string,
+  amountCurrency: string,
+  limits: AmountLimits | null,
+  localPerUsdRate: number | null,
+): string | null {
+  if (!limits) return null;
+  const typed = amountCurrency.trim().toUpperCase();
+  if (typed === limits.currency) return limitViolation(amount, limits);
+  if (!localPerUsdRate) return null;
+  const n = toNumber(amount);
+  if (n === null) return null;
+  if (typed === "USD") {
+    return limitViolation((n * localPerUsdRate).toFixed(2), limits);
+  }
+  if (limits.currency === "USD") {
+    return limitViolation((n / localPerUsdRate).toFixed(2), limits);
+  }
+  return null;
+}
+
+/**
+ * "Max" fill: the smaller of whatever USD figures are known (corridor max,
+ * source wallet balance, …), expressed in the currently typed currency.
+ *
+ * Rounds the result DOWN to cents — never to nearest. A wallet balance often
+ * carries more precision than its rounded display (true 34.7398 shown as
+ * "34.74"); rounding the fill *up* to that display figure would exceed the
+ * real balance and immediately trip the insufficient-balance check against
+ * its own number.
+ */
+export function maxSendableAmount(
+  usdCandidates: Array<number | null | undefined>,
+  displayCurrency: string,
+  localPerUsdRate: number | null,
+): string | null {
+  const known = usdCandidates.filter((n): n is number => n != null);
+  if (!known.length) return null;
+  const usd = Math.min(...known);
+  const floorToCents = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
+  if (displayCurrency.trim().toUpperCase() === "USD") return floorToCents(usd);
+  if (!localPerUsdRate) return null;
+  return floorToCents(usd * localPerUsdRate);
 }
 
 /** "4:05" until the quote expires, "0:00" once it has. Null without an expiry. */
