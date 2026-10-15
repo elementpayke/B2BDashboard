@@ -11,6 +11,7 @@ import {
   formatHeroTotalLabel,
   formatSummedBalance,
   formatUsdEquivalentSub,
+  insufficientBalanceMessage,
   parseBalanceNumber,
   pendingBalanceFromAccount,
   resolveDisplayCurrency,
@@ -104,6 +105,38 @@ describe("assertSufficientBalance", () => {
         currency: "USDC",
       }),
     ).not.toThrow();
+  });
+});
+
+describe("insufficientBalanceMessage", () => {
+  it("returns the message instead of throwing when amount exceeds available", () => {
+    expect(
+      insufficientBalanceMessage({
+        amount: "400",
+        balance: { available: "337.54", currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).toMatch(/Insufficient USDC balance\. Available 337\.54; you entered 400\./);
+  });
+
+  it("returns null when under available or balance/amount unknown", () => {
+    expect(
+      insufficientBalanceMessage({
+        amount: "100",
+        balance: { available: "337.54", currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).toBeNull();
+    expect(
+      insufficientBalanceMessage({ amount: "999999", balance: null, currency: "USDC" }),
+    ).toBeNull();
+    expect(
+      insufficientBalanceMessage({
+        amount: "",
+        balance: { available: "337.54", currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).toBeNull();
   });
 });
 

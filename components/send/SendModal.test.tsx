@@ -237,4 +237,37 @@ describe("SendModal country mobile money", () => {
     expect(screen.queryByText("Mobile money provider")).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Recipient phone number/i)).toBeInTheDocument();
   });
+
+  it("shows the amount error as an alert and omits the Max button without a handler", () => {
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendLimitsText: "Min TZS 1,000 · Max TZS 5,000,000",
+          sendLimitError: "Maximum is TZS 5,000,000 per transaction. Split larger amounts.",
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Maximum is TZS 5,000,000 per transaction. Split larger amounts.",
+    );
+    expect(screen.queryByRole("button", { name: "Max" })).not.toBeInTheDocument();
+  });
+
+  it("fills the amount from the Max button when a handler is provided", () => {
+    const onMaxSendAmount = vi.fn();
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendMaxAmount: "4500000.00",
+          onMaxSendAmount,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Max" }));
+    expect(onMaxSendAmount).toHaveBeenCalledTimes(1);
+  });
 });

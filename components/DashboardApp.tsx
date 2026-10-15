@@ -149,7 +149,12 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import { copyText } from "@/lib/clipboard";
-import { formatLimitsLine, limitViolation, providerLimits } from "@/lib/services/transferTerms";
+import {
+  formatLimitsLine,
+  limitViolation,
+  limitViolationAcrossCurrencies,
+  providerLimits,
+} from "@/lib/services/transferTerms";
 import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
@@ -187,6 +192,7 @@ import {
   formatAccountBalance,
   formatHeroTotalLabel,
   formatUsdEquivalentSub,
+  insufficientBalanceMessage,
   isDisplayCurrency,
   parseBalanceNumber,
   readStoredDisplayCurrency,
@@ -4592,10 +4598,49 @@ export default function DashboardApp(props: Props = {}) {
       : "Shown on review";
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
   const sendLimitsText = formatLimitsLine(sendLimits);
-  // Limits are in the payout currency; only check inline when typing in it.
-  const sendLimitError =
-    sendLimits && sendLimits.currency === sendAmountCurrency.toUpperCase()
-      ? limitViolation(s.sendAmount, sendLimits)
+  // Same wallet the submit handler settles from — resolved here too so the
+  // balance check below reflects what Next would actually reject.
+  const sendRefundWallet = sendIsCountry
+    ? fundableRefundWallets.find((a) => a.id === s.sendAccountId) ||
+      preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+    : null;
+  // USD figure the payload would carry, converted the same way submitSend
+  // does — so the balance check lines up with whatever currency is typed.
+  const sendUsdAmountForChecks = sendIsCountry
+    ? toPayloadUsdAmount(s.sendAmount, { currency: sendAmountCurrency, rate: sendIndicativeRate })
+    : null;
+  const sendLimitError = sendIsCountry
+    ? limitViolationAcrossCurrencies(s.sendAmount, sendAmountCurrency, sendLimits, sendIndicativeRate) ??
+      (sendRefundWallet && sendUsdAmountForChecks
+        ? insufficientBalanceMessage({
+            amount: sendUsdAmountForChecks,
+            balance: sendRefundWallet.balance,
+            currency: (sendRefundWallet.currency || "USDT").toUpperCase(),
+          })
+        : null)
+    : null;
+  // "Max" fills the smaller of what the corridor allows and what the source
+  // wallet holds — never a figure neither one actually supports.
+  const sendLimitMaxUsd =
+    sendLimits?.max != null
+      ? sendLimits.currency === "USD"
+        ? sendLimits.max
+        : sendIndicativeRate
+          ? sendLimits.max / sendIndicativeRate
+          : null
+      : null;
+  const sendBalanceUsd = sendRefundWallet ? parseBalanceNumber(sendRefundWallet.balance) : null;
+  const sendMaxUsdCandidates = [sendLimitMaxUsd, sendBalanceUsd].filter(
+    (n): n is number => n != null,
+  );
+  const sendMaxUsd = sendMaxUsdCandidates.length ? Math.min(...sendMaxUsdCandidates) : null;
+  const sendMaxAmount =
+    sendMaxUsd != null
+      ? sendAmountCurrency.toUpperCase() === "USD"
+        ? sendMaxUsd.toFixed(2)
+        : sendIndicativeRate
+          ? (sendMaxUsd * sendIndicativeRate).toFixed(2)
+          : null
       : null;
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
@@ -5728,6 +5773,10 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendQuotedRateLine={sendQuotedRateLine}
   sendLimitsText={sendLimitsText}
   sendLimitError={sendLimitError}
+  sendMaxAmount={sendMaxAmount}
+  onMaxSendAmount={
+    sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
   savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
     if (sendIsCrypto) return r.railType === "crypto";
     if (s.sendMethod === "mobile") return r.railType === "mobile";

@@ -4,6 +4,7 @@ import {
   formatCountdown,
   formatLimitsLine,
   limitViolation,
+  limitViolationAcrossCurrencies,
   providerLimits,
 } from "./transferTerms";
 
@@ -60,6 +61,40 @@ describe("formatLimitsLine / limitViolation", () => {
     expect(limitViolation("50", limits)).toBe("Minimum is KES 100 per transaction.");
     expect(limitViolation("200,000", limits)).toMatch(/^Maximum is KES 150,000 per transaction/);
     expect(limitViolation("50", null)).toBeNull();
+  });
+});
+
+describe("limitViolationAcrossCurrencies", () => {
+  // BWP 150–9,500, with an indicative rate of 13.5 BWP per 1 USD.
+  const bwpLimits = { min: 150, max: 9500, currency: "BWP" };
+  const rate = 13.5;
+
+  it("checks directly when typed in the limits' own currency", () => {
+    expect(limitViolationAcrossCurrencies("50", "BWP", bwpLimits, rate)).toBe(
+      "Minimum is BWP 150 per transaction.",
+    );
+    expect(limitViolationAcrossCurrencies("1000", "BWP", bwpLimits, rate)).toBeNull();
+  });
+
+  it("converts a USD-typed amount before checking", () => {
+    // 12,334,444 USD is nowhere near 703.70 USD (9,500 / 13.5) — over max.
+    expect(limitViolationAcrossCurrencies("12334444", "USD", bwpLimits, rate)).toMatch(
+      /^Maximum is BWP 9,500 per transaction/,
+    );
+    // 700 USD * 13.5 = 9,450 BWP — inside the range.
+    expect(limitViolationAcrossCurrencies("700", "USD", bwpLimits, rate)).toBeNull();
+    // 5 USD * 13.5 = 67.5 BWP — under the minimum.
+    expect(limitViolationAcrossCurrencies("5", "USD", bwpLimits, rate)).toBe(
+      "Minimum is BWP 150 per transaction.",
+    );
+  });
+
+  it("skips the check when there is no rate to convert with", () => {
+    expect(limitViolationAcrossCurrencies("12334444", "USD", bwpLimits, null)).toBeNull();
+  });
+
+  it("returns null without published limits", () => {
+    expect(limitViolationAcrossCurrencies("12334444", "USD", null, rate)).toBeNull();
   });
 });
 

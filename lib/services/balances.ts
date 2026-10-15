@@ -230,6 +230,26 @@ export function parseAmountInput(amount: string): number | null {
 }
 
 /**
+ * Inline check while typing. Returns a message only when the amount is a
+ * real number over known available balance — null when balance is unknown
+ * (partner omitted it) so we don't block on missing data, and null for an
+ * empty field.
+ */
+export function insufficientBalanceMessage(params: {
+  amount: string;
+  balance: AccountBalance | null | undefined;
+  currency: string;
+}): string | null {
+  const available = parseBalanceNumber(params.balance);
+  if (available == null) return null;
+  const amount = parseAmountInput(params.amount);
+  if (amount == null) return null;
+  if (amount <= available) return null;
+  const label = formatAccountBalance(params.balance);
+  return `Insufficient ${params.currency} balance. Available ${label}; you entered ${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}.`;
+}
+
+/**
  * Throw when the spend amount exceeds known available balance.
  * Skips the check when balance is unknown (partner omitted it) so we don't
  * block flows on missing data — the partner still enforces funded balance.
@@ -239,16 +259,8 @@ export function assertSufficientBalance(params: {
   balance: AccountBalance | null | undefined;
   currency: string;
 }): void {
-  const available = parseBalanceNumber(params.balance);
-  if (available == null) return;
-  const amount = parseAmountInput(params.amount);
-  if (amount == null) return;
-  if (amount > available) {
-    const label = formatAccountBalance(params.balance);
-    throw new Error(
-      `Insufficient ${params.currency} balance. Available ${label}; you entered ${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}.`,
-    );
-  }
+  const message = insufficientBalanceMessage(params);
+  if (message) throw new Error(message);
 }
 
 /** Sum available balances that share the same currency (e.g. USDC across networks). */

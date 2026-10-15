@@ -15,7 +15,7 @@ export type AmountLimits = {
   currency: string;
 };
 
-function toNumber(value: unknown): number | null {
+export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(String(value).replace(/,/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -87,6 +87,28 @@ export function limitViolation(amount: string, limits: AmountLimits | null): str
     return `Maximum is ${formatLimitAmount(limits.max, limits.currency)} per transaction. Split larger amounts.`;
   }
   return null;
+}
+
+/**
+ * Same check as {@link limitViolation}, but works when the box is in a
+ * different currency than the published range (e.g. typing USD against a
+ * BWP limit). `localPerUsdRate` is units of `limits.currency` per 1 USD —
+ * the same indicative rate used to show the "≈" equivalent line. Without a
+ * rate we cannot convert, so no check runs rather than guess a verdict.
+ */
+export function limitViolationAcrossCurrencies(
+  amount: string,
+  amountCurrency: string,
+  limits: AmountLimits | null,
+  localPerUsdRate: number | null,
+): string | null {
+  if (!limits) return null;
+  const typed = amountCurrency.trim().toUpperCase();
+  if (typed === limits.currency) return limitViolation(amount, limits);
+  if (typed !== "USD" || !localPerUsdRate) return null;
+  const usd = toNumber(amount);
+  if (usd === null) return null;
+  return limitViolation((usd * localPerUsdRate).toFixed(2), limits);
 }
 
 /** "4:05" until the quote expires, "0:00" once it has. Null without an expiry. */
