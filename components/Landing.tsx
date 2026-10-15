@@ -541,7 +541,14 @@ export default function Landing() {
             </svg>
             © 2026 Mboka
           </span>
-          <span style={{ fontSize: 10.5 }}>A product of ElementPay</span>
+          <a
+            href="https://elementpay.net"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 10.5, color: "inherit", textDecoration: "none" }}
+          >
+            A product of ElementPay
+          </a>
         </footer>
       </div>
     </div>

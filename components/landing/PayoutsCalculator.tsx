@@ -134,6 +134,9 @@ export default function PayoutsCalculator() {
           1 USD = {formatRate(rate)} {corridor.code} · Fee {PAYOUT_FEE_PERCENT}
         </span>
       </div>
+      <span style={{ fontSize: 10.5, color: "#8B8798", lineHeight: 1.4 }}>
+        Indicative rate — not a guaranteed quote. Final rate is locked at checkout.
+      </span>
     </div>
   );
 }
