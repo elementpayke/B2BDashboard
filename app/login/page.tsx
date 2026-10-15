@@ -5,6 +5,7 @@ import LoginForm, { LoginFormFallback } from "./LoginForm";
 export const metadata: Metadata = {
   title: "Sign in · Mboka",
   description: "Sign in to your Mboka business dashboard.",
+  robots: { index: false, follow: false },
 };
 
 /**
