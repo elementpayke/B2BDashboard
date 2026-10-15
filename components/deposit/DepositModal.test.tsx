@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { COUNTRIES, flagUrl } from "@/components/mockData";
 import {
@@ -53,6 +53,11 @@ function methodGroupsFor(idx: number, selectedRail?: number): DepositMethodGroup
 }
 
 const baseProps = {
+  depositSub: "country" as const,
+  depositCountryRows: [] as DepositCountryRow[],
+  depositMethodGroups: [] as DepositMethodGroup[],
+  depositSelectedCountryName: "",
+  depositMethodChosen: false,
   depositNotDone: true,
   depositDone: false,
   depositStepDots: [{ on: true }, { on: false }, { on: false }],
@@ -505,6 +510,8 @@ describe("DepositModal bank transfer success screen", () => {
     depositResultText: "Order #122 · processing",
     depositBankLabel: "Bank Transfer",
     depositBankArrival: "Arrives within 1 business day",
+    depositAmount: "20000",
+    depositCurrency: "KES",
     depositBankLines: [
       { k: "Amount", v: "20000 KES" },
       { k: "Account number", v: "2045080458" },
@@ -514,12 +521,30 @@ describe("DepositModal bank transfer success screen", () => {
     ],
   };
 
-  it("shows the amount the customer is expected to send alongside the bank details", () => {
+  it("leads with the exact amount and lists every bank detail with its own copy button", () => {
     render(<DepositModal {...doneProps} />);
 
-    expect(screen.getByText("Amount")).toBeInTheDocument();
-    expect(screen.getByText("20000 KES")).toBeInTheDocument();
+    expect(screen.getByText("KES 20,000")).toBeInTheDocument();
     expect(screen.getByText("2045080458")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Account number" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy amount" })).toBeInTheDocument();
+    expect(screen.getByText("Arrives within 1 business day")).toBeInTheDocument();
+  });
+
+  it("makes the reference prominent and explains why it matters", () => {
+    render(<DepositModal {...doneProps} />);
+
+    expect(screen.getByText("Reference · required")).toBeInTheDocument();
+    expect(screen.getByText("EPA1577947")).toBeInTheDocument();
+    expect(screen.getByText(/can't match the\s+payment/)).toBeInTheDocument();
+  });
+
+  it("closes from \"I've sent it\"", () => {
+    const closeModal = vi.fn();
+    render(<DepositModal {...doneProps} closeModal={closeModal} />);
+    fireEvent.click(screen.getByRole("button", { name: "I've sent it" }));
+    expect(closeModal).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
   });
 
   it("lets the customer download the instructions as a text file", () => {
@@ -530,11 +555,12 @@ describe("DepositModal bank transfer success screen", () => {
 
     render(<DepositModal {...doneProps} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Download instructions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
 
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     const [blob] = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(blob).toBeInstanceOf(Blob);
+    expect((blob as Blob).size).toBeGreaterThan(0);
 
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
@@ -554,5 +580,67 @@ describe("DepositModal bank transfer success screen", () => {
     );
 
     delete (navigator as any).share;
+  });
+});
+
+describe("DepositModal transparency", () => {
+  const amountStep = {
+    ...baseProps,
+    depositStepIs2: true,
+    depositIsCountry: true,
+    depositAmount: "50",
+    depositPhone: "0100234567",
+    depositFeeText: "Shown on review",
+  };
+
+  it("shows published per-transaction limits and the fee status under the amount", () => {
+    render(<DepositModal {...amountStep} depositLimitsText="Min KES 100 · Max KES 150,000" />);
+    expect(screen.getByText("Min KES 100 · Max KES 150,000 per transaction")).toBeInTheDocument();
+    expect(screen.getByText("Fee · Shown on review")).toBeInTheDocument();
+  });
+
+  it("blocks Review with an inline message when the amount is out of range", () => {
+    const depositNext = vi.fn();
+    render(
+      <DepositModal
+        {...amountStep}
+        depositNext={depositNext}
+        depositLimitsText="Min KES 100 · Max KES 150,000"
+        depositLimitError="Minimum is KES 100 per transaction."
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Minimum is KES 100 per transaction.");
+    expect(screen.getByLabelText("Amount")).toHaveAttribute("aria-invalid", "true");
+    const review = screen.getByRole("button", { name: "Review" });
+    expect(review).toBeDisabled();
+    fireEvent.click(review);
+    expect(depositNext).not.toHaveBeenCalled();
+  });
+
+  it("shows the quoted rate and counts down the rate lock on review", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+    render(
+      <DepositModal
+        {...baseProps}
+        depositStepIs3
+        depositIsCountry
+        depositAmount="5000"
+        depositCurrency="KES"
+        depositQuoteRateText="38.61 USDC"
+        depositRateLine="1 USD = 129.50 KES"
+        depositFeeText="Included in the rate"
+        depositQuoteExpiresAt="2026-10-14T12:02:00Z"
+      />,
+    );
+    expect(screen.getByText("1 USD = 129.50 KES")).toBeInTheDocument();
+    expect(screen.getByText("5,000 KES")).toBeInTheDocument();
+    expect(screen.getByText("for 2:00")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(121_000);
+    });
+    expect(screen.getByText(/Expired/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirm top-up/ })).toBeDisabled();
+    vi.useRealTimers();
   });
 });

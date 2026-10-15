@@ -9,6 +9,7 @@ import {
 } from "@/lib/clients/savedRecipientsApi";
 import { isMobileMoneyRail, mobileMoneyDisplayLabel } from "@/lib/services/mobileMoneyBrands";
 import MobileMoneyMark from "@/components/money/MobileMoneyMark";
+import TermsLine from "@/components/money/TermsLine";
 
 /** Presentational Send modal body — props-driven; state lives in DashboardApp. */
 export type SendMethodOption = {
@@ -81,6 +82,10 @@ export type SendModalProps = {
   sendAmountEquivalent: string | null;
   /** Indicative "1 USD = 130.50 KES" shown while entering an amount. */
   sendIndicativeRateLine: string | null;
+  /** "Min KES 100 · Max KES 150,000" from the partner catalog; null when unpublished. */
+  sendLimitsText?: string | null;
+  /** Inline message when the typed amount is outside the published limits. */
+  sendLimitError?: string | null;
   /** Binding "1 USD = 130.50 KES" from the quote, shown on review. */
   sendQuotedRateLine: string | null;
   savedRecipients: SavedRecipient[];
@@ -743,14 +748,21 @@ export default function SendModal(p: SendModalProps) {
                     placeholder="0.00"
                     inputMode="decimal"
                     autoComplete="off"
+                    aria-invalid={p.sendLimitError ? true : undefined}
                     aria-describedby={
-                      p.sendQuoteError
-                        ? "send-quote-error"
-                        : p.sendAmountEquivalent
-                          ? "send-amount-equiv"
-                          : undefined
+                      [
+                        p.sendLimitsText || p.sendLimitError ? "send-limits" : "",
+                        p.sendQuoteError
+                          ? "send-quote-error"
+                          : p.sendAmountEquivalent
+                            ? "send-amount-equiv"
+                            : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
                     }
                   />
+                  <TermsLine id="send-limits" limits={p.sendLimitsText} error={p.sendLimitError} />
                   {p.sendAmountEquivalent ? (
                     <span className="ep-money-equiv" id="send-amount-equiv">
                       <strong>{p.sendAmountEquivalent}</strong>
@@ -805,7 +817,7 @@ export default function SendModal(p: SendModalProps) {
                   type="button"
                   className="ep-btn-primary"
                   onClick={p.sendNext}
-                  disabled={p.sendQuoteLoading}
+                  disabled={p.sendQuoteLoading || Boolean(p.sendLimitError)}
                   aria-busy={p.sendQuoteLoading || undefined}
                 >
                   {p.sendQuoteLoading ? "Getting quote…" : "Review"}
