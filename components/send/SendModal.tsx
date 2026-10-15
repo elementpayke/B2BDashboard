@@ -81,8 +81,6 @@ export type SendModalProps = {
   sendAmountEquivalent: string | null;
   /** Indicative "1 USD = 130.50 KES" shown while entering an amount. */
   sendIndicativeRateLine: string | null;
-  /** "Min KES 100 · Max KES 150,000" from the partner catalog; null when unpublished. */
-  sendLimitsText?: string | null;
   /** Inline message when the typed amount is outside the published limits
    *  or exceeds the source wallet's available balance. */
   sendLimitError?: string | null;
@@ -744,7 +742,7 @@ export default function SendModal(p: SendModalProps) {
                       aria-invalid={p.sendLimitError ? true : undefined}
                       aria-describedby={
                         [
-                          p.sendLimitsText || p.sendLimitError ? "send-limits" : "",
+                          p.sendLimitError ? "send-limits" : "",
                           p.sendQuoteError
                             ? "send-quote-error"
                             : p.sendAmountEquivalent
@@ -765,13 +763,14 @@ export default function SendModal(p: SendModalProps) {
                       </button>
                     ) : null}
                   </div>
-                  <TermsLine id="send-limits" limits={p.sendLimitsText} error={p.sendLimitError} />
+                  <TermsLine id="send-limits" error={p.sendLimitError} />
                   {p.sendAmountEquivalent ? (
                     <span className="ep-money-equiv" id="send-amount-equiv">
+                      {p.sendAmountCurrency.toUpperCase() === "USD" ? "They receive " : "You send "}
                       <strong>{p.sendAmountEquivalent}</strong>
-                      {p.sendIndicativeRateLine ? ` · ${p.sendIndicativeRateLine}` : ""}
                       <span className="ep-money-equiv__note">
-                        Indicative. The exact amount is locked on the next step.
+                        {p.sendIndicativeRateLine ? `${p.sendIndicativeRateLine} · ` : ""}
+                        Confirmed on the next step.
                       </span>
                     </span>
                   ) : null}

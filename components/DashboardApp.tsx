@@ -2085,7 +2085,19 @@ export default function DashboardApp(props: Props = {}) {
   const openConvert = openMoneyFlow("convert");
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
-  const setSendAmount = (e) => setState({ sendAmount: e.target.value });
+  // Blocks typing past whichever cap is known (corridor max, wallet balance —
+  // sendMaxAmount is already the smaller of the two, in the box's currency).
+  // Never blocks below the minimum: reaching "150" means typing through "1"
+  // and "15" first, both under it.
+  const setSendAmount = (e) => {
+    const next = e.target.value;
+    const cap = sendIsCountry && sendMaxAmount ? Number(sendMaxAmount) : null;
+    if (cap != null) {
+      const n = Number(next.replace(/,/g, ""));
+      if (Number.isFinite(n) && n > cap) return;
+    }
+    setState({ sendAmount: next });
+  };
   /** Mobile money: rewrite local numbers (07…) to E.164 (+254…) in the field. */
   const normalizeSendRecipientPhone = (e?: React.FocusEvent<HTMLInputElement>) => {
     setState((prev: any) => {
@@ -4603,7 +4615,6 @@ export default function DashboardApp(props: Props = {}) {
         )
       : "Shown on review";
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
-  const sendLimitsText = formatLimitsLine(sendLimits);
   // Same wallet the submit handler settles from — resolved here too so the
   // balance check below reflects what Next would actually reject.
   const sendRefundWallet = sendIsCountry
@@ -5770,7 +5781,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendAmountEquivalent={sendAmountEquivalent}
   sendIndicativeRateLine={sendIndicativeRateLine}
   sendQuotedRateLine={sendQuotedRateLine}
-  sendLimitsText={sendLimitsText}
   sendLimitError={sendLimitError}
   sendMaxAmount={sendMaxAmount}
   onMaxSendAmount={
