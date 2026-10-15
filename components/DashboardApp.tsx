@@ -3963,7 +3963,8 @@ export default function DashboardApp(props: Props = {}) {
       : undefined;
   const walletsRecent = mergePresentedActivityRows(decoratedAll, unmatchedOnchainRows, 5);
   const elementAccountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
-    financialAccountId: selectedStablecoinAccount?.id ?? null,
+    financialAccountId:
+      selectedStablecoinAccount?.id ?? selectedDepositAccount?.id ?? null,
     walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
   });
   const selectedAccountOnchainPayments = selectedStablecoinAccount
