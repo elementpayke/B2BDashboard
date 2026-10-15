@@ -2,7 +2,10 @@
 import MbokaMark from "@/components/brand/MbokaMark";
 import ChoicePicker, { type ChoicePickerOption } from "@/components/ui/ChoicePicker";
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import BankTransferInstructions from "@/components/deposit/BankTransferInstructions";
+import { formatCountdown } from "@/lib/services/transferTerms";
+import TermsLine from "@/components/money/TermsLine";
 import dynamic from "next/dynamic";
 import {
   countryMatchesQuery,
@@ -80,6 +83,16 @@ export type DepositModalProps = {
   depositQuoteRateText: string | null;
   depositFeeText: string;
   depositArrivalText: string;
+  /** "Min KES 100 · Max KES 150,000" from the partner catalog; null when unpublished. */
+  depositLimitsText?: string | null;
+  /** Inline message when the typed amount is outside the published limits. */
+  depositLimitError?: string | null;
+  /** "1 USD = 129.50 KES" from the quote. */
+  depositRateLine?: string | null;
+  /** Quote expiry (ISO) for the rate-lock countdown. */
+  depositQuoteExpiresAt?: string | null;
+  /** Currency the payer sends in (e.g. KES). */
+  depositCurrency?: string;
   depositAcceptError: string;
   depositAccepting: boolean;
   submitDeposit: () => void;
@@ -185,33 +198,29 @@ function StepProgress({ dots, label }: { dots: { on: boolean }[]; label: string 
   );
 }
 
-function bankInstructionsText(p: DepositModalProps): string {
-  const lines = [
-    `${p.depositBankLabel} · ${p.depositBankArrival}`,
-    p.depositResultText || "",
-    "",
-    ...(p.depositBankLines || []).map((ln: any) => `${ln.k}: ${ln.v}`),
-  ].filter(Boolean);
-  return lines.join("\n");
+function formatPayAmount(raw: string): string {
+  const n = Number(String(raw).replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
+    : raw;
 }
 
-function downloadBankInstructions(p: DepositModalProps) {
-  const blob = new Blob([bankInstructionsText(p)], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "mboka-bank-transfer-instructions.txt";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-
-function shareBankInstructions(p: DepositModalProps) {
-  navigator.share?.({ title: "Bank transfer instructions", text: bankInstructionsText(p) }).catch(() => {});
+/** Ticks every second while a quote is on screen so the rate lock counts down. */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return now;
 }
 
 export default function DepositModal(p: DepositModalProps) {
+  const now = useNow(Boolean(p.depositStepIs3 && p.depositQuoteExpiresAt));
+  const quoteCountdown = formatCountdown(p.depositQuoteExpiresAt, now);
+  const quoteExpired = quoteCountdown === "0:00";
+  const showBankPay = p.depositIsBankRail && (p.depositBankLines || []).length > 0;
   const [addressCopied, setAddressCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [countrySearch, setCountrySearch] = useState("");
@@ -536,7 +545,21 @@ export default function DepositModal(p: DepositModalProps) {
                   placeholder="0.00"
                   inputMode="decimal"
                   autoComplete="off"
-                  aria-describedby={p.depositQuoteError ? "deposit-quote-error" : undefined}
+                  aria-invalid={p.depositLimitError ? true : undefined}
+                  aria-describedby={
+                    [
+                      p.depositLimitsText || p.depositLimitError ? "deposit-limits" : "",
+                      p.depositQuoteError ? "deposit-quote-error" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                />
+                <TermsLine
+                  id="deposit-limits"
+                  limits={p.depositLimitsText}
+                  error={p.depositLimitError}
+                  fee={p.depositFeeText}
                 />
               </div>
 
@@ -590,7 +613,7 @@ export default function DepositModal(p: DepositModalProps) {
                   type="button"
                   className="ep-btn-primary"
                   onClick={p.depositNext}
-                  disabled={p.depositQuoteLoading}
+                  disabled={p.depositQuoteLoading || Boolean(p.depositLimitError)}
                   aria-busy={p.depositQuoteLoading || undefined}
                 >
                   {p.depositQuoteLoading ? "Getting quote…" : "Review"}
@@ -704,11 +727,21 @@ export default function DepositModal(p: DepositModalProps) {
                 <div className="ep-money-review__row ep-money-review__row--emphasis">
                   <span className="ep-money-review__k">You pay</span>
                   <span className="ep-money-review__v ep-money-review__v--mono">
-                    {p.depositAmount}
+                    {p.depositCurrency
+                      ? `${formatPayAmount(p.depositAmount)} ${p.depositCurrency}`
+                      : p.depositAmount}
                   </span>
                 </div>
-                {p.depositQuoteRateText ? (
+                {p.depositRateLine ? (
                   <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Rate</span>
+                    <span className="ep-money-review__v ep-money-review__v--mono">
+                      {p.depositRateLine}
+                    </span>
+                  </div>
+                ) : null}
+                {p.depositQuoteRateText ? (
+                  <div className="ep-money-review__row ep-money-review__row--emphasis">
                     <span className="ep-money-review__k">You receive</span>
                     <span className="ep-money-review__v ep-money-review__v--mono">
                       {p.depositQuoteRateText}
@@ -722,10 +755,32 @@ export default function DepositModal(p: DepositModalProps) {
                   </span>
                 </div>
                 <div className="ep-money-review__row">
-                  <span className="ep-money-review__k">Valid until</span>
-                  <span className="ep-money-review__v">{p.depositArrivalText}</span>
+                  <span className="ep-money-review__k">Rate locked</span>
+                  <span className="ep-money-review__v">
+                    {quoteCountdown ? (
+                      <span
+                        className={`ep-rate-lock${quoteExpired ? " ep-rate-lock--expired" : ""}`}
+                        aria-live="off"
+                      >
+                        {quoteExpired ? "Expired — go back for a fresh quote" : `for ${quoteCountdown}`}
+                      </span>
+                    ) : (
+                      p.depositArrivalText
+                    )}
+                  </span>
                 </div>
+                {p.depositIsBankRail ? (
+                  <div className="ep-money-review__row">
+                    <span className="ep-money-review__k">Arrival</span>
+                    <span className="ep-money-review__v">{p.depositBankArrival}</span>
+                  </div>
+                ) : null}
               </div>
+              {p.depositIsBankRail ? (
+                <p className="ep-money-hint">
+                  Next you&apos;ll get the account details and a reference to pay from your bank.
+                </p>
+              ) : null}
 
               {p.depositAcceptError ? (
                 <div className="ep-money-banner ep-money-banner--danger" role="alert">
@@ -746,7 +801,7 @@ export default function DepositModal(p: DepositModalProps) {
                   type="button"
                   className="ep-btn-primary"
                   onClick={p.submitDeposit}
-                  disabled={p.depositAccepting}
+                  disabled={p.depositAccepting || quoteExpired}
                   aria-busy={p.depositAccepting || undefined}
                 >
                   {p.depositAccepting ? "Confirming…" : "Confirm top-up ↗"}
@@ -807,40 +862,17 @@ export default function DepositModal(p: DepositModalProps) {
             </div>
           ) : null}
 
-          {p.depositIsBankRail && p.depositBankLines.length > 0 ? (
-            <div className="ep-money-done-panel">
-              <p className="ep-money-hint">
-                {p.depositBankLabel} · {p.depositBankArrival}
-              </p>
-              <div className="ep-money-kv" role="group" aria-label="Bank transfer details">
-                {(p.depositBankLines || []).map((ln: any, i: number) => (
-                  <div key={i} className="ep-money-kv__row">
-                    <span className="ep-money-kv__k">{ln.k}</span>
-                    <span className="ep-money-kv__v">{ln.v}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="ep-money-done-panel__actions">
-                <button
-                  type="button"
-                  className="ep-btn-secondary"
-                  onClick={() => downloadBankInstructions(p)}
-                >
-                  Download instructions
-                </button>
-                {typeof navigator !== "undefined" && typeof navigator.share === "function" ? (
-                  <button
-                    type="button"
-                    className="ep-btn-secondary"
-                    onClick={() => shareBankInstructions(p)}
-                  >
-                    Share
-                  </button>
-                ) : null}
-              </div>
-            </div>
+          {showBankPay ? (
+            <BankTransferInstructions
+              amount={formatPayAmount(p.depositAmount)}
+              currency={p.depositCurrency || ""}
+              rows={(p.depositBankLines || []).map((ln: { k: string; v: string }) => ({ k: String(ln.k), v: String(ln.v) }))}
+              arrival={p.depositBankArrival}
+              onSent={p.closeModal}
+            />
           ) : null}
 
+          {showBankPay ? null : (
           <button
             type="button"
             className="ep-btn-secondary"
@@ -849,6 +881,7 @@ export default function DepositModal(p: DepositModalProps) {
           >
             Done
           </button>
+          )}
         </div>
       ) : null}
     </>

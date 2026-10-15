@@ -37,6 +37,11 @@ export type CatalogProvider = {
   name: string;
   enabled: boolean;
   id?: string;
+  /** Per-transaction limits, when the partner publishes them (string or number). */
+  min_amount?: string | number | null;
+  max_amount?: string | number | null;
+  /** Currency the limits are expressed in. */
+  currency?: string | null;
 };
 
 export type CatalogPaymentMethod = {
