@@ -153,6 +153,7 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import { copyText } from "@/lib/clipboard";
+import { formatLimitsLine, limitViolation, providerLimits } from "@/lib/services/transferTerms";
 import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
@@ -4707,7 +4708,14 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote.amounts.rate,
           sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
         )
-      : (isMobileMoneyRail(sendRail.type) ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+      : "Shown on review";
+  const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
+  const sendLimitsText = formatLimitsLine(sendLimits);
+  // Limits are in the payout currency; only check inline when typing in it.
+  const sendLimitError =
+    sendLimits && sendLimits.currency === sendAmountCurrency.toUpperCase()
+      ? limitViolation(s.sendAmount, sendLimits)
+      : null;
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
@@ -4828,7 +4836,19 @@ export default function DashboardApp(props: Props = {}) {
   const depositQuoteError = s.depositQuoteError;
   const depositAccepting = s.depositAccepting;
   const depositAcceptError = s.depositAcceptError;
-  const depositFeeText = depositQuote ? formatQuoteFees(depositQuote.amounts.fees) : (depositRail.type === "mobile" ? "No fee · instant local transfer" : "Fee ≈ $1.20 · bank transfer");
+  // Never estimate: before a quote exists the fee is "shown on review".
+  const depositFeeText = depositQuote ? formatQuoteFees(depositQuote.amounts.fees) : "Shown on review";
+  const depositLimits = depositIsCountry
+    ? providerLimits(depositCatalogProviders, depositProvider, depositCountry.code)
+    : null;
+  const depositLimitsText = formatLimitsLine(depositLimits);
+  const depositLimitError = limitViolation(s.depositAmount, depositLimits);
+  const depositRateLine = depositQuote
+    ? formatRateLine(
+        depositQuote.amounts.rate,
+        depositQuote.amounts.rate_currency || depositQuote.amounts.user_pays.currency,
+      )
+    : null;
   const depositArrivalText = depositQuote?.expires_at
     ? new Date(depositQuote.expires_at).toLocaleTimeString()
     : depositRail.arrival;
@@ -5929,6 +5949,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendAmountEquivalent={sendAmountEquivalent}
   sendIndicativeRateLine={sendIndicativeRateLine}
   sendQuotedRateLine={sendQuotedRateLine}
+  sendLimitsText={sendLimitsText}
+  sendLimitError={sendLimitError}
   savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
     if (sendIsCrypto) return r.railType === "crypto";
     if (s.sendMethod === "mobile") return r.railType === "mobile";
@@ -6035,6 +6057,11 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   depositQuoteRateText={depositQuoteRateText}
   depositFeeText={depositFeeText}
   depositArrivalText={depositArrivalText}
+  depositLimitsText={depositLimitsText}
+  depositLimitError={depositLimitError}
+  depositRateLine={depositRateLine}
+  depositQuoteExpiresAt={depositQuote?.expires_at ?? null}
+  depositCurrency={depositCountry.code}
   depositAcceptError={depositAcceptError}
   depositAccepting={depositAccepting}
   submitDeposit={submitDeposit}
