@@ -43,6 +43,7 @@ function Icon({ name }: { name: "copy" | "check" | "share" | "download" | "clock
  */
 export default function BankTransferInstructions({ amount, currency, rows, arrival, status, onSent }: Props) {
   const [copied, setCopied] = useState("");
+  const [copyFailed, setCopyFailed] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -53,7 +54,14 @@ export default function BankTransferInstructions({ amount, currency, rows, arriv
   const allText = bankInstructionsText({ amount, currency, rows: rows.filter((r) => r.k.toLowerCase() !== "amount"), arrival });
 
   const copy = async (key: string, value: string) => {
-    if (!(await copyText(value))) return;
+    window.clearTimeout(timer.current);
+    if (!(await copyText(value))) {
+      setCopied("");
+      setCopyFailed(true);
+      timer.current = window.setTimeout(() => setCopyFailed(false), 4000);
+      return;
+    }
+    setCopyFailed(false);
     setCopied(key);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setCopied(""), 1600);
@@ -168,6 +176,12 @@ export default function BankTransferInstructions({ amount, currency, rows, arriv
           Download
         </button>
       </div>
+
+      {copyFailed ? (
+        <p className="ep-bank-pay__copy-error" role="alert">
+          Couldn&apos;t copy — select the text and copy it manually.
+        </p>
+      ) : null}
 
       <button type="button" className="ep-btn-primary ep-bank-pay__sent" onClick={onSent}>
         I&apos;ve sent it

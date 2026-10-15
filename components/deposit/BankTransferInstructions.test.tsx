@@ -47,4 +47,16 @@ describe("BankTransferInstructions", () => {
     expect(text).toContain("Reference: MBK-7Q4K2");
     expect(text).toContain("Arrival: Within 1 business day");
   });
+
+  it("tells the user when copying fails instead of failing silently", async () => {
+    copyText.mockResolvedValueOnce(false);
+    render(
+      <BankTransferInstructions amount="5,000" currency="KES" rows={rows} arrival="Within 1 business day" onSent={vi.fn()} />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy reference" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/copy it manually/);
+    expect(screen.getByRole("button", { name: "Copy reference" })).toHaveAttribute("data-copied", "false");
+  });
 });
