@@ -89,6 +89,34 @@ export function limitViolation(amount: string, limits: AmountLimits | null): str
   return null;
 }
 
+/** Checks an entered amount against limits published in another currency. */
+export function limitViolationForAmount(
+  amount: string,
+  amountCurrency: string,
+  limits: AmountLimits | null,
+  usdToLimitCurrencyRate: number | null = null,
+): string | null {
+  if (!limits) return null;
+  const enteredCurrency = amountCurrency.trim().toUpperCase();
+  const limitCurrency = limits.currency.trim().toUpperCase();
+  if (enteredCurrency === limitCurrency) return limitViolation(amount, limits);
+  if (
+    enteredCurrency !== "USD" ||
+    usdToLimitCurrencyRate === null ||
+    !Number.isFinite(usdToLimitCurrencyRate) ||
+    usdToLimitCurrencyRate <= 0
+  ) {
+    return null;
+  }
+
+  const enteredAmount = toNumber(amount);
+  if (enteredAmount === null) return null;
+  const error = limitViolation(String(enteredAmount * usdToLimitCurrencyRate), limits);
+  return error
+    ? `${error} The check uses an indicative rate; switch to ${limitCurrency} to adjust precisely.`
+    : null;
+}
+
 /** "4:05" until the quote expires, "0:00" once it has. Null without an expiry. */
 export function formatCountdown(expiresAt: string | null | undefined, nowMs: number): string | null {
   if (!expiresAt) return null;

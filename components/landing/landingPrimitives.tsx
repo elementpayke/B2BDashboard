@@ -38,7 +38,14 @@ export function Reveal({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || reducedMotion) return;
+    if (!el) return;
+    if (reducedMotion) {
+      // Respect a live preference change too, not just its value at mount —
+      // otherwise a below-fold element can stay at opacity 0 until it
+      // scrolls into view and the IntersectionObserver fires.
+      setVisible(true);
+      return;
+    }
     if (el.getBoundingClientRect().top < window.innerHeight) return; // already in view
     setVisible(false);
     if (!("IntersectionObserver" in window)) {
@@ -57,8 +64,7 @@ export function Reveal({
     );
     io.observe(el);
     return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reducedMotion]);
 
   const Comp = Tag as any;
   return (

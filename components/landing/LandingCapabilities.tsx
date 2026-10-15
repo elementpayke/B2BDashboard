@@ -523,7 +523,7 @@ function CardStableAndReports() {
               <span style={{ width: 32, height: 32, fontSize: 32 }}>{USDT_COIN}</span>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <b style={{ fontSize: 14 }}>USDT</b>
-                <span style={{ fontSize: 11, opacity: 0.6 }}>Tron · Ethereum</span>
+                <span style={{ fontSize: 11, opacity: 0.6 }}>Tron · Ethereum · Stellar</span>
               </div>
               <span style={{ marginLeft: "auto", fontFamily: "'DM Mono',monospace", fontSize: 14, whiteSpace: "nowrap" }}>9,402.55</span>
             </div>
@@ -531,7 +531,7 @@ function CardStableAndReports() {
               <span style={{ width: 32, height: 32, fontSize: 32 }}>{USDC_COIN}</span>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <b style={{ fontSize: 14 }}>USDC</b>
-                <span style={{ fontSize: 11, opacity: 0.6 }}>Base · Solana</span>
+                <span style={{ fontSize: 11, opacity: 0.6 }}>Base · Solana · Stellar</span>
               </div>
               <span style={{ marginLeft: "auto", fontFamily: "'DM Mono',monospace", fontSize: 14, whiteSpace: "nowrap" }}>24,180.00</span>
             </div>

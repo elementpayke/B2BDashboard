@@ -3,7 +3,11 @@ import "./globals.css";
 import QueryProvider from "@/lib/providers/QueryProvider";
 
 export const metadata: Metadata = {
-  title: "Mboka — Business",
+  metadataBase: new URL("https://mboka.finance"),
+  title: {
+    default: "Mboka — Business",
+    template: "%s · Mboka",
+  },
   description: "Move business money at internet speed",
 };
 

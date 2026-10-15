@@ -153,16 +153,23 @@ import {
 } from "@/lib/services/catalog";
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import { copyText } from "@/lib/clipboard";
-import { formatLimitsLine, limitViolation, providerLimits } from "@/lib/services/transferTerms";
+import {
+  formatLimitsLine,
+  limitViolation,
+  limitViolationForAmount,
+  providerLimits,
+} from "@/lib/services/transferTerms";
 import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
 import {
+  amountExceedsBalance,
   canEnterInLocalCurrency,
   describeAmountEquivalent,
   formatFeeDual,
   formatRateLine,
   indicativeRate,
+  maxAmountForBalance,
   toPayloadUsdAmount,
 } from "@/lib/services/sendAmount";
 import { useViewport } from "@/lib/responsive";
@@ -4575,6 +4582,29 @@ export default function DashboardApp(props: Props = {}) {
         sendLocalCurrency,
       )
     : null;
+  const sendBalanceAccount = sendIsCountry
+    ? fundableRefundWallets.find((account) => account.id === s.sendAccountId) ||
+      preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+    : resolvedStablecoinAccounts.find((account) => account.id === sendSelection.accountId) ||
+      sendableAccountsForPicker.find((account) => account.id === sendSelection.accountId);
+  const sendAvailableBalance = parseBalanceNumber(sendBalanceAccount?.balance);
+  const sendAmountMode = {
+    currency: sendAmountCurrency,
+    rate: sendIndicativeRate,
+  };
+  const sendMaxAmount = sendAvailableBalance === null
+    ? null
+    : maxAmountForBalance(sendAvailableBalance, sendAmountMode);
+  const sendEnteredUsdAmount = toPayloadUsdAmount(s.sendAmount, sendAmountMode);
+  const sendBalanceError = amountExceedsBalance(
+    s.sendAmount,
+    sendAmountMode,
+    sendAvailableBalance,
+  )
+      ? sendAmountCurrency.toUpperCase() === "USD"
+        ? `This amount is above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+      : null;
   const sendIndicativeRateLine = sendIsCountry
     ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
     : null;
@@ -4710,12 +4740,12 @@ export default function DashboardApp(props: Props = {}) {
         )
       : "Shown on review";
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
-  const sendLimitsText = formatLimitsLine(sendLimits);
-  // Limits are in the payout currency; only check inline when typing in it.
-  const sendLimitError =
-    sendLimits && sendLimits.currency === sendAmountCurrency.toUpperCase()
-      ? limitViolation(s.sendAmount, sendLimits)
-      : null;
+  const sendLimitError = limitViolationForAmount(
+    s.sendAmount,
+    sendAmountCurrency,
+    sendLimits,
+    sendLimits?.currency === sendLocalCurrency.toUpperCase() ? sendIndicativeRate : null,
+  );
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
@@ -5953,8 +5983,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendAmountEquivalent={sendAmountEquivalent}
   sendIndicativeRateLine={sendIndicativeRateLine}
   sendQuotedRateLine={sendQuotedRateLine}
-  sendLimitsText={sendLimitsText}
   sendLimitError={sendLimitError}
+  sendBalanceError={sendBalanceError}
   savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
     if (sendIsCrypto) return r.railType === "crypto";
     if (s.sendMethod === "mobile") return r.railType === "mobile";
@@ -5992,6 +6022,10 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendRefundWalletsLoading={
     bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
   }
+  sendMaxAmount={sendMaxAmount}
+  setSendAmountToMax={() => {
+    if (sendMaxAmount) setState({ sendAmount: sendMaxAmount });
+  }}
   sendRecipientName={sendRecipientName}
   setSendRecipientName={setSendRecipientName}
   sendRecipientLabel={sendRecipientLabel}

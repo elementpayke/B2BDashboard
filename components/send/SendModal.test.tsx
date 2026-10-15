@@ -119,6 +119,50 @@ describe("SendModal stablecoin chain picker", () => {
   });
 });
 
+describe("SendModal live amount feedback", () => {
+  const amountStep = {
+    sendStepIs1: false,
+    sendStepIs2: true,
+    sendStepDots: [{ on: true }, { on: true }, { on: false }],
+  };
+
+  it("shows Max when a source-wallet maximum is available and applies it on click", () => {
+    const setSendAmountToMax = vi.fn();
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...amountStep,
+          sendMaxAmount: "0.44",
+          setSendAmountToMax,
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use maximum available balance of 0.44 USD" }),
+    );
+    expect(setSendAmountToMax).toHaveBeenCalledOnce();
+  });
+
+  it("marks amounts above the selected wallet balance invalid and disables Review", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...amountStep,
+          sendAmount: "0.50",
+          sendBalanceError: "This amount is above your available balance of 0.44 USDT.",
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Amount (USD)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This amount is above your available balance of 0.44 USDT.",
+    );
+    expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
+  });
+});
+
 describe("SendModal memo (Stellar-only)", () => {
   it("shows an optional memo field on the recipient step for a Stellar send", () => {
     render(
