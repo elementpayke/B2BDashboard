@@ -44,10 +44,19 @@ function loadWorld(): Promise<any> {
   if (cachedWorld) return Promise.resolve(cachedWorld);
   if (!worldPromise) {
     worldPromise = fetch(WORLD_ATLAS_URL)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`world-atlas ${r.status}`);
+        return r.json();
+      })
       .then((topology) => {
         cachedWorld = topojson.feature(topology, topology.objects.countries as any);
         return cachedWorld;
+      })
+      .catch((err) => {
+        // Clear so the next scene activation retries instead of reusing a
+        // rejected promise for the rest of the session.
+        worldPromise = null;
+        throw err;
       });
   }
   return worldPromise;
@@ -187,6 +196,10 @@ export default function HeroGlobe({ active }: { active: boolean }) {
         if (!reducedMotion) rafRef.current = requestAnimationFrame(frame);
       };
       frame(t0);
+    }).catch(() => {
+      // World-atlas fetch failed — leave the scene's absolutely-positioned
+      // container empty rather than crash; the next time this scene
+      // activates, loadWorld() retries (worldPromise was cleared above).
     });
 
     return () => {
