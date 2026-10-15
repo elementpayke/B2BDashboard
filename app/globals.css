@@ -11125,3 +11125,272 @@ button.ep-card-face:focus-visible {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ── Transfer terms: limits, fee status, rate lock ─────────────── */
+.ep-terms-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-family: "DM Mono", monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ep-terms-line__fee {
+  color: var(--muted2);
+}
+.ep-terms-line--error {
+  color: var(--red);
+  font-family: "DM Sans", sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ep-rate-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "DM Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--indigo-text);
+}
+.ep-rate-lock::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ep-rate-lock--expired {
+  color: var(--red);
+  font-family: "DM Sans", sans-serif;
+}
+
+/* ── Bank transfer top-up instructions ─────────────────────────── */
+.ep-bank-pay {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+  font-family: "DM Sans", sans-serif;
+  color: var(--ink);
+}
+.ep-bank-pay__head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--indigo-tint);
+}
+.ep-bank-pay__eyebrow {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--indigo-text);
+}
+.ep-bank-pay__amount-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ep-bank-pay__amount {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 0;
+}
+.ep-bank-pay__amount-value {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: clamp(22px, 6vw, 28px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ep-bank-pay__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ep-bank-pay__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ep-bank-pay__chip--warn {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+.ep-bank-pay__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: bank-step;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ep-bank-pay__steps li {
+  counter-increment: bank-step;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.ep-bank-pay__steps li::before {
+  content: counter(bank-step);
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ep-bank-pay__details {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.ep-bank-pay__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.ep-bank-pay__row + .ep-bank-pay__row {
+  border-top: 1px solid var(--border);
+}
+.ep-bank-pay__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ep-bank-pay__label {
+  font-size: 11.5px;
+  color: var(--muted2);
+}
+.ep-bank-pay__value {
+  font-family: "DM Mono", monospace;
+  font-size: 14px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.ep-bank-pay__copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ep-bank-pay__copy[data-copied="true"] {
+  background: var(--indigo);
+  border-color: var(--indigo);
+  color: var(--indigo-on);
+}
+.ep-bank-pay__ref {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--indigo);
+  background: var(--panel);
+}
+.ep-bank-pay__ref .ep-bank-pay__label {
+  color: var(--indigo-text);
+  font-weight: 700;
+}
+.ep-bank-pay__ref-value {
+  font-family: "DM Mono", monospace;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.ep-bank-pay__ref-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.ep-bank-pay__note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.ep-bank-pay__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ep-bank-pay__tool {
+  flex: 1 1 0;
+  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ep-bank-pay__copy-error {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--red);
+}
+.ep-bank-pay__sent {
+  width: 100%;
+}
+.ep-bank-pay__after {
+  margin: -6px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted2);
+}
