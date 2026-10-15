@@ -1,19 +1,16 @@
 import React from "react";
 import { MbokaGlyphPaths } from "./MbokaGlyph";
-import { supportMailtoHref, supportWhatsAppHref } from "@/lib/support/contacts";
 
 /**
  * "Talk to us" indigo CTA block. The design handoff's own README left the
  * booking link and message address as placeholders
- * (`#TODO-booking-link`, `mailto:TODO@mboka.com` in landing.js) pending real
- * values. There's no dedicated booking/calendar tool anywhere in this app,
- * so "Book a call" points at the same WhatsApp line the in-app Help modal
- * already uses (lib/support/contacts.ts) — the only real "talk to someone
- * live" channel that exists today. "Send a message" uses the same support
- * mailbox. Swap "Book a call" for a real scheduling link if/when one exists.
+ * (`#TODO-booking-link`, `mailto:TODO@mboka.com` in landing.js) — now real:
+ * "Book a call" opens the Mboka Cal.com scheduling page, "Send a message"
+ * opens the Mboka support mailbox (distinct from lib/support/contacts.ts'
+ * info@elementpay.net, which is the in-app/dashboard Help channel).
  */
-const BOOK_A_CALL_HREF = supportWhatsAppHref("Hi, I'd like to talk to someone about Mboka for my business.");
-const SEND_MESSAGE_HREF = supportMailtoHref("Mboka — business inquiry");
+const BOOK_A_CALL_HREF = "https://cal.com/elementpay/30min";
+const SEND_MESSAGE_HREF = "mailto:support@mboka.finance?subject=Mboka%20%E2%80%94%20business%20inquiry";
 
 function TalkTile({
   href,

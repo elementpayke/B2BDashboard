@@ -1,6 +1,11 @@
 "use client";
 import React, { useEffect, useRef } from "react";
-import * as d3 from "d3";
+// Scoped d3 submodules rather than the full `d3` meta-package — this scene
+// only needs selection + geo projection, and the full package pulls in
+// several hundred KB of unused modules (scales, transitions, chord
+// diagrams, etc.) into the bundle for no benefit.
+import { select } from "d3-selection";
+import { geoDistance, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
 import * as topojson from "topojson-client";
 import { flagCdnUrl } from "./landingTokens";
 
@@ -39,10 +44,19 @@ function loadWorld(): Promise<any> {
   if (cachedWorld) return Promise.resolve(cachedWorld);
   if (!worldPromise) {
     worldPromise = fetch(WORLD_ATLAS_URL)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`world-atlas ${r.status}`);
+        return r.json();
+      })
       .then((topology) => {
         cachedWorld = topojson.feature(topology, topology.objects.countries as any);
         return cachedWorld;
+      })
+      .catch((err) => {
+        // Clear so the next scene activation retries instead of reusing a
+        // rejected promise for the rest of the session.
+        worldPromise = null;
+        throw err;
       });
   }
   return worldPromise;
@@ -65,8 +79,7 @@ export default function HeroGlobe({ active }: { active: boolean }) {
       if (cancelled || !node) return;
       node.innerHTML = "";
 
-      const svg = d3
-        .select(node)
+      const svg = select(node)
         .append("svg")
         .attr("viewBox", "0 0 400 400")
         .attr("width", "100%")
@@ -91,12 +104,12 @@ export default function HeroGlobe({ active }: { active: boolean }) {
       shine.append("stop").attr("offset", "0%").attr("stop-color", "#FFFFFF").attr("stop-opacity", 0.28);
       shine.append("stop").attr("offset", "100%").attr("stop-color", "#FFFFFF").attr("stop-opacity", 0);
 
-      const proj = d3.geoOrthographic().scale(190).translate([200, 200]).clipAngle(90).precision(0.5);
-      const path = d3.geoPath(proj as any);
+      const proj = geoOrthographic().scale(190).translate([200, 200]).clipAngle(90).precision(0.5);
+      const path = geoPath(proj as any);
       const sphere = svg.append("path").datum({ type: "Sphere" } as any).attr("fill", "url(#mbk-ocean)");
       const grat = svg
         .append("path")
-        .datum(d3.geoGraticule10())
+        .datum(geoGraticule10())
         .attr("fill", "none")
         .attr("stroke", "#FFFFFF")
         .attr("stroke-opacity", 0.1)
@@ -178,11 +191,15 @@ export default function HeroGlobe({ active }: { active: boolean }) {
           if (!xy) return;
           p.el
             .attr("transform", `translate(${xy[0]},${xy[1]})`)
-            .style("opacity", d3.geoDistance(p.c, center) < 1.35 ? 1 : 0);
+            .style("opacity", geoDistance(p.c, center) < 1.35 ? 1 : 0);
         });
         if (!reducedMotion) rafRef.current = requestAnimationFrame(frame);
       };
       frame(t0);
+    }).catch(() => {
+      // World-atlas fetch failed — leave the scene's absolutely-positioned
+      // container empty rather than crash; the next time this scene
+      // activates, loadWorld() retries (worldPromise was cleared above).
     });
 
     return () => {
