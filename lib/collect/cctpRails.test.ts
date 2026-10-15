@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildCollectEvmFundRails,
   buildCollectFundModalRails,
+  findRailForAssetNetwork,
+  findUsdcRailForNetwork,
   fundRailsForAccount,
   mergeFundStablecoinRails,
+  networkOptionsForAssetFromRails,
+  usdcNetworkOptionsFromRails,
 } from "./cctpRails";
 import type { FundStablecoinRail } from "@/lib/services/entities";
 
@@ -120,7 +124,7 @@ describe("buildCollectFundModalRails", () => {
     expect(rails[0].chainDisclaimer).not.toMatch(/CCTP/i);
   });
 
-  it("adds Stellar EURC only when the trustline is open", () => {
+  it("adds Stellar EURC and USDT only when each trustline is open", () => {
     const base = {
       accounts: [
         {
@@ -138,7 +142,10 @@ describe("buildCollectFundModalRails", () => {
     const closed = buildCollectFundModalRails({
       ...base,
       depositInstructions: {
-        collect: { stellar_eurc: { trustline_open: false, address: null, asset: "EURC" } },
+        collect: {
+          stellar_eurc: { trustline_open: false, address: null, asset: "EURC" },
+          stellar_usdt: { trustline_open: false, address: null, asset: "USDT" },
+        },
       },
     });
     expect(closed.map((r) => r.currency)).toEqual(["USDC"]);
@@ -151,13 +158,45 @@ describe("buildCollectFundModalRails", () => {
             trustline_open: true,
             address: "GHOMEADDRESS",
             asset: "EURC",
+            convertible: true,
+          },
+          stellar_usdt: {
+            trustline_open: true,
+            address: "GHOMEADDRESS",
+            asset: "USDT",
+            convertible: true,
           },
         },
       },
     });
-    expect(open.map((r) => r.currency)).toEqual(["USDC", "EURC"]);
-    expect(open[1].chainDisclaimer).toMatch(/Converts to USDC via Aquarius/);
+    expect(open.map((r) => r.currency)).toEqual(["USDC", "EURC", "USDT"]);
+    expect(open[1].chainDisclaimer).toMatch(/Credits after on-chain confirmation/);
+    expect(open[2].chainDisclaimer).toMatch(/Credits after on-chain confirmation/);
     expect(open[1].walletAddress).toBe("GHOMEADDRESS");
+    expect(open[2].walletAddress).toBe("GHOMEADDRESS");
+
+    const gated = buildCollectFundModalRails({
+      ...base,
+      depositInstructions: {
+        collect: {
+          stellar_eurc: {
+            trustline_open: true,
+            address: null,
+            asset: "EURC",
+            convertible: false,
+            convertible_reason: "thin_liquidity",
+          },
+          stellar_usdt: {
+            trustline_open: true,
+            address: null,
+            asset: "USDT",
+            convertible: false,
+            convertible_reason: "rate_sanity_failed",
+          },
+        },
+      },
+    });
+    expect(gated.map((r) => r.currency)).toEqual(["USDC"]);
   });
 });
 
@@ -191,6 +230,13 @@ describe("fundRailsForAccount", () => {
         trustline_open: true,
         address: "GHOMEADDRESS",
         asset: "EURC",
+        convertible: true,
+      },
+      stellar_usdt: {
+        trustline_open: true,
+        address: "GHOMEADDRESS",
+        asset: "USDT",
+        convertible: true,
       },
     },
   };
@@ -202,12 +248,13 @@ describe("fundRailsForAccount", () => {
       a.currency.toUpperCase() === "USDC" && /stellar/i.test(a.network),
   };
 
-  it("keeps Base USDC, Stellar USDC, and Stellar EURC on the Stellar home", () => {
+  it("keeps Base USDC, Stellar USDC, and Stellar EURC/USDT on the Stellar home", () => {
     const rails = fundRailsForAccount({ ...shared, selected: accounts[0] });
     expect(rails.map((r) => `${r.currency} ${r.networkLabel}`)).toEqual([
       "USDC Base",
       "USDC Stellar",
       "EURC Stellar",
+      "USDT Stellar",
     ]);
   });
 
@@ -256,5 +303,97 @@ describe("mergeFundStablecoinRails", () => {
       },
     ];
     expect(mergeFundStablecoinRails(account, collect)).toHaveLength(2);
+  });
+});
+
+describe("Top Up's \"which network is this coming from\" picker", () => {
+  const rails: FundStablecoinRail[] = [
+    {
+      id: "collect-cctp:67:base:0x71d3",
+      currency: "USDC",
+      network: "base",
+      networkLabel: "Base",
+      walletAddress: "0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903",
+      chainDisclaimer: "x",
+      checkoutUrl: null,
+    },
+    {
+      id: "67",
+      currency: "USDC",
+      network: "stellar_testnet",
+      networkLabel: "Stellar",
+      walletAddress: "GCNPEB",
+      chainDisclaimer: "y",
+      checkoutUrl: null,
+    },
+    {
+      id: "67:eurc",
+      currency: "EURC",
+      network: "stellar_testnet",
+      networkLabel: "Stellar",
+      walletAddress: "GCNPEB",
+      chainDisclaimer: "z",
+      checkoutUrl: null,
+    },
+  ];
+
+  it("lists only USDC rails as network options, keyed like the UI picker", () => {
+    expect(usdcNetworkOptionsFromRails(rails)).toEqual([
+      { key: "base", label: "Base" },
+      { key: "stellar", label: "Stellar" },
+    ]);
+  });
+
+  it("finds the real deposit address for a chosen bridge network", () => {
+    const match = findUsdcRailForNetwork(rails, "base");
+    expect(match?.walletAddress).toBe("0x71d323E4af97b1deca2e9Bc7F31F86B1Bce55903");
+  });
+
+  it("normalizes a raw Stellar network spelling (stellar_testnet) to the UI's plain 'stellar' key", () => {
+    const match = findUsdcRailForNetwork(rails, "stellar");
+    expect(match?.walletAddress).toBe("GCNPEB");
+  });
+
+  it("never matches a non-USDC rail even on the same network", () => {
+    const match = findUsdcRailForNetwork(rails, "stellar");
+    expect(match?.currency).toBe("USDC");
+  });
+
+  it("returns undefined for a network with no rail", () => {
+    expect(findUsdcRailForNetwork(rails, "arbitrum")).toBeUndefined();
+  });
+
+  it("lists Stellar-only networks for EURC / Aquarius USDT rails", () => {
+    expect(networkOptionsForAssetFromRails(rails, "EURC")).toEqual([
+      { key: "stellar", label: "Stellar" },
+    ]);
+    expect(networkOptionsForAssetFromRails(rails, "usdt")).toEqual([]);
+  });
+
+  it("matches Aquarius EURC on the Stellar home address", () => {
+    const match = findRailForAssetNetwork(rails, "EURC", "stellar");
+    expect(match?.walletAddress).toBe("GCNPEB");
+    expect(match?.currency).toBe("EURC");
+  });
+});
+
+describe("Top Up Aquarius USDT rail match", () => {
+  const rails: FundStablecoinRail[] = [
+    {
+      id: "67:usdt",
+      currency: "USDT",
+      network: "stellar_testnet",
+      networkLabel: "Stellar",
+      walletAddress: "GCNPEB",
+      chainDisclaimer: "Deposit USDT on Stellar. Credits after on-chain confirmation.",
+      checkoutUrl: null,
+    },
+  ];
+
+  it("exposes Stellar for Collect USDT and resolves the G-address", () => {
+    expect(networkOptionsForAssetFromRails(rails, "USDT")).toEqual([
+      { key: "stellar", label: "Stellar" },
+    ]);
+    expect(findRailForAssetNetwork(rails, "usdt", "stellar")?.walletAddress).toBe("GCNPEB");
   });
 });

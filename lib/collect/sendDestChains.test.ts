@@ -28,6 +28,16 @@ describe("buildUsdcSendDestChains", () => {
     expect(keys).toContain("base");
     expect(keys).toContain("stellar");
     expect(keys).toContain("ethereum");
+    expect(keys).toContain("arc");
+  });
+
+  it("includes Arc when the aggregator reports it as a supported chain", () => {
+    expect(
+      buildUsdcSendDestChains({ supportedChainKeys: ["arc"] }),
+    ).toEqual([
+      { key: "arc", label: "Arc" },
+      { key: "stellar", label: "Stellar" },
+    ]);
   });
 
   it("intersects catalog with supported keys and always appends Stellar", () => {

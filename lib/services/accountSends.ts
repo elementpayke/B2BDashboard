@@ -42,6 +42,7 @@ export const SEND_STABLECOIN_NETWORKS = [
   { key: "ethereum", label: "Ethereum" },
   { key: "optimism", label: "Optimism" },
   { key: "arbitrum", label: "Arbitrum" },
+  { key: "arc", label: "Arc" },
   { key: "stellar", label: "Stellar" },
 ] as const;
 
@@ -225,6 +226,8 @@ export type AccountSendPreviewIn = {
   to_address: string;
   amount: string;
   network?: string;
+  /** Stellar MEMO_TEXT only — ignored (and omitted) on EVM rails. */
+  memo?: string;
 };
 
 export type AccountSendConfirmIn = {
@@ -256,6 +259,21 @@ export function validateStellarAddress(address: string): string {
   return value;
 }
 
+/** Stellar MEMO_TEXT is capped at 28 *bytes*, not 28 characters — a multi-byte
+ * UTF-8 memo (e.g. emoji, non-Latin script) can exceed the on-chain limit well
+ * under 28 characters, so this checks the encoded byte length. */
+export function validateStellarMemo(memo: string): string {
+  const value = memo.trim();
+  if (!value) return "";
+  const byteLength = new TextEncoder().encode(value).length;
+  if (byteLength > 28) {
+    throw new Error(
+      `Memo is too long (${byteLength} bytes — Stellar allows up to 28 bytes).`,
+    );
+  }
+  return value;
+}
+
 export function validateSendAddress(address: string, networkKey: string): string {
   const network = toPartnerNetwork(networkKey);
   if (network === "Stellar") return validateStellarAddress(address);
@@ -264,11 +282,12 @@ export function validateSendAddress(address: string, networkKey: string): string
     network === "Polygon" ||
     network === "Ethereum" ||
     network === "Optimism" ||
-    network === "Arbitrum"
+    network === "Arbitrum" ||
+    network === "Arc"
   ) {
     return validateEvmAddress(address);
   }
-  throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
+  throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, Arc, and Stellar.");
 }
 
 /** Min 1.00 per Phase 4 / partner contract (USDC or USDT). */
@@ -291,10 +310,12 @@ export function buildSendPreviewPayload(params: {
   accountNetwork?: string;
   /** Display currency for min-amount errors (USDC / USDT). */
   currency?: string;
+  /** Optional Stellar MEMO_TEXT — silently dropped on EVM destinations. */
+  memo?: string;
 }): AccountSendPreviewIn {
   const destPartner = toPartnerNetwork(params.networkKey);
   if (!destPartner) {
-    throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, and Stellar.");
+    throw new Error("Sends support Base, Polygon, Ethereum, Optimism, Arbitrum, Arc, and Stellar.");
   }
   // Dest network drives the partner call. Preserve stellar_testnet/public only when
   // the destination is Stellar (same-chain home payment).
@@ -302,10 +323,12 @@ export function buildSendPreviewPayload(params: {
     destPartner === "Stellar" && params.accountNetwork
       ? toAssetNetwork(params.accountNetwork)
       : toAssetNetwork(params.networkKey);
+  const memo = destPartner === "Stellar" ? validateStellarMemo(params.memo || "") : "";
   return {
     to_address: validateSendAddress(params.toAddress, params.networkKey),
     amount: validateSendAmount(params.amount, params.currency),
     network,
+    ...(memo ? { memo } : {}),
   };
 }
 
@@ -350,20 +373,28 @@ export function buildSendExplorerUrl(opts: {
   if (network === "Stellar" || key.includes("stellar")) {
     return stellarExplorerTxUrl({ txHash: hash, network: opts.network });
   }
+  // This deployment runs entirely against testnets today (Base Sepolia,
+  // Polygon Amoy, Ethereum/Optimism/Arbitrum Sepolia, Arc testnet) — same
+  // "default to testnet" call already made for Stellar above. A mainnet
+  // explorer URL here would 404/"transaction not found" for every real
+  // send this app can currently produce.
   if (network === "Base" || key.includes("base")) {
-    return `https://basescan.org/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.basescan.org/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Polygon" || key.includes("polygon")) {
-    return `https://polygonscan.com/tx/${encodeURIComponent(hash)}`;
+    return `https://amoy.polygonscan.com/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Ethereum" || key === "ethereum" || key === "eth") {
-    return `https://etherscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.etherscan.io/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Optimism" || key.includes("optimism")) {
-    return `https://optimistic.etherscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia-optimism.etherscan.io/tx/${encodeURIComponent(hash)}`;
   }
   if (network === "Arbitrum" || key.includes("arbitrum")) {
-    return `https://arbiscan.io/tx/${encodeURIComponent(hash)}`;
+    return `https://sepolia.arbiscan.io/tx/${encodeURIComponent(hash)}`;
+  }
+  if (network === "Arc" || key === "arc") {
+    return `https://testnet.arcscan.app/tx/${encodeURIComponent(hash)}`;
   }
   return null;
 }
@@ -416,6 +447,7 @@ export function buildSendExplorerLabel(network: string | null | undefined): stri
   if (partner === "Ethereum" || key === "ethereum" || key === "eth") return "View on Etherscan";
   if (partner === "Optimism" || key.includes("optimism")) return "View on Optimism";
   if (partner === "Arbitrum" || key.includes("arbitrum")) return "View on Arbiscan";
+  if (partner === "Arc" || key === "arc") return "View on Arc Explorer";
   return "View onchain";
 }
 

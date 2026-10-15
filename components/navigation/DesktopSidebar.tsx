@@ -56,7 +56,9 @@ export default function DesktopSidebar({
                       {item.icon}
                     </span>
                     <span>{item.label}</span>
-                    {item.key === "reports" || item.key === "invoices" ? (
+                    {item.key === "reports" ? (
+                      <span className="ep-sidebar__new">New</span>
+                    ) : item.key === "invoices" ? (
                       <span className="ep-sidebar__soon">Soon</span>
                     ) : null}
                   </button>

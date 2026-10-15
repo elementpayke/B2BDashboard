@@ -187,7 +187,8 @@ export type PartnerNetwork =
   | "Stellar"
   | "Ethereum"
   | "Optimism"
-  | "Arbitrum";
+  | "Arbitrum"
+  | "Arc";
 
 /** Partner / UI spelling → display label. Known rails get canonical names; others keep API casing. */
 export function toPartnerNetwork(network: string): PartnerNetwork | null {
@@ -197,6 +198,7 @@ export function toPartnerNetwork(network: string): PartnerNetwork | null {
   if (key === "ethereum" || key === "eth") return "Ethereum";
   if (key === "optimism" || key === "op") return "Optimism";
   if (key === "arbitrum" || key === "arb") return "Arbitrum";
+  if (key === "arc") return "Arc";
   if (key === "stellar" || key === "stellar_testnet" || key === "stellar_public") {
     return "Stellar";
   }
@@ -389,6 +391,26 @@ export function isFundableStablecoinAccount(account: FinancialAccount): boolean 
 }
 
 /**
+ * Stellar is USDC's only home wallet — a legacy USDC account on Base/Polygon
+ * is a leftover from before consolidation, not a wallet to list, fund, or
+ * send from. Those networks remain valid CCTP bridge destinations elsewhere;
+ * they're just not their own account here.
+ */
+export function isLegacyNonStellarUsdcAccount(account: FinancialAccount): boolean {
+  return (
+    account.currency.trim().toUpperCase() === "USDC" &&
+    toPartnerNetwork(account.network) !== "Stellar"
+  );
+}
+
+/** Listed stablecoin accounts, with legacy non-Stellar USDC filtered out. */
+export function visibleStablecoinAccounts(
+  accounts: FinancialAccount[],
+): FinancialAccount[] {
+  return accounts.filter((a) => !isLegacyNonStellarUsdcAccount(a));
+}
+
+/**
  * Phase 4 sendable: ready USDC on Base/Polygon/Stellar, or ready USDT on
  * Base/Polygon (Stellar has no USDT rail).
  */
@@ -397,7 +419,9 @@ export function isSendableStablecoinAccount(account: FinancialAccount): boolean 
   const currency = account.currency.trim().toUpperCase();
   const partner = toPartnerNetwork(account.network);
   if (!partner || !SEND_PARTNER_NETWORKS.has(partner)) return false;
-  if (currency === "USDC") return isReadyStatus(account.status);
+  if (currency === "USDC") {
+    return !isLegacyNonStellarUsdcAccount(account) && isReadyStatus(account.status);
+  }
   if (currency === "USDT") {
     if (partner === "Stellar") return false;
     return isReadyStatus(account.status);

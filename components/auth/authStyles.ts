@@ -74,7 +74,11 @@ export const authInputStyle: CSSProperties = {
   padding: "12px 14px",
   minHeight: "48px",
   borderRadius: "14px",
-  border: "1.5px solid rgba(19,17,38,0.11)",
+  // Longhand only — never mix with `border` shorthand. Toggling
+  // authInputErrorStyle's borderColor otherwise warns on rerender.
+  borderWidth: "1.5px",
+  borderStyle: "solid",
+  borderColor: "rgba(19,17,38,0.11)",
   background: "#FFFFFF",
   outline: "none",
   fontSize: "16px",

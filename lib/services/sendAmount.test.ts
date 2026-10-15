@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  amountExceedsBalance,
   canEnterInLocalCurrency,
   describeAmountEquivalent,
   formatFeeDual,
   formatRateLine,
   indicativeRate,
+  maxAmountForBalance,
   toPayloadUsdAmount,
 } from "@/lib/services/sendAmount";
 
@@ -55,6 +57,38 @@ describe("toPayloadUsdAmount", () => {
 
   it("refuses a local entry when there is no rate, rather than guessing", () => {
     expect(toPayloadUsdAmount("130500", { currency: "KES", rate: null })).toBeNull();
+  });
+});
+
+describe("maxAmountForBalance", () => {
+  it("returns a USD max that does not exceed available balance", () => {
+    expect(maxAmountForBalance(0.445, { currency: "USD", rate: null })).toBe("0.44");
+    expect(maxAmountForBalance(0, { currency: "USD", rate: null })).toBeNull();
+  });
+
+  it("returns a local-currency max that converts within the available balance", () => {
+    const mode = { currency: "KES", rate: 132.16 };
+    const max = maxAmountForBalance(0.44, mode);
+    expect(max).toBe("58.15");
+    expect(Number(toPayloadUsdAmount(max!, mode))).toBeLessThanOrEqual(0.44);
+  });
+
+  it("does not guess a local max without an exchange rate", () => {
+    expect(maxAmountForBalance(10, { currency: "KES", rate: null })).toBeNull();
+  });
+});
+
+describe("amountExceedsBalance", () => {
+  it("checks USD input against the source balance", () => {
+    expect(amountExceedsBalance("0.45", { currency: "USD", rate: null }, 0.44)).toBe(true);
+    expect(amountExceedsBalance("0.44", { currency: "USD", rate: null }, 0.44)).toBe(false);
+    expect(amountExceedsBalance("0.45", { currency: "USD", rate: null }, null)).toBe(false);
+  });
+
+  it("converts local-currency input before comparing with the source balance", () => {
+    const mode = { currency: "KES", rate: 132.16 };
+    expect(amountExceedsBalance("60", mode, 0.44)).toBe(true);
+    expect(amountExceedsBalance("58.15", mode, 0.44)).toBe(false);
   });
 });
 

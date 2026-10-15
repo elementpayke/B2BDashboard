@@ -1,6 +1,6 @@
 "use client";
 import DepositAddressQr from "@/components/wallets/DepositAddressQr";
-import React from "react";
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import { shouldOfferStellarWalletDeposit } from "@/lib/stellar/network";
 
@@ -32,6 +32,22 @@ export type ReceiveModalProps = {
 export default function ReceiveModal(p: ReceiveModalProps) {
   const hasAddress = Boolean(p.receiveAddress && p.receiveAddress !== "—");
   const hasFiatLines = (p.receiveAcctLines || []).length > 0;
+  // This account never requires a memo to route funds correctly (it's
+  // dedicated, not pooled) — this is purely a reference tag the payer can
+  // carry through for the receiver's own bookkeeping.
+  const [receiveMemo, setReceiveMemo] = useState("");
+  const [memoCopied, setMemoCopied] = useState(false);
+  const copyReceiveMemo = async () => {
+    const value = receiveMemo.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setMemoCopied(true);
+      window.setTimeout(() => setMemoCopied(false), 1800);
+    } catch {
+      setMemoCopied(false);
+    }
+  };
 
   return (
     <div className="ep-money-flow">
@@ -187,11 +203,50 @@ export default function ReceiveModal(p: ReceiveModalProps) {
                   {p.receiveAddressCopied ? "Copied" : "Copy"}
                 </button>
               </div>
+
+              {p.receiveNetwork === "stellar" ? (
+                <div className="ep-money-field">
+                  <label className="ep-money-label" htmlFor="receive-memo">
+                    Reference memo (optional)
+                  </label>
+                  <input
+                    id="receive-memo"
+                    className="ep-money-input"
+                    value={receiveMemo}
+                    onChange={(e) => setReceiveMemo(e.target.value)}
+                    placeholder="e.g. invoice-42 — for your own records"
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={28}
+                  />
+                  <span className="ep-money-hint ep-money-hint--inline">
+                    This wallet is dedicated to your business, so nothing sent here needs a memo to
+                    arrive — add one only if it helps you identify this deposit later. It's included
+                    in the QR code for wallets that support it.
+                  </span>
+                  {receiveMemo.trim() ? (
+                    <div className="ep-money-copy-row">
+                      <span className="ep-money-copy-row__value">{receiveMemo.trim()}</span>
+                      <button
+                        type="button"
+                        className="ep-money-copy-btn"
+                        onClick={copyReceiveMemo}
+                        aria-label={memoCopied ? "Memo copied" : "Copy memo"}
+                      >
+                        <span aria-hidden>⧉</span>
+                        {memoCopied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <DepositAddressQr
                 address={p.receiveAddress}
                 currency={p.receiveAssetCode}
                 network={p.receiveNetwork}
                 networkLabel={p.receiveNetworkLabel}
+                memo={receiveMemo}
               />
               {shouldOfferStellarWalletDeposit({
                 network: p.receiveNetwork,
