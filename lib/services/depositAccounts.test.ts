@@ -13,15 +13,83 @@ import {
   maskAccountIdentifier,
   mergeDepositAccount,
   networksForStablecoin,
+  SUPPORTED_IBAN_CURRENCIES,
+  supportedCurrenciesFromEligibility,
   type DepositAccount,
+  type DepositAccountEligibility,
 } from "./depositAccounts";
 
 describe("isCurrencySupported", () => {
-  it("accepts EUR and USD only, case-insensitively", () => {
+  it("accepts EUR and USD only, case-insensitively, when no live list is given", () => {
     expect(isCurrencySupported("USD")).toBe(true);
     expect(isCurrencySupported("eur")).toBe(true);
     expect(isCurrencySupported("GBP")).toBe(false);
     expect(isCurrencySupported("kes")).toBe(false);
+  });
+
+  it("checks against an explicit supported list when one is given", () => {
+    expect(isCurrencySupported("GBP", ["USD", "EUR", "GBP"])).toBe(true);
+    expect(isCurrencySupported("kes", ["USD", "EUR", "GBP"])).toBe(false);
+  });
+});
+
+describe("supportedCurrenciesFromEligibility", () => {
+  it("falls back to SUPPORTED_IBAN_CURRENCIES when supported_accounts is absent or empty", () => {
+    expect(supportedCurrenciesFromEligibility(undefined)).toEqual(
+      SUPPORTED_IBAN_CURRENCIES,
+    );
+    expect(
+      supportedCurrenciesFromEligibility({
+        eligible: true,
+        verification_status: "approved",
+      }),
+    ).toEqual(SUPPORTED_IBAN_CURRENCIES);
+    expect(
+      supportedCurrenciesFromEligibility({
+        eligible: true,
+        verification_status: "approved",
+        supported_accounts: [],
+      }),
+    ).toEqual(SUPPORTED_IBAN_CURRENCIES);
+  });
+
+  it("adds supported_accounts currencies on top of USD/EUR rather than replacing them", () => {
+    const eligibility: DepositAccountEligibility = {
+      eligible: true,
+      verification_status: "approved",
+      supported_accounts: [
+        { currency: "usd", rail_type: "ach_wire", fields: ["account_number", "routing_number"] },
+        { currency: "GBP", country_code: "GB", rail_type: "local_bank", fields: ["account_number", "sort_code"] },
+        { currency: "KES", country_code: "KE", rail_type: "local_bank", fields: ["account_number", "bank_code"] },
+      ],
+    };
+    // supported_accounts is backend-declared *extra* rails, not the full
+    // list — a backend that only ever declares GBP must not make EUR
+    // disappear from the picker for a business that already has a EUR
+    // account, or silently block Bank account creation once USD+GBP are
+    // both occupied even though EUR remains available.
+    expect(supportedCurrenciesFromEligibility(eligibility)).toEqual([
+      "USD",
+      "EUR",
+      "GBP",
+      "KES",
+    ]);
+  });
+
+  it("drops entries with no usable currency rather than crashing", () => {
+    const eligibility = {
+      eligible: true,
+      verification_status: "approved",
+      supported_accounts: [
+        { currency: "", rail_type: "local_bank", fields: [] },
+        { currency: "GBP", rail_type: "local_bank", fields: ["sort_code"] },
+      ],
+    } as DepositAccountEligibility;
+    expect(supportedCurrenciesFromEligibility(eligibility)).toEqual([
+      "USD",
+      "EUR",
+      "GBP",
+    ]);
   });
 });
 
@@ -57,6 +125,23 @@ describe("occupiedFiatCurrencyCodes", () => {
     expect(occupied.has("EUR")).toBe(true);
     expect(isFiatCurrencyOccupied([{ currency: "USD" }], "usd")).toBe(true);
     expect(isFiatCurrencyOccupied([{ currency: "USD" }], "EUR")).toBe(false);
+  });
+});
+
+describe("currencyOptionsFor", () => {
+  it("returns the known CURRENCY_OPTIONS list as-is when nothing extra is supported", async () => {
+    const { currencyOptionsFor, CURRENCY_OPTIONS } = await import("./depositAccounts");
+    expect(currencyOptionsFor(["USD", "EUR"])).toEqual(CURRENCY_OPTIONS);
+  });
+
+  it("appends a backend-declared currency with no local display metadata, using the raw code", async () => {
+    const { currencyOptionsFor } = await import("./depositAccounts");
+    const options = currencyOptionsFor(["USD", "EUR", "PHP"]);
+    expect(options.find((o) => o.code === "PHP")).toEqual({
+      code: "PHP",
+      label: "PHP",
+      iso: null,
+    });
   });
 });
 
@@ -248,6 +333,61 @@ describe("buildDepositAccountDetailRows", () => {
   });
 });
 
+describe("buildDepositAccountDetailRows — local bank rails", () => {
+  it("renders a UK sort-code account without needing an IBAN", () => {
+    const account: DepositAccount = {
+      currency: "GBP",
+      status: "active",
+      account_number: "12345678",
+      sort_code: "04-00-04",
+      bank_name: "Monzo Bank",
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      { label: "Sort code", value: "04-00-04", copyValue: "04-00-04" },
+      { label: "Account number", value: "12345678", copyValue: "12345678" },
+      { label: "Bank", value: "Monzo Bank", copyValue: "Monzo Bank" },
+    ]);
+  });
+
+  it("renders a Canadian institution/transit number pair", () => {
+    const account: DepositAccount = {
+      currency: "CAD",
+      status: "active",
+      account_number: "7834567",
+      institution_number: "004",
+      transit_number: "06003",
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      { label: "Institution number", value: "004", copyValue: "004" },
+      { label: "Transit number", value: "06003", copyValue: "06003" },
+      { label: "Account number", value: "7834567", copyValue: "7834567" },
+    ]);
+  });
+
+  it("includes a monthly maintenance fee row when the backend returns one", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+      monthly_maintenance_fee: { amount: "5.00", currency: "USD" },
+    };
+    expect(
+      buildDepositAccountDetailRows(account).find((r) => r.label === "Monthly fee"),
+    ).toEqual({ label: "Monthly fee", value: "5.00 USD/month" });
+  });
+
+  it("omits the monthly fee row when the backend doesn't return one", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+    };
+    expect(
+      buildDepositAccountDetailRows(account).some((r) => r.label === "Monthly fee"),
+    ).toBe(false);
+  });
+});
+
 describe("buildDepositAccountDetailSections", () => {
   it("splits a USD account into domestic and international rails", () => {
     const account: DepositAccount = {
@@ -356,6 +496,26 @@ describe("buildDepositAccountDetailSections", () => {
     const account: DepositAccount = { currency: "USD", status: "pending" };
     expect(buildDepositAccountDetailSections(account)).toEqual([]);
   });
+
+  it("keeps a single Bank details section for a UK sort-code account (no routing_number)", () => {
+    const account: DepositAccount = {
+      currency: "GBP",
+      status: "active",
+      account_number: "12345678",
+      sort_code: "04-00-04",
+      bank_name: "Monzo Bank",
+    };
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Bank details",
+        rows: [
+          { label: "Sort code", value: "04-00-04", copyValue: "04-00-04" },
+          { label: "Account number", value: "12345678", copyValue: "12345678" },
+          { label: "Bank", value: "Monzo Bank", copyValue: "Monzo Bank" },
+        ],
+      },
+    ]);
+  });
 });
 
 describe("buildCreateBankAccountPayload", () => {
@@ -379,6 +539,22 @@ describe("buildCreateBankAccountPayload", () => {
     expect(() => buildCreateBankAccountPayload({ currency: "GBP" })).toThrow(
       /available yet/,
     );
+  });
+
+  it("accepts a currency once it's in an explicit live supported list", () => {
+    const payload = buildCreateBankAccountPayload(
+      { currency: "GBP" },
+      ["USD", "EUR", "GBP"],
+    );
+    expect(payload).toEqual({ currency: "GBP" });
+  });
+
+  it("includes country_code only when provided", () => {
+    const payload = buildCreateBankAccountPayload(
+      { currency: "KES", countryCode: "KE" },
+      ["KES"],
+    );
+    expect(payload).toEqual({ currency: "KES", country_code: "KE" });
   });
 });
 

@@ -25,6 +25,9 @@ import {
   AUTH_MUTED,
 } from "@/components/auth/authStyles";
 import AuthBrand from "@/components/brand/AuthBrand";
+import Turnstile from "@/components/auth/Turnstile";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 function IconEye({ open }: { open: boolean }) {
   if (open) {
@@ -133,6 +136,7 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   // Set once login responds with `mfa.status === "required"` — the account
   // already has 2FA enrolled and a short-lived challenge cookie is now set.
@@ -153,7 +157,7 @@ export default function LoginForm() {
     setError(null);
     setSubmitting(true);
     try {
-      const login = await authApi.login(email, password);
+      const login = await authApi.login(email, password, turnstileToken ?? undefined);
       if (loginNeedsMfa(login)) {
         if (login.mfa.status === "setup_required") {
           // No session yet — the setup cookie is the only credential until
@@ -194,6 +198,7 @@ export default function LoginForm() {
   }
 
   const inputStyle = error ? authInputErrorStyle : authInputStyle;
+  const turnstileBlocked = Boolean(TURNSTILE_SITE_KEY) && !turnstileToken;
 
   if (mfaChallenge) {
     return (
@@ -378,7 +383,13 @@ export default function LoginForm() {
           </div>
         </div>
 
-        <button type="submit" style={authButtonStateStyle(submitting)} disabled={submitting}>
+        <Turnstile siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+
+        <button
+          type="submit"
+          style={authButtonStateStyle(submitting || turnstileBlocked)}
+          disabled={submitting || turnstileBlocked}
+        >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
 

@@ -32,6 +32,7 @@ import {
   isKybInReview,
   isStatusOnlyKybSummary,
   mergeKybSummaryCache,
+  normalizeKybReviewFindings,
   kybApi,
   kybStatusPresentation,
   kybTierDisplay,
@@ -81,6 +82,23 @@ function validDraft(): KybWizardProfileDraft {
   draft.attestedAccurate = true;
   return draft;
 }
+
+describe("normalizeKybReviewFindings", () => {
+  it("keeps only pass/fail items", () => {
+    const out = normalizeKybReviewFindings({
+      items: [
+        { key: "identity", label: "Photo ID", result: "fail", reason: "Blurry" },
+        { key: "address", result: "pass" },
+        { key: "bad", result: "maybe" },
+      ],
+    });
+    expect(out?.items).toEqual([
+      { key: "identity", label: "Photo ID", result: "fail", reason: "Blurry" },
+      { key: "address", label: "address", result: "pass", reason: null },
+    ]);
+    expect(normalizeKybReviewFindings(null)).toBeNull();
+  });
+});
 
 describe("kyb status helpers", () => {
   it("maps known statuses to clear feedback labels", () => {

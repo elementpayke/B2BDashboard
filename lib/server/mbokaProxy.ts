@@ -7,10 +7,17 @@ import {
   setSessionCookies,
 } from "./cookies";
 import { MBOKA_FETCH_TIMEOUT_MS } from "./mbokaCall";
+import {
+  MBOKA_SIGNATURE_HEADER,
+  MBOKA_SIGNATURE_TIMESTAMP_HEADER,
+  buildMbokaSignatureHeaders,
+} from "./mbokaSignature";
 
 // Headers a client could use to try to impersonate a different session or
 // bypass our cookie-derived auth. Stripped from every proxied request —
 // the only source of truth for "who is calling" is the httpOnly cookie.
+// The two signature headers are stripped for the same reason: only this
+// server's own `buildMbokaSignatureHeaders` call may set them.
 const STRIPPED_REQUEST_HEADERS = new Set([
   "authorization",
   "x-api-key",
@@ -18,6 +25,8 @@ const STRIPPED_REQUEST_HEADERS = new Set([
   "host",
   "content-length",
   "connection",
+  MBOKA_SIGNATURE_HEADER,
+  MBOKA_SIGNATURE_TIMESTAMP_HEADER,
 ]);
 
 // Never forward these from upstream: fetch may decompress the body while
@@ -48,10 +57,15 @@ export type RefreshResult = { access_token: string; refresh_token: string } | nu
 
 export async function refreshTokens(refreshToken: string): Promise<RefreshResult> {
   try {
-    const res = await fetch(`${getMbokaApiBase()}/api/auth/refresh`, {
+    const path = "/api/auth/refresh";
+    const body = JSON.stringify({ refresh_token: refreshToken });
+    const res = await fetch(`${getMbokaApiBase()}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(buildMbokaSignatureHeaders("POST", path, body) ?? {}),
+      },
+      body,
       signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return null;
@@ -85,6 +99,16 @@ async function doFetch(
   bodyBuffer: ArrayBuffer | null,
 ): Promise<Response> {
   const headers = buildForwardHeaders(request, accessToken);
+  const signatureHeaders = buildMbokaSignatureHeaders(
+    request.method,
+    backendPathWithQuery,
+    bodyBuffer,
+  );
+  if (signatureHeaders) {
+    for (const [key, value] of Object.entries(signatureHeaders)) {
+      headers.set(key, value);
+    }
+  }
   const signal = isWatchStreamPath(backendPathWithQuery)
     ? undefined
     : AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS);

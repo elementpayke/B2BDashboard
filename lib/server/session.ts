@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/cookies";
 import { getMbokaApiBase } from "@/lib/server/env";
 import { MBOKA_FETCH_TIMEOUT_MS } from "@/lib/server/mbokaCall";
+import { buildMbokaSignatureHeaders } from "@/lib/server/mbokaSignature";
 import { refreshTokens } from "@/lib/server/mbokaProxy";
 
 type AuthMeData = {
@@ -46,11 +47,13 @@ function errorEnvelope(
 
 async function fetchAuthMe(accessToken: string): Promise<{ status: number; json: Envelope | null }> {
   try {
-    const upstream = await fetch(`${getMbokaApiBase()}/api/auth/me`, {
+    const path = "/api/auth/me";
+    const upstream = await fetch(`${getMbokaApiBase()}${path}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
+        ...(buildMbokaSignatureHeaders("GET", path, null) ?? {}),
       },
       signal: AbortSignal.timeout(MBOKA_FETCH_TIMEOUT_MS),
     });

@@ -72,6 +72,7 @@ import {
   currencyLabel,
   occupiedFiatCurrencyCodes,
   SUPPORTED_IBAN_CURRENCIES,
+  supportedCurrenciesFromEligibility,
   allSupportedStablecoinSlots,
   networksForStablecoin,
 } from "@/lib/services/depositAccounts";
@@ -196,7 +197,6 @@ import {
   DEFAULT_DISPLAY_CURRENCY,
   displayCurrencyOptionsFromCatalog,
   formatAccountBalance,
-  formatSummedBalance,
   formatHeroTotalLabel,
   formatUsdEquivalentSub,
   isDisplayCurrency,
@@ -340,7 +340,13 @@ import VerificationScreen from "@/components/verification/VerificationScreen";
 import KybWizardModal from "@/components/verification/KybWizardModal";
 import KybGateBanner from "@/components/verification/KybGateBanner";
 import { useKybWizard } from "@/lib/hooks/useKybWizard";
-import { canOpenKybWizard, describeKybStatus, isKybApproved, mergeKybSummaryCache } from "@/lib/services/kyb";
+import {
+  canOpenKybWizard,
+  describeKybStatus,
+  isKybApproved,
+  mergeKybSummaryCache,
+  normalizeKybReviewFindings,
+} from "@/lib/services/kyb";
 import { mfaApi } from "@/lib/services/mfa";
 import MfaReminderBanner from "@/components/auth/MfaReminderBanner";
 import TotpEnrollment from "@/components/auth/TotpEnrollment";
@@ -389,7 +395,6 @@ export default function DashboardApp(props: Props = {}) {
     convertHop: 1 as 1 | 2,
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
-    stableSel: "USDC",
     txFilter: "all" as PrimaryTransactionFilter,
     txView: "payments" as "payments" | "batches",
     txSearch: "",
@@ -785,6 +790,18 @@ export default function DashboardApp(props: Props = {}) {
   const depositEligible = bootstrapReady
     ? Boolean(bootstrapQuery.data?.eligibility.eligible)
     : depositEligibilityQuery.data?.eligible === true;
+  // Live currency list once Mboka ships Nuvion-backed rails beyond USD/EUR —
+  // falls back to the static constant until then, same source on both the
+  // bootstrap-happy-path and the eligibility-fallback path.
+  const supportedFiatCurrencies = supportedCurrenciesFromEligibility(
+    bootstrapReady ? bootstrapQuery.data?.eligibility : depositEligibilityQuery.data,
+  );
+  // Full descriptors (same source) — lets Create Account look up a
+  // per-currency monthly_maintenance_fee. Empty until backend ships it.
+  const supportedAccountDescriptors =
+    (bootstrapReady
+      ? bootstrapQuery.data?.eligibility.supported_accounts
+      : depositEligibilityQuery.data?.supported_accounts) ?? [];
   const needsFullFiatCoords =
     state.selectedAcctKind === "fiat" &&
     (state.modal === "acctDetail" ||
@@ -937,7 +954,7 @@ export default function DashboardApp(props: Props = {}) {
       usdFundingQuery.data?.entityId &&
       usdFundingQuery.data?.accountId,
   );
-  const { streamActive } = useCardTransactionsLive(
+  useCardTransactionsLive(
     usdFundingQuery.data?.entityId,
     usdFundingQuery.data?.accountId,
     cardTxnStreamEnabled,
@@ -969,13 +986,11 @@ export default function DashboardApp(props: Props = {}) {
     ),
     retry: false,
     staleTime: 15_000,
-    // SSE is primary for live spend; polling stays as a slow safety net.
+    // SSE is primary for live spend; keep a tight poll even when the stream
+    // reports active (multi-replica SSE can miss events; Aggregator/Mboka GET
+    // reconcile recovers within one interval).
     refetchInterval:
-      cardTxnSurfaceOpen || activityPoll
-        ? streamActive
-          ? 60_000
-          : 30_000
-        : false,
+      cardTxnSurfaceOpen || activityPoll ? 15_000 : false,
   });
 
   // Prefill convert accounts once lists load so the form isn't empty.
@@ -2465,7 +2480,6 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  const setStable = (k) => () => setState({ stableSel: k });
   const setConvertMode = (mode: ConvertMode) =>
     setState({
       convertMode: mode,
@@ -2703,7 +2717,7 @@ export default function DashboardApp(props: Props = {}) {
       });
       return;
     }
-    const availableFiat = SUPPORTED_IBAN_CURRENCIES.filter(
+    const availableFiat = supportedFiatCurrencies.filter(
       (code) => !fiatOccupied.has(code),
     );
     setState({
@@ -3275,10 +3289,13 @@ export default function DashboardApp(props: Props = {}) {
     }
     setState({ createAccountSaving: true, createAccountError: "" });
     try {
-      await depositAccountsApi.create({
-        currency: state.createAccountCurrency,
-        accountName: state.createAccountName.trim(),
-      });
+      await depositAccountsApi.create(
+        {
+          currency: state.createAccountCurrency,
+          accountName: state.createAccountName.trim(),
+        },
+        supportedFiatCurrencies,
+      );
       queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       setState({ createAccountSaving: false, modal: null });
@@ -3288,6 +3305,11 @@ export default function DashboardApp(props: Props = {}) {
         createAccountError: err instanceof Error ? err.message : "Couldn't create the account.",
       });
     }
+  };
+  const refreshDepositAccount = async (accountId: string) => {
+    await depositAccountsApi.sync(accountId);
+    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
   };
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
@@ -3372,7 +3394,7 @@ export default function DashboardApp(props: Props = {}) {
 
     const titles: Record<string, [string, string]> = {
       home: ["Home", "Your balances, actions, and activity at a glance"],
-      wallets: ["Accounts", "One main stablecoin wallet, currency accounts around it"],
+      wallets: ["Accounts", "Bank and stablecoin accounts for your business"],
       accountDetail: ["Account", "Balance, details, and activity for this account"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
@@ -3577,6 +3599,8 @@ export default function DashboardApp(props: Props = {}) {
         ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
         : (stablecoinAccountsQuery.data ?? []),
     );
+    const occupiedFiatCodes = occupiedFiatCurrencyCodes(depositAccountsList);
+    const occupiedStablecoinSlotKeys = occupiedStablecoinSlots(stablecoinAccountsList);
     const selectedFiatCurrency =
       s.selectedAcctKind === "fiat" && s.selectedAcctKey.startsWith("fiat:")
         ? s.selectedAcctKey.slice("fiat:".length)
@@ -3709,6 +3733,7 @@ export default function DashboardApp(props: Props = {}) {
             railLabel: fiatRailForCurrency(view.currency),
             showConvert: true,
             showDownloadLetter: rows.length > 0,
+            accountId: selectedDepositAccount.id ? String(selectedDepositAccount.id) : null,
           };
         })()
       : selectedStablecoinAccount
@@ -3771,12 +3796,6 @@ export default function DashboardApp(props: Props = {}) {
   const isTeam = s.screen === "team";
   const isDeveloper = s.screen === "developer";
   const balanceViewTabs = ["all","fiat","stablecoin"].map(v => ({ key: v, label: v === "all" ? "All" : v === "fiat" ? "Fiat" : "Stablecoin", select: setBalanceView(v), bg: s.balanceView === v ? "#fff" : "transparent", color: s.balanceView === v ? "var(--indigo)" : "#fff" }));
-  // Total / available / pending: native per-account amounts — never FX-converted.
-  const usdcBalances = stablecoinAccountsList
-    .filter((a) => a.currency === "USDC")
-    .map((a) => a.balance);
-  const usdcTotalLabel = formatSummedBalance(usdcBalances, { maximumFractionDigits: 2 });
-  const anyStableBalance = usdcTotalLabel !== "—";
   const fiatLedgerItems = depositAccountsList.map((a) => ({
     currency: a.currency,
     balance: a.balance,
@@ -3920,12 +3939,6 @@ export default function DashboardApp(props: Props = {}) {
       ? `Across all wallets and accounts · excludes ${homeDisplayTotal.excluded.join(", ")}`
       : "Across all wallets and accounts";
   const homeRecent = mergePresentedActivityRows(decoratedAll, unmatchedOnchainRows, 4);
-  const mainWalletBalance =
-    usdcTotalLabel === "—" ? "—" : `${usdcTotalLabel} USDC`;
-  const mainWalletSub = anyStableBalance
-    ? "Available across ready USDC rails"
-    : "Stablecoin balance not yet available";
-  const stableTabs = ["USDC","USDT"].map(k => ({ label: k, select: setStable(k), bg: s.stableSel === k ? "var(--indigo)" : "transparent", color: s.stableSel === k ? "var(--indigo-on)" : "var(--muted)" }));
   const fiatAccountCards = depositAccountsList.map((a) => {
     const view = mapDepositAccountToCardView(a);
     const [statusColor, statusSoft] = depositStatusColors(view.status);
@@ -3990,7 +4003,8 @@ export default function DashboardApp(props: Props = {}) {
       : undefined;
   const walletsRecent = mergePresentedActivityRows(decoratedAll, unmatchedOnchainRows, 5);
   const elementAccountDetailRecent = recentActivityForFinancialAccount(decoratedAll, {
-    financialAccountId: selectedStablecoinAccount?.id ?? null,
+    financialAccountId:
+      selectedStablecoinAccount?.id ?? selectedDepositAccount?.id ?? null,
     walletAddress: selectedStablecoinAccount?.walletAddress ?? null,
   });
   const selectedAccountOnchainPayments = selectedStablecoinAccount
@@ -4188,6 +4202,7 @@ export default function DashboardApp(props: Props = {}) {
       ...(unmatchedOnchainRows.length ? ["USDC"] : []),
     ]),
   ).sort();
+
   // Reports screen hosts Statements (period PDF/CSV reconcile).
 
   // Single KYB case — no tier ladder. Submit once; then show clear compliance feedback.
@@ -4196,6 +4211,9 @@ export default function DashboardApp(props: Props = {}) {
     typeof meQuery.data?.kyb_summary?.profile?.reviewer_notes === "string"
       ? meQuery.data.kyb_summary.profile.reviewer_notes
       : null;
+  const kybReviewFindings = normalizeKybReviewFindings(
+    meQuery.data?.kyb_summary?.profile?.review_findings,
+  );
   const kybActionLabel =
     kybStatus === "rejected" || kybStatus === "expired"
       ? "Fix and resubmit"
@@ -5294,22 +5312,17 @@ export default function DashboardApp(props: Props = {}) {
 {(isWallets) ? (<>
 <WalletsScreen
   isMobile={isMobile}
-  mainWalletBalance={mainWalletBalance}
-  mainWalletSub={mainWalletSub}
-  stableTabs={stableTabs}
   accountsCount={accountsCount}
   addAccountMenu={s.addAccountMenu}
   toggleAddAccountMenu={toggleAddAccountMenu}
   closeAddAccountMenu={closeAddAccountMenu}
   openCreateAccount={openCreateAccount}
-  canCreateStablecoin={
-    occupiedStablecoinSlots(stablecoinAccountsList).size <
-    allSupportedStablecoinSlots().length
-  }
-  canCreateBank={
-    occupiedFiatCurrencyCodes(depositAccountsList).size <
-    SUPPORTED_IBAN_CURRENCIES.length
-  }
+  canCreateStablecoin={allSupportedStablecoinSlots().some(
+    (slot) => !occupiedStablecoinSlotKeys.has(`${slot.currency}:${slot.network}`),
+  )}
+  canCreateBank={supportedFiatCurrencies.some(
+    (code) => !occupiedFiatCodes.has(code),
+  )}
   accounts={accounts}
   eligible={depositEligible}
   eligibilityLoading={
@@ -5575,6 +5588,7 @@ export default function DashboardApp(props: Props = {}) {
   onStartKyb={openModalKyb}
   actionLabel={kybActionLabel}
   reviewerNotes={kybReviewerNotes}
+  reviewFindings={kybReviewFindings}
   submittedAt={typeof meQuery.data?.kyb_summary?.profile?.submitted_at === "string" ? meQuery.data.kyb_summary.profile.submitted_at : null}
   reviewedAt={typeof meQuery.data?.kyb_summary?.profile?.reviewed_at === "string" ? meQuery.data.kyb_summary.profile.reviewed_at : null}
 />
@@ -6418,6 +6432,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   intent={s.acctDetailIntent === "fund" ? "fund" : "details"}
   copiedField={s.copiedField}
   copyField={copyField}
+  onRefreshAccount={refreshDepositAccount}
 />
 </>) : null}
 
@@ -6657,6 +6672,8 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   createAccountSaving={s.createAccountSaving}
   occupiedSlots={[...occupiedStablecoinSlots(stablecoinAccountsList)]}
   occupiedCurrencies={[...occupiedFiatCurrencyCodes(depositAccountsList)]}
+  supportedCurrencies={supportedFiatCurrencies}
+  supportedAccounts={supportedAccountDescriptors}
   closeModal={closeModal}
   submitCreateAccount={submitCreateAccount}
 />

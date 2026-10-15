@@ -1,6 +1,7 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
+import AccountActivityList from "./AccountActivityList";
 
 export type AccountDetailRow = {
   label: string;
@@ -28,12 +29,24 @@ export type AccountDetailModalProps = {
     showConvert?: boolean;
     /** Client-side bank letter download (fiat coordinates). */
     showDownloadLetter?: boolean;
+    /** Deposit-account id — set only for fiat/bank accounts. Drives the
+     * Activity section; omitted entirely for stablecoin accounts, which
+     * have no `/v1/iban/accounts/{id}/activity` equivalent. */
+    accountId?: string | null;
   } | null;
   /** details = coords; fund = same coords with bank-transfer guidance */
   intent?: "details" | "fund";
   copiedField: string;
   copyField: (fieldKey: string, value: string) => () => void;
   openModalSwapFromAcct?: () => void;
+  /**
+   * Queries Nuvion live via Mboka's sync endpoint and reconciles the stored
+   * copy if stale. The caller owns re-fetching/updating `acctDetail` on
+   * success — this modal only tracks its own busy/error state around the
+   * call. Button is gated on `acctDetail.accountId` and `status === "active"`
+   * so it never appears before both the account exists and this prop is wired.
+   */
+  onRefreshAccount?: (accountId: string) => Promise<void>;
 };
 
 /** Display-only IBAN grouping — copy still uses the raw `copyValue`. */
@@ -46,9 +59,17 @@ export function formatSensitiveValue(label: string, value: string): string {
   return value;
 }
 
+/**
+ * Fallback classifier for callers that pass raw `rows` without `sections`
+ * (e.g. tests, or any future caller that hasn't adopted
+ * `buildDepositAccountDetailSections`). Vocabulary mirrors that function's
+ * `BANK_ROW_LABEL_RE` in `lib/services/depositAccounts.ts` — keep both in
+ * sync when a new rail field/label is added.
+ */
 function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   if (!rows.length) return [];
-  const bankKeys = /^(iban|bic|swift|bank|account name)/i;
+  const bankKeys =
+    /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
   const settleKeys = /^(settles|settlement|reference|asset|network|account id|status)/i;
   const bank: AccountDetailRow[] = [];
   const settle: AccountDetailRow[] = [];
@@ -67,19 +88,19 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
 
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
   const beneficiary = acctDetail.beneficiary?.trim() || null;
-  // Mirror the same section breakdown shown in the modal (e.g. Domestic
-  // transfer / International wire for USD) instead of one flat coordinate
-  // blob, so the letter documents both rails' instructions distinctly.
+  // Mirror modal bank-rail sections only — Settlement (Available balance) stays on the modal.
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
-  ).map((sec) => ({
-    title: sec.title,
-    rows: sec.rows.map((row) => ({
-      label: row.label,
-      value: formatSensitiveValue(row.label, row.value),
-      mono: true,
-    })),
-  }));
+  )
+    .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
+    .map((sec) => ({
+      title: sec.title,
+      rows: sec.rows.map((row) => ({
+        label: row.label,
+        value: formatSensitiveValue(row.label, row.value),
+        mono: true,
+      })),
+    }));
   openBrandedDocument(
     {
       fileTitle: `Mboka — ${acctDetail.currency} bank letter`,
@@ -151,13 +172,30 @@ export default function AccountDetailModal({
   copiedField,
   copyField,
   openModalSwapFromAcct,
+  onRefreshAccount,
 }: AccountDetailModalProps) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+
   if (!acctDetail) return null;
 
+  async function handleRefresh() {
+    const accountId = acctDetail?.accountId;
+    if (!accountId || !onRefreshAccount || refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await onRefreshAccount(accountId);
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : "Couldn't refresh this account.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const beneficiary = acctDetail.beneficiary?.trim() || null;
-  const bankRows = (acctDetail.sections?.length
-    ? acctDetail.sections
-    : defaultSections(acctDetail.rows)
+  const bankRows = (
+    acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
   )
     .map((sec) =>
       beneficiary
@@ -246,6 +284,10 @@ export default function AccountDetailModal({
         </div>
       )}
 
+      {acctDetail.accountId ? (
+        <AccountActivityList accountId={acctDetail.accountId} />
+      ) : null}
+
       {showLetter && !depositUnavailable ? (
         <button
           type="button"
@@ -273,6 +315,24 @@ export default function AccountDetailModal({
         >
           Convert balance
         </button>
+      ) : null}
+
+      {acctDetail.accountId && acctDetail.status === "active" && onRefreshAccount ? (
+        <>
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className="ep-wallets-detail__letter"
+          >
+            {refreshing ? "Refreshing…" : "Refresh details"}
+          </button>
+          {refreshError ? (
+            <p className="ep-wallets-detail__pending-body" role="alert">
+              {refreshError}
+            </p>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

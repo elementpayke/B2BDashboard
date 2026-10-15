@@ -1,14 +1,15 @@
 "use client";
-import React from "react";
+import React, { useEffect, useId, useState } from "react";
 import {
-  CURRENCY_OPTIONS,
   STABLECOIN_OPTIONS,
   NETWORK_OPTIONS,
   SUPPORTED_IBAN_CURRENCIES,
+  currencyOptionsFor,
   isCurrencySupported,
   isStablecoinSupported,
   isStablecoinNetworkSupported,
   networksForStablecoin,
+  type SupportedAccountDescriptor,
 } from "@/lib/services/depositAccounts";
 import { isAllowlistedStellarStable } from "@/lib/config/stellarFeatures";
 
@@ -31,6 +32,18 @@ export type CreateAccountModalProps = {
   occupiedSlots?: readonly string[];
   /** ISO currencies already held (e.g. USD, EUR). */
   occupiedCurrencies?: readonly string[];
+  /**
+   * Live currency list from `supportedCurrenciesFromEligibility` — defaults
+   * to the static USD/EUR constant when the backend hasn't shipped
+   * `supported_accounts` yet, so this prop is optional.
+   */
+  supportedCurrencies?: readonly string[];
+  /**
+   * Full eligibility descriptors (same source as `supportedCurrencies`) —
+   * used to look up a per-currency `monthly_maintenance_fee`. Absent on
+   * today's backend, so the fee disclosure below simply never renders yet.
+   */
+  supportedAccounts?: readonly SupportedAccountDescriptor[];
   closeModal: () => void;
   submitCreateAccount: () => void;
 };
@@ -41,19 +54,35 @@ function slotKey(currency: string, network: string): string {
 
 export default function CreateAccountModal(p: CreateAccountModalProps) {
   const isStablecoin = p.createAccountKind === "stablecoin";
+  const feeCheckboxId = useId();
+  const [feeAcknowledged, setFeeAcknowledged] = useState(false);
+  const monthlyFee = isStablecoin
+    ? null
+    : (p.supportedAccounts ?? []).find(
+        (d) => d.currency.trim().toUpperCase() === p.createAccountCurrency.trim().toUpperCase(),
+      )?.monthly_maintenance_fee ?? null;
+
+  // A fee notice acknowledged for one currency shouldn't silently carry over
+  // once the user picks a different one.
+  useEffect(() => {
+    setFeeAcknowledged(false);
+  }, [p.createAccountCurrency]);
+
   const occupiedSlots = new Set(
     (p.occupiedSlots ?? []).map((s) => s.trim().toUpperCase()),
   );
   const occupiedCurrencies = new Set(
     (p.occupiedCurrencies ?? []).map((c) => c.trim().toUpperCase()),
   );
+  const supportedCurrencies = p.supportedCurrencies ?? SUPPORTED_IBAN_CURRENCIES;
+  const currencyOptions = currencyOptionsFor(supportedCurrencies);
 
   const selectedCurrency = (p.createAccountStablecoin || "USDC").trim().toUpperCase();
   const networksForAsset = networksForStablecoin(selectedCurrency);
   const availableNetworks = networksForAsset.filter(
     (code) => !occupiedSlots.has(slotKey(selectedCurrency, code)),
   );
-  const availableCurrencies = SUPPORTED_IBAN_CURRENCIES.filter(
+  const availableCurrencies = supportedCurrencies.filter(
     (code) => !occupiedCurrencies.has(code),
   );
 
@@ -75,7 +104,11 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
     : Boolean(p.createAccountCurrency) &&
       occupiedCurrencies.has(p.createAccountCurrency.trim().toUpperCase());
 
-  const canSubmit = !p.createAccountSaving && !slotsFull && !selectedSlotTaken;
+  const canSubmit =
+    !p.createAccountSaving &&
+    !slotsFull &&
+    !selectedSlotTaken &&
+    (!monthlyFee || feeAcknowledged);
 
   return (
     <div className="ep-wallets-create">
@@ -94,7 +127,7 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
         <div className="ep-wallets-create__error" role="status">
           {isStablecoin
             ? "You already have a stablecoin account on every available asset and network."
-            : "You already have fiat accounts for every supported currency (USD and EUR)."}
+            : `You already have fiat accounts for every supported currency (${supportedCurrencies.join(", ")}).`}
         </div>
       ) : null}
 
@@ -210,8 +243,8 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             }
           >
             <option value="">Select currency</option>
-            {CURRENCY_OPTIONS.map((c) => {
-              const supported = isCurrencySupported(c.code);
+            {currencyOptions.map((c) => {
+              const supported = isCurrencySupported(c.code, supportedCurrencies);
               const taken = occupiedCurrencies.has(c.code.trim().toUpperCase());
               return (
                 <option
@@ -230,8 +263,32 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
             })}
           </select>
           <div className="ep-wallets-create__hint">
-            Bank accounts are issued one per currency (USD and EUR only).
+            Bank accounts are issued one per currency ({supportedCurrencies.join(", ")} only).
           </div>
+          {monthlyFee ? (
+            <div className="ep-wallets-create__field" style={{ marginTop: 10 }}>
+              <div className="ep-wallets-create__hint">
+                This account has a {monthlyFee.amount} {monthlyFee.currency}/month maintenance
+                fee.
+              </div>
+              <label
+                htmlFor={feeCheckboxId}
+                style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 6 }}
+              >
+                <input
+                  id={feeCheckboxId}
+                  type="checkbox"
+                  checked={feeAcknowledged}
+                  onChange={(e) => setFeeAcknowledged(e.target.checked)}
+                  disabled={p.createAccountSaving}
+                />
+                <span className="ep-wallets-create__label" style={{ margin: 0 }}>
+                  I understand this account has a {monthlyFee.amount} {monthlyFee.currency}
+                  /month fee.
+                </span>
+              </label>
+            </div>
+          ) : null}
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectStagePhrase,
+  fiatPaymentReference,
   formatTransactionDate,
   parseApiInstant,
   presentTransaction,
@@ -284,6 +285,56 @@ describe("presentTransaction", () => {
     expect(settled.amount).toContain("USDC");
     expect(settled.meta).toContain("Credited");
     expect(settled.meta).not.toMatch(/convert|swap/i);
+  });
+
+  it("detects a bank rail and exposes the bank reference regardless of currency (future Nuvion-backed local rails)", () => {
+    // KES isn't a bank-account currency the dashboard supports today, but
+    // rail detection and reference resolution are driven by payment shape
+    // (account_kind/method_type), not currency — so this must already work
+    // identically to USD/EUR once new local bank rails exist.
+    const view = presentTransaction(
+      transaction({
+        currency: "KES",
+        payment: {
+          party_name: "Acme Suppliers Ltd",
+          account_number: "1234567890",
+          account_kind: "bank_account",
+          method_type: "bank",
+          network_name: "KCB Bank",
+        },
+        psp_transaction_id: "BANKREF-998877",
+      }),
+    );
+    expect(view.railType).toBe("bank");
+    expect(view.meta).toContain("Ref BANKREF-998877");
+  });
+
+  it("resolves fiatPaymentReference from a bank-rail psp_transaction_id for any currency", () => {
+    const tx = transaction({
+      currency: "KES",
+      payment: { account_kind: "bank_account", method_type: "bank" },
+      psp_transaction_id: "BANKREF-998877",
+    });
+    expect(fiatPaymentReference(tx)).toBe("BANKREF-998877");
+  });
+
+  it("still filters out crypto-looking psp_transaction_id values on a non-USD/EUR bank rail", () => {
+    const hash =
+      "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
+    const tx = transaction({
+      currency: "KES",
+      payment: { account_kind: "bank_account", method_type: "bank" },
+      psp_transaction_id: hash,
+    });
+    expect(fiatPaymentReference(tx)).toBeNull();
+  });
+
+  it("returns null for a non-bank, non-mobile rail regardless of currency", () => {
+    const tx = transaction({
+      currency: "KES",
+      psp_transaction_id: "BANKREF-998877",
+    });
+    expect(fiatPaymentReference(tx)).toBeNull();
   });
 
   it("shows Stellar USDT deposit the same way while confirming", () => {
