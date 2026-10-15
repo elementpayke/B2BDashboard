@@ -1386,7 +1386,12 @@ export default function DashboardApp(props: Props = {}) {
       // The box may be in the destination currency; the payload always prices
       // from USD. Converting here (not at keystroke time) keeps the entered
       // figure exactly as typed in the field.
+      // Same three sources as homeFxRates/sendIndicativeRate — otherwise a
+      // bootstrap-only rate would let Max/inline validation treat the box as
+      // convertible while this submit-time lookup finds no rate and silently
+      // reinterprets the local figure as raw USD.
       const amountRates = mergeExchangeRates(
+        bootstrapQuery.data?.fxRates,
         summaryQuery.data?.fx_rates,
         exchangeRatesQuery.data,
       );

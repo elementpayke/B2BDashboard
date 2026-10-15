@@ -95,6 +95,21 @@ describe("limitViolationAcrossCurrencies", () => {
     expect(limitViolationAcrossCurrencies("12334444", "USD", bwpLimits, null)).toBeNull();
   });
 
+  it("converts a local-typed amount against a USD-denominated limit", () => {
+    const usdLimits = { min: null, max: 100, currency: "USD" };
+    // 1,500 KES / 13.5 = ~111.11 USD — over a USD 100 max.
+    expect(limitViolationAcrossCurrencies("1500", "KES", usdLimits, 13.5)).toMatch(
+      /^Maximum is USD 100 per transaction/,
+    );
+    // 1,000 KES / 13.5 = ~74.07 USD — inside the range.
+    expect(limitViolationAcrossCurrencies("1000", "KES", usdLimits, 13.5)).toBeNull();
+  });
+
+  it("skips a currency pair the rate can't bridge", () => {
+    const eurLimits = { min: 10, max: 100, currency: "EUR" };
+    expect(limitViolationAcrossCurrencies("5000", "KES", eurLimits, 13.5)).toBeNull();
+  });
+
   it("returns null without published limits", () => {
     expect(limitViolationAcrossCurrencies("12334444", "USD", null, rate)).toBeNull();
   });
@@ -132,6 +147,18 @@ describe("maxSendableAmount", () => {
         currency: "USDC",
       }),
     ).toBeNull();
+  });
+
+  // Same guarantee when the display currency is worth more than a dollar
+  // (rate < 1) — flooring must still apply after the multiply, not before,
+  // or the converted figure can round back to more USD than is available.
+  it("never fills a figure that fails its own check with a sub-1 rate", () => {
+    const usdBalance = 1.06;
+    const rate = 0.92; // units of local currency per 1 USD
+    const filled = maxSendableAmount([usdBalance], "LOCAL", rate);
+    expect(filled).toBe("0.97");
+    const backToUsd = (Number(filled) / rate).toFixed(2);
+    expect(Number(backToUsd)).toBeLessThanOrEqual(usdBalance);
   });
 });
 

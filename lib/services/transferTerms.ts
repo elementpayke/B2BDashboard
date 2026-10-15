@@ -91,10 +91,13 @@ export function limitViolation(amount: string, limits: AmountLimits | null): str
 
 /**
  * Same check as {@link limitViolation}, but works when the box is in a
- * different currency than the published range (e.g. typing USD against a
- * BWP limit). `localPerUsdRate` is units of `limits.currency` per 1 USD —
- * the same indicative rate used to show the "≈" equivalent line. Without a
- * rate we cannot convert, so no check runs rather than guess a verdict.
+ * different currency than the published range — either direction: typing USD
+ * against a BWP limit, or typing BWP against a USD limit (some providers
+ * publish USD-denominated minimums/maximums even on a local-currency
+ * corridor). `localPerUsdRate` is units of the corridor's local currency per
+ * 1 USD — the same indicative rate used to show the "≈" equivalent line.
+ * Only USD↔local is bridged; a third currency on either side skips the
+ * check rather than guess a verdict. Without a rate we cannot convert either.
  */
 export function limitViolationAcrossCurrencies(
   amount: string,
@@ -105,10 +108,16 @@ export function limitViolationAcrossCurrencies(
   if (!limits) return null;
   const typed = amountCurrency.trim().toUpperCase();
   if (typed === limits.currency) return limitViolation(amount, limits);
-  if (typed !== "USD" || !localPerUsdRate) return null;
-  const usd = toNumber(amount);
-  if (usd === null) return null;
-  return limitViolation((usd * localPerUsdRate).toFixed(2), limits);
+  if (!localPerUsdRate) return null;
+  const n = toNumber(amount);
+  if (n === null) return null;
+  if (typed === "USD") {
+    return limitViolation((n * localPerUsdRate).toFixed(2), limits);
+  }
+  if (limits.currency === "USD") {
+    return limitViolation((n / localPerUsdRate).toFixed(2), limits);
+  }
+  return null;
 }
 
 /**
