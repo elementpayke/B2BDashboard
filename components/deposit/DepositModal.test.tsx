@@ -539,7 +539,7 @@ describe("DepositModal transparency", () => {
 
   it("shows published per-transaction limits and the fee status under the amount", () => {
     render(<DepositModal {...amountStep} depositLimitsText="Min KES 100 · Max KES 150,000" />);
-    expect(screen.getByText("Min KES 100 · Max KES 150,000 per transaction")).toBeInTheDocument();
+    expect(screen.getByText("Min KES 100 · Max KES 150,000")).toBeInTheDocument();
     expect(screen.getByText("Fee · Shown on review")).toBeInTheDocument();
   });
 

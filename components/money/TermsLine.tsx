@@ -21,7 +21,7 @@ export default function TermsLine({
       {error ? (
         <span className="ep-terms-line__err">{error}</span>
       ) : limits ? (
-        <span>{limits} per transaction</span>
+        <span>{limits}</span>
       ) : null}
       {fee && !error ? <span className="ep-terms-line__fee">Fee · {fee}</span> : null}
     </span>

@@ -694,8 +694,7 @@ export default function SendModal(p: SendModalProps) {
                   (p.sendRecipientLabel?.toLowerCase().includes("phone") ||
                     p.sendRecipientLabel?.toLowerCase().includes("mobile")) ? (
                     <span className="ep-money-hint ep-money-hint--inline">
-                      Local numbers like 07… convert to international format (e.g. +254…) when you
-                      leave the field.
+                      Converts to international format automatically.
                     </span>
                   ) : null}
                 </div>
