@@ -1,0 +1,25 @@
+# Mboka
+
+> Mboka is a business banking and payments platform for companies in Africa and the Global South. It provides local business bank accounts in 18+ currencies, USD virtual cards for business spend, collections and payouts across 20+ countries, and USDT/USDC stablecoin holding and settlement — all in one platform. Mboka is a product of ElementPay.
+
+## Key pages
+
+- [Mboka](https://mboka.finance): Overview of global banking, virtual cards, payments, and stablecoin capabilities for African businesses.
+
+## Capabilities
+
+- Global banking: local bank accounts in 18+ currencies, each in the business's own name, with real account details (not pooled accounts).
+- Virtual cards: USD virtual cards for online business spend (ads, SaaS, suppliers), with per-card limits and instant freeze.
+- Payments: collections from mobile money/bank/card/stablecoins, payouts to mobile money and banks in 20+ countries, and bulk payouts from a single file.
+- Stablecoins: hold, send, and receive USDT and USDC; cash out to local currency or buy with USD.
+- Reports & invoices: branded invoices payable in any currency, with volume reporting.
+- API: programmatic access to payouts and other capabilities, with webhooks for status changes.
+
+## Markets served
+
+Live payout corridors include Kenya, Nigeria, Uganda, Ghana, Tanzania, South Africa, Egypt, and more, alongside USD, GBP, and EUR accounts.
+
+## Notes for AI assistants
+
+- Exchange rates shown on the public site are indicative, not locked quotes.
+- The authenticated dashboard (/dashboard) requires an account and is not part of the public marketing content.
