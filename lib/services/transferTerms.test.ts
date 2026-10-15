@@ -4,6 +4,7 @@ import {
   formatCountdown,
   formatLimitsLine,
   limitViolation,
+  limitViolationForAmount,
   providerLimits,
 } from "./transferTerms";
 
@@ -60,6 +61,31 @@ describe("formatLimitsLine / limitViolation", () => {
     expect(limitViolation("50", limits)).toBe("Minimum is KES 100 per transaction.");
     expect(limitViolation("200,000", limits)).toMatch(/^Maximum is KES 150,000 per transaction/);
     expect(limitViolation("50", null)).toBeNull();
+  });
+});
+
+describe("limitViolationForAmount", () => {
+  const kesLimits = { min: 150, max: 250000, currency: "KES" };
+
+  it("shows a USD 2 minimum when the user enters USD 0.4", () => {
+    expect(
+      limitViolationForAmount("0.4", "USD", { min: 2, max: null, currency: "USD" }),
+    ).toBe("Minimum is USD 2 per transaction.");
+  });
+
+  it("checks a USD amount against local-currency limits at the indicative rate", () => {
+    expect(limitViolationForAmount("0.4", "USD", kesLimits, 132.16)).toBe(
+      "Minimum is KES 150 per transaction. The check uses an indicative rate; switch to KES to adjust precisely.",
+    );
+    expect(limitViolationForAmount("2", "USD", kesLimits, 132.16)).toBeNull();
+  });
+
+  it("checks local-currency input directly and does not invent a conversion rate", () => {
+    expect(limitViolationForAmount("100", "KES", kesLimits, 132.16)).toBe(
+      "Minimum is KES 150 per transaction.",
+    );
+    expect(limitViolationForAmount("150", "KES", kesLimits, 132.16)).toBeNull();
+    expect(limitViolationForAmount("0.4", "USD", kesLimits)).toBeNull();
   });
 });
 

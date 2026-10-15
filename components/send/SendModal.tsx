@@ -82,10 +82,13 @@ export type SendModalProps = {
   sendAmountEquivalent: string | null;
   /** Indicative "1 USD = 130.50 KES" shown while entering an amount. */
   sendIndicativeRateLine: string | null;
-  /** "Min KES 100 · Max KES 150,000" from the partner catalog; null when unpublished. */
-  sendLimitsText?: string | null;
   /** Inline message when the typed amount is outside the published limits. */
   sendLimitError?: string | null;
+  /** Inline message when the amount exceeds the selected source wallet balance. */
+  sendBalanceError?: string | null;
+  /** Maximum amount that can be entered without exceeding the source wallet. */
+  sendMaxAmount?: string | null;
+  setSendAmountToMax?: () => void;
   /** Binding "1 USD = 130.50 KES" from the quote, shown on review. */
   sendQuotedRateLine: string | null;
   savedRecipients: SavedRecipient[];
@@ -740,29 +743,45 @@ export default function SendModal(p: SendModalProps) {
                       </div>
                     ) : null}
                   </div>
-                  <input
-                    id="send-amount"
-                    className="ep-money-input ep-money-input--amount"
-                    value={p.sendAmount}
-                    onChange={p.setSendAmount}
-                    placeholder="0.00"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    aria-invalid={p.sendLimitError ? true : undefined}
-                    aria-describedby={
-                      [
-                        p.sendLimitsText || p.sendLimitError ? "send-limits" : "",
-                        p.sendQuoteError
-                          ? "send-quote-error"
-                          : p.sendAmountEquivalent
-                            ? "send-amount-equiv"
-                            : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ") || undefined
-                    }
-                  />
-                  <TermsLine id="send-limits" limits={p.sendLimitsText} error={p.sendLimitError} />
+                  <div
+                    className={`ep-money-input-wrap${p.sendMaxAmount && p.setSendAmountToMax ? " ep-money-input-wrap--action" : ""}`}
+                  >
+                    <input
+                      id="send-amount"
+                      className={`ep-money-input ep-money-input--amount${p.sendMaxAmount && p.setSendAmountToMax ? " ep-money-input--has-action" : ""}`}
+                      value={p.sendAmount}
+                      onChange={p.setSendAmount}
+                      placeholder="0.00"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      aria-invalid={p.sendLimitError || p.sendBalanceError ? true : undefined}
+                      aria-describedby={
+                        [
+                          p.sendLimitError ? "send-limits" : "",
+                          p.sendBalanceError ? "send-balance" : "",
+                          p.sendQuoteError
+                            ? "send-quote-error"
+                            : p.sendAmountEquivalent
+                              ? "send-amount-equiv"
+                              : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
+                    />
+                    {p.sendMaxAmount && p.setSendAmountToMax ? (
+                      <button
+                        type="button"
+                        className="ep-money-input-action"
+                        aria-label={`Use maximum available balance of ${p.sendMaxAmount} ${p.sendAmountCurrency}`}
+                        onClick={p.setSendAmountToMax}
+                      >
+                        Max
+                      </button>
+                    ) : null}
+                  </div>
+                  <TermsLine id="send-limits" error={p.sendLimitError} />
+                  <TermsLine id="send-balance" error={p.sendBalanceError} />
                   {p.sendAmountEquivalent ? (
                     <span className="ep-money-equiv" id="send-amount-equiv">
                       <strong>{p.sendAmountEquivalent}</strong>
@@ -817,7 +836,7 @@ export default function SendModal(p: SendModalProps) {
                   type="button"
                   className="ep-btn-primary"
                   onClick={p.sendNext}
-                  disabled={p.sendQuoteLoading || Boolean(p.sendLimitError)}
+                  disabled={p.sendQuoteLoading || Boolean(p.sendLimitError || p.sendBalanceError)}
                   aria-busy={p.sendQuoteLoading || undefined}
                 >
                   {p.sendQuoteLoading ? "Getting quote…" : "Review"}

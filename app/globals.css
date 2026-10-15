@@ -7921,6 +7921,35 @@ select.ep-wallets-create__control {
   font-variant-numeric: tabular-nums;
 }
 
+.ep-money-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.ep-money-input--has-action {
+  padding-right: 78px;
+}
+
+.ep-money-input-action {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  min-width: 54px;
+  min-height: 40px;
+  padding: 5px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--indigo-text);
+  font: 700 12px "DM Sans", sans-serif;
+  cursor: pointer;
+}
+
+.ep-money-input-action:hover {
+  background: var(--indigo-tint);
+}
+
 .ep-money-input--bare {
   flex: 1;
   min-width: 0;

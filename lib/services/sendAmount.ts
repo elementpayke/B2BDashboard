@@ -79,6 +79,39 @@ export function toPayloadUsdAmount(raw: string, mode: AmountEntryMode): string |
   return (amount / mode.rate).toFixed(2);
 }
 
+/** Whether a typed amount converts to more than the known USD-equivalent balance. */
+export function amountExceedsBalance(
+  raw: string,
+  mode: AmountEntryMode,
+  availableUsd: number | null,
+): boolean {
+  if (availableUsd === null || !Number.isFinite(availableUsd) || availableUsd < 0) return false;
+  const usdAmount = toPayloadUsdAmount(raw, mode);
+  return usdAmount !== null && Number(usdAmount) > availableUsd;
+}
+
+/** Maximum entry amount that converts to no more than the available USD value. */
+export function maxAmountForBalance(
+  availableUsd: number,
+  mode: AmountEntryMode,
+): string | null {
+  if (!Number.isFinite(availableUsd) || availableUsd <= 0) return null;
+  const currency = mode.currency.toUpperCase();
+  let multiplier = 1;
+  if (currency !== PAYLOAD_CURRENCY) {
+    if (mode.rate === null || !Number.isFinite(mode.rate) || mode.rate <= 0) return null;
+    multiplier = mode.rate;
+  }
+  let amount = Math.floor((availableUsd * multiplier + Number.EPSILON) * 100) / 100;
+  while (amount > 0) {
+    const entered = amount.toFixed(2);
+    const usdAmount = toPayloadUsdAmount(entered, mode);
+    if (usdAmount !== null && Number(usdAmount) <= availableUsd) return entered;
+    amount = Math.round((amount - 0.01) * 100) / 100;
+  }
+  return null;
+}
+
 function formatMoney(value: number, currency: string): string {
   const isUsd = currency.toUpperCase() === PAYLOAD_CURRENCY;
   return `${new Intl.NumberFormat("en-US", {
