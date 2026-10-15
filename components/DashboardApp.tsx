@@ -4706,7 +4706,11 @@ export default function DashboardApp(props: Props = {}) {
     ? providerLimits(depositCatalogProviders, depositProvider, depositCountry.code)
     : null;
   const depositLimitsText = formatLimitsLine(depositLimits);
-  const depositLimitError = limitViolation(s.depositAmount, depositLimits);
+  // Limits must be in the corridor currency the amount is typed in.
+  const depositLimitError =
+    depositLimits && depositLimits.currency === depositCountry.code.toUpperCase()
+      ? limitViolation(s.depositAmount, depositLimits)
+      : null;
   const depositRateLine = depositQuote
     ? formatRateLine(
         depositQuote.amounts.rate,

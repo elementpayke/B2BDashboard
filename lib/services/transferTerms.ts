@@ -42,14 +42,20 @@ export function providerLimits(
   let min: number | null = null;
   let max: number | null = null;
   let currency = "";
+  const currencies = new Set<string>();
   for (const p of pool) {
     const lo = toNumber(p.min_amount);
     const hi = toNumber(p.max_amount);
+    if (lo === null && hi === null) continue;
     if (lo !== null) min = min === null ? lo : Math.min(min, lo);
     if (hi !== null) max = max === null ? hi : Math.max(max, hi);
-    if (!currency && p.currency) currency = String(p.currency).toUpperCase();
+    const c = String(p.currency || fallbackCurrency).toUpperCase();
+    currencies.add(c);
+    if (!currency) currency = c;
   }
   if (min === null && max === null) return null;
+  // Never merge bounds published in different currencies into one range.
+  if (currencies.size > 1) return null;
   return { min, max, currency: currency || fallbackCurrency.toUpperCase() };
 }
 

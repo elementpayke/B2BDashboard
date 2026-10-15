@@ -23,6 +23,16 @@ describe("providerLimits", () => {
     expect(providerLimits(providers, "", "KES")).toEqual({ min: 50, max: 150000, currency: "KES" });
   });
 
+  it("never merges bounds published in different currencies", () => {
+    const mixed = [
+      { code: "A", name: "A", enabled: true, min_amount: 100, max_amount: 1000, currency: "KES" },
+      { code: "B", name: "B", enabled: true, min_amount: 5, max_amount: 50, currency: "USD" },
+    ];
+    expect(providerLimits(mixed, "", "KES")).toBeNull();
+    expect(providerLimits(mixed, "stale-name", "KES")).toBeNull();
+    expect(providerLimits(mixed, "B", "KES")).toEqual({ min: 5, max: 50, currency: "USD" });
+  });
+
   it("returns null when the catalog publishes no limits — never a guess", () => {
     expect(providerLimits([providers[2]], "KCB Bank", "KES")).toBeNull();
     expect(providerLimits(null, "", "KES")).toBeNull();
