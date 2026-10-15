@@ -5,8 +5,10 @@ import {
   formatLimitsLine,
   limitViolation,
   limitViolationAcrossCurrencies,
+  maxSendableAmount,
   providerLimits,
 } from "./transferTerms";
+import { insufficientBalanceMessage } from "@/lib/services/balances";
 
 const providers = [
   { code: "MPESA", name: "M-Pesa", enabled: true, min_amount: "100", max_amount: "150000", currency: "KES" },
@@ -95,6 +97,41 @@ describe("limitViolationAcrossCurrencies", () => {
 
   it("returns null without published limits", () => {
     expect(limitViolationAcrossCurrencies("12334444", "USD", null, rate)).toBeNull();
+  });
+});
+
+describe("maxSendableAmount", () => {
+  it("picks the smaller of the known USD candidates", () => {
+    expect(maxSendableAmount([703.7, 500], "USD", null)).toBe("500.00");
+    expect(maxSendableAmount([null, 500], "USD", null)).toBe("500.00");
+    expect(maxSendableAmount([703.7, null], "USD", null)).toBe("703.70");
+  });
+
+  it("returns null with nothing known, or no rate to show it in local currency", () => {
+    expect(maxSendableAmount([null, null], "USD", null)).toBeNull();
+    expect(maxSendableAmount([100], "BWP", null)).toBeNull();
+  });
+
+  it("converts into the local currency when that's what's typed", () => {
+    expect(maxSendableAmount([100], "BWP", 13.5)).toBe("1350.00");
+  });
+
+  // Regression: a wallet balance often carries more precision than its
+  // rounded "Available 34.74 USDC" display. Filling Max with the
+  // round-to-nearest figure (34.74) would read as exactly equal to that
+  // display but actually exceed the real 34.7398 balance, tripping
+  // insufficientBalanceMessage against the very number Max just filled.
+  it("never fills a figure that fails its own balance check", () => {
+    const trueBalance = 34.7398;
+    const filled = maxSendableAmount([trueBalance], "USD", null);
+    expect(filled).toBe("34.73");
+    expect(
+      insufficientBalanceMessage({
+        amount: filled!,
+        balance: { available: String(trueBalance), currency: "USDC" },
+        currency: "USDC",
+      }),
+    ).toBeNull();
   });
 });
 

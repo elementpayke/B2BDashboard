@@ -111,6 +111,30 @@ export function limitViolationAcrossCurrencies(
   return limitViolation((usd * localPerUsdRate).toFixed(2), limits);
 }
 
+/**
+ * "Max" fill: the smaller of whatever USD figures are known (corridor max,
+ * source wallet balance, …), expressed in the currently typed currency.
+ *
+ * Rounds the result DOWN to cents — never to nearest. A wallet balance often
+ * carries more precision than its rounded display (true 34.7398 shown as
+ * "34.74"); rounding the fill *up* to that display figure would exceed the
+ * real balance and immediately trip the insufficient-balance check against
+ * its own number.
+ */
+export function maxSendableAmount(
+  usdCandidates: Array<number | null | undefined>,
+  displayCurrency: string,
+  localPerUsdRate: number | null,
+): string | null {
+  const known = usdCandidates.filter((n): n is number => n != null);
+  if (!known.length) return null;
+  const usd = Math.min(...known);
+  const floorToCents = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
+  if (displayCurrency.trim().toUpperCase() === "USD") return floorToCents(usd);
+  if (!localPerUsdRate) return null;
+  return floorToCents(usd * localPerUsdRate);
+}
+
 /** "4:05" until the quote expires, "0:00" once it has. Null without an expiry. */
 export function formatCountdown(expiresAt: string | null | undefined, nowMs: number): string | null {
   if (!expiresAt) return null;

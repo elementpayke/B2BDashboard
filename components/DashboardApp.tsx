@@ -153,6 +153,7 @@ import {
   formatLimitsLine,
   limitViolation,
   limitViolationAcrossCurrencies,
+  maxSendableAmount,
   providerLimits,
 } from "@/lib/services/transferTerms";
 import {
@@ -4630,18 +4631,11 @@ export default function DashboardApp(props: Props = {}) {
           : null
       : null;
   const sendBalanceUsd = sendRefundWallet ? parseBalanceNumber(sendRefundWallet.balance) : null;
-  const sendMaxUsdCandidates = [sendLimitMaxUsd, sendBalanceUsd].filter(
-    (n): n is number => n != null,
+  const sendMaxAmount = maxSendableAmount(
+    [sendLimitMaxUsd, sendBalanceUsd],
+    sendAmountCurrency,
+    sendIndicativeRate,
   );
-  const sendMaxUsd = sendMaxUsdCandidates.length ? Math.min(...sendMaxUsdCandidates) : null;
-  const sendMaxAmount =
-    sendMaxUsd != null
-      ? sendAmountCurrency.toUpperCase() === "USD"
-        ? sendMaxUsd.toFixed(2)
-        : sendIndicativeRate
-          ? (sendMaxUsd * sendIndicativeRate).toFixed(2)
-          : null
-      : null;
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
