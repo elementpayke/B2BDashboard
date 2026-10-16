@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import CloseAccountModal from "./CloseAccountModal";
 
 describe("CloseAccountModal", () => {
-  it("defaults to Block wallet and continues with that action", async () => {
+  it("confirms closing the account", async () => {
     const onContinue = vi.fn().mockResolvedValue(undefined);
     render(
       <CloseAccountModal
@@ -17,32 +17,11 @@ describe("CloseAccountModal", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: /Block wallet/i })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await waitFor(() => expect(onContinue).toHaveBeenCalledWith("block"));
+    fireEvent.click(screen.getByRole("button", { name: "Close account" }));
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
   });
 
-  it("lets the user pick Delete wallet before Continue", async () => {
-    const onContinue = vi.fn().mockResolvedValue(undefined);
-    render(
-      <CloseAccountModal
-        accountName="USDC · Stellar"
-        currency="USDC"
-        networkLabel="Stellar"
-        onCancel={vi.fn()}
-        onContinue={onContinue}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("radio", { name: /Delete wallet/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    await waitFor(() => expect(onContinue).toHaveBeenCalledWith("delete"));
-  });
-
-  it("disables Block when the wallet is already closed", () => {
+  it("disables the confirm button when the wallet is already closed", () => {
     render(
       <CloseAccountModal
         accountName="USDC · Stellar"
@@ -54,10 +33,23 @@ describe("CloseAccountModal", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: /Block wallet/i })).toBeDisabled();
-    expect(screen.getByRole("radio", { name: /Delete wallet/i })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    expect(screen.getByRole("button", { name: "Close account" })).toBeDisabled();
+    expect(screen.getByText(/already closed/i)).toBeInTheDocument();
+  });
+
+  it("calls onCancel when Cancel is clicked", () => {
+    const onCancel = vi.fn();
+    render(
+      <CloseAccountModal
+        accountName="USDC · Stellar"
+        currency="USDC"
+        networkLabel="Stellar"
+        onCancel={onCancel}
+        onContinue={vi.fn()}
+      />,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

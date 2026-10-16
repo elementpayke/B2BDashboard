@@ -293,7 +293,7 @@ function fiatRailForCurrency(code: string): string {
 }
 
 import FundChooserModal, { type FundChooserOption } from "@/components/wallets/FundChooserModal";
-import CloseAccountModal, { type CloseAccountAction } from "@/components/wallets/CloseAccountModal";
+import CloseAccountModal from "@/components/wallets/CloseAccountModal";
 import BookTransferModal from "@/components/wallets/BookTransferModal";
 import FundPaymentRequestModal from "@/components/wallets/FundPaymentRequestModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
@@ -6172,19 +6172,14 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   networkLabel={formatNetworkLabel(selectedStablecoinAccount.network)}
   alreadyClosed={isClosedStatus(selectedStablecoinAccount.status)}
   onCancel={closeModal}
-  onContinue={async (action: CloseAccountAction) => {
-    await entitiesApi.closeAccount(
+  onContinue={async () => {
+    await entitiesApi.deleteAccount(
       selectedStablecoinAccount.entityId,
       selectedStablecoinAccount.id,
-      action,
     );
     await queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-        queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-    if (action === "delete") {
-      backToWallets();
-      return;
-    }
-    closeModal();
+    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    backToWallets();
   }}
 />
 </>) : null}
