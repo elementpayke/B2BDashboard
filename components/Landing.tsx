@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import MbokaGlyph, { MbokaGlyphPaths } from "@/components/landing/MbokaGlyph";
 import HeroGlobe from "@/components/landing/HeroGlobe";
 import LandingCapabilities from "@/components/landing/LandingCapabilities";
@@ -312,14 +311,12 @@ function HeroSceneCoins() {
 // ---------------------------------------------------------------------------
 
 export default function Landing() {
-  const router = useRouter();
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [scene, setScene] = useState(0);
   const reducedMotion = useReducedMotion();
 
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
-  /** Returning users: login first so stale cookies never paint /dashboard anonymously. */
-  const openDashboard = () => router.push("/login?next=%2Fdashboard");
+  const openWaitlist = () => window.open("https://tally.so/r/e5Ze9e", "_blank", "noopener,noreferrer");
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -428,10 +425,10 @@ export default function Landing() {
               </button>
               <button
                 type="button"
-                onClick={openDashboard}
+                onClick={openWaitlist}
                 style={{ padding: "11px 22px", borderRadius: 999, border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
               >
-                Open dashboard
+                Join waitlist
               </button>
             </div>
           </div>
@@ -468,10 +465,10 @@ export default function Landing() {
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={openDashboard}
+                  onClick={openWaitlist}
                   style={{ padding: "15px 28px", borderRadius: 999, border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14.5, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
                 >
-                  Open the dashboard
+                  Join waitlist
                 </button>
                 <a
                   href="#cap-banking"
