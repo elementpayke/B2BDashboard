@@ -12,6 +12,7 @@ import {
   LANDING_LIGHT,
   MARQUEE_CURRENCIES,
 } from "@/components/landing/landingTokens";
+import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
 
 /**
  * Mboka marketing landing page — ported from the approved design handoff
@@ -316,7 +317,7 @@ export default function Landing() {
   const reducedMotion = useReducedMotion();
 
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
-  const openWaitlist = () => window.open("https://tally.so/r/e5Ze9e", "_blank", "noopener,noreferrer");
+  const requestLiveAccess = () => window.open("https://tally.so/r/e5Ze9e", "_blank", "noopener,noreferrer");
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -326,6 +327,14 @@ export default function Landing() {
 
   const vars = theme === "dark" ? LANDING_DARK : LANDING_LIGHT;
   const themeIcon = theme === "dark" ? "☀" : "☾";
+
+  // Native chrome (scrollbar, form controls) and anything portaled to
+  // document.body only see :root's light defaults otherwise — keep <html> in
+  // sync so dark mode doesn't leave a light-themed scrollbar/overlay behind.
+  useEffect(() => {
+    applyThemeVars(vars, theme);
+    return () => clearThemeVars(Object.keys(LANDING_LIGHT));
+  }, [vars, theme]);
 
   const scrollTo = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -425,10 +434,10 @@ export default function Landing() {
               </button>
               <button
                 type="button"
-                onClick={openWaitlist}
+                onClick={requestLiveAccess}
                 style={{ padding: "11px 22px", borderRadius: 999, border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
               >
-                Join waitlist
+                Request live access
               </button>
             </div>
           </div>
@@ -465,10 +474,10 @@ export default function Landing() {
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  onClick={openWaitlist}
+                  onClick={requestLiveAccess}
                   style={{ padding: "15px 28px", borderRadius: 999, border: "none", background: "var(--indigo)", color: "var(--indigo-on)", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14.5, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
                 >
-                  Join waitlist
+                  Request live access
                 </button>
                 <a
                   href="#cap-banking"
