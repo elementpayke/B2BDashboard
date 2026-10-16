@@ -72,11 +72,11 @@ export const entitiesApi = {
       `/v1/entities/${encodeURIComponent(entityId)}/accounts`,
       payload,
     ),
-  closeAccount: (entityId: string, accountId: string, action: "block" | "delete" = "block") =>
+  /** Hard-delete — the partner rail has no "block, keep listed" state. */
+  deleteAccount: (entityId: string, accountId: string) =>
     apiEnvelope<unknown>(
-      "POST",
-      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/close`,
-      { action },
+      "DELETE",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}`,
     ),
 };
 
