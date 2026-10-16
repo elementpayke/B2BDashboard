@@ -244,7 +244,6 @@ describe("SendModal country mobile money", () => {
         {...countryMobile({
           sendStepIs1: false,
           sendStepIs2: true,
-          sendLimitsText: "Min TZS 1,000 · Max TZS 5,000,000",
           sendLimitError: "Maximum is TZS 5,000,000 per transaction. Split larger amounts.",
         })}
       />,
@@ -269,5 +268,50 @@ describe("SendModal country mobile money", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Max" }));
     expect(onMaxSendAmount).toHaveBeenCalledTimes(1);
+  });
+
+  it("never shows the static Min/Max line, even without an error", () => {
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendLimitError: null,
+        })}
+      />,
+    );
+    expect(screen.queryByText(/^Min /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Max /)).not.toBeInTheDocument();
+  });
+
+  it("labels the equivalent line by direction — USD entry means they receive", () => {
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendAmountCurrency: "USD",
+          sendAmountEquivalent: "≈ 4,593.39 KES",
+          sendIndicativeRateLine: "1 USD = 132.26 KES",
+        })}
+      />,
+    );
+    expect(screen.getByText(/They receive/)).toBeInTheDocument();
+    expect(screen.getByText("≈ 4,593.39 KES")).toBeInTheDocument();
+    expect(screen.getByText(/Confirmed on the next step\./)).toBeInTheDocument();
+  });
+
+  it("labels the equivalent line by direction — local entry means you send", () => {
+    render(
+      <SendModal
+        {...countryMobile({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendAmountCurrency: "KES",
+          sendAmountEquivalent: "≈ 34.73 USD",
+        })}
+      />,
+    );
+    expect(screen.getByText(/You send/)).toBeInTheDocument();
   });
 });
