@@ -1,14 +1,7 @@
-import { NextRequest } from "next/server";
-import { callMboka, passthroughJson } from "@/lib/server/mbokaCall";
-import { rejectCrossOrigin } from "@/lib/server/sameOrigin";
-
-export async function POST(request: NextRequest): Promise<Response> {
-  const blocked = rejectCrossOrigin(request);
-  if (blocked) return blocked;
-  const body = await request.text();
-  const upstream = await callMboka("/api/auth/businesses/signup", {
-    method: "POST",
-    body,
-  });
-  return passthroughJson(upstream);
+/** Public signup is closed for launch — see app/signup/page.tsx. */
+export async function POST(): Promise<Response> {
+  return Response.json(
+    { error: "Signup is closed. Join the waitlist at https://tally.so/r/e5Ze9e." },
+    { status: 403 },
+  );
 }
