@@ -401,8 +401,8 @@ export default function LoginForm() {
 
         <p style={{ ...authFooterStyle, margin: 0 }}>
           Don&apos;t have an account?{" "}
-          <a href="/signup" style={authLinkStyle}>
-            Sign up
+          <a href="https://tally.so/r/e5Ze9e" target="_blank" rel="noopener noreferrer" style={authLinkStyle}>
+            Join waitlist
           </a>
         </p>
       </form>
