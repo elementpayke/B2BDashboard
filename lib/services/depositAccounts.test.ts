@@ -361,6 +361,36 @@ describe("buildDepositAccountDetailRows — local bank rails", () => {
     ]);
   });
 
+  it("labels a non-IBAN USD account number 'Account number', not 'IBAN'", () => {
+    const account: DepositAccount = {
+      currency: "USD",
+      status: "active",
+      iban: "391881521473",
+      bic: "CSRVUS33COS",
+      bank_name: "CROSS RIVER BANK",
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      { label: "Account number", value: "391881521473", copyValue: "391881521473" },
+      { label: "BIC / SWIFT", value: "CSRVUS33COS", copyValue: "CSRVUS33COS" },
+      { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
+    ]);
+  });
+
+  it("still labels a real IBAN 'IBAN'", () => {
+    const account: DepositAccount = {
+      currency: "EUR",
+      status: "active",
+      iban: "FR7630006000011234567890189",
+    };
+    expect(buildDepositAccountDetailRows(account)).toEqual([
+      {
+        label: "IBAN",
+        value: "FR7630006000011234567890189",
+        copyValue: "FR7630006000011234567890189",
+      },
+    ]);
+  });
+
   it("includes a monthly maintenance fee row when the backend returns one", () => {
     const account: DepositAccount = {
       currency: "USD",

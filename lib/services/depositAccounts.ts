@@ -467,6 +467,17 @@ const IDENTIFIER_FIELDS: Array<{ field: keyof DepositAccount; label: string }> =
   { field: "account_number", label: "Account number" },
 ];
 
+/**
+ * True IBANs start with a 2-letter country code + 2 check digits (ISO 13616).
+ * Cross River Bank's USD rail reuses the `iban` field for a plain US account
+ * number (digits only) — label that "Account number" instead of "IBAN" so
+ * the on-screen rows and the bank letter don't claim a format the value
+ * isn't actually in.
+ */
+function isIbanFormat(value: string): boolean {
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/i.test(value.replace(/\s+/g, ""));
+}
+
 function formatMonthlyFee(
   fee: DepositAccount["monthly_maintenance_fee"] | undefined,
 ): string | null {
@@ -481,7 +492,9 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   const rows: DepositAccountDetailRow[] = [];
   for (const { field, label } of IDENTIFIER_FIELDS) {
     const value = nonEmpty(account[field] as string | null | undefined);
-    if (value) rows.push({ label, value, copyValue: value });
+    if (!value) continue;
+    const resolvedLabel = field === "iban" && !isIbanFormat(value) ? "Account number" : label;
+    rows.push({ label: resolvedLabel, value, copyValue: value });
   }
   const bankName = nonEmpty(account.bank_name);
   const holder = nonEmpty(account.account_holder_name);
