@@ -44,6 +44,16 @@ export type BrandedDocument = {
   party?: string;
   sections: DocumentSection[];
   footnote?: string;
+  /** Formal-letter date line, e.g. "October 18, 2026". Letters only. */
+  dateLine?: string;
+  /** Formal-letter addressee, e.g. "To whom it may concern". Letters only. */
+  addressee?: string;
+  /** Confirmation paragraph shown under the heading. Letters only. */
+  intro?: string;
+  /** Legal/disclaimer paragraph shown above the "Generated" footer line. */
+  legalNote?: string;
+  /** Word used in the footer disclaimer sentence. Defaults to "receipt". */
+  documentKind?: string;
 };
 
 /** Values come from user input and API responses — never interpolate raw. */
@@ -330,11 +340,10 @@ export function renderBrandedDocument(
     box-shadow:0 18px 50px rgba(19,17,38,0.08);
   }
   .hero {
-    padding:28px 34px 22px;
+    padding:28px 34px 26px;
     background:
       radial-gradient(120% 80% at 100% -10%, rgba(59,46,211,0.16), transparent 55%),
       linear-gradient(180deg, #FBFAFF 0%, #FFFFFF 100%);
-    border-bottom:1px solid var(--line);
   }
   .letterhead { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
   .letterhead__brand { display:flex; flex-direction:column; gap:6px; }
@@ -346,11 +355,16 @@ export function renderBrandedDocument(
     text-align:right; font-size:12px; line-height:1.55; color:var(--muted);
     min-width:140px;
   }
+  .letter-meta { margin:20px 0 0; }
+  .letter-date { margin:0; font-size:13px; color:var(--muted); font-weight:500; }
+  .letter-addressee { margin:4px 0 0; font-size:13px; color:var(--ink); font-weight:700; }
   h1 {
     font-family:'Space Grotesk', system-ui, sans-serif; font-size:26px; font-weight:700;
     letter-spacing:-0.03em; margin:22px 0 8px;
   }
   .sub { color:var(--muted); font-size:14px; margin:0; line-height:1.45; max-width:36em; }
+  .letter-intro { margin-top:10px; }
+  .legal-note { margin:0 0 12px; max-width:44em; }
   .badge {
     display:inline-flex; align-items:center; gap:6px; margin-top:14px;
     padding:5px 11px; border-radius:999px; font-size:12px; font-weight:700;
@@ -372,23 +386,21 @@ export function renderBrandedDocument(
     letter-spacing:-0.03em; margin:6px 0 0; color:var(--ink);
   }
   .party { margin:6px 0 0; color:var(--muted); font-size:13.5px; font-weight:500; }
-  .body { padding:8px 34px 28px; }
-  .block { margin-top:22px; }
+  .body { padding:10px 34px 28px; }
+  .block { margin-top:28px; }
   h2 {
     font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
-    color:var(--muted2); margin:0 0 10px;
+    color:var(--indigo); margin:0 0 14px;
   }
   table { width:100%; border-collapse:collapse; }
   th, td {
-    text-align:left; font-size:13.5px; padding:11px 0;
-    border-bottom:1px solid var(--line); vertical-align:top;
+    text-align:left; font-size:13.5px; padding:7px 0; vertical-align:top;
   }
   th { font-weight:500; color:var(--muted); width:42%; padding-right:16px; }
   td { font-weight:600; word-break:break-word; }
   td.mono { font-family:'DM Mono', ui-monospace, monospace; font-weight:500; font-size:13px; }
-  tr:last-child th, tr:last-child td { border-bottom:none; }
   footer.doc-foot {
-    margin:8px 34px 28px; padding-top:16px; border-top:1px solid var(--line);
+    margin:26px 34px 28px; padding-top:4px;
     color:var(--muted2); font-size:11.5px; line-height:1.65;
   }
   @media print {
@@ -449,8 +461,17 @@ export function renderBrandedDocument(
         </div>
         <div class="letterhead__addr">${addressHtml}</div>
       </div>
+      ${
+        doc.dateLine || doc.addressee
+          ? `<div class="letter-meta">
+        ${doc.dateLine ? `<p class="letter-date">${esc(doc.dateLine)}</p>` : ""}
+        ${doc.addressee ? `<p class="letter-addressee">${esc(doc.addressee)}</p>` : ""}
+      </div>`
+          : ""
+      }
       <h1>${esc(doc.heading)}</h1>
       ${doc.subheading ? `<p class="sub">${esc(doc.subheading)}</p>` : ""}
+      ${doc.intro ? `<p class="sub letter-intro">${esc(doc.intro)}</p>` : ""}
       ${doc.statusBadge ? `<span class="badge">${esc(doc.statusBadge)}</span>` : ""}
     </header>
     ${
@@ -466,9 +487,10 @@ export function renderBrandedDocument(
       ${doc.sections.map(renderSection).join("")}
     </div>
     <footer class="doc-foot">
+      ${doc.legalNote ? `<p class="legal-note">${esc(doc.legalNote)}</p>` : ""}
       Generated ${esc(generated)} · ${esc(MBOKA_LETTERHEAD.product)} business payments.
       ${doc.footnote ? ` ${esc(doc.footnote)}` : ""}
-      This is a computer-generated receipt and does not require a signature.
+      This is a computer-generated ${esc(doc.documentKind || "receipt")} and does not require a signature.
     </footer>
   </main>
   ${shareScript(sharePayload)}

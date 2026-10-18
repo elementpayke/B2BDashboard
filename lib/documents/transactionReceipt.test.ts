@@ -77,8 +77,8 @@ describe("buildTransactionReceipt", () => {
     expect(html).not.toContain("0x9F2c");
     expect(html).not.toContain("USDC");
     expect(html).toContain("Download PDF");
-    expect(html).toContain("Nairobi, Kenya");
-    expect(html).toContain("info@elementpay.net");
+    expect(html).toContain("Nairobi Kenya");
+    expect(html).toContain("support@mboka.finance");
     expect(html).not.toContain("support@mboka.africa");
     expect(html).not.toContain("Wilmington, DE 19801");
     expect(html).not.toContain("Fedha Plaza");
