@@ -15,6 +15,13 @@ export type ReceiptShareDoc = {
   party?: string;
   sections: { title: string; rows: { label: string; value: string }[] }[];
   footnote?: string;
+  /** Formal-letter framing — date, addressee, confirmation paragraph, legal note. */
+  dateLine?: string;
+  addressee?: string;
+  intro?: string;
+  legalNote?: string;
+  /** Word used in the footer disclaimer sentence. Defaults to "receipt". */
+  documentKind?: string;
 };
 
 export type ReceiptSharePayload = {

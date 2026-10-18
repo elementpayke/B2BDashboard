@@ -10,8 +10,27 @@ import type { ReceiptShareDoc } from "@/lib/documents/receiptShare";
 const INDIGO: [number, number, number] = [59, 46, 211];
 const INK: [number, number, number] = [19, 17, 38];
 const MUTED: [number, number, number] = [76, 74, 102];
-const LINE: [number, number, number] = [220, 218, 230];
 const TINT: [number, number, number] = [238, 237, 251];
+
+/** `public/brand/mboka-mark.svg`'s two overlapping quads, pre-blended for
+ * the 45%-opacity back shape so it renders identically without relying on
+ * PDF transparency groups. */
+const MARK_BACK_SHAPE: [number, number, number] = [147, 140, 231];
+const MARK_FRONT_SHAPE: [number, number, number] = [255, 255, 255];
+/** Source viewBox is 0 0 44 44 — see `public/brand/mboka-mark.svg`. */
+const MARK_VIEWBOX = 44;
+
+/** Draws the exact Mboka mark (brand square + the two signature quads), not a placeholder letter. */
+function drawMbokaMark(doc: jsPDF, x: number, y: number, size: number) {
+  const s = size / MARK_VIEWBOX;
+  const radius = 11 * s;
+  doc.setFillColor(...INDIGO);
+  doc.roundedRect(x, y, size, size, radius, radius, "F");
+  doc.setFillColor(...MARK_BACK_SHAPE);
+  doc.lines([[11, 0], [0, 17], [-17, 0], [0, -11]], x + 24 * s, y + 18 * s, [s, s], "F", true);
+  doc.setFillColor(...MARK_FRONT_SHAPE);
+  doc.lines([[17, 0], [0, 11], [-6, 6], [-11, 0]], x + 9 * s, y + 9 * s, [s, s], "F", true);
+}
 
 function pdfFilename(stem: string): string {
   const base = stem.replace(/\.(pdf|html)$/i, "").trim() || "mboka-receipt";
@@ -46,13 +65,7 @@ export function buildReceiptPdfBlob(
     y = margin;
   };
 
-  // Brand mark (simple indigo square — matches letterhead colour)
-  doc.setFillColor(...INDIGO);
-  doc.roundedRect(margin, y, 28, 28, 6, 6, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("M", margin + 9, y + 18);
+  drawMbokaMark(doc, margin, y, 28);
 
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
@@ -69,12 +82,22 @@ export function buildReceiptPdfBlob(
   MBOKA_LETTERHEAD.lines.forEach((line, i) => {
     doc.text(line, pageW - margin, y + 12 + i * 11, { align: "right" });
   });
-  y += 48;
+  y += 60;
 
-  doc.setDrawColor(...LINE);
-  doc.setLineWidth(0.8);
-  doc.line(margin, y, pageW - margin, y);
-  y += 22;
+  if (receipt.dateLine) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...MUTED);
+    doc.text(receipt.dateLine, margin, y);
+    y += 15;
+  }
+  if (receipt.addressee) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(...INK);
+    doc.text(receipt.addressee, margin, y);
+    y += 18;
+  }
 
   doc.setTextColor(...INK);
   doc.setFont("helvetica", "bold");
@@ -83,6 +106,16 @@ export function buildReceiptPdfBlob(
   ensureSpace(headingLines.length * 24 + 8);
   doc.text(headingLines, margin, y);
   y += headingLines.length * 22 + 6;
+
+  if (receipt.intro) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...MUTED);
+    const introLines = wrapText(doc, receipt.intro, contentW, 10);
+    ensureSpace(introLines.length * 13 + 6);
+    doc.text(introLines, margin, y);
+    y += introLines.length * 13 + 10;
+  }
 
   if (receipt.statusBadge) {
     doc.setFontSize(10);
@@ -116,22 +149,19 @@ export function buildReceiptPdfBlob(
   }
 
   for (const section of receipt.sections) {
-    ensureSpace(36);
+    ensureSpace(40);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...MUTED);
+    doc.setTextColor(...INDIGO);
     doc.text(section.title.toUpperCase(), margin, y);
-    y += 14;
-    doc.setDrawColor(...LINE);
-    doc.line(margin, y, pageW - margin, y);
-    y += 12;
+    y += 22;
 
     for (const row of section.rows) {
       const labelW = contentW * 0.38;
       const valueW = contentW * 0.58;
       const labelLines = wrapText(doc, row.label, labelW, 10);
       const valueLines = wrapText(doc, row.value, valueW, 10);
-      const rowH = Math.max(labelLines.length, valueLines.length) * 13 + 10;
+      const rowH = Math.max(labelLines.length, valueLines.length) * 13 + 11;
       ensureSpace(rowH);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -141,25 +171,20 @@ export function buildReceiptPdfBlob(
       doc.setTextColor(...INK);
       doc.text(valueLines, margin + labelW + 8, y);
       y += rowH;
-      doc.setDrawColor(...LINE);
-      doc.setLineWidth(0.4);
-      doc.line(margin, y - 6, pageW - margin, y - 6);
     }
-    y += 10;
+    y += 14;
   }
 
   ensureSpace(90);
-  doc.setDrawColor(...LINE);
-  doc.setLineWidth(0.8);
-  doc.line(margin, y, pageW - margin, y);
-  y += 16;
+  y += 10;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   const foot = [
+    receipt.legalNote,
     receipt.footnote,
     `Generated ${new Date().toLocaleString()} · ${MBOKA_LETTERHEAD.product} business payments.`,
-    "This is a computer-generated receipt and does not require a signature.",
+    `This is a computer-generated ${receipt.documentKind || "receipt"} and does not require a signature.`,
   ].filter(Boolean) as string[];
   for (const line of foot) {
     const lines = wrapText(doc, line, contentW, 8);

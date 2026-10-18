@@ -5,9 +5,10 @@
 export const MBOKA_LETTERHEAD = {
   product: "Mboka",
   tagline: "Business payments",
-  email: "info@elementpay.net",
-  /** Classic short letterhead — location + email only. */
-  lines: ["Nairobi, Kenya", "info@elementpay.net"],
+  email: "support@mboka.finance",
+  website: "mboka.finance",
+  /** Office address + contact, as printed on letters/receipts. */
+  lines: ["One Africa Building,", "5th floor, Waiyaki way", "Nairobi Kenya", "support@mboka.finance"],
 } as const;
 
 /** Full wordmark (mark + “Mboka”) — inline so saved/printed files never lose the asset. */

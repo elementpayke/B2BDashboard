@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
+import { MBOKA_LETTERHEAD } from "@/lib/documents/letterhead";
 import AccountActivityList from "./AccountActivityList";
 
 export type AccountDetailRow = {
@@ -86,37 +87,64 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   return sections.length ? sections : [{ title: "Details", rows }];
 }
 
+/**
+ * The modal uses short UI-style section titles ("Domestic transfer
+ * (ACH/wire)"). The printed letter reads as a formal document, so it uses
+ * the fuller "Instructions For ..." phrasing instead — letter-only, so the
+ * on-screen modal copy is untouched.
+ */
+const LETTER_SECTION_TITLES: Record<string, string> = {
+  "domestic transfer (ach/wire)": "Instructions For Domestic Transfer",
+  "international wire": "Instructions For International Transfer",
+};
+
+function letterSectionTitle(title: string): string {
+  return LETTER_SECTION_TITLES[title.trim().toLowerCase()] ?? title;
+}
+
 function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acctDetail"]>) {
   const beneficiary = acctDetail.beneficiary?.trim() || null;
+  const beneficiaryName = beneficiary || acctDetail.name;
+  const dateLine = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date());
+
   // Mirror modal bank-rail sections only — Settlement (Available balance) stays on the modal.
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
   )
     .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
-    .map((sec) => ({
-      title: sec.title,
-      rows: sec.rows.map((row) => ({
-        label: row.label,
-        value: formatSensitiveValue(row.label, row.value),
-        mono: true,
-      })),
-    }));
+    .map((sec) => {
+      // Account name already duplicates the beneficiary named in the intro — drop it here.
+      const rows = sec.rows.filter(
+        (row) =>
+          !beneficiary || row.label.toLowerCase() !== "account name" || row.value.trim() !== beneficiary,
+      );
+      const leadRows = [
+        ...(beneficiary ? [{ label: "Account holder", value: beneficiary, mono: false }] : []),
+        { label: "Account currency", value: acctDetail.currency, mono: false },
+      ];
+      return {
+        title: letterSectionTitle(sec.title),
+        rows: [
+          ...leadRows,
+          ...rows.map((row) => ({
+            label: row.label,
+            value: formatSensitiveValue(row.label, row.value),
+            mono: true,
+          })),
+        ],
+      };
+    });
+
   openBrandedDocument(
     {
       fileTitle: `Mboka — ${acctDetail.currency} bank letter`,
-      heading: "Bank letter",
-      subheading: "Account coordinates for recipient verification.",
-      sections: [
-        {
-          title: "Account",
-          rows: [
-            { label: "Account", value: acctDetail.name },
-            { label: "Rail", value: acctDetail.railLabel ?? acctDetail.currency },
-            ...(beneficiary ? [{ label: "Beneficiary", value: beneficiary }] : []),
-          ],
-        },
-        ...coordinateSections,
-      ],
+      heading: "Proof of account details",
+      dateLine,
+      addressee: "To whom it may concern",
+      intro: `This letter confirms that the following account details allow ${beneficiaryName} to receive ${acctDetail.currency} payments into their Mboka account.`,
+      sections: coordinateSections,
+      legalNote: `You may share this letter with any third party requesting proof of your account details as confirmation that it is authentic. For questions about this account, contact ${MBOKA_LETTERHEAD.email}.`,
+      documentKind: "letter",
     },
     `mboka-${acctDetail.currency.toLowerCase()}-bank-letter`,
   );
