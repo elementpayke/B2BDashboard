@@ -35,7 +35,7 @@ export default function CloseAccountModal({
 
   return (
     <div className="ep-fund-chooser">
-      <p className="ep-fund-chooser__intro">Close this wallet?</p>
+      <p className="ep-fund-chooser__intro">Close this account?</p>
       <p className="ep-fund-chooser__sub">
         <strong>{accountName}</strong> · {currency}
         {networkLabel ? ` · ${networkLabel}` : ""}
@@ -46,8 +46,8 @@ export default function CloseAccountModal({
       ) : (
         <>
           <p className="ep-fund-chooser__option-body">
-            This removes the wallet from your accounts. You can open a new {currency}{" "}
-            account on this network afterwards.
+            This removes it from your accounts. You can open a new {currency} account
+            {networkLabel ? ` on ${networkLabel}` : ""} afterwards.
           </p>
           <p className="ep-fund-chooser__option-warn">
             Existing deposit addresses stop working, and the balance must be zero.

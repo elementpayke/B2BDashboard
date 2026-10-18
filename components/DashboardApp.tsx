@@ -75,6 +75,8 @@ import {
   supportedCurrenciesFromEligibility,
   allSupportedStablecoinSlots,
   networksForStablecoin,
+  isClosedDepositStatus,
+  isCloseableDepositAccount,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -5263,11 +5265,13 @@ export default function DashboardApp(props: Props = {}) {
   canClose={
     selectedStablecoinAccount
       ? isCloseableStablecoinAccount(selectedStablecoinAccount)
-      : false
+      : selectedDepositAccount
+        ? isCloseableDepositAccount(selectedDepositAccount)
+        : false
   }
   closeDisabledReason={
-    selectedDepositAccount
-      ? "Bank accounts can't be closed from the dashboard yet."
+    selectedDepositAccount && !isCloseableDepositAccount(selectedDepositAccount)
+      ? "This account isn't ready to close yet."
       : undefined
   }
   onBack={backToWallets}
@@ -5285,7 +5289,9 @@ export default function DashboardApp(props: Props = {}) {
       ? guardMoneyModal("payout")
       : undefined
   }
-  onCloseAccount={selectedStablecoinAccount ? openCloseAccountChooser : undefined}
+  onCloseAccount={
+    selectedStablecoinAccount || selectedDepositAccount ? openCloseAccountChooser : undefined
+  }
   onViewAllTx={goTransactions}
 />
 </>) : null}
@@ -6175,20 +6181,34 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 />
 </>) : null}
 
-{(isModalCloseAccount && acctDetail && selectedStablecoinAccount) ? (<>
+{(isModalCloseAccount && acctDetail && (selectedStablecoinAccount || selectedDepositAccount)) ? (<>
 <CloseAccountModal
   accountName={acctDetail.name}
   currency={acctDetail.currency}
-  networkLabel={formatNetworkLabel(selectedStablecoinAccount.network)}
-  alreadyClosed={isClosedStatus(selectedStablecoinAccount.status)}
+  networkLabel={
+    selectedStablecoinAccount ? formatNetworkLabel(selectedStablecoinAccount.network) : ""
+  }
+  alreadyClosed={
+    selectedStablecoinAccount
+      ? isClosedStatus(selectedStablecoinAccount.status)
+      : isClosedDepositStatus(selectedDepositAccount?.status)
+  }
   onCancel={closeModal}
   onContinue={async () => {
-    await entitiesApi.deleteAccount(
-      selectedStablecoinAccount.entityId,
-      selectedStablecoinAccount.id,
-    );
+    if (selectedStablecoinAccount) {
+      await entitiesApi.deleteAccount(
+        selectedStablecoinAccount.entityId,
+        selectedStablecoinAccount.id,
+      );
+      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    } else if (selectedDepositAccount?.entity_id && selectedDepositAccount?.id) {
+      await entitiesApi.deleteAccount(
+        selectedDepositAccount.entity_id,
+        selectedDepositAccount.id,
+      );
+      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+    }
     await queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
     backToWallets();
   }}
 />
