@@ -768,7 +768,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             <TextField label="Street" value={p.draft.street} onChange={(v) => p.patchDraft({ street: v })} autoComplete="street-address" />
             <TextField label="Street line 2" value={p.draft.street2} onChange={(v) => p.patchDraft({ street2: v })} />
             <TextField label="City" value={p.draft.city} onChange={(v) => p.patchDraft({ city: v })} placeholder="Nairobi" autoComplete="address-level2" />
-            <TextField label="Post code (optional)" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} autoComplete="postal-code" />
+            <TextField label="Post code" value={p.draft.postCode} onChange={(v) => p.patchDraft({ postCode: v })} autoComplete="postal-code" hint="Required for the registered business address" />
             <TextField label="State / county" value={p.draft.state} onChange={(v) => p.patchDraft({ state: v })} placeholder="Nairobi County" autoComplete="address-level1" />
             <CountrySelect
               label="Address country"

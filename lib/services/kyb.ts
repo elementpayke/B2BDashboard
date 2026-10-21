@@ -103,7 +103,7 @@ export type BusinessAddress = {
   street: string;
   street2?: string | null;
   city: string;
-  /** Optional — aggregator/vault omit empty postal codes. */
+  /** Required on registered_address (vault / partner customers requirements). */
   post_code?: string | null;
   state?: string | null;
   country: string;
@@ -195,8 +195,24 @@ export type KybDocumentRequirements = {
   required_fields?: string[];
   conditional_fields?: Record<string, unknown>[];
   package_notes?: string | null;
+  /** From GET /partner/customers/requirements via Mboka (e.g. registered_address). */
+  field_shapes?: Record<string, unknown> | null;
   disclaimer: string | null;
 };
+
+/** True when vault field_shapes mark registered postal required (default: required). */
+export function isRegisteredPostalRequired(
+  requirements?: KybDocumentRequirements | null,
+): boolean {
+  const shapes = requirements?.field_shapes;
+  if (!shapes || typeof shapes !== "object") return true;
+  const addr = shapes.registered_address;
+  if (!addr || typeof addr !== "object") return true;
+  const postal = (addr as Record<string, unknown>).postal_code;
+  if (postal == null) return true;
+  const text = String(postal).toLowerCase();
+  return !text.includes("optional");
+}
 
 export type KybInitiateResult = {
   provider: "customer_vault" | "international_ramp" | "noah";
@@ -739,7 +755,10 @@ export function validateBusinessStep(draft: KybWizardProfileDraft): string | nul
   return null;
 }
 
-export function validateAddressUboStep(draft: KybWizardProfileDraft): string | null {
+export function validateAddressUboStep(
+  draft: KybWizardProfileDraft,
+  requirements?: KybDocumentRequirements | null,
+): string | null {
   if (!draft.street.trim() || draft.street.trim().length < 3) {
     return "Street address is required.";
   }
@@ -747,7 +766,9 @@ export function validateAddressUboStep(draft: KybWizardProfileDraft): string | n
   if (/^(kenya|nigeria|uganda|ghana|tanzania|south africa)$/i.test(draft.city.trim())) {
     return "City looks like a country name — enter the city (e.g. Nairobi), not the country.";
   }
-  // Post code is optional (aggregator/vault omit empty postal_code).
+  if (isRegisteredPostalRequired(requirements) && !draft.postCode.trim()) {
+    return "Registered address post code is required.";
+  }
   if (!isValidIsoCountryCode(draft.addressCountry)) {
     return "Select a valid address country from the list.";
   }
@@ -836,8 +857,11 @@ export function validateSubmitStep(draft: KybWizardProfileDraft): string | null 
   return null;
 }
 
-export function validateProfileDraft(draft: KybWizardProfileDraft): string | null {
-  return validateBusinessStep(draft) ?? validateAddressUboStep(draft);
+export function validateProfileDraft(
+  draft: KybWizardProfileDraft,
+  requirements?: KybDocumentRequirements | null,
+): string | null {
+  return validateBusinessStep(draft) ?? validateAddressUboStep(draft, requirements);
 }
 
 export function validateKybDocumentFile(file: File): string | null {
@@ -864,7 +888,7 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
     street: draft.street.trim(),
     street2: draft.street2.trim() || undefined,
     city: draft.city.trim(),
-    post_code: draft.postCode.trim() || undefined,
+    post_code: draft.postCode.trim(),
     state: draft.state.trim() || undefined,
     country: draft.addressCountry.trim().toUpperCase(),
   };

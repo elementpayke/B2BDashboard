@@ -30,6 +30,7 @@ import {
   isKybApproved,
   isKybInProgress,
   isKybInReview,
+  isRegisteredPostalRequired,
   isStatusOnlyKybSummary,
   mergeKybSummaryCache,
   normalizeKybReviewFindings,
@@ -243,9 +244,11 @@ describe("validateProfileDraft", () => {
     expect(validateAddressUboStep(draft)).toBeNull();
   });
 
-  it("allows empty post codes", () => {
+  it("requires registered post code but allows empty officer post codes", () => {
     const draft = validDraft();
     draft.postCode = "";
+    expect(validateAddressUboStep(draft)).toMatch(/post code/i);
+    draft.postCode = "00100";
     draft.associates[0].postCode = "";
     expect(validateAddressUboStep(draft)).toBeNull();
   });
@@ -540,6 +543,40 @@ describe("kybApi poll and idempotency", () => {
   });
 });
 
+describe("isRegisteredPostalRequired", () => {
+  it("defaults to required when field_shapes are absent", () => {
+    expect(isRegisteredPostalRequired(null)).toBe(true);
+    expect(isRegisteredPostalRequired({ provider: "customer_vault", corridor: null, business_documents: [], shareholder_documents: [], disclaimer: null })).toBe(true);
+  });
+
+  it("reads registered_address.postal_code from field_shapes", () => {
+    expect(
+      isRegisteredPostalRequired({
+        provider: "customer_vault",
+        corridor: "KE",
+        business_documents: [],
+        shareholder_documents: [],
+        disclaimer: null,
+        field_shapes: {
+          registered_address: { postal_code: "string", state: "optional string" },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isRegisteredPostalRequired({
+        provider: "customer_vault",
+        corridor: "KE",
+        business_documents: [],
+        shareholder_documents: [],
+        disclaimer: null,
+        field_shapes: {
+          registered_address: { postal_code: "optional string" },
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("buildProfilePayload", () => {
   it("maps the wizard draft to Mboka KybProfileIn shape", () => {
     const payload = buildProfilePayload(validDraft());
@@ -547,6 +584,7 @@ describe("buildProfilePayload", () => {
     expect(payload.country).toBe("KE");
     expect(payload.incorporation_date).toBe("2020-01-15");
     expect(payload.registered_address?.city).toBe("Nairobi");
+    expect(payload.registered_address?.post_code).toBe("00100");
     expect(payload.associates?.[0].relationship_types).toContain("UBO");
     expect(payload.associates?.[0].relationship_types).toContain("Representative");
     expect(payload.associates?.[0].relationship_types).toContain("Director");
