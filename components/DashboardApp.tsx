@@ -6378,6 +6378,7 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   docsUploading={kybWizard.docsUploading}
   submitted={kybWizard.submitted}
   submitOutcome={kybWizard.submitOutcome}
+  registeredPostalRequired={kybWizard.registeredPostalRequired}
   nextStep={kybWizard.nextStep}
   backStep={kybWizard.backStep}
   closeModal={closeModal}

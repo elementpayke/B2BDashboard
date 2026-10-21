@@ -9,6 +9,7 @@ import {
   formatKybServiceError,
   helpForDocumentType,
   inferWizardStartStep,
+  isRegisteredPostalRequired,
   kybApi,
   labelForDocumentType,
   newKybIdempotencyKey,
@@ -724,6 +725,8 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     docsUploading,
     submitted,
     submitOutcome,
+    /** From vault field_shapes (defaults required when requirements not loaded). */
+    registeredPostalRequired: isRegisteredPostalRequired(requirements),
     nextStep,
     backStep,
     // Exposed for tests / advanced flows
