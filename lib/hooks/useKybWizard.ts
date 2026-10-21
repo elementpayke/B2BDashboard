@@ -9,6 +9,7 @@ import {
   formatKybServiceError,
   helpForDocumentType,
   inferWizardStartStep,
+  isRegisteredPostalRequired,
   kybApi,
   labelForDocumentType,
   newKybIdempotencyKey,
@@ -325,7 +326,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   }, []);
 
   const saveProfile = useCallback(async (): Promise<boolean> => {
-    const validationError = validateProfileDraft(draft);
+    const validationError = validateProfileDraft(draft, requirements);
     if (validationError) {
       setError(validationError);
       return false;
@@ -352,7 +353,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       setError(formatKybServiceError(err));
       return false;
     }
-  }, [draft, opts.businessId]);
+  }, [draft, opts.businessId, requirements]);
 
   const prepareDocuments = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
@@ -651,7 +652,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return;
     }
     if (step === 2) {
-      const validationError = validateAddressUboStep(draft);
+      const validationError = validateAddressUboStep(draft, requirements);
       if (validationError) {
         setError(validationError);
         return;
@@ -694,7 +695,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return;
     }
     await submitForReview();
-  }, [docRows, draft, prepareDocuments, saveProfile, step, submitForReview, uploadDocumentRow]);
+  }, [docRows, draft, prepareDocuments, requirements, saveProfile, step, submitForReview, uploadDocumentRow]);
 
   const backStep = useCallback(() => {
     setError("");
@@ -724,6 +725,8 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     docsUploading,
     submitted,
     submitOutcome,
+    /** From vault field_shapes (defaults required when requirements not loaded). */
+    registeredPostalRequired: isRegisteredPostalRequired(requirements),
     nextStep,
     backStep,
     // Exposed for tests / advanced flows
