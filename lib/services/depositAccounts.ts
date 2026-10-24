@@ -226,7 +226,8 @@ export type DepositAccountStatus =
   | "active"
   | "pending"
   | "unavailable"
-  | "deposit_unavailable";
+  | "deposit_unavailable"
+  | "closed";
 
 export type DepositAccountBalance = {
   available?: string | null;
@@ -358,6 +359,7 @@ const STATUS_LABELS: Record<DepositAccountStatus, string> = {
   pending: "Pending",
   unavailable: "Unavailable",
   deposit_unavailable: "Unavailable",
+  closed: "Closed",
 };
 
 export function describeDepositAccountStatus(status: string | null | undefined): string {
@@ -597,6 +599,17 @@ export function buildDepositAccountDetailSections(
 
   if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
   return sections;
+}
+
+export function isClosedDepositStatus(status: string | null | undefined): boolean {
+  return (status || "").trim().toLowerCase() === "closed";
+}
+
+/** A deposit account can be closed once Nuvion has actually issued coordinates for it. */
+export function isCloseableDepositAccount(
+  account: Pick<DepositAccount, "id" | "entity_id" | "status">,
+): boolean {
+  return Boolean(account.id && account.entity_id) && !isClosedDepositStatus(account.status);
 }
 
 export type CreateBankAccountInput = {
