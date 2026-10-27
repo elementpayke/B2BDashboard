@@ -257,6 +257,32 @@ describe("TxDetailModal account-ledger fees", () => {
     expect(screen.getByText("Fee")).toBeInTheDocument();
     expect(screen.getByText("1.25 CAD · pending confirm")).toBeInTheDocument();
   });
+
+  it("does not infer fee currency from transaction currency when fee_currency is absent", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          id: "aln_5",
+          source: "account_ledger",
+          type: "Transfer",
+          client: "Incoming · EUR",
+          amount: "+25.50 EUR",
+          currency: "EUR",
+          fee_amount: "2.50",
+          fee_currency: null,
+          fee_status: "final",
+          tx_hash: null,
+          explorerUrl: null,
+          crypto_network: null,
+          cryptoNetworkLabel: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Fee")).toBeInTheDocument();
+    expect(screen.getByText("2.50")).toBeInTheDocument();
+    expect(screen.queryByText("2.50 EUR")).not.toBeInTheDocument();
+  });
 });
 
 describe("TxDetailModal receipt share sheet", () => {
