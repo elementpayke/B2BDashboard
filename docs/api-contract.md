@@ -234,6 +234,12 @@ string ids (`acr_…`) and optional `tx_hash`, `crypto_network`, and `memo`
 (entity funding is address-only, so memo is usually null). The dashboard
 normalizer keeps those fields when present and drops incomplete rows.
 
+Account-ledger projections (`aln_…`, `source=account_ledger`) and Collect
+CCTP rows may also include optional `fee_amount`, `fee_currency`, and
+`fee_status`. `normalizeTransactionWire` keeps them when present; the tx
+detail modal shows **Fee** (or **Circle fee** for Collect) only when
+`fee_amount` is set — never invents a fee.
+
 Home's "Recent activity", the Wallets/Cards "recent transactions" widgets,
 and Reports (see below) intentionally keep using the original unpaginated
 `transactionsApi.list()` — they already only ever showed the fetched page's

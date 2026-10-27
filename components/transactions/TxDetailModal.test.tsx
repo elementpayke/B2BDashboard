@@ -205,6 +205,60 @@ describe("TxDetailModal Collect deposit", () => {
   });
 });
 
+describe("TxDetailModal account-ledger fees", () => {
+  it("shows Fee for account_ledger rows when fee_amount is present", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          id: "aln_3",
+          source: "account_ledger",
+          type: "Transfer",
+          client: "Incoming · EUR",
+          amount: "+25.50 EUR",
+          currency: "EUR",
+          amount_fiat: "25.50",
+          fee_amount: "2.50",
+          fee_currency: "EUR",
+          fee_status: "final",
+          tx_hash: null,
+          explorerUrl: null,
+          crypto_network: null,
+          cryptoNetworkLabel: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Fee")).toBeInTheDocument();
+    expect(screen.getByText("2.50 EUR")).toBeInTheDocument();
+    expect(screen.queryByText("Circle fee")).not.toBeInTheDocument();
+  });
+
+  it("hints non-final fee_status on the fee value", () => {
+    render(
+      <TxDetailModal
+        txDetail={stellarDepositDetail({
+          id: "aln_4",
+          source: "account_ledger",
+          type: "Transfer",
+          client: "Outgoing · CAD",
+          amount: "−100.00 CAD",
+          currency: "CAD",
+          fee_amount: "1.25",
+          fee_currency: "CAD",
+          fee_status: "pending_confirm",
+          tx_hash: null,
+          explorerUrl: null,
+          crypto_network: null,
+          cryptoNetworkLabel: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Fee")).toBeInTheDocument();
+    expect(screen.getByText("1.25 CAD · pending confirm")).toBeInTheDocument();
+  });
+});
+
 describe("TxDetailModal receipt share sheet", () => {
   it("opens an opaque share sheet with a dismiss backdrop", async () => {
     const { fireEvent } = await import("@testing-library/react");

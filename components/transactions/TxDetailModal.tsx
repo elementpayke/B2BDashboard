@@ -419,8 +419,15 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     typeof txDetail.fee_currency === "string" && txDetail.fee_currency.trim()
       ? txDetail.fee_currency.trim()
       : txDetail.currency;
-  if (collect && feeAmount) {
-    rows.push({ label: "Circle fee", value: `${feeAmount} ${feeCurrency}` });
+  const feeStatus =
+    typeof txDetail.fee_status === "string" ? txDetail.fee_status.trim() : "";
+  if (feeAmount) {
+    const feeLabel = collect ? "Circle fee" : "Fee";
+    const feeValue =
+      feeStatus && feeStatus.toLowerCase() !== "final"
+        ? `${feeAmount} ${feeCurrency} · ${feeStatus.replace(/_/g, " ")}`
+        : `${feeAmount} ${feeCurrency}`;
+    rows.push({ label: feeLabel, value: feeValue });
   }
 
   const txHash =

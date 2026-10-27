@@ -239,6 +239,33 @@ describe("normalizeTransactionWire (extended inbound fields)", () => {
     expect(isInboundStellarDeposit(tx!)).toBe(true);
   });
 
+  it("keeps account-ledger fee fields when present", () => {
+    const tx = normalizeTransactionWire({
+      id: "aln_3",
+      direction: "in",
+      status: "completed",
+      amount_fiat: "25.50",
+      currency: "EUR",
+      aggregator_order_id: null,
+      external_order_id: "txn_abc",
+      wallet_address: null,
+      created_at: "2026-10-20T12:00:00Z",
+      updated_at: "2026-10-20T12:00:00Z",
+      financial_account_id: "acct_1",
+      source: "account_ledger",
+      fee_amount: "2.50",
+      fee_currency: "EUR",
+      fee_status: "final",
+    });
+    expect(tx).toMatchObject({
+      id: "aln_3",
+      source: "account_ledger",
+      fee_amount: "2.50",
+      fee_currency: "EUR",
+      fee_status: "final",
+    });
+  });
+
   it("accepts Mboka projected credits with provider=stellar and account_id", () => {
     const tx = normalizeTransactionWire({
       id: "acr_7",
