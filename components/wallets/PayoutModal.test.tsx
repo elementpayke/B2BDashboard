@@ -79,7 +79,7 @@ describe("PayoutModal", () => {
     render(<PayoutModal entityId="ent_1" account={kesAccount} onDone={vi.fn()} onCancel={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByRole("option", { name: "Kenya bank transfer" })).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByRole("option", { name: "KCB" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("option", { name: "KCB (01)" })).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Account number"), { target: { value: "1234567890" } });
     fireEvent.change(screen.getByLabelText("Account holder name"), { target: { value: "Jane Doe" } });

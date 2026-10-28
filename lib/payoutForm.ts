@@ -1,5 +1,6 @@
 /** Build partner payout preview bodies from discovery methods + form state. */
 
+import { ApiRequestError } from "@/lib/apiClient";
 import type { PayoutMethod } from "@/lib/services/payouts";
 
 export type PayoutBankOption = {
@@ -150,4 +151,38 @@ export function buildPayoutPreviewBody(args: {
 
 export function payoutTotalDebit(preview: Record<string, unknown>): unknown {
   return preview.total_debit ?? preview.balance_required;
+}
+
+function minAmountFromErrorData(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  const direct = row.min_amount;
+  if (direct != null && String(direct).trim()) return String(direct).trim();
+  const nested = row.data;
+  if (nested && typeof nested === "object") {
+    const inner = (nested as Record<string, unknown>).min_amount;
+    if (inner != null && String(inner).trim()) return String(inner).trim();
+  }
+  return null;
+}
+
+/** User-facing payout error; surfaces Mboka ``data.min_amount`` when present. */
+export function payoutApiErrorMessage(err: unknown, currency: string): string {
+  if (err instanceof ApiRequestError) {
+    const min = minAmountFromErrorData(err.data);
+    if (min) {
+      const ccy = currency.trim().toUpperCase();
+      return ccy ? `Minimum payout amount is ${min} ${ccy}.` : `Minimum payout amount is ${min}.`;
+    }
+    if (err.message.trim()) return err.message;
+  }
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return "Something went wrong. Try again.";
+}
+
+export function bankOptionLabel(bank: PayoutBankOption, index: number): string {
+  const code = bankCodeFromOption(bank);
+  const name = String(bank.bank_name || "").trim();
+  if (name && code) return `${name} (${code})`;
+  return name || code || `Bank ${index + 1}`;
 }

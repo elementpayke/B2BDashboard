@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiRequestError } from "@/lib/apiClient";
+
 import {
+  bankOptionLabel,
   buildPayoutPreviewBody,
   kesPayoutMinAmountHint,
   normalizePayoutBanks,
+  payoutApiErrorMessage,
   payoutMethodKey,
   usesBankCodePayoutForm,
 } from "./payoutForm";
@@ -101,5 +105,18 @@ describe("kesPayoutMinAmountHint", () => {
   it("returns copy only for KES", () => {
     expect(kesPayoutMinAmountHint("KES")).toMatch(/5,000/);
     expect(kesPayoutMinAmountHint("CAD")).toBeNull();
+  });
+});
+
+describe("payoutApiErrorMessage", () => {
+  it("formats min_amount from Mboka error data", () => {
+    const err = new ApiRequestError("Payout preview failed.", 400, { min_amount: "5000.00" });
+    expect(payoutApiErrorMessage(err, "KES")).toBe("Minimum payout amount is 5000.00 KES.");
+  });
+});
+
+describe("bankOptionLabel", () => {
+  it("disambiguates duplicate codes with name and code", () => {
+    expect(bankOptionLabel({ bank_code: "01", bank_name: "KCB" }, 0)).toBe("KCB (01)");
   });
 });

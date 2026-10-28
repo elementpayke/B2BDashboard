@@ -4,10 +4,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { payoutsApi, type PayoutMethod, type PayoutPreview } from "@/lib/services/payouts";
 import {
   bankCodeFromOption,
+  bankOptionLabel,
   buildPayoutPreviewBody,
   kesPayoutMinAmountHint,
   normalizePayoutBanks,
   normalizePayoutMethods,
+  payoutApiErrorMessage,
   payoutCountryForMethod,
   payoutMethodKey,
   payoutMethodLabel,
@@ -57,7 +59,8 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const [destination, setDestination] = useState("");
   const [banks, setBanks] = useState<PayoutBankOption[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
-  const [bankCode, setBankCode] = useState("");
+  const [banksError, setBanksError] = useState("");
+  const [selectedBankIndex, setSelectedBankIndex] = useState(-1);
   const [accountNumber, setAccountNumber] = useState("");
   const [accountHolderName, setAccountHolderName] = useState("");
   const [beneficiary, setBeneficiary] = useState(EMPTY_BEN);
@@ -77,8 +80,9 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const bankForm = selectedMethod ? usesBankCodePayoutForm(selectedMethod) : false;
 
   const selectedBank = useMemo(() => {
-    return banks.find((b) => bankCodeFromOption(b) === bankCode) ?? null;
-  }, [banks, bankCode]);
+    if (selectedBankIndex < 0 || selectedBankIndex >= banks.length) return null;
+    return banks[selectedBankIndex] ?? null;
+  }, [banks, selectedBankIndex]);
 
   useEffect(() => {
     if (!preview?.expires_at) return;
@@ -123,7 +127,8 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   useEffect(() => {
     if (!selectedMethod || !bankForm) {
       setBanks([]);
-      setBankCode("");
+      setSelectedBankIndex(-1);
+      setBanksError("");
       return;
     }
     const country = payoutCountryForMethod(ccy, selectedMethod);
@@ -134,21 +139,18 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
     let cancelled = false;
     (async () => {
       setBanksLoading(true);
-      setError("");
+      setBanksError("");
       try {
         const raw = await payoutsApi.banks(entityId, account.id, country || undefined);
         if (cancelled) return;
         const list = normalizePayoutBanks(raw);
         setBanks(list);
-        const first = list[0];
-        setBankCode(first ? bankCodeFromOption(first) : "");
+        setSelectedBankIndex(list.length > 0 ? 0 : -1);
       } catch (err) {
         if (!cancelled) {
           setBanks([]);
-          setBankCode("");
-          setError(
-            err instanceof ApiRequestError ? err.message : "Couldn't load banks for this payout.",
-          );
+          setSelectedBankIndex(-1);
+          setBanksError(payoutApiErrorMessage(err, account.currency));
         }
       } finally {
         if (!cancelled) setBanksLoading(false);
@@ -174,7 +176,7 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
         : undefined,
       bank: bankForm
         ? {
-            bankCode,
+            bankCode: selectedBank ? bankCodeFromOption(selectedBank) : "",
             accountNumber,
             accountHolderName,
           }
@@ -187,7 +189,8 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
     if (!methodId || !amount.trim()) return "Method and amount are required.";
     if (bankForm) {
       if (banksLoading) return "Still loading banks…";
-      if (!bankCode.trim()) return "Choose a bank.";
+      if (banksError) return banksError;
+      if (!selectedBank) return "Choose a bank.";
       if (!accountNumber.trim()) return "Account number is required.";
       if (!accountHolderName.trim()) return "Account holder name is required.";
       if (!beneficiary.firstName.trim() || !beneficiary.lastName.trim()) {
@@ -217,7 +220,7 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
       setPreview(await payoutsApi.preview(entityId, account.id, previewBody()));
       setNow(Date.now());
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Couldn't price this payout. Try again.");
+      setError(payoutApiErrorMessage(err, account.currency));
     } finally {
       setBusy(false);
     }
@@ -233,7 +236,7 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
       });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Payout failed. Try again.");
+      setError(payoutApiErrorMessage(err, account.currency));
     } finally {
       setBusy(false);
     }
@@ -245,7 +248,7 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const methodLabel = selectedMethod ? payoutMethodLabel(selectedMethod) : methodId;
 
   const destinationSummary = bankForm
-    ? `${selectedBank?.bank_name || bankCode} · ${accountNumber}`
+    ? `${selectedBank?.bank_name || bankCodeFromOption(selectedBank || {})} · ${accountNumber}`
     : String(preview?.destination || destination);
 
   if (preview) {
@@ -373,8 +376,8 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
             <select
               id="payout-bank"
               className="ep-money-input"
-              value={bankCode}
-              onChange={(e) => setBankCode(e.target.value)}
+              value={selectedBankIndex >= 0 ? String(selectedBankIndex) : ""}
+              onChange={(e) => setSelectedBankIndex(Number(e.target.value))}
               disabled={busy || banksLoading || banks.length === 0}
             >
               {banksLoading ? (
@@ -382,17 +385,18 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
               ) : banks.length === 0 ? (
                 <option value="">No banks available</option>
               ) : (
-                banks.map((b, idx) => {
-                  const code = bankCodeFromOption(b);
-                  const name = String(b.bank_name || code || `Bank ${idx + 1}`);
-                  return (
-                    <option key={`${code}-${idx}`} value={code}>
-                      {name}
-                    </option>
-                  );
-                })
+                banks.map((b, idx) => (
+                  <option key={`bank-${idx}`} value={String(idx)}>
+                    {bankOptionLabel(b, idx)}
+                  </option>
+                ))
               )}
             </select>
+            {banksError ? (
+              <span className="ep-money-hint ep-money-hint--danger" role="alert">
+                {banksError}
+              </span>
+            ) : null}
           </div>
           <div className="ep-money-field">
             <label className="ep-money-label" htmlFor="payout-account-number">
