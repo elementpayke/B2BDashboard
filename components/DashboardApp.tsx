@@ -298,6 +298,7 @@ import BookTransferModal from "@/components/wallets/BookTransferModal";
 import FundPaymentRequestModal from "@/components/wallets/FundPaymentRequestModal";
 import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import PayoutModal from "@/components/wallets/PayoutModal";
+import { fiatSendOpensBankPayout } from "@/lib/payoutForm";
 import BulkStellarPayoutWizard from "@/components/wallets/BulkStellarPayoutWizard";
 import StellarLiquidityPanel from "@/components/developer/StellarLiquidityPanel";
 import {
@@ -5273,7 +5274,12 @@ export default function DashboardApp(props: Props = {}) {
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
   onFund={openAcctFundChooser}
-  onSend={openSelectedAccountSend}
+  onSend={
+    selectedDepositAccount &&
+    fiatSendOpensBankPayout(String(selectedDepositAccount.currency || ""))
+      ? guardMoneyModal("payout")
+      : openSelectedAccountSend
+  }
   onConvert={openConvert}
   onMove={
     selectedDepositAccount

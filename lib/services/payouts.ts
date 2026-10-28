@@ -14,8 +14,14 @@ export type PayoutMethod = {
 export type PayoutPreview = {
   preview_token?: string;
   amount?: string;
+  receive_amount?: string;
   fee?: string | null;
+  fee_status?: string;
+  total_debit?: string;
+  balance_required?: string;
   currency?: string;
+  scheme?: string;
+  expires_at?: string;
   [key: string]: unknown;
 };
 
