@@ -73,9 +73,14 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const ccy = account.currency?.toUpperCase() || "";
   const kesMinHint = kesPayoutMinAmountHint(ccy);
 
-  const selectedMethod = useMemo(() => {
-    return methods.find((m, idx) => payoutMethodKey(m, idx) === methodId) ?? null;
+  const selectedMethodIndex = useMemo(() => {
+    const idx = methods.findIndex((m, i) => payoutMethodKey(m, i) === methodId);
+    return idx >= 0 ? idx : 0;
   }, [methods, methodId]);
+
+  const selectedMethod = useMemo(() => {
+    return methods[selectedMethodIndex] ?? null;
+  }, [methods, selectedMethodIndex]);
 
   const bankForm = selectedMethod ? usesBankCodePayoutForm(selectedMethod) : false;
 
@@ -167,6 +172,7 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
       amount,
       currency: account.currency,
       method: selectedMethod,
+      methodIndex: selectedMethodIndex,
       simpleDestination: destination,
       beneficiary: bankForm
         ? {

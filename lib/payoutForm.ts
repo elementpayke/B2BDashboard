@@ -100,6 +100,8 @@ export function buildPayoutPreviewBody(args: {
   amount: string;
   currency: string;
   method: PayoutMethod;
+  /** Index in discovery list — used when method has no scheme/id/method. */
+  methodIndex: number;
   /** Simple corridor: email or account string (legacy Interac / placeholder). */
   simpleDestination?: string;
   beneficiary?: PayoutBeneficiaryForm;
@@ -144,7 +146,7 @@ export function buildPayoutPreviewBody(args: {
   return {
     amount,
     currency: args.currency,
-    method: payoutMethodKey(args.method, 0),
+    method: payoutMethodKey(args.method, args.methodIndex),
     destination: { account: dest },
   };
 }

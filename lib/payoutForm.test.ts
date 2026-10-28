@@ -40,6 +40,7 @@ describe("buildPayoutPreviewBody", () => {
       amount: "5000",
       currency: "KES",
       method: kesMethod,
+      methodIndex: 0,
       bankName: "KCB",
       beneficiary: {
         firstName: "Jane",
@@ -78,6 +79,7 @@ describe("buildPayoutPreviewBody", () => {
       amount: "250",
       currency: "CAD",
       method: { id: "interac", label: "Interac e-Transfer" },
+      methodIndex: 0,
       simpleDestination: "pay@acme.com",
     });
     expect(body).toEqual({
@@ -86,6 +88,17 @@ describe("buildPayoutPreviewBody", () => {
       method: "interac",
       destination: { account: "pay@acme.com" },
     });
+  });
+
+  it("uses methodIndex for simple methods without scheme, id, or method", () => {
+    const body = buildPayoutPreviewBody({
+      amount: "100",
+      currency: "CAD",
+      method: { label: "Second rail" },
+      methodIndex: 2,
+      simpleDestination: "pay@acme.com",
+    });
+    expect(body.method).toBe("2");
   });
 });
 
