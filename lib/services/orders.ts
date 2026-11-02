@@ -84,7 +84,9 @@ export type AcceptedOrder = {
 };
 
 export type PaymentInstructions = {
-  type: "momo" | "crypto_deposit" | "bank";
+  // "auto_funded": the deposit was already signed and submitted from the
+  // business's own ElementPay-custodied wallet — nothing left to broadcast.
+  type: "momo" | "crypto_deposit" | "bank" | "auto_funded";
   source?: Record<string, unknown> | null;
   bank_info?: Record<string, unknown> | null;
   reference?: string | null;
@@ -98,6 +100,7 @@ export type PaymentInstructions = {
   network?: string | null;
   memo?: string | null;
   memo_type?: string | null;
+  tx_hash?: string | null;
   expires_at?: string | null;
 };
 
@@ -415,6 +418,11 @@ export function buildPaymentInstructionRows(
     if (instructions.network) rows.push({ k: "Network", v: instructions.network });
     if (instructions.memo) rows.push({ k: "Memo", v: instructions.memo });
     if (instructions.memo_type) rows.push({ k: "Memo type", v: instructions.memo_type });
+  } else if (instructions.type === "auto_funded") {
+    rows.push({ k: "Status", v: "Sent automatically — no action needed" });
+    if (instructions.amount) rows.push({ k: "Amount", v: String(instructions.amount) });
+    if (instructions.currency) rows.push({ k: "Asset", v: instructions.currency });
+    if (instructions.tx_hash) rows.push({ k: "Transaction", v: instructions.tx_hash });
   }
 
   if (instructions.expires_at) {

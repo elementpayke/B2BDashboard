@@ -180,6 +180,7 @@ import { useViewport } from "@/lib/responsive";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlyDepositAcceptError,
   friendlySendAcceptError,
   friendlySendQuoteError,
   railIndexForMethod,
@@ -2370,7 +2371,9 @@ export default function DashboardApp(props: Props = {}) {
       setState({
         depositAccepting: false,
         depositAcceptError:
-          err instanceof ApiRequestError ? err.message : "Couldn't confirm the top-up. Try again.",
+          err instanceof ApiRequestError
+            ? friendlyDepositAcceptError(err.message, err.data)
+            : "Couldn't confirm the top-up. Try again.",
       });
     }
   };
