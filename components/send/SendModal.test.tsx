@@ -66,6 +66,9 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
     sendRecipient: "",
     setSendRecipient: noop,
     sendRecipientPlaceholder: "G… (Stellar public key)",
+    sendMemo: "",
+    setSendMemo: noop,
+    sendMemoApplies: true,
     sendAmount: "",
     setSendAmount: noop,
     sendQuoteError: "",
@@ -86,9 +89,9 @@ function cryptoStep1(overrides: Partial<SendModalProps> = {}): SendModalProps {
 describe("SendModal stablecoin chain picker", () => {
   it("shows Stellar next to Base and Polygon and warns about USDC on Stellar", () => {
     render(<SendModal {...cryptoStep1()} />);
-    expect(screen.getByRole("button", { name: "Base" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Polygon" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stellar" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("option", { name: /^Base/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Polygon/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Stellar/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(/accepts USDC on Stellar/i)).toBeInTheDocument();
   });
 
@@ -113,6 +116,95 @@ describe("SendModal stablecoin chain picker", () => {
     render(<SendModal {...cryptoStep1({ sendNext })} />);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(sendNext).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SendModal live amount feedback", () => {
+  const amountStep = {
+    sendStepIs1: false,
+    sendStepIs2: true,
+    sendStepDots: [{ on: true }, { on: true }, { on: false }],
+  };
+
+  it("shows Max when a source-wallet maximum is available and applies it on click", () => {
+    const setSendAmountToMax = vi.fn();
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...amountStep,
+          sendMaxAmount: "0.44",
+          setSendAmountToMax,
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use maximum available balance of 0.44 USD" }),
+    );
+    expect(setSendAmountToMax).toHaveBeenCalledOnce();
+  });
+
+  it("marks amounts above the selected wallet balance invalid and disables Review", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...amountStep,
+          sendAmount: "0.50",
+          sendBalanceError: "This amount is above your available balance of 0.44 USDT.",
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Amount (USD)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This amount is above your available balance of 0.44 USDT.",
+    );
+    expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
+  });
+});
+
+describe("SendModal memo (Stellar-only)", () => {
+  it("shows an optional memo field on the recipient step for a Stellar send", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText(/Memo \(optional\)/i)).toBeInTheDocument();
+  });
+
+  it("hides the memo field for an EVM destination", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+          sendChainLabel: "Base",
+          sendMemoApplies: false,
+        })}
+      />,
+    );
+    expect(screen.queryByLabelText(/Memo \(optional\)/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the memo on the review step once entered", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs3: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: true }],
+          sendMemo: "123456",
+        })}
+      />,
+    );
+    expect(screen.getByText("Memo")).toBeInTheDocument();
+    expect(screen.getByText("123456")).toBeInTheDocument();
   });
 });
 

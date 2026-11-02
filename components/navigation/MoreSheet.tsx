@@ -112,7 +112,9 @@ export default function MoreSheet({
               >
                 <span aria-hidden>{item.icon}</span>
                 <span>{item.label}</span>
-                {item.key === "reports" || item.key === "invoices" ? (
+                {item.key === "reports" ? (
+                  <span className="ep-more-sheet__new">New</span>
+                ) : item.key === "invoices" ? (
                   <span className="ep-more-sheet__soon">Soon</span>
                 ) : (
                   <span aria-hidden>›</span>
@@ -130,7 +132,7 @@ export default function MoreSheet({
           </button>
           <button type="button" className="ep-more-sheet__item" onClick={onOpenBulk}>
             <span aria-hidden>⇉</span>
-            <span>Bulk payouts</span>
+            <span>Bulk payout</span>
             {bulkEnabled ? <span aria-hidden>›</span> : <span className="ep-more-sheet__soon">Soon</span>}
           </button>
           <button type="button" className="ep-more-sheet__item" onClick={onOpenHelp}>

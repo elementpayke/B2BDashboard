@@ -129,12 +129,17 @@ import {
   stablecoinStatusTone,
   toPartnerNetwork,
   toUiNetworkKey,
+  visibleStablecoinAccounts,
 } from "@/lib/services/entities";
 import {
   remittanceMethodForCurrency,
   remittanceMethodLabel,
 } from "@/lib/services/paymentRequests";
-import { fundRailsForAccount } from "@/lib/collect/cctpRails";
+import {
+  findRailForAssetNetwork,
+  fundRailsForAccount,
+  networkOptionsForAssetFromRails,
+} from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
@@ -162,11 +167,13 @@ import {
   resolveTreasuryWalletAddress,
 } from "@/lib/services/treasuryWallet";
 import {
+  amountExceedsBalance,
   canEnterInLocalCurrency,
   describeAmountEquivalent,
   formatFeeDual,
   formatRateLine,
   indicativeRate,
+  maxAmountForBalance,
   toPayloadUsdAmount,
 } from "@/lib/services/sendAmount";
 import { useViewport } from "@/lib/responsive";
@@ -260,6 +267,7 @@ import CardSpendList, { type CardSpendItem } from "@/components/cards/CardSpendL
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
+import StatementsPanel from "@/components/reports/StatementsPanel";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -302,8 +310,11 @@ import FundStablecoinModal from "@/components/wallets/FundStablecoinModal";
 import PayoutModal from "@/components/wallets/PayoutModal";
 import { fiatSendOpensBankPayout } from "@/lib/payoutForm";
 import BulkStellarPayoutWizard from "@/components/wallets/BulkStellarPayoutWizard";
+import PayoutBatchWizard from "@/components/wallets/PayoutBatchWizard";
+import DisbursementBatchHistory from "@/components/wallets/DisbursementBatchHistory";
 import StellarLiquidityPanel from "@/components/developer/StellarLiquidityPanel";
 import {
+  MIXED_RAIL_BULK_PAYOUTS_ENABLED,
   SHOW_STELLAR_LIQUIDITY_PANEL,
   STELLAR_BULK_PAYOUTS_ENABLED,
   isAllowlistedStellarStable,
@@ -370,10 +381,10 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "base",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
-    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "base",
+    depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
@@ -390,6 +401,7 @@ export default function DashboardApp(props: Props = {}) {
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
     txFilter: "all" as PrimaryTransactionFilter,
+    txView: "payments" as "payments" | "batches",
     txSearch: "",
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
@@ -820,9 +832,11 @@ export default function DashboardApp(props: Props = {}) {
   });
 
   /** Prefer bootstrap payload; fall back to the dedicated list query. */
-  const resolvedStablecoinAccounts = bootstrapReady
-    ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-    : (stablecoinAccountsQuery.data ?? []);
+  const resolvedStablecoinAccounts = visibleStablecoinAccounts(
+    bootstrapReady
+      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+      : (stablecoinAccountsQuery.data ?? []),
+  );
   const collectHomeForTimes = resolvedStablecoinAccounts.find(
     (account) =>
       isFundableStablecoinAccount(account) &&
@@ -994,11 +1008,7 @@ export default function DashboardApp(props: Props = {}) {
     )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
       .map((a) => String(a.id));
-    const convertStables = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const convertStables = resolvedStablecoinAccounts
       .filter(
         (a) =>
           (a.currency === "USDC" || a.currency === "USDT") &&
@@ -1006,11 +1016,7 @@ export default function DashboardApp(props: Props = {}) {
           a.id,
       )
       .map((a) => String(a.id));
-    const usdcBridge = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-        : (stablecoinAccountsQuery.data ?? [])
-    )
+    const usdcBridge = resolvedStablecoinAccounts
       .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
       .map((a) => String(a.id));
     const mode = state.convertMode;
@@ -1197,9 +1203,9 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
-    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "base",
+    sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
@@ -1217,7 +1223,7 @@ export default function DashboardApp(props: Props = {}) {
     fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
-    depositAsset: "usdc", depositNetwork: "base",
+    depositAsset: "usdc", depositNetwork: "stellar",
   };
   /** Non-money overlays (tx detail, KYB, cards, …). Money moves use screens. */
   const openModal = (name) => () => setState({
@@ -1563,6 +1569,7 @@ export default function DashboardApp(props: Props = {}) {
           networkKey: state.sendChain,
           accountNetwork: account.network,
           currency: account.currency || assetCode,
+          memo: state.sendMemo,
         });
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({
@@ -1606,6 +1613,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote: null,
           sendRecipient: "",
           sendRecipientName: "",
+          sendMemo: "",
           sendAmount: "",
         };
       }
@@ -1770,6 +1778,7 @@ export default function DashboardApp(props: Props = {}) {
     // repopulate cardSecrets behind a shut modal.
     revealGuard.invalidate(MODAL_REVEAL_KEY);
     setBulkModalExpanded(false);
+    setBulkModalSize(null);
     if (isMoneyFlowScreen(state.screen)) {
       exitMoneyFlow();
       return;
@@ -2005,19 +2014,6 @@ export default function DashboardApp(props: Props = {}) {
     }
     setState({ modal: "kyb" });
   };
-  const openBankAccountFlow = () => {
-    // Wait for /auth/me before treating KYB as pending — otherwise approved
-    // businesses get bounced to verification while the profile is still loading.
-    if (meQuery.isLoading || meQuery.isPending) return;
-    const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
-    if (!isKybApproved(status)) {
-      goVerification();
-      if (canOpenKybWizard(status)) openModalKyb();
-      return;
-    }
-    navigateToScreen("wallets");
-    openCreateAccount("bank")();
-  };
   const guardMoneyModal = (name: string) => () => {
     // Wait for /auth/me before treating KYB as pending — otherwise approved
     // businesses get bounced to verification while the profile is still loading.
@@ -2046,6 +2042,7 @@ export default function DashboardApp(props: Props = {}) {
         (stablecoinAccountsQuery.data ?? []).find((row) => row.id === accountId);
       if (account) {
         setState({
+          sendAsset: account.currency.trim().toLowerCase(),
           sendChain: toUiNetworkKey(account.network),
           sendAccountId: account.id,
           sendGroup: "crypto",
@@ -2076,6 +2073,7 @@ export default function DashboardApp(props: Props = {}) {
       sendDone: false,
       sendRecipient: "",
       sendRecipientName: "",
+      sendMemo: "",
       sendAmount: "",
       sendQuote: null,
       sendQuoteError: "",
@@ -2088,13 +2086,14 @@ export default function DashboardApp(props: Props = {}) {
   const openConvert = openMoneyFlow("convert");
   const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
+  const setSendMemo = (e) => setState({ sendMemo: e.target.value });
   // Blocks typing past whichever cap is known (corridor max, wallet balance —
   // sendMaxAmount is already the smaller of the two, in the box's currency).
   // Never blocks below the minimum: reaching "150" means typing through "1"
   // and "15" first, both under it.
   const setSendAmount = (e) => {
     const next = e.target.value;
-    const cap = sendIsCountry && sendMaxAmount ? Number(sendMaxAmount) : null;
+    const cap = sendMaxAmount ? Number(sendMaxAmount) : null;
     if (cap != null) {
       const n = Number(next.replace(/,/g, ""));
       if (Number.isFinite(n) && n > cap) return;
@@ -2404,13 +2403,27 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const setDepositAsset = (k) => () => {
-    const nextNetwork = coerceStablecoinNetworkKey(state.depositNetwork, k);
-    const match = pickFundableWalletForRail({
-      accounts: resolvedStablecoinAccounts,
-      networkKey: nextNetwork,
-      currency: k,
-      preferredAccountId: state.fundTargetAccountId,
-    });
+    const nextNetwork = coerceStablecoinNetworkKey(state.depositNetwork, k, depositNetworkOptions);
+    const currency = (k || "usdc").trim().toLowerCase();
+    const partner = toPartnerNetwork(nextNetwork);
+    // Collect Aquarius (Stellar USDT/EURC) and CCTP bridge deposits credit the
+    // Stellar USDC home — pin that account so auto-pick does not snap away.
+    const pinStellarHome =
+      (currency === "usdc" && partner !== "Stellar") ||
+      ((currency === "usdt" || currency === "eurc") && partner === "Stellar");
+    const match = pinStellarHome
+      ? resolvedStablecoinAccounts.find(
+          (a) =>
+            isFundableStablecoinAccount(a) &&
+            a.currency.trim().toUpperCase() === "USDC" &&
+            isStellarUsdcRail({ network: a.network, currency: a.currency }),
+        )
+      : pickFundableWalletForRail({
+          accounts: resolvedStablecoinAccounts,
+          networkKey: nextNetwork,
+          currency: k,
+          preferredAccountId: state.fundTargetAccountId,
+        });
     setState({
       depositAsset: k,
       depositNetwork: nextNetwork,
@@ -2423,17 +2436,37 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const setDepositNetwork = (k) => () => {
-    const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset);
-    const match = pickFundableWalletForRail({
-      accounts: resolvedStablecoinAccounts,
-      networkKey: nextNetwork,
-      currency: state.depositAsset,
-      preferredAccountId: state.fundTargetAccountId,
-    });
+    // depositNetworkOptions (below) is the CCTP-backed rail list actually
+    // rendered in the picker — Arc/Arbitrum/Optimism/etc. live there, not in
+    // the default DEPOSIT_STABLECOIN_NETWORKS (base/polygon/stellar only).
+    // Coercing against the default silently snapped every non-default pick
+    // back to "base", making those rows look unclickable.
+    const nextNetwork = coerceStablecoinNetworkKey(k, state.depositAsset, depositNetworkOptions);
+    const currency = (state.depositAsset || "usdc").trim().toLowerCase();
+    const partner = toPartnerNetwork(nextNetwork);
+    // USDC's home wallet is always Stellar — a bridge network (Base, etc.)
+    // is just where this particular deposit is coming from, not a separate
+    // account. Stellar USDT/EURC Aquarius deposits also credit that home.
+    const pinStellarHome =
+      (currency === "usdc" && partner !== "Stellar") ||
+      ((currency === "usdt" || currency === "eurc") && partner === "Stellar");
+    const match = pinStellarHome
+      ? resolvedStablecoinAccounts.find(
+          (a) =>
+            isFundableStablecoinAccount(a) &&
+            a.currency.trim().toUpperCase() === "USDC" &&
+            isStellarUsdcRail({ network: a.network, currency: a.currency }),
+        )
+      : pickFundableWalletForRail({
+          accounts: resolvedStablecoinAccounts,
+          networkKey: nextNetwork,
+          currency: state.depositAsset,
+          preferredAccountId: state.fundTargetAccountId,
+        });
     setState({
       depositNetwork: nextNetwork,
       fundTargetAccountId: match?.id ?? null,
-      depositAsset: match
+      depositAsset: match && !pinStellarHome
         ? match.currency.trim().toLowerCase() || state.depositAsset
         : state.depositAsset,
       depositQuote: null,
@@ -2469,8 +2502,6 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  // Bulk payouts UI is waitlisted.
-
   const setConvertMode = (mode: ConvertMode) =>
     setState({
       convertMode: mode,
@@ -2486,7 +2517,7 @@ export default function DashboardApp(props: Props = {}) {
   const resolveUsdcBridgeId = (): string => {
     const fromState = (state.convertBridgeUsdcId || "").trim();
     if (fromState) return fromState;
-    const ready = (stablecoinAccountsQuery.data ?? []).find(
+    const ready = resolvedStablecoinAccounts.find(
       (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
     );
     return ready?.id ? String(ready.id) : "";
@@ -3354,6 +3385,7 @@ export default function DashboardApp(props: Props = {}) {
       sendProviderIdx: 0,
       sendRecipient: "",
       sendRecipientName: "",
+      sendMemo: "",
       sendAmount: "",
       sendAmountCurrency: "USD",
       sendQuoteError: "",
@@ -3389,7 +3421,7 @@ export default function DashboardApp(props: Props = {}) {
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
       invoices: ["Invoices", "Request and track incoming payments"],
-      reports: ["Reports", "Volume, corridors, and settlement performance"],
+      reports: ["Statements", "Download period statements for reconcile and books"],
       verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
@@ -3584,9 +3616,11 @@ export default function DashboardApp(props: Props = {}) {
     const depositAccountsList = bootstrapReady
       ? (bootstrapQuery.data?.fiatAccounts ?? [])
       : (depositAccountsQuery.data?.accounts ?? []);
-    const stablecoinAccountsList = bootstrapReady
-      ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
-      : (stablecoinAccountsQuery.data ?? []);
+    const stablecoinAccountsList = visibleStablecoinAccounts(
+      bootstrapReady
+        ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
+        : (stablecoinAccountsQuery.data ?? []),
+    );
     const occupiedFiatCodes = occupiedFiatCurrencyCodes(depositAccountsList);
     const occupiedStablecoinSlotKeys = occupiedStablecoinSlots(stablecoinAccountsList);
     const selectedFiatCurrency =
@@ -3620,7 +3654,8 @@ export default function DashboardApp(props: Props = {}) {
     const collectFundSurfaceOpen =
       s.modal === "fundStablecoin" ||
       s.modal === "fundChooser" ||
-      (s.modal === "acctDetail" && s.acctDetailIntent === "fund");
+      (s.modal === "acctDetail" && s.acctDetailIntent === "fund") ||
+      (s.modal === "deposit" && s.depositGroup === "crypto");
     const collectDepositInstructionsQuery = useQuery({
       queryKey: [
         "collect-deposit-instructions",
@@ -3867,8 +3902,8 @@ export default function DashboardApp(props: Props = {}) {
   );
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payouts", icon: "⇉", desc: STELLAR_BULK_PAYOUTS_ENABLED ? "CSV disbursements from your Stellar wallet." : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Open bank account", icon: "🏦", desc: "Get an IBAN or local account for deposits.", open: openBankAccountFlow, iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const liveRates = liveRateRowsFromSummary(homeFxRates);
@@ -4190,7 +4225,7 @@ export default function DashboardApp(props: Props = {}) {
     ]),
   ).sort();
 
-  // Reports screen is waitlisted — keep nav entry, skip derived report metrics.
+  // Reports screen hosts Statements (period PDF/CSV reconcile).
 
   // Single KYB case — no tier ladder. Submit once; then show clear compliance feedback.
   const hasKybProfile = !!meQuery.data?.kyb_summary?.profile;
@@ -4340,8 +4375,9 @@ export default function DashboardApp(props: Props = {}) {
   const teamConfirm = s.teamConfirm as null | { kind: "revoke" | "remove"; id: number; label: string };
   const teamConfirmBusy = !!s.teamConfirmBusy;
   const modalOpen = !!s.modal;
-  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payouts", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
+  const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
+    mfaSetup: "Set up 2FA",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
   const isModalSupport = s.modal === "support";
@@ -4350,7 +4386,80 @@ export default function DashboardApp(props: Props = {}) {
   const isReceiveFlow = s.modal === "receive";
   const isConvertFlow = s.modal === "convert";
   const isModalBulk = s.modal === "bulk";
-  const [bulkModalExpanded, setBulkModalExpanded] = useState(false);
+  // Mixed-rail edit table is wide — open expanded by default when that flag is on.
+  const [bulkModalExpanded, setBulkModalExpanded] = useState(MIXED_RAIL_BULK_PAYOUTS_ENABLED);
+  const [bulkModalSize, setBulkModalSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const bulkResizeRef = useRef<{
+    edge: "e" | "w" | "se";
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (s.modal === "bulk" && MIXED_RAIL_BULK_PAYOUTS_ENABLED) {
+      setBulkModalExpanded(true);
+    }
+  }, [s.modal]);
+
+  const clampBulkModalSize = useCallback((width: number, height: number) => {
+    if (typeof window === "undefined") return { width, height };
+    const minW = 480;
+    const minH = 420;
+    const maxW = Math.max(minW, Math.floor(window.innerWidth * 0.98));
+    const maxH = Math.max(minH, Math.floor(window.innerHeight * 0.96));
+    return {
+      width: Math.min(maxW, Math.max(minW, Math.round(width))),
+      height: Math.min(maxH, Math.max(minH, Math.round(height))),
+    };
+  }, []);
+
+  const onBulkResizePointerDown = useCallback(
+    (edge: "e" | "w" | "se") => (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!modalRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = modalRef.current.getBoundingClientRect();
+      bulkResizeRef.current = {
+        edge,
+        startX: event.clientX,
+        startY: event.clientY,
+        startW: rect.width,
+        startH: rect.height,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [],
+  );
+
+  const onBulkResizePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      const drag = bulkResizeRef.current;
+      if (!drag) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      let nextW = drag.startW;
+      let nextH = drag.startH;
+      if (drag.edge === "e" || drag.edge === "se") nextW = drag.startW + dx;
+      if (drag.edge === "w") nextW = drag.startW - dx;
+      if (drag.edge === "se") nextH = drag.startH + dy;
+      setBulkModalSize(clampBulkModalSize(nextW, nextH));
+    },
+    [clampBulkModalSize],
+  );
+
+  const onBulkResizePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!bulkResizeRef.current) return;
+    bulkResizeRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
+  }, []);
   const isModalTxDetail = s.modal === "txDetail";
   const isModalAcctDetail = s.modal === "acctDetail";
   const isModalFundChooser = s.modal === "fundChooser";
@@ -4485,9 +4594,6 @@ export default function DashboardApp(props: Props = {}) {
     label: n.label,
     select: setSendChain(n.key),
     selected: sendSelection.chain === n.key,
-    bg: sendSelection.chain === n.key ? "var(--indigo-tint)" : "var(--surface2)",
-    border: sendSelection.chain === n.key ? "var(--indigo)" : "transparent",
-    color: sendSelection.chain === n.key ? "var(--indigo-text)" : "var(--ink)",
   }));
   const sendAssetCode = sendSelection.asset.toUpperCase();
   const sendChainLabel = sendSelection.chainLabel;
@@ -4516,6 +4622,31 @@ export default function DashboardApp(props: Props = {}) {
         sendLocalCurrency,
       )
     : null;
+  // Country sends get their max/error from the catalog-limits block below
+  // (bridges currencies + the refund wallet balance into one message); this
+  // account/balance lookup only drives the crypto/stablecoin send path.
+  const sendBalanceAccount = sendIsCountry
+    ? null
+    : resolvedStablecoinAccounts.find((account) => account.id === sendSelection.accountId) ||
+      sendableAccountsForPicker.find((account) => account.id === sendSelection.accountId);
+  const sendAvailableBalance = parseBalanceNumber(sendBalanceAccount?.balance);
+  const sendAmountMode = {
+    currency: sendAmountCurrency,
+    rate: sendIndicativeRate,
+  };
+  const sendCryptoMaxAmount = sendAvailableBalance === null
+    ? null
+    : maxAmountForBalance(sendAvailableBalance, sendAmountMode);
+  const sendEnteredUsdAmount = toPayloadUsdAmount(s.sendAmount, sendAmountMode);
+  const sendBalanceError = !sendIsCountry && amountExceedsBalance(
+    s.sendAmount,
+    sendAmountMode,
+    sendAvailableBalance,
+  )
+      ? sendAmountCurrency.toUpperCase() === "USD"
+        ? `This amount is above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+      : null;
   const sendIndicativeRateLine = sendIsCountry
     ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
     : null;
@@ -4556,19 +4687,39 @@ export default function DashboardApp(props: Props = {}) {
       : depositRail.type === "bank" && !s.depositAccept
         ? [{ k: "Account number", v: depositRail.placeholder }, { k: "Method", v: depositChannelLabel }]
         : depositPaymentInstructionRows;
-  const depositNetworkOptions = stablecoinNetworksForAsset(
+  // Collect deposits: USDC via CCTP (+ Stellar home), USDT/EURC on Stellar via
+  // Aquarius — network list is "where is this coming from", backed by rails.
+  const depositCollectNetworkOptions = networkOptionsForAssetFromRails(
+    fundStablecoinRails,
+    s.depositAsset,
+  );
+  const depositCatalogNetworks = stablecoinNetworksForAsset(
     DEPOSIT_STABLECOIN_NETWORKS,
     s.depositAsset,
   );
-  const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset);
+  const depositNetworkOptions = (() => {
+    if (s.depositAsset === "usdc" && depositCollectNetworkOptions.length > 0) {
+      return depositCollectNetworkOptions;
+    }
+    if (s.depositAsset === "eurc") {
+      return depositCollectNetworkOptions.length > 0
+        ? depositCollectNetworkOptions
+        : depositCatalogNetworks;
+    }
+    // USDT: Base/Polygon accounts + Stellar Aquarius when Collect rail is live.
+    if (depositCollectNetworkOptions.length === 0) return depositCatalogNetworks;
+    const seen = new Set<string>(depositCatalogNetworks.map((n) => n.key));
+    return [
+      ...depositCatalogNetworks,
+      ...depositCollectNetworkOptions.filter((n) => !seen.has(n.key)),
+    ];
+  })();
+  const depositNetworkUiKey = coerceStablecoinNetworkKey(s.depositNetwork, s.depositAsset, depositNetworkOptions);
   const depositNetworks = depositNetworkOptions.map((n) => ({
     key: n.key,
     label: n.label,
     select: setDepositNetwork(n.key),
     selected: depositNetworkUiKey === n.key,
-    bg: depositNetworkUiKey === n.key ? "var(--indigo-tint)" : "var(--surface2)",
-    border: depositNetworkUiKey === n.key ? "var(--indigo)" : "transparent",
-    color: depositNetworkUiKey === n.key ? "var(--indigo-text)" : "var(--ink)",
   }));
   const treasuryWalletAddress = resolveTreasuryWalletAddress({
     summaryWallet:
@@ -4576,7 +4727,20 @@ export default function DashboardApp(props: Props = {}) {
       summaryQuery.data?.totals.wallet_address,
     stablecoinAccounts: stablecoinAccountsList,
   });
-  const depositAssets = ["usdc","usdt"].map(k => ({ key: k, label: k.toUpperCase(), select: setDepositAsset(k), bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)", color: s.depositAsset === k ? "var(--bg)" : "var(--ink)" }));
+  const depositAssetKeys = [
+    "usdc",
+    "usdt",
+    ...(fundStablecoinRails.some((r) => r.currency.trim().toUpperCase() === "EURC")
+      ? (["eurc"] as const)
+      : []),
+  ];
+  const depositAssets = depositAssetKeys.map((k) => ({
+    key: k,
+    label: k.toUpperCase(),
+    select: setDepositAsset(k),
+    bg: s.depositAsset === k ? "var(--ink)" : "var(--surface2)",
+    color: s.depositAsset === k ? "var(--bg)" : "var(--ink)",
+  }));
   const pinnedOnRampDest = resolveOnRampDestination({
     accounts: stablecoinAccountsList,
     selectedAccountId: s.fundTargetAccountId,
@@ -4650,11 +4814,16 @@ export default function DashboardApp(props: Props = {}) {
           : null
       : null;
   const sendBalanceUsd = sendRefundWallet ? parseBalanceNumber(sendRefundWallet.balance) : null;
-  const sendMaxAmount = maxSendableAmount(
-    [sendLimitMaxUsd, sendBalanceUsd],
-    sendAmountCurrency,
-    sendIndicativeRate,
-  );
+  // Country sends: bridge the corridor limit + refund wallet balance into one
+  // figure. Crypto/stablecoin sends: fall back to the source-wallet-only max
+  // computed above (sendCryptoMaxAmount) since there is no corridor limit.
+  const sendMaxAmount = sendIsCountry
+    ? maxSendableAmount(
+        [sendLimitMaxUsd, sendBalanceUsd],
+        sendAmountCurrency,
+        sendIndicativeRate,
+      )
+    : sendCryptoMaxAmount;
   // Binding rate from the quote — exact, no "≈". Falls back to the indicative
   // line only before a quote exists, where the UI labels it as an estimate.
   // What actually leaves the account. Once quoted this is the aggregator's
@@ -4688,27 +4857,43 @@ export default function DashboardApp(props: Props = {}) {
   const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
-  const depositNetworkLabel = pinnedOnRampDest
-    ? formatNetworkLabel(pinnedOnRampDest.asset.network)
-    : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
-      formatNetworkLabel(depositNetworkUiKey);
+  // USDC's home wallet is always Stellar, so fundTargetAccountId is pinned
+  // there even when the chosen network is a CCTP bridge (Base, etc.) — the
+  // rail match (by the *selected network*, not the pinned account) is the
+  // correct source for both the address and its label in that case.
+  // Same for Stellar USDT/EURC Collect rails (Aquarius → USDC home).
+  const depositCollectRailMatch = findRailForAssetNetwork(
+    fundStablecoinRails,
+    s.depositAsset,
+    depositNetworkUiKey,
+  );
+  const depositNetworkLabel = depositCollectRailMatch
+    ? depositCollectRailMatch.networkLabel
+    : pinnedOnRampDest
+      ? formatNetworkLabel(pinnedOnRampDest.asset.network)
+      : depositNetworkOptions.find((n) => n.key === depositNetworkUiKey)?.label ||
+        formatNetworkLabel(depositNetworkUiKey);
   const depositNetworkKey =
-    pinnedOnRampDest?.asset.network || depositNetworkUiKey;
+    depositCollectRailMatch?.network || pinnedOnRampDest?.asset.network || depositNetworkUiKey;
   const depositPickerDest = resolveStablecoinPickerDestination({
     accounts: resolvedStablecoinAccounts,
     asset: s.depositAsset,
     networkKey: depositNetworkUiKey,
     treasuryWallet: treasuryWalletAddress,
   });
-  const depositAddress = s.fundTargetAccountId
-    ? pinnedOnRampDest?.walletAddress || "—"
-    : depositPickerDest.address || "—";
-  const depositAddressEmptyMessage = s.fundTargetAccountId
-    ? describeMissingOnRampDestination({
-        selectedAccountId: s.fundTargetAccountId,
-        summaryFailed: summaryQuery.isError,
-      })
-    : depositPickerDest.emptyMessage;
+  const depositAddress = depositCollectRailMatch
+    ? depositCollectRailMatch.walletAddress
+    : s.fundTargetAccountId
+      ? pinnedOnRampDest?.walletAddress || "—"
+      : depositPickerDest.address || "—";
+  const depositAddressEmptyMessage = depositCollectRailMatch
+    ? ""
+    : s.fundTargetAccountId
+      ? describeMissingOnRampDestination({
+          selectedAccountId: s.fundTargetAccountId,
+          summaryFailed: summaryQuery.isError,
+        })
+      : depositPickerDest.emptyMessage;
   const depositCreateAccount =
     !s.fundTargetAccountId &&
     depositPickerDest.offerCreate &&
@@ -5393,6 +5578,32 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isTransactions) ? (<>
+{(MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (
+<div className="ep-txn-filters" role="group" aria-label="Switch between payments and disbursement batches" style={{ marginBottom: "4px" }}>
+  <button
+    type="button"
+    onClick={() => setState({ txView: "payments" })}
+    className={`ep-txn-filter${s.txView !== "batches" ? " ep-txn-filter--active" : ""}`}
+    aria-pressed={s.txView !== "batches"}
+  >
+    Payments
+  </button>
+  <button
+    type="button"
+    onClick={() => setState({ txView: "batches" })}
+    className={`ep-txn-filter${s.txView === "batches" ? " ep-txn-filter--active" : ""}`}
+    aria-pressed={s.txView === "batches"}
+  >
+    Batches
+  </button>
+</div>
+) : null}
+{(s.txView === "batches" && (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED)) ? (
+<DisbursementBatchHistory
+  sourceAccounts={bulkPayoutSourceAccounts}
+  onDone={() => setState({ txView: "payments" })}
+/>
+) : (
 <TransactionsScreen
   txFilters={txFilters}
   filteredTransactions={filteredTransactions}
@@ -5420,6 +5631,7 @@ export default function DashboardApp(props: Props = {}) {
   onDateRangeChange={(value) => setState({ txDateRange: value })}
   usesLatestFifty={txUsesLatestFifty}
 />
+) }
 </>) : null}
 
 {(isInvoices) ? (<>
@@ -5434,11 +5646,7 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isReports) ? (<>
 <div data-screen-label="Reports" className="ep-reports">
-<ComingSoonPanel
-  featureKey="reports"
-  title="Reports"
-  description="Volume, corridor, and settlement reports are coming soon. Join the waitlist and we’ll notify you when they’re ready."
-/>
+<StatementsPanel />
 </div>
 </>) : null}
 
@@ -5710,7 +5918,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onNavigate={navigateToScreen}
   onOpenHelp={() => openHelp()}
   onOpenBulk={guardMoneyModal("bulk")}
-  bulkEnabled={STELLAR_BULK_PAYOUTS_ENABLED}
+  bulkEnabled={MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED}
   onOpenTopUp={guardMoneyModal("deposit")}
   onToggleTheme={toggleTheme}
   onLogout={logout}
@@ -5719,7 +5927,31 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
-<div ref={modalRef} onClick={stopClick} className={`ep-modal${isModalBulk && bulkModalExpanded ? " ep-modal--expanded" : ""}`} role="dialog" aria-modal="true" aria-labelledby="ep-modal-title">
+<div
+  ref={modalRef}
+  onClick={stopClick}
+  className={[
+    "ep-modal",
+    isModalBulk ? "ep-modal--bulk" : "",
+    isModalBulk && bulkModalExpanded ? "ep-modal--expanded" : "",
+    isModalBulk && bulkModalExpanded ? "ep-modal--resizable" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")}
+  style={
+    isModalBulk && bulkModalExpanded && bulkModalSize
+      ? {
+          width: bulkModalSize.width,
+          maxWidth: bulkModalSize.width,
+          height: bulkModalSize.height,
+          maxHeight: bulkModalSize.height,
+        }
+      : undefined
+  }
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="ep-modal-title"
+>
 
 <div className="ep-modal__grabber" aria-hidden="true">
 <span className="ep-modal__grabber-bar" />
@@ -5731,10 +5963,17 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 {isModalBulk ? (
 <button
   type="button"
-  onClick={() => setBulkModalExpanded((expanded) => !expanded)}
+  onClick={() => {
+    setBulkModalExpanded((expanded) => !expanded);
+    setBulkModalSize(null);
+  }}
   className="ep-modal__expand"
   aria-label={bulkModalExpanded ? "Collapse" : "Expand"}
-  title={bulkModalExpanded ? "Collapse" : "Expand"}
+  title={
+    bulkModalExpanded
+      ? "Collapse — or drag the side edges to resize"
+      : "Expand to fit your screen"
+  }
 >
   {bulkModalExpanded ? "⤡" : "⤢"}
 </button>
@@ -5742,6 +5981,40 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
 </div>
 </div>
+{isModalBulk && bulkModalExpanded ? (
+  <>
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--w"
+      aria-label="Resize dialog from the left"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("w")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--e"
+      aria-label="Resize dialog from the right"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("e")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+    <button
+      type="button"
+      className="ep-modal__resize-handle ep-modal__resize-handle--se"
+      aria-label="Resize dialog from the corner"
+      title="Drag to resize"
+      onPointerDown={onBulkResizePointerDown("se")}
+      onPointerMove={onBulkResizePointerMove}
+      onPointerUp={onBulkResizePointerUp}
+      onPointerCancel={onBulkResizePointerUp}
+    />
+  </>
+) : null}
 
 {(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
 <SendModal
@@ -5796,8 +6069,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendLimitError={sendLimitError}
   sendMaxAmount={sendMaxAmount}
   onMaxSendAmount={
-    sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+    sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
   }
+  setSendAmountToMax={
+    !sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
+  sendBalanceError={sendBalanceError}
   savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
     if (sendIsCrypto) return r.railType === "crypto";
     if (s.sendMethod === "mobile") return r.railType === "mobile";
@@ -5842,6 +6119,9 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   setSendRecipient={setSendRecipient}
   normalizeSendRecipientPhone={normalizeSendRecipientPhone}
   sendRecipientPlaceholder={sendRecipientPlaceholder}
+  sendMemo={s.sendMemo}
+  setSendMemo={setSendMemo}
+  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
   sendAmount={sendAmount}
   setSendAmount={setSendAmount}
   sendQuoteError={sendQuoteError}
@@ -6030,9 +6310,16 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 
 {(isModalBulk) ? (<>
-{STELLAR_BULK_PAYOUTS_ENABLED ? (
+{MIXED_RAIL_BULK_PAYOUTS_ENABLED ? (
+<PayoutBatchWizard
+  sourceAccounts={bulkPayoutSourceAccounts}
+  onDone={closeModal}
+  onCancel={closeModal}
+/>
+) : STELLAR_BULK_PAYOUTS_ENABLED ? (
 <BulkStellarPayoutWizard
   sourceAccounts={bulkPayoutSourceAccounts}
+  draftScopeId={businessId}
   onDone={closeModal}
   onCancel={closeModal}
 />
@@ -6040,8 +6327,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <ComingSoonPanel
   compact
   featureKey="bulk-payouts"
-  title="Bulk payouts"
-  description="CSV bulk payouts aren’t live yet. Join the waitlist and we’ll email you when you can pay many recipients in one go."
+  title="Bulk payout"
+  description="Bulk payouts from one list aren’t live yet. Join the waitlist and we’ll email you when it’s ready."
 />
 ) }
 </>) : null}
@@ -6411,13 +6698,9 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 />
 </>) : null}
 
-{(isModalMfaSetup) ? (<>
-<div className="ep-team__invite-overlay" onClick={closeModal} role="presentation">
-<div onClick={stopClick}>
-<TotpEnrollment onComplete={onMfaSetupComplete} onCancel={closeModal} />
-</div>
-</div>
-</>) : null}
+{(isModalMfaSetup) ? (
+  <TotpEnrollment onComplete={onMfaSetupComplete} onCancel={closeModal} />
+) : null}
 
 {(isModalMfaDisable) ? (<>
 <div className="ep-team__invite-overlay" onClick={closeMfaDisable} role="presentation">

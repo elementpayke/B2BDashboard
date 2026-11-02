@@ -21,17 +21,17 @@ describe("fundStablecoinRailSummary", () => {
     ).toBe("Deposit USDC on Base. Credits your USDC balance after processing.");
   });
 
-  it("describes Stellar EURC Aquarius conversion", () => {
+  it("describes Stellar EURC deposit with confirmation copy", () => {
     expect(
       fundStablecoinRailSummary({
         targetName: "USDC home",
         currency: "EURC",
         networkLabel: "Stellar",
       }),
-    ).toContain("Aquarius");
+    ).toBe("Deposit EURC on Stellar. Credits after on-chain confirmation.");
   });
 
-  it("credits USDT on its own chain", () => {
+  it("credits USDT on EVM chains", () => {
     expect(
       fundStablecoinRailSummary({
         targetName: "USDT · Polygon",
@@ -39,6 +39,16 @@ describe("fundStablecoinRailSummary", () => {
         networkLabel: "Polygon",
       }),
     ).toBe("Deposit USDT on Polygon. Credits your USDT balance.");
+  });
+
+  it("describes Stellar USDT deposit with confirmation copy", () => {
+    expect(
+      fundStablecoinRailSummary({
+        targetName: "USDT · Stellar",
+        currency: "USDT",
+        networkLabel: "Stellar",
+      }),
+    ).toBe("Deposit USDT on Stellar. Credits after on-chain confirmation.");
   });
 });
 

@@ -15,6 +15,7 @@ import {
   validateSendAddress,
   validateSendAmount,
   validateStellarAddress,
+  validateStellarMemo,
 } from "./accountSends";
 import {
   accountForNetwork,
@@ -58,6 +59,7 @@ describe("account send validation", () => {
     expect(toPartnerNetwork("POLYGON")).toBe("Polygon");
     expect(toPartnerNetwork("ethereum")).toBe("Ethereum");
     expect(toPartnerNetwork("optimism")).toBe("Optimism");
+    expect(toPartnerNetwork("arc")).toBe("Arc");
     expect(toPartnerNetwork("solana")).toBeNull();
   });
 
@@ -90,6 +92,48 @@ describe("account send validation", () => {
     ).toBe("stellar_testnet");
     expect(sendCryptoRecipientPlaceholder("stellar")).toMatch(/Stellar/);
     expect(sendCryptoRecipientPlaceholder("base")).toMatch(/EVM/);
+  });
+
+  it("carries an optional memo through to a Stellar preview payload", () => {
+    const stellar = "GBXCJB6GSHU7DBYBQ7OQQRD4GWDNYRSNU5KSAVQBJ4LXAZIA23CXOKEE";
+    expect(
+      buildSendPreviewPayload({
+        toAddress: stellar,
+        amount: "5",
+        networkKey: "stellar",
+        memo: "123456",
+      }),
+    ).toEqual({
+      to_address: stellar,
+      amount: "5",
+      network: "Stellar",
+      memo: "123456",
+    });
+  });
+
+  it("drops the memo on an EVM destination instead of sending it to a chain that ignores it", () => {
+    expect(
+      buildSendPreviewPayload({
+        toAddress: "0x1111111111111111111111111111111111111111",
+        amount: "2.5",
+        networkKey: "base",
+        memo: "123456",
+      }),
+    ).toEqual({
+      to_address: "0x1111111111111111111111111111111111111111",
+      amount: "2.5",
+      network: "Base",
+    });
+  });
+
+  it("validates the Stellar memo by UTF-8 byte length, not character count", () => {
+    expect(validateStellarMemo("")).toBe("");
+    expect(validateStellarMemo("   ")).toBe("");
+    expect(validateStellarMemo("123456")).toBe("123456");
+    expect(validateStellarMemo("a".repeat(28))).toBe("a".repeat(28));
+    expect(() => validateStellarMemo("a".repeat(29))).toThrow(/28 bytes/);
+    // 15 multi-byte (3-byte UTF-8) characters = 45 bytes, well under 28 chars.
+    expect(() => validateStellarMemo("あ".repeat(15))).toThrow(/28 bytes/);
   });
 
   it("rejects short or checksum-invalid Stellar keys", () => {
@@ -159,9 +203,26 @@ describe("account send validation", () => {
       }),
     ).toBe("https://stellar.expert/explorer/public/tx/abc123");
     expect(buildSendExplorerUrl({ network: "Base", txHash: "0xdead" })).toBe(
-      "https://basescan.org/tx/0xdead",
+      "https://sepolia.basescan.org/tx/0xdead",
     );
     expect(buildSendExplorerUrl({ network: "Stellar", txHash: "" })).toBeNull();
+  });
+
+  it("links every EVM chain to its testnet explorer, not mainnet", () => {
+    // This deployment only ever produces testnet transactions today — a
+    // mainnet explorer URL here 404s for every real send.
+    expect(buildSendExplorerUrl({ network: "Polygon", txHash: "0xdead" })).toBe(
+      "https://amoy.polygonscan.com/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Ethereum", txHash: "0xdead" })).toBe(
+      "https://sepolia.etherscan.io/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Optimism", txHash: "0xdead" })).toBe(
+      "https://sepolia-optimism.etherscan.io/tx/0xdead",
+    );
+    expect(buildSendExplorerUrl({ network: "Arbitrum", txHash: "0xdead" })).toBe(
+      "https://sepolia.arbiscan.io/tx/0xdead",
+    );
   });
 });
 
@@ -172,8 +233,8 @@ describe("sendable account discovery helpers", () => {
     expect(extractAccountRows([{ id: "a3" }])).toHaveLength(1);
   });
 
-  it("keeps ready USDC Base, Polygon, and Stellar accounts", () => {
-    const ready = normalizeFinancialAccount(
+  it("only Stellar USDC is sendable — Base is a bridge network, not a source account", () => {
+    const readyBase = normalizeFinancialAccount(
       {
         id: "acct_base",
         asset_type: "stablecoin",
@@ -213,11 +274,14 @@ describe("sendable account discovery helpers", () => {
       },
       "ent_1",
     )!;
-    expect(isSendableStablecoinAccount(ready)).toBe(true);
+    expect(isSendableStablecoinAccount(readyBase)).toBe(false);
     expect(isSendableStablecoinAccount(eth)).toBe(false);
     expect(isSendableStablecoinAccount(pending)).toBe(false);
     expect(isSendableStablecoinAccount(stellar)).toBe(true);
-    expect(accountForNetwork([ready], "base")?.id).toBe("acct_base");
+    // accountForNetwork is a raw network/currency matcher used once a network
+    // is already chosen (e.g. a CCTP destination) — it is not gated by
+    // "sendable" and still finds a Base-network row when asked directly.
+    expect(accountForNetwork([readyBase], "base")?.id).toBe("acct_base");
     expect(accountForNetwork([stellar], "stellar")?.id).toBe("acct_xlm");
     expect(accountForNetwork([stellar], "stellar_public")).toBeUndefined();
   });
@@ -273,18 +337,21 @@ describe("sendable asset/chain picker from backend wallets", () => {
     "ent_1",
   )!;
 
-  it("lists only assets and chains the user can send from", () => {
+  it("without a Stellar USDC home, a legacy Base USDC account is not sendable — only USDT is", () => {
     const accounts = mergeSendableAccounts([baseUsdc, polyUsdt]);
-    expect(sendableAssetsFromAccounts(accounts)).toEqual(["usdc", "usdt"]);
-    expect(sendableChainsForAsset(accounts, "usdc", { accountsReady: true }).map((n) => n.key)).toEqual([
-      "base",
-    ]);
+    expect(sendableAssetsFromAccounts(accounts)).toEqual(["usdt"]);
+    expect(sendableChainsForAsset(accounts, "usdc", { accountsReady: true }).map((n) => n.key)).toEqual(
+      [],
+    );
     expect(sendableChainsForAsset(accounts, "usdt", { accountsReady: true }).map((n) => n.key)).toEqual([
       "polygon",
     ]);
   });
 
-  it("snaps Stellar leftovers onto a wallet the user actually has", () => {
+  it("snaps a leftover chain key onto a wallet the raw list actually has", () => {
+    // resolveSendStablecoinSelection is a pure snapping function — production
+    // code always feeds it an already-filtered list (mergeSendableAccounts),
+    // but the function itself must not crash or misbehave on an unfiltered one.
     const next = resolveSendStablecoinSelection({
       accounts: [baseUsdc, polyUsdt],
       asset: "usdc",
@@ -333,5 +400,45 @@ describe("sendable asset/chain picker from backend wallets", () => {
       chain: "base",
       accountId: "stellar_usdc",
     });
+  });
+
+  it("offers Arc as a dest chip and resolves it end-to-end (address, preview payload, explorer link)", () => {
+    const stellarUsdc = normalizeFinancialAccount(
+      {
+        id: "stellar_usdc",
+        asset_type: "stablecoin",
+        currency: "USDC",
+        network: "Stellar",
+        status: "ready",
+        wallet_address: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+      },
+      "ent_1",
+    )!;
+    const accounts = mergeSendableAccounts([stellarUsdc]);
+    expect(
+      sendableChainsForAsset(accounts, "usdc", {
+        accountsReady: true,
+        supportedChainKeys: ["arc"],
+      }).map((n) => n.key),
+    ).toEqual(["arc", "stellar"]);
+
+    const arcAddress = "0x1111111111111111111111111111111111111111";
+    expect(validateSendAddress(arcAddress, "arc")).toBe(arcAddress);
+    expect(
+      buildSendPreviewPayload({ toAddress: arcAddress, amount: "5", networkKey: "arc" }),
+    ).toEqual({ to_address: arcAddress, amount: "5", network: "Arc" });
+    expect(sendCryptoRecipientPlaceholder("arc")).toMatch(/EVM/);
+    expect(buildSendExplorerUrl({ network: "Arc", txHash: "0xdead" })).toBe(
+      "https://testnet.arcscan.app/tx/0xdead",
+    );
+
+    const next = resolveSendStablecoinSelection({
+      accounts,
+      asset: "usdc",
+      chain: "arc",
+      accountsReady: true,
+      supportedChainKeys: ["arc"],
+    });
+    expect(next).toMatchObject({ asset: "usdc", chain: "arc", accountId: "stellar_usdc" });
   });
 });

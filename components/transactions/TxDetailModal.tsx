@@ -83,10 +83,25 @@ function buildCollectProgressSteps(stage?: string | null, status?: string | null
   }));
 }
 
+/** Stellar EURC/USDT Collect deposit — exchange-style, no swap language. */
+function buildCollectSwapProgressSteps(status?: string | null): ProgressStep[] {
+  const settled = (status || "").toLowerCase() === "completed";
+  const current = settled ? 2 : 1;
+  const labels = ["Received", "Confirming on-chain", "Credited"];
+  return labels.map((label, index) => ({
+    key: label,
+    label,
+    state: current > index ? "done" : current === index ? "current" : "upcoming",
+  }));
+}
+
 /** Derive a readable status progression from the canonical transaction status. */
 function buildProgressSteps(status?: string, source?: string | null, stage?: string | null): ProgressStep[] {
   if ((source || "").trim().toLowerCase() === "cctp_transfer") {
     return buildCollectProgressSteps(stage, status);
+  }
+  if ((source || "").trim().toLowerCase() === "collect_swap") {
+    return buildCollectSwapProgressSteps(status);
   }
   const s = (status || "").toLowerCase();
 
