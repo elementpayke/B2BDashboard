@@ -192,7 +192,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                   ? "Open a ready USDC or USDT account and a fiat deposit account first."
                   : p.mode === "stable_to_stable"
                     ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
-                  : "Open at least two fiat accounts in different currencies (EUR, USD, or GBP)."}
+                  : "Open at least two fiat accounts in different currencies (e.g. EUR, USD, GBP, CAD)."}
             </span>
           </div>
         ) : (

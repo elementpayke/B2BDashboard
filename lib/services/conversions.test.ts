@@ -12,6 +12,8 @@ import {
   describeFiatFiatPath,
   filterCrossCurrencyFiatAccounts,
   formatConvertAmount,
+  isLedgerFxFiat,
+  isRampConvertFiat,
   needsUsdcBridge,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
@@ -40,6 +42,14 @@ describe("needsUsdcBridge", () => {
     expect(needsUsdcBridge("EUR", "USDC")).toBe(false);
     expect(needsUsdcBridge("USDC", "USD")).toBe(false);
     expect(needsUsdcBridge("EUR", "EUR")).toBe(false);
+  });
+});
+
+describe("ledger vs ramp fiat allowlists", () => {
+  it("includes CAD on ledger FX but not ramp", () => {
+    expect(isLedgerFxFiat("CAD")).toBe(true);
+    expect(isRampConvertFiat("CAD")).toBe(false);
+    expect(isRampConvertFiat("EUR")).toBe(true);
   });
 });
 

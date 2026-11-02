@@ -82,12 +82,39 @@ export function describeConversionRate(quote: ConversionOut): string {
   })} ${quote.destination_currency}`;
 }
 
-/** True when this pair needs a USDC bridge (fiat↔fiat). */
+/** Fiat rails that Phase-3 ramp quote/accept still supports (↔ USDC/USDT). */
+export const RAMP_CONVERT_FIAT_CURRENCIES = ["EUR", "USD", "GBP"] as const;
+
+/**
+ * Fiat rails Aggregator ledger FX accepts (customer conversions).
+ * Keep in sync with Aggregator ``LEDGER_FIAT_CURRENCIES``.
+ */
+export const LEDGER_FX_FIAT_CURRENCIES = [
+  "EUR",
+  "USD",
+  "GBP",
+  "CAD",
+  "NGN",
+  "GHS",
+  "AED",
+] as const;
+
+const RAMP_FIAT_SET = new Set<string>(RAMP_CONVERT_FIAT_CURRENCIES);
+const LEDGER_FX_FIAT_SET = new Set<string>(LEDGER_FX_FIAT_CURRENCIES);
+
+export function isRampConvertFiat(currency: string): boolean {
+  return RAMP_FIAT_SET.has(currency.trim().toUpperCase());
+}
+
+export function isLedgerFxFiat(currency: string): boolean {
+  return LEDGER_FX_FIAT_SET.has(currency.trim().toUpperCase());
+}
+
+/** @deprecated Ledger FX is direct; kept for older call sites / tests. */
 export function needsUsdcBridge(sourceCcy: string, destCcy: string): boolean {
-  const fiat = new Set(["EUR", "USD", "GBP"]);
   const s = sourceCcy.trim().toUpperCase();
   const d = destCcy.trim().toUpperCase();
-  return fiat.has(s) && fiat.has(d) && s !== d;
+  return isRampConvertFiat(s) && isRampConvertFiat(d) && s !== d;
 }
 
 export type ConvertPickAccount = {

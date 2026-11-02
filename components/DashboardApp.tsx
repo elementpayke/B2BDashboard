@@ -214,6 +214,8 @@ import {
 import {
   conversionsApi,
   filterCrossCurrencyFiatAccounts,
+  isLedgerFxFiat,
+  isRampConvertFiat,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
@@ -1008,17 +1010,19 @@ export default function DashboardApp(props: Props = {}) {
   // Prefill convert accounts once lists load — prefer funded From accounts.
   useEffect(() => {
     if (state.screen !== "convert" && state.modal !== "convert") return;
-    const fiatRows = (
+    const allFiat = (
       bootstrapReady
         ? (bootstrapQuery.data?.fiatAccounts ?? [])
         : (depositAccountsQuery.data?.accounts ?? [])
     )
-      .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+      .filter((a) => a.id)
       .map((a) => ({
         id: String(a.id),
         currency: String(a.currency || "").toUpperCase(),
         balanceAmount: parseBalanceNumber(a.balance),
       }));
+    const rampFiatRows = allFiat.filter((a) => isRampConvertFiat(a.currency));
+    const ledgerFiatRows = allFiat.filter((a) => isLedgerFxFiat(a.currency));
     const convertStables = resolvedStablecoinAccounts
       .filter(
         (a) =>
@@ -1032,6 +1036,7 @@ export default function DashboardApp(props: Props = {}) {
         balanceAmount: parseBalanceNumber(a.balance),
       }));
     const mode = state.convertMode;
+    const fiatRows = mode === "fiat_to_fiat" ? ledgerFiatRows : rampFiatRows;
     const sourceRows = mode === "stable_to_fiat" ? convertStables : fiatRows;
     const preferredSourceId = pickPreferredConvertAccountId(sourceRows);
     const sourceId = state.convertSourceAccountId || preferredSourceId;
@@ -5041,18 +5046,24 @@ export default function DashboardApp(props: Props = {}) {
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
-  const fiatConvertAccounts = depositAccountsList
-    .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
-    .map((a) => {
-      const view = mapDepositAccountToCardView(a);
-      return {
-        id: String(a.id),
-        currency: a.currency.toUpperCase(),
-        label: `${view.name} (${a.currency.toUpperCase()})`,
-        balanceLabel: view.hasBalance ? view.balance : "—",
-        balanceAmount: parseBalanceNumber(a.balance),
-      };
-    });
+  const mapFiatConvertRow = (a: (typeof depositAccountsList)[number]) => {
+    const view = mapDepositAccountToCardView(a);
+    const currency = a.currency.toUpperCase();
+    return {
+      id: String(a.id),
+      currency,
+      label: `${view.name} (${currency})`,
+      balanceLabel: view.hasBalance ? view.balance : "—",
+      balanceAmount: parseBalanceNumber(a.balance),
+    };
+  };
+  // Ramp (↔ stable) stays EUR/USD/GBP; ledger fiat↔fiat includes CAD etc.
+  const rampFiatConvertAccounts = depositAccountsList
+    .filter((a) => a.id && isRampConvertFiat(a.currency))
+    .map(mapFiatConvertRow);
+  const ledgerFiatConvertAccounts = depositAccountsList
+    .filter((a) => a.id && isLedgerFxFiat(a.currency))
+    .map(mapFiatConvertRow);
   const usdcConvertAccounts = stablecoinAccountsList
     .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
     .map((a) => ({
@@ -5108,15 +5119,17 @@ export default function DashboardApp(props: Props = {}) {
       balanceAmount: parseBalanceNumber(a.balance),
     }));
   const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
+  const convertFiatAccounts =
+    convertMode === "fiat_to_fiat" ? ledgerFiatConvertAccounts : rampFiatConvertAccounts;
   const convertSourceAccounts =
     convertMode === "stable_to_stable"
       ? stellarSwapSourceAccounts
       : convertMode === "stable_to_fiat"
         ? stableConvertAccounts
-        : fiatConvertAccounts;
+        : convertFiatAccounts;
   const convertSourceCurrency =
     convertSourceAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
-    fiatConvertAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
+    convertFiatAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
     "";
   // Fiat↔fiat: direct ledger FX between different currencies (Aggregator conversions).
   const convertDestAccounts =
@@ -5126,14 +5139,14 @@ export default function DashboardApp(props: Props = {}) {
       ? stableConvertAccounts
       : convertMode === "fiat_to_fiat"
         ? filterCrossCurrencyFiatAccounts(
-            fiatConvertAccounts,
+            convertFiatAccounts,
             convertSourceCurrency,
             s.convertSourceAccountId,
           )
-        : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
+        : convertFiatAccounts.filter((a) => a.id !== s.convertSourceAccountId);
   const convertDestCurrency =
     convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
-    fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
+    convertFiatAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
     "";
   const convertPathLabel =
     convertMode === "fiat_to_fiat" && convertSourceCurrency && convertDestCurrency
@@ -6270,18 +6283,18 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onSourceAccount={(id) => {
     const nextSrcCcy =
       convertSourceAccounts.find((a) => a.id === id)?.currency ||
-      fiatConvertAccounts.find((a) => a.id === id)?.currency ||
+      convertFiatAccounts.find((a) => a.id === id)?.currency ||
       "";
     const destStillValid =
       convertMode !== "fiat_to_fiat" ||
       !nextSrcCcy ||
       !s.convertDestAccountId ||
-      (fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
+      (convertFiatAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
         "") !== nextSrcCcy;
     const replacementDest =
       convertMode === "fiat_to_fiat" && !destStillValid
         ? pickPreferredConvertAccountId(
-            filterCrossCurrencyFiatAccounts(fiatConvertAccounts, nextSrcCcy, id),
+            filterCrossCurrencyFiatAccounts(convertFiatAccounts, nextSrcCcy, id),
             [id],
           )
         : "";
