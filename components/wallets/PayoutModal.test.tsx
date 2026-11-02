@@ -110,6 +110,52 @@ describe("PayoutModal", () => {
     expect(screen.getByRole("button", { name: "Review payout" })).toBeInTheDocument();
     expect(api.confirm).not.toHaveBeenCalled();
   });
+
+  it("posts Interac email bank + beneficiary from discovery required_fields", async () => {
+    api.methods.mockResolvedValue([
+      {
+        scheme: "interac_email",
+        country: "CA",
+        default: true,
+        required_fields: ["email", "account_holder_name", "country"],
+        optional_fields: ["security_question", "security_answer"],
+      },
+    ]);
+    api.preview.mockResolvedValue({
+      preview_token: "tok_interac",
+      amount: "25.00",
+      fee: "0",
+      currency: "CAD",
+      scheme: "interac_email",
+    });
+
+    render(<PayoutModal entityId="ent_1" account={account} onDone={vi.fn()} onCancel={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("option", { name: "Interac e-Transfer" })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Interac email"), { target: { value: "pay@acme.com" } });
+    fireEvent.change(screen.getByLabelText("Account holder name"), { target: { value: "Jane Doe" } });
+    fireEvent.change(screen.getByLabelText("Recipient first name"), { target: { value: "Jane" } });
+    fireEvent.change(screen.getByLabelText("Recipient last name"), { target: { value: "Doe" } });
+    fireEvent.change(screen.getByLabelText("Recipient email"), { target: { value: "jane@example.com" } });
+    fireEvent.change(screen.getByLabelText("Recipient street address"), { target: { value: "1 King St" } });
+    fireEvent.change(screen.getByLabelText("Recipient city"), { target: { value: "Toronto" } });
+    fireEvent.change(screen.getByLabelText("Recipient postal code"), { target: { value: "M5V1A1" } });
+    fireEvent.change(screen.getByLabelText("Amount (CAD)"), { target: { value: "25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review payout" }));
+
+    await waitFor(() => expect(api.preview).toHaveBeenCalledTimes(1));
+    expect(api.preview.mock.calls[0][2]).toMatchObject({
+      amount: "25",
+      bank: {
+        scheme: "interac_email",
+        email: "pay@acme.com",
+        account_holder_name: "Jane Doe",
+        country: "CA",
+      },
+      beneficiary: { first_name: "Jane", email: "jane@example.com" },
+    });
+    expect(api.preview.mock.calls[0][2]).not.toHaveProperty("destination");
+  });
 });
 
 describe("payoutFeeText", () => {
