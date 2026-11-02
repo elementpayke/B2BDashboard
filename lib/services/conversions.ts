@@ -1,10 +1,11 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 
 /**
- * Phase 3 account conversions — EUR/GBP/USD ↔ USDC via Mboka
+ * Phase 3 ramp conversions — EUR/GBP/USD ↔ USDC via Mboka
  * `POST /v1/conversions/quote` → `POST /v1/conversions/{quote_id}/accept`.
  *
- * Fiat↔fiat (e.g. EUR→USD) is not a partner rail; run two hops via USDC.
+ * Fiat↔fiat ledger FX uses entity account conversions instead
+ * (`lib/services/ledgerConversions.ts` → Aggregator customer conversions).
  */
 
 export type ConversionOut = {
@@ -134,7 +135,7 @@ export function filterCrossCurrencyFiatAccounts<T extends ConvertPickAccount>(
   });
 }
 
-/** Short path copy for the two-hop fiat rail, e.g. "EUR → USDC → USD". */
+/** Short path copy for ledger fiat↔fiat, e.g. "EUR → USD". */
 export function describeFiatFiatPath(
   sourceCurrency: string | null | undefined,
   destCurrency: string | null | undefined,
@@ -146,7 +147,7 @@ export function describeFiatFiatPath(
     .trim()
     .toUpperCase();
   if (!s || !d || s === d) return null;
-  return `${s} → USDC → ${d}`;
+  return `${s} → ${d}`;
 }
 
 export const conversionsApi = {

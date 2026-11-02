@@ -82,8 +82,8 @@ describe("filterCrossCurrencyFiatAccounts", () => {
 });
 
 describe("describeFiatFiatPath", () => {
-  it("renders the USDC bridge path", () => {
-    expect(describeFiatFiatPath("EUR", "USD")).toBe("EUR → USDC → USD");
+  it("renders a direct fiat path", () => {
+    expect(describeFiatFiatPath("EUR", "USD")).toBe("EUR → USD");
     expect(describeFiatFiatPath("EUR", "EUR")).toBeNull();
   });
 });

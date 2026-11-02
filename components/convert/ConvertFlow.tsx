@@ -69,7 +69,7 @@ const MODES: { key: ConvertMode; label: string; hint: string }[] = [
   {
     key: "fiat_to_fiat",
     label: "Fiat ↔ Fiat",
-    hint: "Move between EUR, USD, or GBP via a USDC bridge (two steps)",
+    hint: "Convert between your fiat accounts (same business, different currencies)",
   },
   { key: "stable_to_stable", label: "Stellar stable → USDC", hint: "Convert allowlisted Stellar stables into USDC" },
 ];
@@ -192,7 +192,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                   ? "Open a ready USDC or USDT account and a fiat deposit account first."
                   : p.mode === "stable_to_stable"
                     ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
-                  : "Open at least two fiat accounts in different currencies (EUR, USD, or GBP) plus a ready USDC bridge account."}
+                  : "Open at least two fiat accounts in different currencies (EUR, USD, or GBP)."}
             </span>
           </div>
         ) : (
@@ -224,9 +224,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
 
               <div className="ep-money-field">
                 <label className="ep-money-label" htmlFor="convert-dest">
-                  {p.mode === "fiat_to_fiat" && !p.hopLabel?.includes("Hop 2")
-                    ? "Final destination"
-                    : "To"}
+                  To
                 </label>
                 <select
                   id="convert-dest"
