@@ -6112,10 +6112,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendRefundWalletsLoading={
     bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
   }
-  sendMaxAmount={sendMaxAmount}
-  setSendAmountToMax={() => {
-    if (sendMaxAmount) setState({ sendAmount: sendMaxAmount });
-  }}
   sendRecipientName={sendRecipientName}
   setSendRecipientName={setSendRecipientName}
   sendRecipientLabel={sendRecipientLabel}
