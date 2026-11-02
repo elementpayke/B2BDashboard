@@ -140,18 +140,16 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
     };
   }, [entityId, account.id]);
 
+  // Reset method-specific bank/security fields when the scheme changes, then seed country.
   useEffect(() => {
     if (!selectedMethod || !schemeForm) return;
     const country = payoutCountryForMethod(ccy, selectedMethod);
-    setBeneficiary((prev) => ({
-      ...prev,
-      country: prev.country || country,
-    }));
-    setBankForm((prev) => ({
-      ...prev,
-      country: prev.country || country,
-    }));
-  }, [selectedMethod, schemeForm, ccy]);
+    setBankForm({ ...EMPTY_PAYOUT_BANK_FORM, country });
+    setBeneficiary((prev) => ({ ...prev, country }));
+    setSecurityQuestion("");
+    setSecurityAnswer("");
+    setSelectedBankIndex(-1);
+  }, [methodId, selectedMethod, schemeForm, ccy]);
 
   useEffect(() => {
     if (!selectedMethod || !bankDirectory) {

@@ -5,6 +5,7 @@ import { ApiRequestError } from "@/lib/apiClient";
 import {
   bankOptionLabel,
   buildPayoutPreviewBody,
+  EMPTY_PAYOUT_BANK_FORM,
   fiatSendOpensBankPayout,
   kesPayoutMinAmountHint,
   methodBankInputFields,
@@ -13,6 +14,7 @@ import {
   payoutMethodKey,
   usesBankCodePayoutForm,
   usesSchemePayoutForm,
+  validateSchemePayoutFields,
 } from "./payoutForm";
 
 describe("usesBankCodePayoutForm", () => {
@@ -206,6 +208,48 @@ describe("buildPayoutPreviewBody", () => {
     expect(body).not.toHaveProperty("destination");
   });
 
+  it("omits security Q&A when the method does not declare them", () => {
+    const body = buildPayoutPreviewBody({
+      amount: "250",
+      currency: "CAD",
+      method: {
+        scheme: "eft",
+        country: "CA",
+        required_fields: [
+          "bank_institution_number",
+          "transit_number",
+          "account_number",
+          "bank_name",
+          "country",
+          "account_holder_name",
+        ],
+      },
+      methodIndex: 0,
+      beneficiary: { ...beneficiary, city: "Toronto", postalCode: "M5V1A1", country: "CA" },
+      bank: {
+        bankCode: "",
+        accountNumber: "1234567",
+        accountHolderName: "Jane Doe",
+        email: "",
+        iban: "",
+        routingNumber: "",
+        bankInstitutionNumber: "001",
+        transitNumber: "12345",
+        swiftBic: "",
+        bankName: "RBC",
+        accountType: "checking",
+        country: "US",
+      },
+      security: {
+        securityQuestion: "Favourite colour?",
+        securityAnswer: "blue",
+      },
+    });
+    expect(body.bank).toMatchObject({ country: "CA" });
+    expect(body).not.toHaveProperty("security_question");
+    expect(body).not.toHaveProperty("security_answer");
+  });
+
   it("builds SEPA body with iban", () => {
     const body = buildPayoutPreviewBody({
       amount: "100",
@@ -267,6 +311,34 @@ describe("buildPayoutPreviewBody", () => {
       simpleDestination: "pay@acme.com",
     });
     expect(body.method).toBe("2");
+  });
+});
+
+describe("validateSchemePayoutFields", () => {
+  it("skips unmapped required discovery fields the UI cannot collect", () => {
+    const err = validateSchemePayoutFields({
+      method: {
+        scheme: "custom",
+        country: "CA",
+        required_fields: ["email", "account_holder_name", "country", "unsupported_token"],
+      },
+      beneficiary: {
+        firstName: "Jane",
+        lastName: "Doe",
+        email: "jane@example.com",
+        line1: "1 King",
+        city: "Toronto",
+        postalCode: "M5V1A1",
+        country: "CA",
+      },
+      bank: {
+        ...EMPTY_PAYOUT_BANK_FORM,
+        email: "pay@acme.com",
+        accountHolderName: "Jane Doe",
+        country: "CA",
+      },
+    });
+    expect(err).toBeNull();
   });
 });
 

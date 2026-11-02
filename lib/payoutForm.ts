@@ -265,6 +265,8 @@ export function validateSchemePayoutFields(args: {
 
   for (const field of methodRequiredFields(args.method)) {
     if (field.startsWith("security_")) continue;
+    // Skip discovery fields we cannot render (no form mapping).
+    if (!BANK_FIELD_TO_FORM[field]) continue;
     if (field === "country") {
       const country =
         bankValue(args.bank, "country") ||
@@ -279,9 +281,11 @@ export function validateSchemePayoutFields(args: {
   }
 
   for (const group of methodRequireOneOf(args.method)) {
-    const ok = group.some((field) => Boolean(bankValue(args.bank!, field, args.bankName)));
+    const supportedGroup = group.filter((field) => Boolean(BANK_FIELD_TO_FORM[field]));
+    if (!supportedGroup.length) continue;
+    const ok = supportedGroup.some((field) => Boolean(bankValue(args.bank!, field, args.bankName)));
     if (!ok) {
-      return `Provide ${group.map(payoutFieldLabel).join(" or ")}.`;
+      return `Provide ${supportedGroup.map(payoutFieldLabel).join(" or ")}.`;
     }
   }
 
@@ -319,9 +323,11 @@ export function buildPayoutPreviewBody(args: {
     if (!ben || !bank) {
       throw new Error("Bank and beneficiary details are required.");
     }
+    // Prefer discovery/currency-pinned country so a stale form value cannot override it.
+    const pinnedCountry = payoutCountryForMethod(args.currency, args.method);
     const country = (
+      pinnedCountry ||
       bank.country.trim() ||
-      payoutCountryForMethod(args.currency, args.method) ||
       ben.country.trim()
     ).toUpperCase();
 
@@ -341,12 +347,13 @@ export function buildPayoutPreviewBody(args: {
       if (field === "country" || field === "account_holder_name" || field.startsWith("security_")) {
         continue;
       }
+      if (!BANK_FIELD_TO_FORM[field]) continue;
       const value = bankValue(bank, field, args.bankName);
       if (value) bankOut[field] = value;
     }
 
-    // bank_name is required for most schemes; directory override for bank-code rails.
-    if (include.has("bank_name") || args.bankName) {
+    // bank_name only when this method requires it (directory override via bankName).
+    if (include.has("bank_name")) {
       const name = (args.bankName || bank.bankName).trim();
       if (name) bankOut.bank_name = name;
     }
@@ -367,9 +374,15 @@ export function buildPayoutPreviewBody(args: {
       bank: bankOut,
     };
 
+    const secFields = methodSecurityFields(args.method);
     const q = (args.security?.securityQuestion || "").trim();
     const a = (args.security?.securityAnswer || "").trim();
-    if (q && a) {
+    if (
+      q &&
+      a &&
+      secFields.includes("security_question") &&
+      secFields.includes("security_answer")
+    ) {
       body.security_question = q;
       body.security_answer = a;
     }
