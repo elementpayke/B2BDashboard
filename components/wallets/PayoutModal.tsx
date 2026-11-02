@@ -6,16 +6,23 @@ import {
   bankCodeFromOption,
   bankOptionLabel,
   buildPayoutPreviewBody,
+  EMPTY_PAYOUT_BANK_FORM,
   kesPayoutMinAmountHint,
+  methodBankInputFields,
+  methodSecurityFields,
   normalizePayoutBanks,
   normalizePayoutMethods,
   payoutApiErrorMessage,
   payoutCountryForMethod,
+  payoutDestinationSummary,
+  payoutFieldLabel,
   payoutMethodKey,
   payoutMethodLabel,
   payoutTotalDebit,
   type PayoutBankOption,
   usesBankCodePayoutForm,
+  usesSchemePayoutForm,
+  validateSchemePayoutFields,
 } from "@/lib/payoutForm";
 import { formatCountdown } from "@/lib/services/transferTerms";
 import type { FinancialAccount } from "@/lib/services/entities";
@@ -61,9 +68,10 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const [banksLoading, setBanksLoading] = useState(false);
   const [banksError, setBanksError] = useState("");
   const [selectedBankIndex, setSelectedBankIndex] = useState(-1);
-  const [accountNumber, setAccountNumber] = useState("");
-  const [accountHolderName, setAccountHolderName] = useState("");
+  const [bankForm, setBankForm] = useState(EMPTY_PAYOUT_BANK_FORM);
   const [beneficiary, setBeneficiary] = useState(EMPTY_BEN);
+  const [securityQuestion, setSecurityQuestion] = useState("");
+  const [securityAnswer, setSecurityAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,7 +90,10 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
     return methods[selectedMethodIndex] ?? null;
   }, [methods, selectedMethodIndex]);
 
-  const bankForm = selectedMethod ? usesBankCodePayoutForm(selectedMethod) : false;
+  const schemeForm = selectedMethod ? usesSchemePayoutForm(selectedMethod) : false;
+  const bankDirectory = selectedMethod ? usesBankCodePayoutForm(selectedMethod) : false;
+  const bankFields = selectedMethod ? methodBankInputFields(selectedMethod, ccy) : [];
+  const securityFields = selectedMethod ? methodSecurityFields(selectedMethod) : [];
 
   const selectedBank = useMemo(() => {
     if (selectedBankIndex < 0 || selectedBankIndex >= banks.length) return null;
@@ -130,17 +141,26 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   }, [entityId, account.id]);
 
   useEffect(() => {
-    if (!selectedMethod || !bankForm) {
+    if (!selectedMethod || !schemeForm) return;
+    const country = payoutCountryForMethod(ccy, selectedMethod);
+    setBeneficiary((prev) => ({
+      ...prev,
+      country: prev.country || country,
+    }));
+    setBankForm((prev) => ({
+      ...prev,
+      country: prev.country || country,
+    }));
+  }, [selectedMethod, schemeForm, ccy]);
+
+  useEffect(() => {
+    if (!selectedMethod || !bankDirectory) {
       setBanks([]);
       setSelectedBankIndex(-1);
       setBanksError("");
       return;
     }
     const country = payoutCountryForMethod(ccy, selectedMethod);
-    setBeneficiary((prev) => ({
-      ...prev,
-      country: prev.country || country,
-    }));
     let cancelled = false;
     (async () => {
       setBanksLoading(true);
@@ -164,50 +184,75 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
     return () => {
       cancelled = true;
     };
-  }, [entityId, account.id, ccy, selectedMethod, bankForm]);
+  }, [entityId, account.id, ccy, selectedMethod, bankDirectory, account.currency]);
+
+  useEffect(() => {
+    if (!selectedBank) return;
+    setBankForm((prev) => ({
+      ...prev,
+      bankCode: bankCodeFromOption(selectedBank),
+      bankName: String(selectedBank.bank_name || prev.bankName),
+    }));
+  }, [selectedBank]);
+
+  const resolvedBankForm = (): typeof bankForm => {
+    if (!bankDirectory || !selectedBank) return bankForm;
+    return {
+      ...bankForm,
+      bankCode: bankCodeFromOption(selectedBank),
+      bankName: String(selectedBank.bank_name || bankForm.bankName),
+    };
+  };
 
   const previewBody = (): Record<string, unknown> => {
     if (!selectedMethod) throw new Error("Choose a payout method.");
+    const bank = resolvedBankForm();
     return buildPayoutPreviewBody({
       amount,
       currency: account.currency,
       method: selectedMethod,
       methodIndex: selectedMethodIndex,
       simpleDestination: destination,
-      beneficiary: bankForm
+      beneficiary: schemeForm
         ? {
             ...beneficiary,
-            country: beneficiary.country || payoutCountryForMethod(ccy, selectedMethod),
+            country:
+              beneficiary.country ||
+              bank.country ||
+              payoutCountryForMethod(ccy, selectedMethod),
           }
         : undefined,
-      bank: bankForm
-        ? {
-            bankCode: selectedBank ? bankCodeFromOption(selectedBank) : "",
-            accountNumber,
-            accountHolderName,
-          }
-        : undefined,
-      bankName: selectedBank ? String(selectedBank.bank_name || "") : "",
+      bank: schemeForm ? bank : undefined,
+      bankName: bankDirectory && selectedBank ? String(selectedBank.bank_name || "") : bank.bankName,
+      security: {
+        securityQuestion,
+        securityAnswer,
+      },
     });
   };
 
   const validateStep1 = (): string | null => {
     if (!methodId || !amount.trim()) return "Method and amount are required.";
-    if (bankForm) {
-      if (banksLoading) return "Still loading banks…";
-      if (banksError) return banksError;
-      if (!selectedBank) return "Choose a bank.";
-      if (!accountNumber.trim()) return "Account number is required.";
-      if (!accountHolderName.trim()) return "Account holder name is required.";
-      if (!beneficiary.firstName.trim() || !beneficiary.lastName.trim()) {
-        return "Recipient first and last name are required.";
+    if (schemeForm && selectedMethod) {
+      if (bankDirectory) {
+        if (banksLoading) return "Still loading banks…";
+        if (banksError) return banksError;
+        if (!selectedBank) return "Choose a bank.";
       }
-      if (!beneficiary.email.trim()) return "Recipient email is required.";
-      if (!beneficiary.line1.trim() || !beneficiary.city.trim()) {
-        return "Recipient address (street and city) is required.";
-      }
-      if (!beneficiary.postalCode.trim()) return "Postal code is required.";
-      return null;
+      return validateSchemePayoutFields({
+        method: selectedMethod,
+        beneficiary: {
+          ...beneficiary,
+          country:
+            beneficiary.country ||
+            bankForm.country ||
+            payoutCountryForMethod(ccy, selectedMethod),
+        },
+        bank: resolvedBankForm(),
+        bankName:
+          bankDirectory && selectedBank ? String(selectedBank.bank_name || "") : bankForm.bankName,
+        security: { securityQuestion, securityAnswer },
+      });
     }
     if (!destination.trim()) return "Destination (email or account) is required.";
     return null;
@@ -253,9 +298,133 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
   const expired = countdown === "0:00";
   const methodLabel = selectedMethod ? payoutMethodLabel(selectedMethod) : methodId;
 
-  const destinationSummary = bankForm
-    ? `${selectedBank?.bank_name || bankCodeFromOption(selectedBank || {})} · ${accountNumber}`
-    : String(preview?.destination || destination);
+  const destinationSummary = selectedMethod
+    ? payoutDestinationSummary({
+        method: selectedMethod,
+        bank: resolvedBankForm(),
+        bankName:
+          bankDirectory && selectedBank ? String(selectedBank.bank_name || "") : bankForm.bankName,
+        simpleDestination: destination,
+        previewDestination: preview?.destination,
+      })
+    : destination;
+
+  const patchBank = (patch: Partial<typeof bankForm>) => {
+    setBankForm((prev) => ({ ...prev, ...patch }));
+  };
+
+  const renderBankField = (field: string) => {
+    if (field === "bank_code") {
+      return (
+        <div className="ep-money-field" key="bank_code">
+          <label className="ep-money-label" htmlFor="payout-bank">
+            Bank
+          </label>
+          <select
+            id="payout-bank"
+            className="ep-money-input"
+            value={selectedBankIndex >= 0 ? String(selectedBankIndex) : ""}
+            onChange={(e) => setSelectedBankIndex(Number(e.target.value))}
+            disabled={busy || banksLoading || banks.length === 0}
+          >
+            {banksLoading ? (
+              <option value="">Loading banks…</option>
+            ) : banks.length === 0 ? (
+              <option value="">No banks available</option>
+            ) : (
+              banks.map((b, idx) => (
+                <option key={`bank-${idx}`} value={String(idx)}>
+                  {bankOptionLabel(b, idx)}
+                </option>
+              ))
+            )}
+          </select>
+          {banksError ? (
+            <span className="ep-money-hint ep-money-hint--danger" role="alert">
+              {banksError}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (field === "account_type") {
+      return (
+        <div className="ep-money-field" key={field}>
+          <label className="ep-money-label" htmlFor={`payout-${field}`}>
+            {payoutFieldLabel(field)}
+          </label>
+          <select
+            id={`payout-${field}`}
+            className="ep-money-input"
+            value={bankForm.accountType || "checking"}
+            onChange={(e) => patchBank({ accountType: e.target.value })}
+            disabled={busy}
+          >
+            <option value="checking">Checking</option>
+            <option value="savings">Savings</option>
+          </select>
+        </div>
+      );
+    }
+
+    const id = `payout-${field}`;
+    const label = payoutFieldLabel(field);
+    const type = field === "email" ? "email" : "text";
+    const value =
+      field === "account_holder_name"
+        ? bankForm.accountHolderName
+        : field === "account_number"
+          ? bankForm.accountNumber
+          : field === "email"
+            ? bankForm.email
+            : field === "iban"
+              ? bankForm.iban
+              : field === "routing_number"
+                ? bankForm.routingNumber
+                : field === "bank_institution_number"
+                  ? bankForm.bankInstitutionNumber
+                  : field === "transit_number"
+                    ? bankForm.transitNumber
+                    : field === "swift_bic"
+                      ? bankForm.swiftBic
+                      : field === "bank_name"
+                        ? bankForm.bankName
+                        : field === "country"
+                          ? bankForm.country
+                          : "";
+
+    const onChange = (raw: string) => {
+      if (field === "account_holder_name") patchBank({ accountHolderName: raw });
+      else if (field === "account_number") patchBank({ accountNumber: raw });
+      else if (field === "email") patchBank({ email: raw });
+      else if (field === "iban") patchBank({ iban: raw });
+      else if (field === "routing_number") patchBank({ routingNumber: raw });
+      else if (field === "bank_institution_number") patchBank({ bankInstitutionNumber: raw });
+      else if (field === "transit_number") patchBank({ transitNumber: raw });
+      else if (field === "swift_bic") patchBank({ swiftBic: raw });
+      else if (field === "bank_name") patchBank({ bankName: raw });
+      else if (field === "country") patchBank({ country: raw.toUpperCase() });
+    };
+
+    return (
+      <div className="ep-money-field" key={field}>
+        <label className="ep-money-label" htmlFor={id}>
+          {label}
+        </label>
+        <input
+          id={id}
+          className="ep-money-input"
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={busy}
+          autoComplete="off"
+          aria-label={label}
+        />
+      </div>
+    );
+  };
 
   if (preview) {
     const previewRecord = preview as Record<string, unknown>;
@@ -373,63 +542,39 @@ export default function PayoutModal({ entityId, account, onDone, onCancel }: Pay
         </select>
       </div>
 
-      {bankForm ? (
+      {schemeForm ? (
         <>
-          <div className="ep-money-field">
-            <label className="ep-money-label" htmlFor="payout-bank">
-              Bank
-            </label>
-            <select
-              id="payout-bank"
-              className="ep-money-input"
-              value={selectedBankIndex >= 0 ? String(selectedBankIndex) : ""}
-              onChange={(e) => setSelectedBankIndex(Number(e.target.value))}
-              disabled={busy || banksLoading || banks.length === 0}
-            >
-              {banksLoading ? (
-                <option value="">Loading banks…</option>
-              ) : banks.length === 0 ? (
-                <option value="">No banks available</option>
-              ) : (
-                banks.map((b, idx) => (
-                  <option key={`bank-${idx}`} value={String(idx)}>
-                    {bankOptionLabel(b, idx)}
-                  </option>
-                ))
-              )}
-            </select>
-            {banksError ? (
-              <span className="ep-money-hint ep-money-hint--danger" role="alert">
-                {banksError}
-              </span>
-            ) : null}
-          </div>
-          <div className="ep-money-field">
-            <label className="ep-money-label" htmlFor="payout-account-number">
-              Account number
-            </label>
-            <input
-              id="payout-account-number"
-              className="ep-money-input"
-              value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value)}
-              disabled={busy}
-              autoComplete="off"
-            />
-          </div>
-          <div className="ep-money-field">
-            <label className="ep-money-label" htmlFor="payout-account-holder">
-              Account holder name
-            </label>
-            <input
-              id="payout-account-holder"
-              className="ep-money-input"
-              value={accountHolderName}
-              onChange={(e) => setAccountHolderName(e.target.value)}
-              disabled={busy}
-              autoComplete="name"
-            />
-          </div>
+          {bankFields.map((field) => renderBankField(field))}
+          {securityFields.includes("security_question") ? (
+            <div className="ep-money-field">
+              <label className="ep-money-label" htmlFor="payout-security-question">
+                {payoutFieldLabel("security_question")}
+              </label>
+              <input
+                id="payout-security-question"
+                className="ep-money-input"
+                value={securityQuestion}
+                onChange={(e) => setSecurityQuestion(e.target.value)}
+                disabled={busy}
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
+          {securityFields.includes("security_answer") ? (
+            <div className="ep-money-field">
+              <label className="ep-money-label" htmlFor="payout-security-answer">
+                {payoutFieldLabel("security_answer")}
+              </label>
+              <input
+                id="payout-security-answer"
+                className="ep-money-input"
+                value={securityAnswer}
+                onChange={(e) => setSecurityAnswer(e.target.value)}
+                disabled={busy}
+                autoComplete="off"
+              />
+            </div>
+          ) : null}
           <fieldset className="ep-money-field" disabled={busy}>
             <legend className="ep-money-label">Recipient (beneficiary)</legend>
             <div className="ep-money-stack ep-money-stack--tight">
