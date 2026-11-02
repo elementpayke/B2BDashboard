@@ -9,8 +9,11 @@ beforeEach(() => {
 });
 import {
   describeConversionRate,
+  describeFiatFiatPath,
+  filterCrossCurrencyFiatAccounts,
   formatConvertAmount,
   needsUsdcBridge,
+  pickPreferredConvertAccountId,
   secondsUntilExpiry,
   validateConvertAmount,
 } from "@/lib/services/conversions";
@@ -37,6 +40,51 @@ describe("needsUsdcBridge", () => {
     expect(needsUsdcBridge("EUR", "USDC")).toBe(false);
     expect(needsUsdcBridge("USDC", "USD")).toBe(false);
     expect(needsUsdcBridge("EUR", "EUR")).toBe(false);
+  });
+});
+
+describe("pickPreferredConvertAccountId", () => {
+  it("prefers the highest funded account", () => {
+    expect(
+      pickPreferredConvertAccountId([
+        { id: "eur-empty", currency: "EUR", balanceAmount: 0 },
+        { id: "usd-funded", currency: "USD", balanceAmount: 25 },
+        { id: "gbp-small", currency: "GBP", balanceAmount: 2.92 },
+      ]),
+    ).toBe("usd-funded");
+  });
+
+  it("skips excluded ids", () => {
+    expect(
+      pickPreferredConvertAccountId(
+        [
+          { id: "a", currency: "EUR", balanceAmount: 10 },
+          { id: "b", currency: "USD", balanceAmount: 5 },
+        ],
+        ["a"],
+      ),
+    ).toBe("b");
+  });
+});
+
+describe("filterCrossCurrencyFiatAccounts", () => {
+  it("drops same-currency destinations", () => {
+    const rows = [
+      { id: "1", currency: "EUR", balanceAmount: 0 },
+      { id: "2", currency: "USD", balanceAmount: 10 },
+      { id: "3", currency: "GBP", balanceAmount: 2 },
+    ];
+    expect(filterCrossCurrencyFiatAccounts(rows, "EUR", "1").map((a) => a.id)).toEqual([
+      "2",
+      "3",
+    ]);
+  });
+});
+
+describe("describeFiatFiatPath", () => {
+  it("renders the USDC bridge path", () => {
+    expect(describeFiatFiatPath("EUR", "USD")).toBe("EUR → USDC → USD");
+    expect(describeFiatFiatPath("EUR", "EUR")).toBeNull();
   });
 });
 

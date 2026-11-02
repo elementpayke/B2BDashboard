@@ -53,6 +53,8 @@ export type ConvertFlowProps = {
   acceptLoading: boolean;
   error: string;
   hopLabel?: string | null;
+  /** Optional path strip for fiat↔fiat, e.g. "EUR → USDC → USD". */
+  pathLabel?: string | null;
   settlesViaLabel?: string | null;
   done: boolean;
   doneBody?: string;
@@ -64,7 +66,11 @@ export type ConvertFlowProps = {
 const MODES: { key: ConvertMode; label: string; hint: string }[] = [
   { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell EUR, USD, or GBP for USDC or USDT" },
   { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for EUR, USD, or GBP" },
-  { key: "fiat_to_fiat", label: "EUR ↔ USD", hint: "Two hops via USDC" },
+  {
+    key: "fiat_to_fiat",
+    label: "Fiat ↔ Fiat",
+    hint: "Move between EUR, USD, or GBP via a USDC bridge (two steps)",
+  },
   { key: "stable_to_stable", label: "Stellar stable → USDC", hint: "Convert allowlisted Stellar stables into USDC" },
 ];
 
@@ -93,11 +99,22 @@ export default function ConvertFlow(p: ConvertFlowProps) {
   const expired = p.quoteSeconds <= 0 && Boolean(p.quote);
   const source = p.sourceAccounts.find((a) => a.id === p.sourceAccountId);
   const dest = p.destinationAccounts.find((a) => a.id === p.destinationAccountId);
+  const amountNum = Number(String(p.amount || "").trim().replace(/,/g, ""));
+  const knownBalance =
+    source && typeof source.balanceAmount === "number" ? source.balanceAmount : null;
+  const insufficientKnownBalance =
+    knownBalance !== null &&
+    Number.isFinite(amountNum) &&
+    amountNum > 0 &&
+    amountNum > knownBalance;
+  const zeroKnownBalance = knownBalance !== null && knownBalance <= 0;
   const canQuote =
     Boolean(p.sourceAccountId) &&
     Boolean(p.destinationAccountId) &&
     Boolean(p.amount.trim()) &&
     !p.quoteLoading &&
+    !zeroKnownBalance &&
+    !insufficientKnownBalance &&
     p.sourceAccounts.length > 0 &&
     p.destinationAccounts.length > 0;
   const canAccept = Boolean(p.quote) && !expired && !p.acceptLoading && !p.done;
@@ -158,9 +175,9 @@ export default function ConvertFlow(p: ConvertFlowProps) {
         </div>
 
         <p className="ep-convert__lede">{modeMeta.hint}</p>
-        {p.mode === "fiat_to_fiat" ? (
-          <p className="ep-money-hint">
-            Fiat↔fiat isn&apos;t a direct rail — we convert via USDC in two steps.
+        {p.pathLabel ? (
+          <p className="ep-money-hint" data-testid="convert-path">
+            Path: {p.pathLabel}
           </p>
         ) : null}
         {p.hopLabel ? <p className="ep-money-hint">{p.hopLabel}</p> : null}
@@ -175,7 +192,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                   ? "Open a ready USDC or USDT account and a fiat deposit account first."
                   : p.mode === "stable_to_stable"
                     ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
-                  : "Open EUR and USD deposit accounts plus a ready USDC bridge account."}
+                  : "Open at least two fiat accounts in different currencies (EUR, USD, or GBP) plus a ready USDC bridge account."}
             </span>
           </div>
         ) : (
@@ -253,6 +270,17 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               />
               {available ? (
                 <p className="ep-convert__avail">Available {available}{source ? ` ${source.currency}` : ""}</p>
+              ) : null}
+              {zeroKnownBalance ? (
+                <p className="ep-money-hint" role="status">
+                  This account has no available balance — pick a funded From account to get a quote.
+                </p>
+              ) : null}
+              {insufficientKnownBalance ? (
+                <p className="ep-money-hint" role="status">
+                  Amount is above the available balance
+                  {available ? ` (${available}${source ? ` ${source.currency}` : ""})` : ""}.
+                </p>
               ) : null}
             </div>
           </>
