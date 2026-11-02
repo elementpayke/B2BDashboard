@@ -1,4 +1,4 @@
-import { apiEnvelope } from "@/lib/apiClient";
+import { apiEnvelope, ApiRequestError } from "@/lib/apiClient";
 import { validateConvertAmount } from "@/lib/services/conversions";
 
 export type BulkStellarPayoutRow = {
@@ -6,6 +6,8 @@ export type BulkStellarPayoutRow = {
   amount: string;
   memo?: string | null;
   reference?: string | null;
+  /** Optional recipient email — when set, Mboka sends a receipt once the payment lands on-chain. */
+  email?: string | null;
 };
 
 export type BulkStellarPayoutPreview = {
@@ -18,7 +20,37 @@ export type BulkStellarPayoutPreview = {
 export type BulkStellarPayoutBatch = {
   batch_id: string;
   status: string;
-  items: Array<BulkStellarPayoutRow & { status?: string | null; error?: string | null }>;
+  currency?: string | null;
+  total_amount?: string | null;
+  item_count?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  items: Array<
+    BulkStellarPayoutRow & {
+      status?: string | null;
+      error?: string | null;
+      /** Stellar payment hash when submitted on-chain. */
+      tx_hash?: string | null;
+    }
+  >;
+};
+
+export type DisbursementReconciliationReport = {
+  items_checked: number;
+  items_matched: number;
+  items_corrected: Array<{
+    partner_item_ref: string;
+    tx_hash?: string | null;
+    previous_status: string;
+    corrected_status: string;
+  }>;
+  items_unverifiable: Array<{
+    partner_item_ref: string;
+    status: string;
+    tx_hash?: string | null;
+    reason: string;
+  }>;
+  drift_found: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -93,6 +125,7 @@ export function parseBulkStellarPayoutCsv(csv: string): BulkStellarPayoutRow[] {
       amount,
       memo: (cells[2] || "").trim() || null,
       reference: (cells[3] || "").trim() || null,
+      email: (cells[4] || "").trim() || null,
     };
   });
 }
@@ -123,7 +156,36 @@ export function parseBulkStellarPayoutCsvLoose(csv: string): BulkStellarPayoutRo
     amount: (cells[1] || "").trim(),
     memo: (cells[2] || "").trim() || null,
     reference: (cells[3] || "").trim() || null,
+    email: (cells[4] || "").trim() || null,
   }));
+}
+
+/** Map Aggregator / Mboka machine codes to plain-language copy for merchants. */
+export function explainDisbursementFailure(code: string | null | undefined): string | null {
+  const key = (code || "").trim().toLowerCase();
+  if (!key) return null;
+  const copy: Record<string, string> = {
+    destination_missing_trustline:
+      "This wallet hasn’t added a USDC trustline yet. Ask the recipient to trust Circle USDC on Stellar, then retry.",
+    destination_account_not_found:
+      "This Stellar address isn’t active on the network yet. The recipient needs to create/fund the account first.",
+    insufficient_balance:
+      "Your source wallet doesn’t have enough USDC (plus fees) for this payout.",
+    funding_account_unusable:
+      "We couldn’t sign from your Stellar wallet. Refresh and try again, or contact support if it persists.",
+    stellar_submit_failed:
+      "Stellar rejected this payment. Check the destination and try again.",
+    stellar_submit_unconfirmed:
+      "Payment was broadcast but not confirmed yet. Refresh batch status in a moment.",
+    sdp_adapter_unavailable:
+      "Payouts are in dry-run mode here — nothing was sent on-chain.",
+    stellar_disbursement_submit_failed:
+      "We couldn’t submit this batch. Try again or contact support.",
+  };
+  if (copy[key]) return copy[key];
+  // Unknown codes: surface a readable sentence, not a bare snake_case token.
+  const readable = key.replace(/_/g, " ");
+  return `This payout failed (${readable}).`;
 }
 
 function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
@@ -133,12 +195,27 @@ function normalizeItems(raw: unknown): BulkStellarPayoutBatch["items"] {
     .filter((row): row is Record<string, unknown> => row !== null)
     .map((row) => ({
       destination:
-        asText(row.destination ?? row.to_address ?? row.wallet_address) || "",
+        asText(
+          row.destination ??
+            row.destination_address ??
+            row.to_address ??
+            row.wallet_address,
+        ) || "",
       amount: asText(row.amount) || "",
       memo: asText(row.memo),
-      reference: asText(row.reference ?? row.client_reference),
+      reference: asText(row.reference ?? row.client_reference ?? row.partner_item_ref),
       status: asText(row.status),
-      error: asText(row.error ?? row.message),
+      error: asText(
+        row.error ?? row.failure_code ?? row.failureCode ?? row.last_error ?? row.message,
+      ),
+      tx_hash: asText(
+        row.tx_hash ??
+          row.txHash ??
+          row.transaction_hash ??
+          row.transactionHash ??
+          row.external_item_id ??
+          row.externalItemId,
+      ),
     }));
 }
 
@@ -160,23 +237,105 @@ export function normalizeBulkPreview(raw: unknown): BulkStellarPayoutPreview {
 
 export function normalizeBulkBatch(raw: unknown): BulkStellarPayoutBatch {
   const obj = asRecord(raw) ?? {};
+  const items = normalizeItems(obj.items ?? obj.rows);
   return {
     batch_id: asText(obj.batch_id ?? obj.id) || "",
     status: asText(obj.status) || "submitted",
-    items: normalizeItems(obj.items ?? obj.rows),
+    currency: asText(obj.currency ?? obj.source_currency),
+    total_amount: asText(obj.total_amount ?? obj.totalAmount),
+    item_count: typeof obj.total_items === "number" ? obj.total_items : items.length,
+    created_at: asText(obj.created_at ?? obj.createdAt),
+    updated_at: asText(obj.updated_at ?? obj.updatedAt),
+    items,
   };
+}
+
+export function normalizeBulkBatchList(raw: unknown): BulkStellarPayoutBatch[] {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.batches) ? obj.batches : [];
+  return list.map(normalizeBulkBatch);
+}
+
+export function normalizeReconciliationReport(raw: unknown): DisbursementReconciliationReport {
+  const obj = asRecord(raw) ?? {};
+  const corrected = Array.isArray(obj.items_corrected) ? obj.items_corrected : [];
+  const unverifiable = Array.isArray(obj.items_unverifiable) ? obj.items_unverifiable : [];
+  return {
+    items_checked: typeof obj.items_checked === "number" ? obj.items_checked : 0,
+    items_matched: typeof obj.items_matched === "number" ? obj.items_matched : 0,
+    items_corrected: corrected.map((raw) => {
+      const row = asRecord(raw) ?? {};
+      return {
+        partner_item_ref: asText(row.partner_item_ref) || "",
+        tx_hash: asText(row.tx_hash),
+        previous_status: asText(row.previous_status) || "",
+        corrected_status: asText(row.corrected_status) || "",
+      };
+    }),
+    items_unverifiable: unverifiable.map((raw) => {
+      const row = asRecord(raw) ?? {};
+      return {
+        partner_item_ref: asText(row.partner_item_ref) || "",
+        status: asText(row.status) || "",
+        tx_hash: asText(row.tx_hash),
+        reason: asText(row.reason) || "",
+      };
+    }),
+    drift_found: Boolean(obj.drift_found),
+  };
+}
+
+/** Stable key for one preview→confirm attempt. Reuse on confirm retries only. */
+export function newBulkPayoutIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `bulk-${crypto.randomUUID()}`;
+  }
+  return `bulk-${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+/** Proxy/Mboka/Aggregator blips that are safe to retry once (with idempotency). */
+export function isTransientDisbursementError(err: unknown): boolean {
+  if (err instanceof ApiRequestError) {
+    return err.status === 408 || err.status === 502 || err.status === 503 || err.status === 504;
+  }
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /timed out|timeout|upstream|502|503|504/i.test(message);
+}
+
+/** One silent retry on transient errors; non-transient failures throw immediately. */
+export async function withTransientRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { retries?: number; delayMs?: number },
+): Promise<T> {
+  const retries = opts?.retries ?? 1;
+  const delayMs = opts?.delayMs ?? 900;
+  let last: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (attempt >= retries || !isTransientDisbursementError(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+  throw last;
 }
 
 export const stellarDisbursementsApi = {
   // entity_id/account_id (not just the account) are required so the backend
   // can verify ownership via owned_stellar_account_context — same body shape
   // as the Stellar swap quote/confirm pair (/v1/conversions/stellar/*).
-  async preview(entity_id: string, account_id: string, items: BulkStellarPayoutRow[]) {
-    const raw = await apiEnvelope<unknown>(
-      "POST",
-      "/v1/disbursements/stellar/preview",
-      { entity_id, account_id, items },
-    );
+  async preview(
+    entity_id: string,
+    account_id: string,
+    items: BulkStellarPayoutRow[],
+    opts?: { idempotencyKey?: string },
+  ) {
+    const body: Record<string, unknown> = { entity_id, account_id, items };
+    const key = (opts?.idempotencyKey || "").trim();
+    if (key) body.idempotency_key = key.slice(0, 64);
+    const raw = await apiEnvelope<unknown>("POST", "/v1/disbursements/stellar/preview", body);
     return normalizeBulkPreview(raw);
   },
 
@@ -187,5 +346,43 @@ export const stellarDisbursementsApi = {
       { entity_id, account_id, preview_token },
     );
     return normalizeBulkBatch(raw);
+  },
+
+  async getBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}`,
+    );
+    return normalizeBulkBatch(raw);
+  },
+
+  async listBatches(entity_id: string, account_id: string, limit = 50) {
+    const raw = await apiEnvelope<unknown>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements?limit=${encodeURIComponent(String(limit))}`,
+    );
+    return normalizeBulkBatchList(raw);
+  },
+
+  /** Resolves items still ambiguous after submission (Horizon not yet indexed). */
+  async syncBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}/sync`,
+    );
+    return normalizeBulkBatch(raw);
+  },
+
+  /** Re-verifies every item against Horizon regardless of current status. */
+  async reconcileBatch(entity_id: string, account_id: string, batch_id: string) {
+    const raw = await apiEnvelope<unknown>(
+      "POST",
+      `/v1/entities/${encodeURIComponent(entity_id)}/accounts/${encodeURIComponent(account_id)}/disbursements/${encodeURIComponent(batch_id)}/reconcile`,
+    );
+    const obj = asRecord(raw) ?? {};
+    return {
+      batch: normalizeBulkBatch(raw),
+      reconciliation: normalizeReconciliationReport(obj.reconciliation),
+    };
   },
 };

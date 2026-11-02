@@ -124,3 +124,30 @@ describe("ReceiveModal stablecoin", () => {
     expect(onStellar).toHaveBeenCalled();
   });
 });
+
+describe("ReceiveModal reference memo", () => {
+  it("offers an optional reference memo for a Stellar deposit address", () => {
+    renderCrypto();
+    expect(screen.getByLabelText(/Reference memo \(optional\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing sent here needs a memo to arrive/i)).toBeInTheDocument();
+  });
+
+  it("hides the memo field on non-Stellar networks", () => {
+    renderCrypto({
+      receiveNetwork: "base",
+      receiveNetworkLabel: "Base",
+      receiveAddress: "0xabc123",
+    });
+    expect(screen.queryByLabelText(/Reference memo \(optional\)/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a copy affordance once a memo is typed", () => {
+    renderCrypto();
+    expect(screen.queryByRole("button", { name: /Copy memo/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Reference memo \(optional\)/i), {
+      target: { value: "invoice-42" },
+    });
+    expect(screen.getByText("invoice-42")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy memo" })).toBeInTheDocument();
+  });
+});
