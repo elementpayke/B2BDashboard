@@ -43,9 +43,7 @@ function idempotencyHeaders(key: string): RequestOptions {
 /** Map Aggregator/Mboka ledger preview into the Convert UI quote shape. */
 export function ledgerPreviewToConversionOut(
   preview: LedgerConversionPreview,
-  *,
-  sourceAccountId: string,
-  destinationAccountId: string,
+  ids: { sourceAccountId: string; destinationAccountId: string },
 ): ConversionOut {
   const token = String(preview.preview_token || "").trim();
   if (!token) {
@@ -55,8 +53,8 @@ export function ledgerPreviewToConversionOut(
     id: token,
     status: "quoted",
     direction: "ledger_fx",
-    source_account_id: String(preview.from_account_id ?? sourceAccountId),
-    destination_account_id: String(preview.to_account_id ?? destinationAccountId),
+    source_account_id: String(preview.from_account_id ?? ids.sourceAccountId),
+    destination_account_id: String(preview.to_account_id ?? ids.destinationAccountId),
     source_currency: String(preview.from_currency || "").toUpperCase(),
     destination_currency: String(preview.to_currency || "").toUpperCase(),
     source_amount: String(preview.amount_from ?? ""),
