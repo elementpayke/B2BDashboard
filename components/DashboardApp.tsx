@@ -213,9 +213,16 @@ import {
 } from "@/lib/services/balances";
 import {
   conversionsApi,
+  filterCrossCurrencyFiatAccounts,
+  pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
 } from "@/lib/services/conversions";
+import {
+  ledgerConversionsApi,
+  ledgerPreviewToConversionOut,
+  ledgerResultToConversionOut,
+} from "@/lib/services/ledgerConversions";
 import { stellarSwapsApi } from "@/lib/services/stellarSwaps";
 import ConvertFlow, {
   normalizeConvertMode,
@@ -998,16 +1005,20 @@ export default function DashboardApp(props: Props = {}) {
       cardTxnSurfaceOpen || activityPoll ? 15_000 : false,
   });
 
-  // Prefill convert accounts once lists load so the form isn't empty.
+  // Prefill convert accounts once lists load — prefer funded From accounts.
   useEffect(() => {
     if (state.screen !== "convert" && state.modal !== "convert") return;
-    const fiat = (
+    const fiatRows = (
       bootstrapReady
         ? (bootstrapQuery.data?.fiatAccounts ?? [])
         : (depositAccountsQuery.data?.accounts ?? [])
     )
       .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
-      .map((a) => String(a.id));
+      .map((a) => ({
+        id: String(a.id),
+        currency: String(a.currency || "").toUpperCase(),
+        balanceAmount: parseBalanceNumber(a.balance),
+      }));
     const convertStables = resolvedStablecoinAccounts
       .filter(
         (a) =>
@@ -1015,35 +1026,42 @@ export default function DashboardApp(props: Props = {}) {
           isReadyStatus(a.status) &&
           a.id,
       )
-      .map((a) => String(a.id));
-    const usdcBridge = resolvedStablecoinAccounts
-      .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
-      .map((a) => String(a.id));
+      .map((a) => ({
+        id: String(a.id),
+        currency: String(a.currency || "").toUpperCase(),
+        balanceAmount: parseBalanceNumber(a.balance),
+      }));
     const mode = state.convertMode;
-    const hop = state.convertHop;
-    const sources =
-      mode === "stable_to_fiat" || (mode === "fiat_to_fiat" && hop === 2)
-        ? convertStables
-        : fiat;
-    const dests =
+    const sourceRows = mode === "stable_to_fiat" ? convertStables : fiatRows;
+    const preferredSourceId = pickPreferredConvertAccountId(sourceRows);
+    const sourceId = state.convertSourceAccountId || preferredSourceId;
+    const sourceCcy =
+      sourceRows.find((a) => a.id === sourceId)?.currency ||
+      fiatRows.find((a) => a.id === sourceId)?.currency ||
+      "";
+    const destRows =
       mode === "fiat_to_stable"
         ? convertStables
-        : fiat.filter((id) => id !== (state.convertSourceAccountId || sources[0]));
+        : mode === "fiat_to_fiat"
+          ? filterCrossCurrencyFiatAccounts(fiatRows, sourceCcy, sourceId)
+          : fiatRows.filter((a) => a.id !== sourceId);
+    const preferredDestId = pickPreferredConvertAccountId(destRows, [sourceId]);
     setState((s: any) => {
       const next: Record<string, string> = {};
-      if (!s.convertSourceAccountId && sources[0]) next.convertSourceAccountId = sources[0];
-      if (!s.convertDestAccountId && dests[0]) next.convertDestAccountId = dests[0];
-      if (!s.convertBridgeUsdcId && usdcBridge[0]) next.convertBridgeUsdcId = usdcBridge[0];
+      if (!s.convertSourceAccountId && preferredSourceId) {
+        next.convertSourceAccountId = preferredSourceId;
+      }
+      if (!s.convertDestAccountId && preferredDestId) {
+        next.convertDestAccountId = preferredDestId;
+      }
       return Object.keys(next).length ? next : {};
     });
   }, [
     state.screen,
     state.modal,
     state.convertMode,
-    state.convertHop,
     state.convertSourceAccountId,
     state.convertDestAccountId,
-    state.convertBridgeUsdcId,
     bootstrapReady,
     bootstrapQuery.data,
     depositAccountsQuery.data,
@@ -2513,45 +2531,25 @@ export default function DashboardApp(props: Props = {}) {
       swapAccepted: false,
       quoteSeconds: 0,
     });
-  /** Resolve a ready USDC FinancialAccount id for fiat↔fiat bridging. */
-  const resolveUsdcBridgeId = (): string => {
-    const fromState = (state.convertBridgeUsdcId || "").trim();
-    if (fromState) return fromState;
-    const ready = resolvedStablecoinAccounts.find(
-      (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
-    );
-    return ready?.id ? String(ready.id) : "";
-  };
   const refreshConvertQuote = async () => {
     const sourceId = state.convertSourceAccountId;
     const selectedDestId = state.convertDestAccountId;
     const amount = state.convertAmount;
-    const twoHopHop1 =
-      state.convertMode === "fiat_to_fiat" && state.convertHop === 1;
+    const ledgerFiatFx = state.convertMode === "fiat_to_fiat";
     const stellarStableSwap = state.convertMode === "stable_to_stable";
-    const bridgeId = twoHopHop1 ? resolveUsdcBridgeId() : "";
-    // Hop 1 of EUR↔USD quotes source fiat → USDC; selectedDestId is the final fiat.
-    const quoteDestId = twoHopHop1 ? bridgeId : selectedDestId;
 
     if (!sourceId || !selectedDestId || !amount.trim()) {
       setState({ convertError: "Pick both accounts and enter an amount (min 1.00)." });
       return;
     }
-    if (twoHopHop1 && !bridgeId) {
-      setState({
-        convertError:
-          "Open a ready USDC account first — fiat↔fiat converts via USDC.",
-      });
-      return;
-    }
 
     // Client-side available-balance guard when the partner exposed a balance.
-    const fiatSource = (depositAccountsQuery.data?.accounts ?? []).find(
-      (a) => String(a.id) === sourceId,
-    );
-    const stableSource = (stablecoinAccountsQuery.data ?? []).find(
-      (a) => String(a.id) === sourceId,
-    );
+    const fiatSource =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === sourceId) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === sourceId);
+    const stableSource =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === sourceId) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === sourceId);
     try {
       if (fiatSource) {
         assertSufficientBalance({
@@ -2573,25 +2571,48 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
 
+    if (ledgerFiatFx) {
+      const entityId = String(fiatSource?.entity_id || "").trim();
+      if (!entityId) {
+        setState({
+          convertError: "Couldn't resolve the business entity for this fiat account.",
+        });
+        return;
+      }
+    }
+
     setState({
       convertQuoteLoading: true,
       convertError: "",
       convertQuote: null,
       swapAccepted: false,
-      ...(bridgeId ? { convertBridgeUsdcId: bridgeId } : {}),
+      convertHop: 1,
     });
     try {
-      const quote = stellarStableSwap
-        ? await stellarSwapsApi.quote({
-            source_account_id: sourceId,
-            destination_account_id: quoteDestId,
-            amount,
-          })
-        : await conversionsApi.quote({
-            source_account_id: sourceId,
-            destination_account_id: quoteDestId,
-            amount,
-          });
+      let quote: ConversionOut;
+      if (ledgerFiatFx) {
+        const entityId = String(fiatSource?.entity_id || "").trim();
+        const preview = await ledgerConversionsApi.preview(entityId, sourceId, {
+          destination_account_id: selectedDestId,
+          amount,
+        });
+        quote = ledgerPreviewToConversionOut(preview, {
+          sourceAccountId: sourceId,
+          destinationAccountId: selectedDestId,
+        });
+      } else if (stellarStableSwap) {
+        quote = await stellarSwapsApi.quote({
+          source_account_id: sourceId,
+          destination_account_id: selectedDestId,
+          amount,
+        });
+      } else {
+        quote = await conversionsApi.quote({
+          source_account_id: sourceId,
+          destination_account_id: selectedDestId,
+          amount,
+        });
+      }
       setState({
         convertQuoteLoading: false,
         convertQuote: quote,
@@ -2621,64 +2642,39 @@ export default function DashboardApp(props: Props = {}) {
   const acceptConvertQuote = async () => {
     const quote = state.convertQuote;
     if (!quote?.quote_id || state.quoteSeconds <= 0) return;
-    const bridgeId = resolveUsdcBridgeId();
-    const finalFiatId = state.convertDestAccountId;
+    const ledgerFiatFx = state.convertMode === "fiat_to_fiat";
     const stellarStableSwap = state.convertMode === "stable_to_stable";
     setState({ convertAccepting: true, convertError: "" });
     try {
-      const accepted = stellarStableSwap
-        ? await stellarSwapsApi.confirm(quote.quote_id)
-        : await conversionsApi.accept(quote.quote_id);
+      let accepted: ConversionOut;
+      if (ledgerFiatFx) {
+        const sourceId = state.convertSourceAccountId;
+        const fiatSource =
+          (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === sourceId) ||
+          (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === sourceId);
+        const entityId = String(fiatSource?.entity_id || "").trim();
+        if (!entityId) {
+          throw new Error("Couldn't resolve the business entity for this fiat account.");
+        }
+        const result = await ledgerConversionsApi.confirm(entityId, sourceId, {
+          preview_token: quote.quote_id,
+        });
+        accepted = ledgerResultToConversionOut(result, quote);
+      } else if (stellarStableSwap) {
+        accepted = await stellarSwapsApi.confirm(quote.quote_id);
+      } else {
+        accepted = await conversionsApi.accept(quote.quote_id);
+      }
       queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
       queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
 
-      // EUR↔USD two-hop: after hop 1 (fiat→USDC), quote hop 2 (USDC→other fiat).
-      if (
-        state.convertMode === "fiat_to_fiat" &&
-        state.convertHop === 1 &&
-        bridgeId &&
-        finalFiatId
-      ) {
-        const hop2Amount = accepted.destination_amount || quote.destination_amount;
-        if (!hop2Amount) {
-          throw new Error("First hop settled but no USDC amount returned for hop 2.");
-        }
-        // Hop 1 has settled — the funds are in the USDC bridge account. Pin the
-        // flow to hop 2 *before* quoting, so a failed quote leaves a retryable
-        // state instead of one that re-accepts the spent hop-1 quote_id.
-        setState({
-          convertHop: 2,
-          convertBridgeUsdcId: bridgeId,
-          convertSourceAccountId: bridgeId,
-          convertDestAccountId: finalFiatId,
-          convertQuote: null,
-          convertAmount: String(hop2Amount),
-        });
-        const hop2 = await conversionsApi.quote({
-          source_account_id: bridgeId,
-          destination_account_id: finalFiatId,
-          amount: String(hop2Amount),
-        });
-        setState({
-          convertAccepting: false,
-          convertHop: 2,
-          convertBridgeUsdcId: bridgeId,
-          convertSourceAccountId: bridgeId,
-          convertDestAccountId: finalFiatId,
-          convertQuote: hop2,
-          convertAmount: String(hop2Amount),
-          quoteSeconds: secondsUntilExpiry(hop2.expires_at) || 120,
-          convertError: "",
-        });
-        return;
-      }
-
       setState({
         convertAccepting: false,
         swapAccepted: true,
         convertQuote: accepted,
+        convertHop: 1,
       });
     } catch (err) {
       setState({
@@ -5112,33 +5108,43 @@ export default function DashboardApp(props: Props = {}) {
       balanceAmount: parseBalanceNumber(a.balance),
     }));
   const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
-  const convertBridgeUsdcId = s.convertBridgeUsdcId || usdcConvertAccounts[0]?.id || "";
   const convertSourceAccounts =
     convertMode === "stable_to_stable"
       ? stellarSwapSourceAccounts
-      :
-    convertMode === "stable_to_fiat" || (convertMode === "fiat_to_fiat" && s.convertHop === 2)
-      ? convertMode === "fiat_to_fiat"
-        ? usdcConvertAccounts
-        : stableConvertAccounts
-      : fiatConvertAccounts;
-  // Fiat↔fiat hop 1: pick final fiat dest in the UI; quote uses USDC under the hood.
+      : convertMode === "stable_to_fiat"
+        ? stableConvertAccounts
+        : fiatConvertAccounts;
+  const convertSourceCurrency =
+    convertSourceAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
+    fiatConvertAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
+    "";
+  // Fiat↔fiat: direct ledger FX between different currencies (Aggregator conversions).
   const convertDestAccounts =
     convertMode === "stable_to_stable"
       ? stellarSwapDestAccounts.filter((a) => a.id !== s.convertSourceAccountId)
       : convertMode === "fiat_to_stable"
       ? stableConvertAccounts
-      : convertMode === "fiat_to_fiat" && s.convertHop === 1
-        ? fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId)
+      : convertMode === "fiat_to_fiat"
+        ? filterCrossCurrencyFiatAccounts(
+            fiatConvertAccounts,
+            convertSourceCurrency,
+            s.convertSourceAccountId,
+          )
         : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
+  const convertDestCurrency =
+    convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
+    fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
+    "";
+  const convertPathLabel =
+    convertMode === "fiat_to_fiat" && convertSourceCurrency && convertDestCurrency
+      ? `${convertSourceCurrency} → ${convertDestCurrency}`
+      : null;
   const convertHopLabel =
     convertMode === "stable_to_stable"
       ? "Stellar allowlisted stables settle into USDC."
       : convertMode === "fiat_to_fiat"
-      ? s.convertHop === 1
-        ? "Hop 1 of 2 — convert source fiat to USDC (then USDC → destination)"
-        : "Hop 2 of 2 — convert USDC to destination fiat"
-      : null;
+        ? "Ledger FX between your accounts — one quote, one confirm."
+        : null;
   const swapAccepted = s.swapAccepted;
   const cardIsFrozen = isCardFrozenStatus(cardSel?.status);
   const cardDetail: any = cardSel
@@ -6256,28 +6262,42 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 {(isConvertFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Convert">
 <ConvertFlow
   mode={convertMode}
-  onMode={(mode) => {
-    setConvertMode(mode);
-    if (mode === "fiat_to_fiat" && convertBridgeUsdcId) {
-      setState({ convertBridgeUsdcId });
-    }
-  }}
+  onMode={(mode) => setConvertMode(mode)}
   sourceAccounts={convertSourceAccounts}
   destinationAccounts={convertDestAccounts}
   sourceAccountId={s.convertSourceAccountId}
   destinationAccountId={s.convertDestAccountId}
-  onSourceAccount={(id) =>
+  onSourceAccount={(id) => {
+    const nextSrcCcy =
+      convertSourceAccounts.find((a) => a.id === id)?.currency ||
+      fiatConvertAccounts.find((a) => a.id === id)?.currency ||
+      "";
+    const destStillValid =
+      convertMode !== "fiat_to_fiat" ||
+      !nextSrcCcy ||
+      !s.convertDestAccountId ||
+      (fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
+        "") !== nextSrcCcy;
+    const replacementDest =
+      convertMode === "fiat_to_fiat" && !destStillValid
+        ? pickPreferredConvertAccountId(
+            filterCrossCurrencyFiatAccounts(fiatConvertAccounts, nextSrcCcy, id),
+            [id],
+          )
+        : "";
     setState({
       convertSourceAccountId: id,
+      ...(destStillValid
+        ? {}
+        : { convertDestAccountId: replacementDest }),
       convertQuote: null,
       convertError: "",
       swapAccepted: false,
-    })
-  }
+    });
+  }}
   onDestinationAccount={(id) =>
     setState({
       convertDestAccountId: id,
-      convertBridgeUsdcId: convertBridgeUsdcId || s.convertBridgeUsdcId,
       convertQuote: null,
       convertError: "",
       swapAccepted: false,
@@ -6291,10 +6311,13 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   acceptLoading={s.convertAccepting}
   error={s.convertError}
   hopLabel={convertHopLabel}
+  pathLabel={convertPathLabel}
   settlesViaLabel={
     convertMode === "stable_to_stable"
       ? `Stellar swap${s.convertDestAccountId ? ` · ${(convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.label || "USDC")}` : ""}`
-      : null
+      : convertMode === "fiat_to_fiat"
+        ? "Ledger FX · same customer"
+        : null
   }
   done={swapAccepted}
   doneBody={

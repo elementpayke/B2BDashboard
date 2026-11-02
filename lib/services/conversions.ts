@@ -1,10 +1,11 @@
 import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 
 /**
- * Phase 3 account conversions — EUR/GBP/USD ↔ USDC via Mboka
+ * Phase 3 ramp conversions — EUR/GBP/USD ↔ USDC via Mboka
  * `POST /v1/conversions/quote` → `POST /v1/conversions/{quote_id}/accept`.
  *
- * Fiat↔fiat (e.g. EUR→USD) is not a partner rail; run two hops via USDC.
+ * Fiat↔fiat ledger FX uses entity account conversions instead
+ * (`lib/services/ledgerConversions.ts` → Aggregator customer conversions).
  */
 
 export type ConversionOut = {
@@ -87,6 +88,66 @@ export function needsUsdcBridge(sourceCcy: string, destCcy: string): boolean {
   const s = sourceCcy.trim().toUpperCase();
   const d = destCcy.trim().toUpperCase();
   return fiat.has(s) && fiat.has(d) && s !== d;
+}
+
+export type ConvertPickAccount = {
+  id: string;
+  currency: string;
+  /** Raw available; null/undefined treated as unknown (sorted after funded). */
+  balanceAmount?: number | null;
+};
+
+/** Prefer funded accounts so Convert opens on a pair you can actually quote. */
+export function pickPreferredConvertAccountId(
+  accounts: ConvertPickAccount[],
+  excludeIds: Iterable<string> = [],
+): string {
+  const excluded = new Set(
+    [...excludeIds].map((id) => String(id || "").trim()).filter(Boolean),
+  );
+  const ranked = accounts
+    .filter((a) => a.id && !excluded.has(String(a.id)))
+    .slice()
+    .sort((a, b) => {
+      const av = typeof a.balanceAmount === "number" ? a.balanceAmount : -1;
+      const bv = typeof b.balanceAmount === "number" ? b.balanceAmount : -1;
+      return bv - av;
+    });
+  return ranked[0]?.id ? String(ranked[0].id) : "";
+}
+
+/** Fiat↔fiat destinations must differ in currency (bridge is USDC, not same-ccy book transfer). */
+export function filterCrossCurrencyFiatAccounts<T extends ConvertPickAccount>(
+  accounts: T[],
+  sourceCurrency: string | null | undefined,
+  excludeAccountId?: string | null,
+): T[] {
+  const src = String(sourceCurrency || "")
+    .trim()
+    .toUpperCase();
+  const exclude = String(excludeAccountId || "").trim();
+  return accounts.filter((a) => {
+    if (!a.id || (exclude && String(a.id) === exclude)) return false;
+    if (!src) return true;
+    return String(a.currency || "")
+      .trim()
+      .toUpperCase() !== src;
+  });
+}
+
+/** Short path copy for ledger fiat↔fiat, e.g. "EUR → USD". */
+export function describeFiatFiatPath(
+  sourceCurrency: string | null | undefined,
+  destCurrency: string | null | undefined,
+): string | null {
+  const s = String(sourceCurrency || "")
+    .trim()
+    .toUpperCase();
+  const d = String(destCurrency || "")
+    .trim()
+    .toUpperCase();
+  if (!s || !d || s === d) return null;
+  return `${s} → ${d}`;
 }
 
 export const conversionsApi = {
