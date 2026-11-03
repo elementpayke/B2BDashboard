@@ -18,8 +18,13 @@ export const STELLAR_BULK_PAYOUTS_ENABLED = true;
  * Mixed-rail bulk payouts (Stellar + mobile money in one CSV). When true, the
  * Bulk payouts tile opens PayoutBatchWizard and Transactions→Batches reads
  * from /v1/payouts. Flip false to instantly revert to Stellar-only.
+ *
+ * Off: Mboka-Backend has no /v1/payouts/batches/* route (only
+ * /v1/disbursements/stellar/{preview,confirm} is implemented — see
+ * app/routes/disbursements.py and docs/api-contract.md), so PayoutBatchWizard's
+ * preview call 404s in production. Flip back to true once that route ships.
  */
-export const MIXED_RAIL_BULK_PAYOUTS_ENABLED = true;
+export const MIXED_RAIL_BULK_PAYOUTS_ENABLED = false;
 
 export function isStellarNetworkKey(network: string | null | undefined): boolean {
   return STELLAR_NETWORK_KEYS.has((network || "").trim().toUpperCase());
