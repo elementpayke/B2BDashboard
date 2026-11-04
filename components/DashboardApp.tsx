@@ -280,7 +280,17 @@ import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatementsPanel from "@/components/reports/StatementsPanel";
-import InvoicesScreen from "@/components/invoices/InvoicesScreen";
+import dynamic from "next/dynamic";
+import InvoicesErrorBoundary from "@/components/invoices/InvoicesErrorBoundary";
+
+const InvoicesScreen = dynamic(() => import("@/components/invoices/InvoicesScreen"), {
+  ssr: false,
+  loading: () => (
+    <div className="ep-panel ep-invoices-empty">
+      <p className="ep-invoices-muted">Loading invoices…</p>
+    </div>
+  ),
+});
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -5676,7 +5686,9 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" className="ep-invoices-shell">
+<InvoicesErrorBoundary>
 <InvoicesScreen />
+</InvoicesErrorBoundary>
 </div>
 </>) : null}
 

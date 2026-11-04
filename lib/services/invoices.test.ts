@@ -4,6 +4,7 @@ import {
   buildCreatePayloadFromWizard,
   buildSimpleDraftPayload,
   formatInvoiceAmount,
+  formatMoneyAmount,
   mapInvoiceToListRow,
   resolveUiStatus,
   shareMessage,
@@ -49,6 +50,11 @@ describe("invoices mappers", () => {
 
   it("formats amounts with two decimals", () => {
     expect(formatInvoiceAmount(2500, "USD")).toBe("2,500.00 USD");
+  });
+
+  it("formatMoneyAmount does not throw for USDC summary currency", () => {
+    expect(() => formatMoneyAmount(100, "USDC")).not.toThrow();
+    expect(formatMoneyAmount(100, "USDC")).toMatch(/100/);
   });
 
   it("summarizeInvoices aggregates from list rows", () => {
