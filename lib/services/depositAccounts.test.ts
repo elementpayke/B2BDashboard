@@ -500,6 +500,27 @@ describe("buildDepositAccountDetailSections", () => {
     expect(settlement?.rows.some((r) => r.label === "Reference")).toBe(true);
   });
 
+  it("splits ZAR from flat bootstrap fields when domestic/international are absent", () => {
+    const account: DepositAccount = {
+      currency: "ZAR",
+      status: "active",
+      account_number: "63221650476",
+      bank_code: "250655",
+      bic: "FIRNZAJJ",
+      bank_name: "FirstRand Bank",
+      reference: "0014181033",
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    expect(sections.map((s) => s.title)).toEqual([
+      "Domestic transfer",
+      "International wire",
+      "Settlement",
+    ]);
+    expect(sections[0]?.rows.some((r) => r.label === "Branch code")).toBe(true);
+    expect(sections[1]?.rows.some((r) => r.label === "SWIFT/BIC")).toBe(true);
+  });
+
   it("keeps a single Bank details section for EUR/IBAN accounts", () => {
     const account: DepositAccount = {
       currency: "EUR",
