@@ -26,6 +26,11 @@ export async function POST(request: NextRequest) {
   if (parsed.ok === false) {
     return jsonError(400, parsed.message, session);
   }
-  const created = await createInvoiceCustomer(session.businessId, parsed.value);
-  return jsonSuccess(created, { status: 201, message: "Created", session });
+  try {
+    const created = await createInvoiceCustomer(session.businessId, parsed.value);
+    return jsonSuccess(created, { status: 201, message: "Created", session });
+  } catch (err) {
+    console.error("[invoice-customers] POST failed:", err);
+    return jsonError(503, "Could not save customer. Try again.", session);
+  }
 }
