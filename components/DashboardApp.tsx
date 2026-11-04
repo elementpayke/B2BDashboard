@@ -5675,7 +5675,7 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
-<InvoicesScreen canWrite={meQuery.data?.role !== "viewer"} />
+<InvoicesScreen />
 </>) : null}
 
 {(isReports) ? (<>
