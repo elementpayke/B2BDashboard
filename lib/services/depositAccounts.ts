@@ -355,6 +355,43 @@ export function mergeDepositAccount(
   return merged;
 }
 
+/** Apply ``POST …/sync`` result onto cached account rows (Refresh must not drop enrich fields). */
+const SYNC_OVERLAY_NULLABLE: (keyof DepositAccount)[] = [
+  "reference",
+  "deposit_disclaimer",
+  "deposit_reference_required",
+  "domestic",
+  "international",
+  "instructions",
+];
+
+function mergeSyncDepositAccount(stub: DepositAccount, synced: DepositAccount): DepositAccount {
+  const merged = mergeDepositAccount(stub, synced) ?? synced;
+  for (const key of SYNC_OVERLAY_NULLABLE) {
+    if (Object.prototype.hasOwnProperty.call(synced, key) && synced[key] === null) {
+      (merged as Record<string, unknown>)[key as string] = null;
+    }
+  }
+  return merged;
+}
+
+export function applySyncedDepositAccount(
+  accounts: DepositAccount[] | undefined,
+  accountId: string,
+  synced: DepositAccount,
+): DepositAccount[] {
+  const id = String(accountId).trim();
+  if (!id) return accounts ?? [];
+  if (!accounts?.length) return [synced];
+  let found = false;
+  const next = accounts.map((row) => {
+    if (String(row.id ?? "").trim() !== id) return row;
+    found = true;
+    return mergeSyncDepositAccount(row, synced);
+  });
+  return found ? next : [...next, synced];
+}
+
 export type DepositAccountListResult = {
   accounts: DepositAccount[];
   /** Present once Mboka soft-fails KYB on the list endpoint (HTTP 200). */
