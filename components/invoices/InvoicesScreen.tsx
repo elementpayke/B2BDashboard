@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import CreateInvoiceModal from "./CreateInvoiceModal";
+import InvoiceBrandingPanel from "./InvoiceBrandingPanel";
 import ShareInvoiceSheet from "./ShareInvoiceSheet";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createInvoiceCustomer, fetchInvoiceCustomers } from "@/lib/services/invoiceCustomersApi";
@@ -111,6 +112,8 @@ export default function InvoicesScreen() {
   const [shareInvoice, setShareInvoice] = useState<Invoice | null>(null);
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [menuId, setMenuId] = useState<number | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["invoices", statusFilter, methodFilter],
@@ -176,13 +179,21 @@ export default function InvoicesScreen() {
   }
 
   async function downloadPdf(id: number) {
-    const { blob, filename } = await invoicesApi.downloadPdf(id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    setDownloadError(null);
+    setDownloadingId(id);
+    try {
+      const { blob, filename } = await invoicesApi.downloadPdf(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : "Could not download PDF");
+    } finally {
+      setDownloadingId(null);
+    }
   }
 
   if (selectedId != null && selected) {
@@ -212,8 +223,13 @@ export default function InvoicesScreen() {
           </p>
           <MethodChips methods={row.methods} />
           <div className="ep-invoices-detail-actions">
-            <button type="button" className="ep-invoices-btn ep-invoices-btn--secondary" onClick={() => void downloadPdf(selected.id)}>
-              Download PDF
+            <button
+              type="button"
+              className="ep-invoices-btn ep-invoices-btn--secondary"
+              disabled={downloadingId === selected.id}
+              onClick={() => void downloadPdf(selected.id)}
+            >
+              {downloadingId === selected.id ? "Preparing PDF…" : "Download PDF"}
             </button>
             <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setShareInvoice(selected)}>
               Share invoice
@@ -276,6 +292,14 @@ export default function InvoicesScreen() {
           </div>
         ))}
       </div>
+
+      <InvoiceBrandingPanel />
+
+      {downloadError ? (
+        <p className="ep-invoices-error" role="alert">
+          {downloadError}
+        </p>
+      ) : null}
 
       <div className="ep-statements__toolbar ep-invoices__toolbar">
         <div className="ep-invoices-toolbar ep-statements__filters">

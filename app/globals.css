@@ -1678,6 +1678,85 @@ select option {
   padding: 6px 0 10px;
 }
 
+.ep-invoices-branding {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ep-invoices-branding__toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 14px 18px;
+  cursor: pointer;
+  text-align: left;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ep-invoices-branding__body {
+  padding: 0 18px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ep-invoices-branding__field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.ep-invoices-branding__field input,
+.ep-invoices-branding__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--input-border, var(--border));
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.ep-invoices-branding__logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.ep-invoices-branding__logo-preview {
+  width: 120px;
+  height: 48px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  padding: 6px;
+}
+
+.ep-invoices-branding__logo-placeholder {
+  width: 120px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.ep-invoices-branding__logo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .ep-invoices-payment-row {
   display: flex;
   justify-content: space-between;
