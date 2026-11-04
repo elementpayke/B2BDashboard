@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySyncedDepositAccount,
   buildCreateBankAccountPayload,
   buildDepositAccountDetailRows,
   buildDepositAccountDetailSections,
@@ -686,6 +687,27 @@ describe("formatBankAddress", () => {
   it("returns null when the partner sent no address text", () => {
     expect(formatBankAddress(null)).toBeNull();
     expect(formatBankAddress({})).toBeNull();
+  });
+});
+
+describe("applySyncedDepositAccount", () => {
+  it("overlays sync payload onto the matching cached row", () => {
+    const stub: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      bic: "FIRNZAJJ",
+    };
+    const synced: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: "0017068033",
+      deposit_disclaimer: "Include 0017068033 in the payment reference.",
+    };
+    expect(applySyncedDepositAccount([stub], "81", synced)).toMatchObject([
+      { reference: "0017068033", bic: "FIRNZAJJ" },
+    ]);
   });
 });
 

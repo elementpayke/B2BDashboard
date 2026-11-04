@@ -50,7 +50,7 @@ import {
 } from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
 import { authApi, type AuthMe } from "@/lib/services/auth";
-import { bootstrapApi } from "@/lib/services/bootstrap";
+import { bootstrapApi, type DashboardBootstrap } from "@/lib/services/bootstrap";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import {
   teamApi,
@@ -68,6 +68,7 @@ import {
   buildDepositAccountDetailRows,
   buildDepositAccountDetailSections,
   mergeDepositAccount,
+  applySyncedDepositAccount,
   resolveDepositDisclaimer,
   currencyIso,
   currencyLabel,
@@ -78,6 +79,7 @@ import {
   networksForStablecoin,
   isClosedDepositStatus,
   isCloseableDepositAccount,
+  type DepositAccount,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -3329,9 +3331,23 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const refreshDepositAccount = async (accountId: string) => {
-    await depositAccountsApi.sync(accountId);
-    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+    const synced = await depositAccountsApi.sync(accountId);
+    queryClient.setQueryData<DashboardBootstrap | undefined>(
+      ["dashboard-bootstrap"],
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              fiatAccounts: applySyncedDepositAccount(prev.fiatAccounts, accountId, synced),
+            }
+          : prev,
+    );
+    queryClient.setQueryData<{ accounts: DepositAccount[] } | undefined>(
+      ["deposit-accounts"],
+      (prev) => ({
+        accounts: applySyncedDepositAccount(prev?.accounts, accountId, synced),
+      }),
+    );
   };
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
