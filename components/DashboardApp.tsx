@@ -3444,7 +3444,7 @@ export default function DashboardApp(props: Props = {}) {
       accountDetail: ["Account", "Balance, details, and activity for this account"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
-      invoices: ["Invoices", "Request and track incoming payments"],
+      invoices: ["Invoices", "Create and manage payment requests across every payment method"],
       reports: ["Statements", "Download period statements for reconcile and books"],
       verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
@@ -5675,7 +5675,9 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
+<div data-screen-label="Invoices" className="ep-invoices-shell">
 <InvoicesScreen />
+</div>
 </>) : null}
 
 {(isReports) ? (<>

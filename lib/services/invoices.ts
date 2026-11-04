@@ -149,6 +149,48 @@ export function resolveUiStatus(inv: Invoice): UiInvoiceStatus {
   return "pending";
 }
 
+function invoiceAmount(inv: Invoice): number {
+  const payload: DraftPayload = inv.payload ?? { currency: "USD", line_items: [] };
+  const raw =
+    inv.expected_amount ??
+    payload.amount ??
+    lineItemsTotal(payload.line_items as LineItem[]);
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Client-side fallback when `/v1/invoices/summary` is unavailable on older API builds. */
+export function summarizeInvoices(items: Invoice[]): InvoiceSummary {
+  let totalInvoiced = 0;
+  let totalPaid = 0;
+  let totalPending = 0;
+  let totalOverdue = 0;
+  let currency = "USD";
+  for (const inv of items) {
+    const payload = inv.payload ?? { currency: "USD", line_items: [] };
+    currency = payload.currency || currency;
+    const amt = invoiceAmount(inv);
+    if (amt <= 0) continue;
+    totalInvoiced += amt;
+    const received = Number(inv.amount_received ?? 0);
+    const ui = resolveUiStatus(inv);
+    if (ui === "paid") {
+      totalPaid += amt;
+    } else if (ui === "overdue") {
+      totalOverdue += Math.max(0, amt - received);
+    } else if (ui === "pending" || ui === "partially_paid") {
+      totalPending += Math.max(0, amt - received);
+    }
+  }
+  return {
+    total_invoiced: String(totalInvoiced),
+    total_paid: String(totalPaid),
+    total_pending: String(totalPending),
+    total_overdue: String(totalOverdue),
+    currency,
+  };
+}
+
 export function mapInvoiceToListRow(inv: Invoice): InvoiceListRow {
   const payload: DraftPayload = inv.payload ?? { currency: "USD", line_items: [] };
   const currency = payload.currency || "USD";

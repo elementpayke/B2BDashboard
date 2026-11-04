@@ -7,6 +7,7 @@ import {
   mapInvoiceToListRow,
   resolveUiStatus,
   shareMessage,
+  summarizeInvoices,
 } from "./invoices";
 
 describe("invoices mappers", () => {
@@ -48,6 +49,33 @@ describe("invoices mappers", () => {
 
   it("formats amounts with two decimals", () => {
     expect(formatInvoiceAmount(2500, "USD")).toBe("2,500.00 USD");
+  });
+
+  it("summarizeInvoices aggregates from list rows", () => {
+    const base = {
+      business_id: 1,
+      draft_id: null,
+      send_via: null,
+      sent_at: null,
+      paid_at: null,
+      public_token: null,
+      created_at: null,
+      updated_at: null,
+      payload: {
+        currency: "USD",
+        client_name: "Acme",
+        amount: "100",
+        methods: ["usdc"] as const,
+        line_items: [],
+      },
+    };
+    const summary = summarizeInvoices([
+      { ...base, id: 1, invoice_number: "inv-1", status: "pending", ui_status: "pending" },
+      { ...base, id: 2, invoice_number: "inv-2", status: "paid", ui_status: "paid" },
+    ]);
+    expect(summary.total_invoiced).toBe("200");
+    expect(summary.total_paid).toBe("100");
+    expect(summary.total_pending).toBe("100");
   });
 
   it("buildCreatePayloadFromWizard sets stellar when usdc enabled", () => {
