@@ -10,6 +10,8 @@ import {
   invoicesApi,
   mapInvoiceToListRow,
   summarizeInvoices,
+  formatMoneyAmount,
+  normalizeInvoiceDisplayCurrency,
   type DraftPayload,
   type Invoice,
   type InvoiceMethod,
@@ -50,7 +52,7 @@ function formatStat(value: string | undefined, currency: string, loading: boolea
   if (value == null) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("en-US", { style: "currency", currency: currency || "USD" });
+  return formatMoneyAmount(n, currency);
 }
 
 function InvoiceRowMenu({
@@ -166,7 +168,7 @@ export default function InvoicesScreen() {
     summaryQuery.data ??
     (listQuery.data?.items?.length ? summarizeInvoices(listQuery.data.items) : undefined);
 
-  const summaryCurrency = summary?.currency || "USD";
+  const summaryCurrency = normalizeInvoiceDisplayCurrency(summary?.currency);
 
   async function refreshAll() {
     await qc.invalidateQueries({ queryKey: ["invoices"] });

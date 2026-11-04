@@ -132,6 +132,23 @@ export const FORBIDDEN_INVOICE_UI_STRINGS = [
   "Copy payment link",
 ] as const;
 
+const INVOICE_FIAT_CURRENCIES = new Set(["USD", "EUR", "KES", "GBP"]);
+
+/** ISO 4217 codes only — USDC/USDT must not be passed to Intl currency formatters. */
+export function normalizeInvoiceDisplayCurrency(currency: string | undefined | null): string {
+  const code = (currency || "USD").toUpperCase();
+  return INVOICE_FIAT_CURRENCIES.has(code) ? code : "USD";
+}
+
+export function formatMoneyAmount(amount: number, currency: string): string {
+  const ccy = normalizeInvoiceDisplayCurrency(currency);
+  try {
+    return amount.toLocaleString("en-US", { style: "currency", currency: ccy });
+  } catch {
+    return `${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  }
+}
+
 export function formatInvoiceAmount(amount: string | number, currency: string): string {
   const n = Number(amount);
   if (!Number.isFinite(n)) return `0.00 ${currency}`;
@@ -187,7 +204,7 @@ export function summarizeInvoices(items: Invoice[]): InvoiceSummary {
     total_paid: String(totalPaid),
     total_pending: String(totalPending),
     total_overdue: String(totalOverdue),
-    currency,
+    currency: normalizeInvoiceDisplayCurrency(currency),
   };
 }
 
