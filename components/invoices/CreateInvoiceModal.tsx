@@ -370,7 +370,7 @@ export default function CreateInvoiceModal({
                 Select at least one payment method so your customer has a way to pay.
               </p>
             ) : null}
-            <p className="ep-invoices-field-label">Settlement preference</p>
+            <p className="ep-invoices-field-label ep-invoices-field-label--spaced">Settlement preference</p>
             {SETTLEMENT_OPTIONS.map((opt) => (
               <label key={opt.value} className="ep-invoices-settlement-card">
                 <input

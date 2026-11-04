@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { shareMessage, invoicesApi, type Invoice } from "@/lib/services/invoices";
 
 type ShareInvoiceSheetProps = {
@@ -26,17 +27,27 @@ const CHANNELS = [
 ] as const;
 
 export default function ShareInvoiceSheet({ invoice, onClose }: ShareInvoiceSheetProps) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const message = shareMessage(invoice);
   const title = `Share ${invoice.invoice_number.toUpperCase()}`;
 
   async function getPdf() {
-    const { blob, filename } = await invoicesApi.downloadPdf(invoice.id);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    setPdfError(null);
+    setPdfBusy(true);
+    try {
+      const { blob, filename } = await invoicesApi.downloadPdf(invoice.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : "Could not download PDF");
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   return (
@@ -57,9 +68,19 @@ export default function ShareInvoiceSheet({ invoice, onClose }: ShareInvoiceShee
         <p className="ep-invoices-share__info">
           Payment details are on the invoice PDF. Attach it when you send.
         </p>
-        <button type="button" className="ep-invoices-btn ep-invoices-btn--secondary" onClick={() => void getPdf()}>
-          Get PDF
+        <button
+          type="button"
+          className="ep-invoices-btn ep-invoices-btn--secondary"
+          disabled={pdfBusy}
+          onClick={() => void getPdf()}
+        >
+          {pdfBusy ? "Preparing PDF…" : "Get PDF"}
         </button>
+        {pdfError ? (
+          <p className="ep-invoices-error" role="alert">
+            {pdfError}
+          </p>
+        ) : null}
         <p className="ep-invoices-share__via-label">Send via</p>
         <div className="ep-invoices-share__grid">
           {CHANNELS.map((ch) => (
@@ -74,7 +95,12 @@ export default function ShareInvoiceSheet({ invoice, onClose }: ShareInvoiceShee
             </a>
           ))}
         </div>
-        <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => void getPdf()}>
+        <button
+          type="button"
+          className="ep-invoices-btn ep-invoices-btn--ghost"
+          disabled={pdfBusy}
+          onClick={() => void getPdf()}
+        >
           Open printable invoice
         </button>
       </div>
