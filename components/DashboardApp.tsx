@@ -80,6 +80,7 @@ import {
   isClosedDepositStatus,
   isCloseableDepositAccount,
   type DepositAccount,
+  type DepositAccountListResult,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -3342,9 +3343,10 @@ export default function DashboardApp(props: Props = {}) {
             }
           : prev,
     );
-    queryClient.setQueryData<{ accounts: DepositAccount[] } | undefined>(
+    queryClient.setQueryData<DepositAccountListResult | undefined>(
       ["deposit-accounts"],
       (prev) => ({
+        ...(prev ?? { accounts: [] }),
         accounts: applySyncedDepositAccount(prev?.accounts, accountId, synced),
       }),
     );
