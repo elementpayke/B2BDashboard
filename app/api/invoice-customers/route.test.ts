@@ -42,6 +42,18 @@ describe("/api/invoice-customers", () => {
     expect(store.listInvoiceCustomers).toHaveBeenCalledWith(42);
   });
 
+  it("POST returns 503 when store throws", async () => {
+    store.createInvoiceCustomer.mockRejectedValueOnce(new Error("KV set failed"));
+    const res = await POST(
+      new NextRequest(`${ORIGIN}/api/invoice-customers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Jane", email: "j@example.com" }),
+      }),
+    );
+    expect(res.status).toBe(503);
+  });
+
   it("POST creates a customer and returns JSON envelope", async () => {
     const res = await POST(
       new NextRequest(`${ORIGIN}/api/invoice-customers`, {

@@ -1038,9 +1038,9 @@ select option {
 
 .ep-invoices-shell,
 .ep-invoices {
-  max-width: 1120px;
   width: 100%;
-  margin: 0 auto;
+  max-width: none;
+  min-width: 0;
 }
 
 .ep-invoices-shell {
@@ -1051,6 +1051,19 @@ select option {
 
 .ep-invoices__stats {
   margin-bottom: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 900px) {
+  .ep-invoices__stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .ep-invoices__stats {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ep-invoices__toolbar {
@@ -1061,6 +1074,19 @@ select option {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.ep-invoices-list.ep-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ep-invoices-list .ep-activity__row {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
 
 .ep-invoices-list__item {
@@ -1172,6 +1198,36 @@ select option {
   color: var(--muted);
   font-size: 13px;
   margin: 0 0 10px;
+}
+
+.ep-invoices-detail-head,
+.ep-invoices-section {
+  width: 100%;
+}
+
+.ep-invoices-detail-head__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ep-invoices-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ep-invoices-back {
+  border: none;
+  background: transparent;
+  color: var(--indigo, #3b2ed3);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 12px;
+  font-size: 13px;
 }
 
 .ep-invoices-inline-actions {
