@@ -3333,6 +3333,8 @@ export default function DashboardApp(props: Props = {}) {
   };
   const refreshDepositAccount = async (accountId: string) => {
     const synced = await depositAccountsApi.sync(accountId);
+    await queryClient.cancelQueries({ queryKey: ["dashboard-bootstrap"] });
+    await queryClient.cancelQueries({ queryKey: ["deposit-accounts"] });
     queryClient.setQueryData<DashboardBootstrap | undefined>(
       ["dashboard-bootstrap"],
       (prev) =>

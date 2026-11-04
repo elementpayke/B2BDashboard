@@ -356,6 +356,25 @@ export function mergeDepositAccount(
 }
 
 /** Apply ``POST …/sync`` result onto cached account rows (Refresh must not drop enrich fields). */
+const SYNC_OVERLAY_NULLABLE: (keyof DepositAccount)[] = [
+  "reference",
+  "deposit_disclaimer",
+  "deposit_reference_required",
+  "domestic",
+  "international",
+  "instructions",
+];
+
+function mergeSyncDepositAccount(stub: DepositAccount, synced: DepositAccount): DepositAccount {
+  const merged = mergeDepositAccount(stub, synced) ?? synced;
+  for (const key of SYNC_OVERLAY_NULLABLE) {
+    if (Object.prototype.hasOwnProperty.call(synced, key) && synced[key] === null) {
+      (merged as Record<string, unknown>)[key as string] = null;
+    }
+  }
+  return merged;
+}
+
 export function applySyncedDepositAccount(
   accounts: DepositAccount[] | undefined,
   accountId: string,
@@ -368,7 +387,7 @@ export function applySyncedDepositAccount(
   const next = accounts.map((row) => {
     if (String(row.id ?? "").trim() !== id) return row;
     found = true;
-    return mergeDepositAccount(row, synced) ?? synced;
+    return mergeSyncDepositAccount(row, synced);
   });
   return found ? next : [...next, synced];
 }

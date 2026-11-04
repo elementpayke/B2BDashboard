@@ -709,6 +709,22 @@ describe("applySyncedDepositAccount", () => {
       { reference: "0017068033", bic: "FIRNZAJJ" },
     ]);
   });
+
+  it("clears nullable sync fields when the API returns explicit null", () => {
+    const stub: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: "0017068033",
+    };
+    const synced: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: null,
+    };
+    expect(applySyncedDepositAccount([stub], "81", synced)[0]?.reference).toBeNull();
+  });
 });
 
 describe("mergeDepositAccount", () => {
