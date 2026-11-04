@@ -281,8 +281,6 @@ import ChoicePicker from "@/components/ui/ChoicePicker";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatementsPanel from "@/components/reports/StatementsPanel";
 import InvoicesScreen from "@/components/invoices/InvoicesScreen";
-import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
-import CreateStellarInvoiceModal from "@/components/invoices/CreateStellarInvoiceModal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -5677,12 +5675,7 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
-<div data-screen-label="Invoices" className="ep-invoices">
-<InvoicesScreen
-  onOpenInvoice={openInvoiceDetail}
-  onCreateInvoice={() => setState({ modal: "invoiceCreate" })}
-/>
-</div>
+<InvoicesScreen canWrite={meQuery.data?.role !== "viewer"} />
 </>) : null}
 
 {(isReports) ? (<>
@@ -6393,17 +6386,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {(isModalTxDetail) ? (<>
 <TxDetailModal txDetail={txDetail} isLoading={txDetailQuery.isLoading} liveStatus={txLiveStatus} />
-</>) : null}
-
-{(isModalInvoiceDetail && s.selectedInvoiceId) ? (<>
-<InvoiceDetailModal invoiceId={s.selectedInvoiceId} onClose={closeModal} />
-</>) : null}
-
-{(isModalInvoiceCreate) ? (<>
-<CreateStellarInvoiceModal
-  onClose={closeModal}
-  onCreated={(invoiceId) => setState({ modal: "invoiceDetail", selectedInvoiceId: invoiceId })}
-/>
 </>) : null}
 
 {(isModalFundChooser && acctDetail) ? (<>
