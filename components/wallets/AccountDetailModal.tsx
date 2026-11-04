@@ -30,6 +30,8 @@ export type AccountDetailModalProps = {
     showConvert?: boolean;
     /** Client-side bank letter download (fiat coordinates). */
     showDownloadLetter?: boolean;
+    deposit_reference_required?: boolean;
+    deposit_disclaimer?: string | null;
     /** Deposit-account id — set only for fiat/bank accounts. Drives the
      * Activity section; omitted entirely for stablecoin accounts, which
      * have no `/v1/iban/accounts/{id}/activity` equivalent. */
@@ -95,6 +97,7 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
  */
 const LETTER_SECTION_TITLES: Record<string, string> = {
   "domestic transfer (ach/wire)": "Instructions For Domestic Transfer",
+  "domestic transfer": "Instructions For Domestic Transfer",
   "international wire": "Instructions For International Transfer",
 };
 
@@ -260,6 +263,13 @@ export default function AccountDetailModal({
             {acctDetail.instructions ? ` — ${acctDetail.instructions}` : "."} This is not the
             African momo/bank OnRamp top-up flow.
           </p>
+        </div>
+      ) : null}
+
+      {acctDetail.deposit_disclaimer ? (
+        <div className="ep-wallets-detail__fund-hint" role="note">
+          <div className="ep-wallets-detail__fund-hint-title">Payment reference required</div>
+          <p className="ep-wallets-detail__fund-hint-body">{acctDetail.deposit_disclaimer}</p>
         </div>
       ) : null}
 

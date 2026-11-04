@@ -3751,6 +3751,8 @@ export default function DashboardApp(props: Props = {}) {
             rows,
             sections,
             instructions: selectedDepositAccount.instructions,
+            deposit_reference_required: selectedDepositAccount.deposit_reference_required === true,
+            deposit_disclaimer: selectedDepositAccount.deposit_disclaimer ?? null,
             railLabel: fiatRailForCurrency(view.currency),
             showConvert: true,
             showDownloadLetter: rows.length > 0,

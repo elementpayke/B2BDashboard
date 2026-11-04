@@ -273,6 +273,10 @@ export type DepositAccount = {
    * API today (only a boolean opt-out flag exists there) — this is Mboka's
    * own fee-schedule config once it ships. */
   monthly_maintenance_fee?: { amount: string; currency: string } | null;
+  deposit_reference_required?: boolean | null;
+  deposit_disclaimer?: string | null;
+  domestic?: Record<string, unknown> | null;
+  international?: Record<string, unknown> | null;
 };
 
 function nonEmpty(value: unknown): string | null {
@@ -337,6 +341,14 @@ export function mergeDepositAccount(
   (Object.keys(overlay) as (keyof DepositAccount)[]).forEach((key) => {
     const next = overlay[key];
     if (next == null) return;
+    if (typeof next === "boolean") {
+      (merged as Record<string, unknown>)[key as string] = next;
+      return;
+    }
+    if (typeof next === "object" && !Array.isArray(next)) {
+      (merged as Record<string, unknown>)[key as string] = next;
+      return;
+    }
     if (typeof next === "string" && !next.trim()) return;
     (merged as Record<string, unknown>)[key as string] = next;
   });
@@ -545,6 +557,36 @@ export type DepositAccountDetailSection = {
   rows: DepositAccountDetailRow[];
 };
 
+function depositRowsFromRailGroup(
+  group: Record<string, unknown>,
+  currency: string,
+): DepositAccountDetailRow[] {
+  const rows: DepositAccountDetailRow[] = [];
+  const accountNumber = nonEmpty(group.account_number as string | undefined);
+  const routingNumber = nonEmpty(group.routing_number as string | undefined);
+  const sortCode = nonEmpty(group.sort_code as string | undefined);
+  const bankCode = nonEmpty(group.bank_code as string | undefined);
+  const swiftBic =
+    nonEmpty(group.swift_bic as string | undefined) || nonEmpty(group.bic as string | undefined);
+  const bankName = nonEmpty(group.bank_name as string | undefined);
+  const bankAddress = formatBankAddress(group.bank_address as Record<string, unknown> | null);
+  if (accountNumber) {
+    rows.push({ label: "Account number", value: accountNumber, copyValue: accountNumber });
+  }
+  if (routingNumber) {
+    rows.push({ label: "Routing number", value: routingNumber, copyValue: routingNumber });
+  }
+  if (sortCode) rows.push({ label: "Sort code", value: sortCode, copyValue: sortCode });
+  if (bankCode) {
+    const label = currency.trim().toUpperCase() === "ZAR" ? "Branch code" : "Bank code";
+    rows.push({ label, value: bankCode, copyValue: bankCode });
+  }
+  if (swiftBic) rows.push({ label: "SWIFT/BIC", value: swiftBic, copyValue: swiftBic });
+  if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
+  if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+  return rows;
+}
+
 const BANK_ROW_LABEL_RE =
   /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
 
@@ -568,6 +610,26 @@ export function buildDepositAccountDetailSections(
   const bankRows = rows.filter((r) => BANK_ROW_LABEL_RE.test(r.label));
   const otherRows = rows.filter((r) => !BANK_ROW_LABEL_RE.test(r.label));
   const sections: DepositAccountDetailSection[] = [];
+
+  const domesticGroup =
+    account.domestic && typeof account.domestic === "object" ? account.domestic : null;
+  const internationalGroup =
+    account.international && typeof account.international === "object"
+      ? account.international
+      : null;
+  if (domesticGroup && internationalGroup) {
+    const currency = account.currency || "";
+    sections.push({
+      title: "Domestic transfer",
+      rows: depositRowsFromRailGroup(domesticGroup, currency),
+    });
+    sections.push({
+      title: "International wire",
+      rows: depositRowsFromRailGroup(internationalGroup, currency),
+    });
+    if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
+    return sections;
+  }
 
   const iban = nonEmpty(account.iban);
   const bic = nonEmpty(account.bic);
