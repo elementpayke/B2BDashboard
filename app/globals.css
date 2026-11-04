@@ -1757,6 +1757,61 @@ select option {
   gap: 8px;
 }
 
+.ep-invoices-share {
+  width: min(480px, 100%);
+}
+
+.ep-invoices-share__info {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ep-invoices-share__via-label {
+  margin: 18px 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-invoices-share__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 480px) {
+  .ep-invoices-share__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ep-invoices-share__channel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--indigo-text, #3b2ed3);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.ep-invoices-share__channel:hover {
+  background: var(--indigo-tint, #eeedfb);
+  border-color: var(--indigo, #3b2ed3);
+}
+
 .ep-invoices-payment-row {
   display: flex;
   justify-content: space-between;
