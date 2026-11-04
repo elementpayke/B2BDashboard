@@ -5,13 +5,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import CreateInvoiceModal from "./CreateInvoiceModal";
 import ShareInvoiceSheet from "./ShareInvoiceSheet";
 import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
+import { readBffEnvelope } from "@/lib/bff/readEnvelope";
 import {
   invoicesApi,
   mapInvoiceToListRow,
+  summarizeInvoices,
   type DraftPayload,
   type Invoice,
   type InvoiceMethod,
   type InvoicePayment,
+  type InvoiceSummary,
 } from "@/lib/services/invoices";
 
 type InvoicesScreenProps = {
@@ -20,9 +23,9 @@ type InvoicesScreenProps = {
 
 async function fetchCustomers(): Promise<InvoiceCustomer[]> {
   const res = await fetch("/api/invoice-customers", { credentials: "same-origin" });
-  if (!res.ok) return [];
-  const json = (await res.json()) as { data?: { items: InvoiceCustomer[] } };
-  return json.data?.items ?? [];
+  const parsed = await readBffEnvelope<{ items: InvoiceCustomer[] }>(res);
+  if (!parsed.ok) return [];
+  return parsed.envelope?.data?.items ?? [];
 }
 
 function MethodChips({ methods }: { methods: InvoiceMethod[] }) {
@@ -63,7 +66,14 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
 
   const summaryQuery = useQuery({
     queryKey: ["invoices-summary"],
-    queryFn: () => invoicesApi.summary(),
+    queryFn: async (): Promise<InvoiceSummary> => {
+      try {
+        return await invoicesApi.summary();
+      } catch {
+        const list = await invoicesApi.list({ limit: 500 });
+        return summarizeInvoices(list.items);
+      }
+    },
   });
 
   const customersQuery = useQuery({
@@ -186,7 +196,9 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
     );
   }
 
-  const summary = summaryQuery.data;
+  const summary =
+    summaryQuery.data ??
+    (listQuery.data?.items?.length ? summarizeInvoices(listQuery.data.items) : undefined);
   const empty = !listQuery.isLoading && rows.length === 0;
 
   return (
@@ -255,6 +267,15 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
         </section>
       ) : (
         <section className="ep-panel ep-invoices-table-wrap">
+          <div className="ep-invoices-table-head ep-invoices-table-head--data" aria-hidden>
+            <span>Invoice</span>
+            <span>Customer</span>
+            <span>Amount</span>
+            <span>Methods</span>
+            <span>Status</span>
+            <span>Due</span>
+            <span />
+          </div>
           {rows.map((row) => (
             <div key={row.id} className="ep-invoices-table-row">
               <button type="button" className="ep-invoices-link ep-mono" onClick={() => setSelectedId(row.id)}>

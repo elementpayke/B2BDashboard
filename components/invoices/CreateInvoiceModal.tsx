@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
+import { bffErrorMessage, readBffEnvelope } from "@/lib/bff/readEnvelope";
 import {
   buildCreatePayloadFromWizard,
   formatInvoiceAmount,
@@ -114,16 +115,20 @@ export default function CreateInvoiceModal({
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, email: newEmail, country: newCountry || null }),
+      body: JSON.stringify({ name: newName.trim(), email: newEmail.trim(), country: newCountry.trim() || null }),
     });
-    if (!res.ok) {
-      const j = (await res.json()) as { message?: string };
-      throw new Error(j.message || "Could not save customer");
+    const parsed = await readBffEnvelope<InvoiceCustomer>(res);
+    if (!parsed.ok || !parsed.envelope?.data?.id) {
+      throw new Error(
+        bffErrorMessage(parsed.status, parsed.envelope, "Could not save customer"),
+      );
     }
-    const j = (await res.json()) as { data: InvoiceCustomer };
     onRefreshCustomers();
-    setCustomerId(j.data.id);
+    setCustomerId(parsed.envelope.data.id);
     setShowNewCustomer(false);
+    setNewName("");
+    setNewEmail("");
+    setNewCountry("");
   }
 
   async function submit() {
@@ -233,18 +238,20 @@ export default function CreateInvoiceModal({
                 </button>
               </div>
             ) : null}
-            <label>
-              <span className="ep-invoices-field-label">Currency</span>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="KES">KES</option>
-              </select>
-            </label>
-            <label>
-              <span className="ep-invoices-field-label">Invoice number</span>
-              <input className="ep-mono" readOnly value={invoiceNumberHint} />
-            </label>
+            <div className="ep-invoices-form-row">
+              <label>
+                <span className="ep-invoices-field-label">Currency</span>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="KES">KES</option>
+                </select>
+              </label>
+              <label>
+                <span className="ep-invoices-field-label">Invoice number</span>
+                <input className="ep-mono" readOnly value={invoiceNumberHint} />
+              </label>
+            </div>
             <label>
               <span className="ep-invoices-field-label">Due date</span>
               <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
@@ -256,8 +263,10 @@ export default function CreateInvoiceModal({
             <div className="ep-invoices-line-items">
               <input placeholder="Item name" value={lineName} onChange={(e) => setLineName(e.target.value)} />
               <input placeholder="Description (optional)" value={lineDetail} onChange={(e) => setLineDetail(e.target.value)} />
-              <input placeholder="Qty" value={lineQty} onChange={(e) => setLineQty(e.target.value)} />
-              <input placeholder="Unit price" value={lineUnit} onChange={(e) => setLineUnit(e.target.value)} />
+              <div className="ep-invoices-form-row ep-invoices-form-row--compact">
+                <input placeholder="Qty" inputMode="decimal" value={lineQty} onChange={(e) => setLineQty(e.target.value)} />
+                <input placeholder="Unit price" inputMode="decimal" value={lineUnit} onChange={(e) => setLineUnit(e.target.value)} />
+              </div>
               <button
                 type="button"
                 className="ep-invoices-btn ep-invoices-btn--dashed"
