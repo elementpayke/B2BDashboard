@@ -114,8 +114,6 @@ export default function MoreSheet({
                 <span>{item.label}</span>
                 {item.key === "reports" ? (
                   <span className="ep-more-sheet__new">New</span>
-                ) : item.key === "invoices" ? (
-                  <span className="ep-more-sheet__soon">Soon</span>
                 ) : (
                   <span aria-hidden>›</span>
                 )}

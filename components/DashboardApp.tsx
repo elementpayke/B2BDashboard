@@ -280,6 +280,9 @@ import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatementsPanel from "@/components/reports/StatementsPanel";
+import InvoicesScreen from "@/components/invoices/InvoicesScreen";
+import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
+import CreateStellarInvoiceModal from "@/components/invoices/CreateStellarInvoiceModal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
@@ -418,6 +421,7 @@ export default function DashboardApp(props: Props = {}) {
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
     selectedTxId: null as number | string | null,
+    selectedInvoiceId: null as number | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
@@ -1870,6 +1874,8 @@ export default function DashboardApp(props: Props = {}) {
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number | string) => () =>
     setState({ modal: "txDetail", selectedTxId: id });
+  const openInvoiceDetail = (id: number) =>
+    setState({ modal: "invoiceDetail", selectedInvoiceId: id });
   const openOnchainTxDetail = (payment: { txHash: string }) =>
     setState({
       modal: "txDetail",
@@ -4400,8 +4406,12 @@ export default function DashboardApp(props: Props = {}) {
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
+    invoiceDetail: "Invoice",
+    invoiceCreate: "New invoice",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
+  const isModalInvoiceDetail = s.modal === "invoiceDetail";
+  const isModalInvoiceCreate = s.modal === "invoiceCreate";
   const isModalSupport = s.modal === "support";
   const isSendFlow = s.modal === "send";
   const isDepositFlow = s.modal === "deposit";
@@ -5668,10 +5678,9 @@ export default function DashboardApp(props: Props = {}) {
 
 {(isInvoices) ? (<>
 <div data-screen-label="Invoices" className="ep-invoices">
-<ComingSoonPanel
-  featureKey="invoices"
-  title="Invoices"
-  description="Requesting and tracking incoming payments isn’t live yet. Join the waitlist and we’ll email you when it’s ready."
+<InvoicesScreen
+  onOpenInvoice={openInvoiceDetail}
+  onCreateInvoice={() => setState({ modal: "invoiceCreate" })}
 />
 </div>
 </>) : null}
@@ -6384,6 +6393,17 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {(isModalTxDetail) ? (<>
 <TxDetailModal txDetail={txDetail} isLoading={txDetailQuery.isLoading} liveStatus={txLiveStatus} />
+</>) : null}
+
+{(isModalInvoiceDetail && s.selectedInvoiceId) ? (<>
+<InvoiceDetailModal invoiceId={s.selectedInvoiceId} onClose={closeModal} />
+</>) : null}
+
+{(isModalInvoiceCreate) ? (<>
+<CreateStellarInvoiceModal
+  onClose={closeModal}
+  onCreated={(invoiceId) => setState({ modal: "invoiceDetail", selectedInvoiceId: invoiceId })}
+/>
 </>) : null}
 
 {(isModalFundChooser && acctDetail) ? (<>
