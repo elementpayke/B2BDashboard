@@ -5675,7 +5675,9 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
+<div data-screen-label="Invoices" className="ep-invoices-shell">
 <InvoicesScreen />
+</div>
 </>) : null}
 
 {(isReports) ? (<>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
-import { bffErrorMessage, readBffEnvelope } from "@/lib/bff/readEnvelope";
 import {
   buildCreatePayloadFromWizard,
   formatInvoiceAmount,
@@ -15,9 +15,9 @@ import {
 type CreateInvoiceModalProps = {
   customers: InvoiceCustomer[];
   onRefreshCustomers: () => void;
+  onSaveCustomer: (input: { name: string; email: string; country?: string | null }) => Promise<InvoiceCustomer>;
   onClose: () => void;
   onCreated: (invoice: Invoice) => void;
-  canWrite: boolean;
 };
 
 const METHOD_META: Record<
@@ -65,10 +65,12 @@ const SETTLEMENT_OPTIONS: { value: SettlementPreference; title: string; detail: 
 export default function CreateInvoiceModal({
   customers,
   onRefreshCustomers,
+  onSaveCustomer,
   onClose,
   onCreated,
-  canWrite,
 }: CreateInvoiceModalProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,20 +113,13 @@ export default function CreateInvoiceModal({
   }
 
   async function saveNewCustomer() {
-    const res = await fetch("/api/invoice-customers", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), email: newEmail.trim(), country: newCountry.trim() || null }),
+    const created = await onSaveCustomer({
+      name: newName.trim(),
+      email: newEmail.trim(),
+      country: newCountry.trim() || null,
     });
-    const parsed = await readBffEnvelope<InvoiceCustomer>(res);
-    if (!parsed.ok || !parsed.envelope?.data?.id) {
-      throw new Error(
-        bffErrorMessage(parsed.status, parsed.envelope, "Could not save customer"),
-      );
-    }
     onRefreshCustomers();
-    setCustomerId(parsed.envelope.data.id);
+    setCustomerId(created.id);
     setShowNewCustomer(false);
     setNewName("");
     setNewEmail("");
@@ -132,7 +127,7 @@ export default function CreateInvoiceModal({
   }
 
   async function submit() {
-    if (!canWrite || !selectedCustomer) return;
+    if (!selectedCustomer) return;
     setBusy(true);
     setError(null);
     try {
@@ -160,9 +155,14 @@ export default function CreateInvoiceModal({
     }
   }
 
+  function modalRoot(content: ReactNode) {
+    if (!mounted) return null;
+    return createPortal(content, document.body);
+  }
+
   if (success) {
     const n = success.payload.methods?.length ?? methods.length;
-    return (
+    return modalRoot(
       <div className="ep-invoices-modal-overlay" onClick={onClose} role="presentation">
         <div className="ep-invoices-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
           <div className="ep-invoices-success">
@@ -182,11 +182,11 @@ export default function CreateInvoiceModal({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return modalRoot(
     <div className="ep-invoices-modal-overlay" onClick={onClose} role="presentation">
       <div className="ep-invoices-modal ep-invoices-create" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="ep-invoices-modal__head">
@@ -206,38 +206,50 @@ export default function CreateInvoiceModal({
 
         {step === 1 ? (
           <div className="ep-invoices-form">
-            <label>
-              <span className="ep-invoices-field-label">Customer</span>
-              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">Select customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="ep-invoices-inline-actions">
-              <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setShowNewCustomer(true)}>
-                + Add customer
-              </button>
-            </div>
-            {showNewCustomer ? (
-              <div className="ep-invoices-new-customer">
-                <p className="ep-invoices-field-label">New customer</p>
-                <input placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                <input placeholder="Email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-                <input placeholder="Country (optional)" value={newCountry} onChange={(e) => setNewCountry(e.target.value)} />
-                <button
-                  type="button"
-                  className="ep-invoices-btn ep-invoices-btn--primary"
-                  disabled={!newName.trim() || !newEmail.trim()}
-                  onClick={() => void saveNewCustomer().catch((err) => setError(String(err)))}
-                >
-                  Save customer
+            <section className="ep-invoices-compose">
+              <h4 className="ep-invoices-compose__title">Customer</h4>
+              <label>
+                <span className="ep-invoices-field-label">Bill to</span>
+                <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                  <option value="">Select customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} · {c.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!showNewCustomer ? (
+                <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setShowNewCustomer(true)}>
+                  + Add customer
                 </button>
-              </div>
-            ) : null}
+              ) : (
+                <div className="ep-invoices-new-customer">
+                  <div className="ep-invoices-form-row">
+                    <input placeholder="Full name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                    <input placeholder="Email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+                  </div>
+                  <input placeholder="Country (optional)" value={newCountry} onChange={(e) => setNewCountry(e.target.value)} />
+                  <div className="ep-invoices-inline-actions">
+                    <button
+                      type="button"
+                      className="ep-invoices-btn ep-invoices-btn--primary"
+                      disabled={!newName.trim() || !newEmail.trim()}
+                      onClick={() =>
+                        void saveNewCustomer().catch((err) =>
+                          setError(err instanceof Error ? err.message : "Could not save customer"),
+                        )
+                      }
+                    >
+                      Save customer
+                    </button>
+                    <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setShowNewCustomer(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
             <div className="ep-invoices-form-row">
               <label>
                 <span className="ep-invoices-field-label">Currency</span>
@@ -260,41 +272,68 @@ export default function CreateInvoiceModal({
               <span className="ep-invoices-field-label">Description</span>
               <input placeholder="What is this invoice for?" value={description} onChange={(e) => setDescription(e.target.value)} />
             </label>
-            <div className="ep-invoices-line-items">
-              <input placeholder="Item name" value={lineName} onChange={(e) => setLineName(e.target.value)} />
-              <input placeholder="Description (optional)" value={lineDetail} onChange={(e) => setLineDetail(e.target.value)} />
-              <div className="ep-invoices-form-row ep-invoices-form-row--compact">
-                <input placeholder="Qty" inputMode="decimal" value={lineQty} onChange={(e) => setLineQty(e.target.value)} />
-                <input placeholder="Unit price" inputMode="decimal" value={lineUnit} onChange={(e) => setLineUnit(e.target.value)} />
-              </div>
-              <button
-                type="button"
-                className="ep-invoices-btn ep-invoices-btn--dashed"
-                onClick={() => {
-                  if (!lineName.trim() || !lineUnit.trim()) return;
-                  setItems((prev) => [
-                    ...prev,
-                    {
-                      name: lineName.trim(),
-                      detail: lineDetail.trim() || undefined,
-                      qty: Number(lineQty) || 1,
-                      unit_price: lineUnit.trim(),
-                    },
-                  ]);
-                  setLineName("");
-                  setLineDetail("");
-                  setLineQty("1");
-                  setLineUnit("");
-                }}
-              >
-                + Add item
-              </button>
-              {items.map((it, idx) => (
-                <div key={idx} className="ep-invoices-line-row ep-mono">
-                  {it.name} · {it.qty} × {it.unit_price}
+            <section className="ep-invoices-compose">
+              <h4 className="ep-invoices-compose__title">Line items</h4>
+              {items.length > 0 ? (
+                <table className="ep-invoices-items-table ep-mono">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty</th>
+                      <th>Unit</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          {it.name}
+                          {it.detail ? <span className="ep-invoices-muted"> — {it.detail}</span> : null}
+                        </td>
+                        <td>{it.qty}</td>
+                        <td>{it.unit_price}</td>
+                        <td>
+                          <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setItems((p) => p.filter((_, i) => i !== idx))}>
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+              <div className="ep-invoices-line-items">
+                <input placeholder="Item name" value={lineName} onChange={(e) => setLineName(e.target.value)} />
+                <input placeholder="Description (optional)" value={lineDetail} onChange={(e) => setLineDetail(e.target.value)} />
+                <div className="ep-invoices-form-row ep-invoices-form-row--compact">
+                  <input placeholder="Qty" inputMode="decimal" value={lineQty} onChange={(e) => setLineQty(e.target.value)} />
+                  <input placeholder="Unit price" inputMode="decimal" value={lineUnit} onChange={(e) => setLineUnit(e.target.value)} />
                 </div>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  className="ep-invoices-btn ep-invoices-btn--dashed"
+                  onClick={() => {
+                    if (!lineName.trim() || !lineUnit.trim()) return;
+                    setItems((prev) => [
+                      ...prev,
+                      {
+                        name: lineName.trim(),
+                        detail: lineDetail.trim() || undefined,
+                        qty: Number(lineQty) || 1,
+                        unit_price: lineUnit.trim(),
+                      },
+                    ]);
+                    setLineName("");
+                    setLineDetail("");
+                    setLineQty("1");
+                    setLineUnit("");
+                  }}
+                >
+                  + Add item
+                </button>
+              </div>
+            </section>
             <div className="ep-invoices-total-bar ep-mono">
               Total {formatInvoiceAmount(total, currency)}
             </div>
@@ -396,7 +435,7 @@ export default function CreateInvoiceModal({
               <button
                 type="button"
                 className="ep-invoices-btn ep-invoices-btn--primary"
-                disabled={!canWrite || busy}
+                disabled={busy}
                 onClick={() => void submit()}
               >
                 {busy ? "Creating…" : "Create and send"}
@@ -410,6 +449,6 @@ export default function CreateInvoiceModal({
           </p>
         ) : null}
       </div>
-    </div>
+    </div>,
   );
 }

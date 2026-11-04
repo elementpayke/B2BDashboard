@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import CreateInvoiceModal from "./CreateInvoiceModal";
 import ShareInvoiceSheet from "./ShareInvoiceSheet";
-import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
-import { readBffEnvelope } from "@/lib/bff/readEnvelope";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { createInvoiceCustomer, fetchInvoiceCustomers } from "@/lib/services/invoiceCustomersApi";
 import {
   invoicesApi,
   mapInvoiceToListRow,
@@ -15,18 +15,20 @@ import {
   type InvoiceMethod,
   type InvoicePayment,
   type InvoiceSummary,
+  type UiInvoiceStatus,
 } from "@/lib/services/invoices";
 
-type InvoicesScreenProps = {
-  canWrite?: boolean;
+const STATUS_BADGE: Record<
+  UiInvoiceStatus,
+  { color: string; soft: string }
+> = {
+  draft: { color: "var(--muted2)", soft: "var(--surface2)" },
+  pending: { color: "var(--amber, #b47700)", soft: "var(--amber-tint, #fbf2de)" },
+  partially_paid: { color: "var(--amber, #b47700)", soft: "var(--amber-tint, #fbf2de)" },
+  paid: { color: "var(--indigo-text, #3b2ed3)", soft: "var(--indigo-tint, #eeedfb)" },
+  overdue: { color: "var(--red-text, #c42a2f)", soft: "var(--red-tint, #fcebec)" },
+  cancelled: { color: "var(--muted2)", soft: "var(--surface2)" },
 };
-
-async function fetchCustomers(): Promise<InvoiceCustomer[]> {
-  const res = await fetch("/api/invoice-customers", { credentials: "same-origin" });
-  const parsed = await readBffEnvelope<{ items: InvoiceCustomer[] }>(res);
-  if (!parsed.ok) return [];
-  return parsed.envelope?.data?.items ?? [];
-}
 
 function MethodChips({ methods }: { methods: InvoiceMethod[] }) {
   const visible = methods.slice(0, 2);
@@ -43,7 +45,58 @@ function MethodChips({ methods }: { methods: InvoiceMethod[] }) {
   );
 }
 
-export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps) {
+function formatStat(value: string | undefined, currency: string, loading: boolean) {
+  if (loading) return "…";
+  if (value == null) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { style: "currency", currency: currency || "USD" });
+}
+
+function InvoiceRowMenu({
+  open,
+  onToggle,
+  onView,
+  onShare,
+  onPdf,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onView: () => void;
+  onShare: () => void;
+  onPdf: () => void;
+}) {
+  return (
+    <div className="ep-invoices-row-menu ep-invoices-row-menu--list">
+      <button
+        type="button"
+        className="ep-invoices-row-menu__trigger"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        aria-label="Invoice actions"
+      >
+        ⋯
+      </button>
+      {open ? (
+        <div className="ep-invoices-row-menu__pop" role="menu">
+          <button type="button" onClick={onView}>
+            View invoice
+          </button>
+          <button type="button" onClick={onShare}>
+            Share invoice…
+          </button>
+          <button type="button" onClick={onPdf}>
+            Download PDF
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function InvoicesScreen() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -78,7 +131,7 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
 
   const customersQuery = useQuery({
     queryKey: ["invoice-customers"],
-    queryFn: fetchCustomers,
+    queryFn: fetchInvoiceCustomers,
   });
 
   const detailQuery = useQuery({
@@ -109,6 +162,12 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
   const selected = detailQuery.data;
   const payments: InvoicePayment[] = paymentsQuery.data?.items ?? [];
 
+  const summary =
+    summaryQuery.data ??
+    (listQuery.data?.items?.length ? summarizeInvoices(listQuery.data.items) : undefined);
+
+  const summaryCurrency = summary?.currency || "USD";
+
   async function refreshAll() {
     await qc.invalidateQueries({ queryKey: ["invoices"] });
     await qc.invalidateQueries({ queryKey: ["invoices-summary"] });
@@ -133,26 +192,27 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
     const currency = payload.currency || "USD";
     const expected = selected.expected_amount ?? payload.amount ?? "0";
     const received = selected.amount_received ?? "0";
+    const row = mapInvoiceToListRow(selected);
+    const badge = STATUS_BADGE[row.status];
     return (
-      <div data-screen-label="Invoices" className="ep-invoices">
+      <div className="ep-invoices">
         <button type="button" className="ep-invoices-back" onClick={() => setSelectedId(null)}>
-          ← Invoices
+          ← Back to invoices
         </button>
-        <p className="ep-invoices-subtitle">Payment status, breakdown, and reconciliation</p>
         <section className="ep-panel ep-invoices-detail-head">
           <div className="ep-invoices-detail-head__top">
             <span className="ep-mono ep-invoices-id">{selected.invoice_number.toUpperCase()}</span>
-            <span className={`ep-invoices-status ep-invoices-status--${mapInvoiceToListRow(selected).status}`}>
-              {mapInvoiceToListRow(selected).statusLabel}
-            </span>
+            <StatusBadge label={row.statusLabel} color={badge.color} soft={badge.soft} size="sm" />
           </div>
           <p className="ep-mono ep-invoices-detail-amount">
             {Number(expected).toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
             <span className="ep-invoices-detail-ccy">{currency}</span>
           </p>
-          <p>
-            {payload.client_name} · {payload.description}
+          <p className="ep-invoices-detail-meta">
+            {payload.client_name}
+            {payload.description ? ` · ${payload.description}` : ""}
           </p>
+          <MethodChips methods={row.methods} />
           <div className="ep-invoices-detail-actions">
             <button type="button" className="ep-invoices-btn ep-invoices-btn--secondary" onClick={() => void downloadPdf(selected.id)}>
               Download PDF
@@ -163,12 +223,12 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
           </div>
         </section>
         <section className="ep-panel ep-invoices-section">
-          <h4>Payment breakdown</h4>
+          <h3 className="ep-invoices-section__title">Payment breakdown</h3>
           {payments.length === 0 ? (
-            <p>No payments yet</p>
+            <p className="ep-invoices-muted">No payments recorded yet.</p>
           ) : (
             <>
-              <p className="ep-mono">
+              <p className="ep-mono ep-invoices-muted">
                 {Number(received).toLocaleString("en-US", { minimumFractionDigits: 2 })} of{" "}
                 {Number(expected).toLocaleString("en-US", { minimumFractionDigits: 2 })} {currency} received
               </p>
@@ -196,78 +256,80 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
     );
   }
 
-  const summary =
-    summaryQuery.data ??
-    (listQuery.data?.items?.length ? summarizeInvoices(listQuery.data.items) : undefined);
   const empty = !listQuery.isLoading && rows.length === 0;
+  const statsLoading = listQuery.isLoading || (summaryQuery.isLoading && !summary);
 
   return (
-    <div data-screen-label="Invoices" className="ep-invoices">
-      <header className="ep-invoices-page-head">
-        <div>
-          <h2 className="ep-invoices-title">Invoices</h2>
-          <p className="ep-invoices-subtitle">Create and manage payment requests across every payment method</p>
-        </div>
-        {canWrite ? (
-          <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
-            + Create invoice
-          </button>
-        ) : null}
-      </header>
-      <div className="ep-invoices-stats">
-        {(["total_invoiced", "total_paid", "total_pending", "total_overdue"] as const).map((key, i) => (
-          <div key={key} className="ep-invoices-stat">
-            <span className="ep-mono ep-invoices-stat__value">
-              {summary
-                ? Number(summary[key]).toLocaleString("en-US", {
-                    style: "currency",
-                    currency: summary.currency || "USD",
-                  })
-                : "—"}
-            </span>
-            <span className="ep-invoices-stat__label">
-              {["Total invoiced", "Paid", "Pending", "Overdue"][i]}
+    <div className="ep-invoices">
+      <div className="ep-reports__stats ep-invoices__stats">
+        {(
+          [
+            ["total_invoiced", "Total invoiced"],
+            ["total_paid", "Paid"],
+            ["total_pending", "Pending"],
+            ["total_overdue", "Overdue"],
+          ] as const
+        ).map(([key, label]) => (
+          <div key={key} className="ep-reports__stat">
+            <span className="ep-reports__stat-label">{label}</span>
+            <span className="ep-reports__stat-value ep-mono">
+              {formatStat(summary?.[key], summaryCurrency, statsLoading)}
             </span>
           </div>
         ))}
       </div>
-      <div className="ep-invoices-toolbar">
-        <input
-          placeholder="Search invoice, customer, or ID"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="partially_paid">Partially paid</option>
-          <option value="paid">Paid</option>
-          <option value="expired">Overdue</option>
-          <option value="canceled">Cancelled</option>
-        </select>
-        <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}>
-          <option value="">All methods</option>
-          <option value="usdc">USDC</option>
-          <option value="usdt">USDT</option>
-          <option value="mpesa">M-Pesa</option>
-          <option value="bank">Bank</option>
-        </select>
+
+      <div className="ep-statements__toolbar ep-invoices__toolbar">
+        <div className="ep-invoices-toolbar ep-statements__filters">
+          <label className="ep-txn-search">
+            <span className="ep-sr-only">Search invoices</span>
+            <input
+              placeholder="Search invoice, customer, or ID"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <label className="ep-statements__filter">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status">
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="partially_paid">Partially paid</option>
+              <option value="paid">Paid</option>
+              <option value="expired">Overdue</option>
+              <option value="canceled">Cancelled</option>
+            </select>
+          </label>
+          <label className="ep-statements__filter">
+            <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} aria-label="Payment method">
+              <option value="">All methods</option>
+              <option value="usdc">USDC</option>
+              <option value="usdt">USDT</option>
+              <option value="mpesa">M-Pesa</option>
+              <option value="bank">Bank</option>
+            </select>
+          </label>
+        </div>
+        <div className="ep-statements__toolbar-actions">
+          <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
+            + Create invoice
+          </button>
+        </div>
       </div>
+
       {empty ? (
         <section className="ep-panel ep-invoices-empty">
           <h3>Create your first invoice</h3>
           <p>
-            Send customers one invoice and let them pay by USDC on any network, USDT, mobile money or bank transfer.
+            Send one invoice and let customers pay with USDC (any network), USDT, M-Pesa, or bank transfer. Payment
+            instructions live on the PDF — no hosted payment page.
           </p>
-          {canWrite ? (
-            <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
-              Create invoice
-            </button>
-          ) : null}
+          <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
+            Create invoice
+          </button>
         </section>
       ) : (
-        <section className="ep-panel ep-invoices-table-wrap">
-          <div className="ep-invoices-table-head ep-invoices-table-head--data" aria-hidden>
+        <section className="ep-panel ep-activity ep-invoices-list" aria-label="Invoices">
+          <div className="ep-invoices-list-head" aria-hidden>
             <span>Invoice</span>
             <span>Customer</span>
             <span>Amount</span>
@@ -276,45 +338,55 @@ export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps)
             <span>Due</span>
             <span />
           </div>
-          {rows.map((row) => (
-            <div key={row.id} className="ep-invoices-table-row">
-              <button type="button" className="ep-invoices-link ep-mono" onClick={() => setSelectedId(row.id)}>
-                {row.displayId}
-              </button>
-              <span>{row.customer}</span>
-              <span className="ep-mono">{row.amountLabel}</span>
-              <MethodChips methods={row.methods} />
-              <span className={`ep-invoices-status ep-invoices-status--${row.status}`}>{row.statusLabel}</span>
-              <span>{row.dueLabel}</span>
-              <div className="ep-invoices-row-menu">
-                <button type="button" onClick={() => setMenuId(menuId === row.id ? null : row.id)}>
-                  •••
-                </button>
-                {menuId === row.id ? (
-                  <div className="ep-invoices-row-menu__pop">
-                    <button type="button" onClick={() => setSelectedId(row.id)}>
-                      View invoice
-                    </button>
-                    <button type="button" onClick={() => void invoicesApi.get(row.id).then(setShareInvoice)}>
-                      Share invoice…
-                    </button>
-                    <button type="button" onClick={() => void downloadPdf(row.id)}>
-                      Download PDF
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ))}
+          <ul className="ep-activity__list">
+            {rows.map((row) => {
+              const badge = STATUS_BADGE[row.status];
+              return (
+                <li key={row.id} className="ep-invoices-list__item">
+                  <button type="button" className="ep-activity__row" onClick={() => setSelectedId(row.id)}>
+                    <div className="ep-activity__card">
+                      <div className="ep-activity__card-top">
+                        <span className="ep-mono ep-invoice__id">{row.displayId}</span>
+                        <span className="ep-mono ep-activity__amount">{row.amountLabel}</span>
+                      </div>
+                      <div className="ep-activity__card-bottom">
+                        <span>{row.customer}</span>
+                        <StatusBadge label={row.statusLabel} color={badge.color} soft={badge.soft} size="sm" />
+                      </div>
+                      <MethodChips methods={row.methods} />
+                      <span className="ep-activity__meta">Due {row.dueLabel}</span>
+                    </div>
+                    <div className="ep-activity__desktop ep-invoices-list-row">
+                      <span className="ep-mono ep-invoice__id">{row.displayId}</span>
+                      <span className="ep-invoice__client">{row.customer}</span>
+                      <span className="ep-mono ep-activity__amount">{row.amountLabel}</span>
+                      <MethodChips methods={row.methods} />
+                      <StatusBadge label={row.statusLabel} color={badge.color} soft={badge.soft} size="sm" />
+                      <span className="ep-activity__date">{row.dueLabel}</span>
+                      <span />
+                    </div>
+                  </button>
+                  <InvoiceRowMenu
+                    open={menuId === row.id}
+                    onToggle={() => setMenuId(menuId === row.id ? null : row.id)}
+                    onView={() => setSelectedId(row.id)}
+                    onShare={() => void invoicesApi.get(row.id).then(setShareInvoice)}
+                    onPdf={() => void downloadPdf(row.id)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
+
       {createOpen ? (
         <CreateInvoiceModal
           customers={customersQuery.data ?? []}
           onRefreshCustomers={() => void customersQuery.refetch()}
+          onSaveCustomer={createInvoiceCustomer}
           onClose={() => setCreateOpen(false)}
           onCreated={() => void refreshAll()}
-          canWrite={canWrite}
         />
       ) : null}
       {shareInvoice ? <ShareInvoiceSheet invoice={shareInvoice} onClose={() => setShareInvoice(null)} /> : null}
