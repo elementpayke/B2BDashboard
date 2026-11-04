@@ -34,6 +34,9 @@ export type BootstrapAccount = {
   bic?: string | null;
   bank_name?: string | null;
   account_holder_name?: string | null;
+  account_number?: string | null;
+  bank_code?: string | null;
+  reference?: string | null;
   wallet_address?: string | null;
   balance?: BootstrapBalance | null;
 };
@@ -96,6 +99,9 @@ function mapFiat(row: BootstrapAccount): DepositAccount {
     iban: row.iban ?? null,
     bic: row.bic ?? null,
     bank_name: row.bank_name ?? null,
+    account_number: row.account_number ?? null,
+    bank_code: row.bank_code ?? null,
+    reference: row.reference ?? null,
     balance: row.balance
       ? {
           available: row.balance.available ?? null,

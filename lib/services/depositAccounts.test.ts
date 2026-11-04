@@ -461,6 +461,45 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
+  it("uses partner domestic/international groups when both are present (ZAR)", () => {
+    const account: DepositAccount = {
+      currency: "ZAR",
+      status: "active",
+      account_number: "63221650476",
+      bank_code: "250655",
+      bic: "FIRNZAJJ",
+      bank_name: "FirstRand Bank",
+      reference: "0014181033",
+      domestic: {
+        account_number: "63221650476",
+        bank_code: "250655",
+        bank_name: "FirstRand Bank",
+      },
+      international: {
+        account_number: "63221650476",
+        swift_bic: "FIRNZAJJ",
+        bank_name: "FirstRand Bank",
+      },
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    expect(sections[0]?.title).toBe("Domestic transfer");
+    expect(sections[0]?.rows).toEqual(
+      expect.arrayContaining([
+        { label: "Account number", value: "63221650476", copyValue: "63221650476" },
+        { label: "Branch code", value: "250655", copyValue: "250655" },
+      ]),
+    );
+    expect(sections[1]?.title).toBe("International wire");
+    expect(sections[1]?.rows).toEqual(
+      expect.arrayContaining([
+        { label: "SWIFT/BIC", value: "FIRNZAJJ", copyValue: "FIRNZAJJ" },
+      ]),
+    );
+    const settlement = sections.find((s) => s.title === "Settlement");
+    expect(settlement?.rows.some((r) => r.label === "Reference")).toBe(true);
+  });
+
   it("keeps a single Bank details section for EUR/IBAN accounts", () => {
     const account: DepositAccount = {
       currency: "EUR",
