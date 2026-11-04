@@ -1,159 +1,302 @@
 "use client";
 
-import React from "react";
-import InvoiceList, { type InvoiceItem } from "@/components/ui/InvoiceList";
-import { useInvoicesPage } from "@/lib/hooks/useInvoicesPage";
-import type { Invoice, InvoiceStatus } from "@/lib/services/invoices";
-import { describeInvoiceStatus } from "@/lib/services/invoiceStatus";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import CreateInvoiceModal from "./CreateInvoiceModal";
+import ShareInvoiceSheet from "./ShareInvoiceSheet";
+import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
+import {
+  invoicesApi,
+  mapInvoiceToListRow,
+  type DraftPayload,
+  type Invoice,
+  type InvoiceMethod,
+  type InvoicePayment,
+} from "@/lib/services/invoices";
 
-const STATUS_FILTERS: { key: InvoiceStatus | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "pending", label: "Pending" },
-  { key: "partially_paid", label: "Partially Paid" },
-  { key: "paid", label: "Paid" },
-  { key: "expired", label: "Expired" },
-  { key: "failed", label: "Failed" },
-];
-
-const NETWORK_FILTERS: { key: string; label: string }[] = [
-  { key: "all", label: "All networks" },
-  { key: "stellar", label: "Stellar (USDC)" },
-];
-
-function formatInvoiceAmount(inv: Invoice): string {
-  const amount = inv.expected_amount;
-  const asset = inv.asset_code || "USDC";
-  if (amount == null) return "—";
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return `${amount} ${asset}`;
-  return `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${asset}`;
-}
-
-function formatInvoiceMeta(inv: Invoice): string {
-  const created = inv.created_at ? new Date(inv.created_at).toLocaleDateString() : null;
-  const network = inv.network ? inv.network[0].toUpperCase() + inv.network.slice(1) : null;
-  return [created, network].filter(Boolean).join(" · ");
-}
-
-export type InvoicesScreenProps = {
-  onOpenInvoice: (invoiceId: number) => void;
-  onCreateInvoice: () => void;
+type InvoicesScreenProps = {
+  canWrite?: boolean;
 };
 
-export default function InvoicesScreen({ onOpenInvoice, onCreateInvoice }: InvoicesScreenProps) {
-  const [status, setStatus] = React.useState<InvoiceStatus | "all">("all");
-  const [network, setNetwork] = React.useState<string>("all");
-  const [dateRange, setDateRange] = React.useState<"all" | "7d" | "30d">("all");
+async function fetchCustomers(): Promise<InvoiceCustomer[]> {
+  const res = await fetch("/api/invoice-customers", { credentials: "same-origin" });
+  if (!res.ok) return [];
+  const json = (await res.json()) as { data?: { items: InvoiceCustomer[] } };
+  return json.data?.items ?? [];
+}
 
-  const page = useInvoicesPage(status, network);
+function MethodChips({ methods }: { methods: InvoiceMethod[] }) {
+  const visible = methods.slice(0, 2);
+  const extra = methods.length - visible.length;
+  return (
+    <span className="ep-invoices-methods">
+      {visible.map((m) => (
+        <span key={m} className="ep-invoices-rail-chip">
+          {m === "mpesa" ? "M-Pesa" : m.toUpperCase()}
+        </span>
+      ))}
+      {extra > 0 ? <span className="ep-invoices-rail-chip">+{extra}</span> : null}
+    </span>
+  );
+}
 
-  const items: Invoice[] = React.useMemo(() => {
-    if (dateRange === "all") return page.items;
-    const cutoff = Date.now() - (dateRange === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000;
-    return page.items.filter((inv) => {
-      if (!inv.created_at) return true;
-      return new Date(inv.created_at).getTime() >= cutoff;
-    });
-  }, [page.items, dateRange]);
+export default function InvoicesScreen({ canWrite = true }: InvoicesScreenProps) {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [methodFilter, setMethodFilter] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [shareInvoice, setShareInvoice] = useState<Invoice | null>(null);
+  const [settlementOpen, setSettlementOpen] = useState(false);
+  const [menuId, setMenuId] = useState<number | null>(null);
 
-  const listItems: InvoiceItem[] = items.map((inv) => {
-    const descriptor = describeInvoiceStatus(inv.status);
-    return {
-      id: inv.invoice_number,
-      client: (inv.payload?.client_name as string) || "—",
-      amount: formatInvoiceAmount(inv),
-      statusLabel: descriptor.label,
-      statusColor: descriptor.color,
-      statusSoft: descriptor.soft,
-      meta: formatInvoiceMeta(inv),
-      onOpen: () => onOpenInvoice(inv.id),
-    };
+  const listQuery = useQuery({
+    queryKey: ["invoices", statusFilter, methodFilter],
+    queryFn: () =>
+      invoicesApi.list({
+        status: statusFilter || undefined,
+        payment_method: methodFilter || undefined,
+        limit: 100,
+      }),
   });
 
-  const emptyLabel = page.isLoading
-    ? "Loading…"
-    : page.isError
-      ? "Couldn't load invoices"
-      : "No invoices match this filter";
+  const summaryQuery = useQuery({
+    queryKey: ["invoices-summary"],
+    queryFn: () => invoicesApi.summary(),
+  });
+
+  const customersQuery = useQuery({
+    queryKey: ["invoice-customers"],
+    queryFn: fetchCustomers,
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ["invoice", selectedId],
+    queryFn: () => invoicesApi.get(selectedId!),
+    enabled: selectedId != null,
+  });
+
+  const paymentsQuery = useQuery({
+    queryKey: ["invoice-payments", selectedId],
+    queryFn: () => invoicesApi.payments(selectedId!),
+    enabled: selectedId != null,
+  });
+
+  const rows = useMemo(() => {
+    const items = listQuery.data?.items ?? [];
+    const q = search.trim().toLowerCase();
+    return items
+      .map(mapInvoiceToListRow)
+      .filter(
+        (r) =>
+          !q ||
+          r.displayId.toLowerCase().includes(q) ||
+          r.customer.toLowerCase().includes(q),
+      );
+  }, [listQuery.data, search]);
+
+  const selected = detailQuery.data;
+  const payments: InvoicePayment[] = paymentsQuery.data?.items ?? [];
+
+  async function refreshAll() {
+    await qc.invalidateQueries({ queryKey: ["invoices"] });
+    await qc.invalidateQueries({ queryKey: ["invoices-summary"] });
+    if (selectedId != null) {
+      await qc.invalidateQueries({ queryKey: ["invoice", selectedId] });
+      await qc.invalidateQueries({ queryKey: ["invoice-payments", selectedId] });
+    }
+  }
+
+  async function downloadPdf(id: number) {
+    const { blob, filename } = await invoicesApi.downloadPdf(id);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (selectedId != null && selected) {
+    const payload: DraftPayload = selected.payload ?? { currency: "USD", line_items: [] };
+    const currency = payload.currency || "USD";
+    const expected = selected.expected_amount ?? payload.amount ?? "0";
+    const received = selected.amount_received ?? "0";
+    return (
+      <div data-screen-label="Invoices" className="ep-invoices">
+        <button type="button" className="ep-invoices-back" onClick={() => setSelectedId(null)}>
+          ← Invoices
+        </button>
+        <p className="ep-invoices-subtitle">Payment status, breakdown, and reconciliation</p>
+        <section className="ep-panel ep-invoices-detail-head">
+          <div className="ep-invoices-detail-head__top">
+            <span className="ep-mono ep-invoices-id">{selected.invoice_number.toUpperCase()}</span>
+            <span className={`ep-invoices-status ep-invoices-status--${mapInvoiceToListRow(selected).status}`}>
+              {mapInvoiceToListRow(selected).statusLabel}
+            </span>
+          </div>
+          <p className="ep-mono ep-invoices-detail-amount">
+            {Number(expected).toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
+            <span className="ep-invoices-detail-ccy">{currency}</span>
+          </p>
+          <p>
+            {payload.client_name} · {payload.description}
+          </p>
+          <div className="ep-invoices-detail-actions">
+            <button type="button" className="ep-invoices-btn ep-invoices-btn--secondary" onClick={() => void downloadPdf(selected.id)}>
+              Download PDF
+            </button>
+            <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setShareInvoice(selected)}>
+              Share invoice
+            </button>
+          </div>
+        </section>
+        <section className="ep-panel ep-invoices-section">
+          <h4>Payment breakdown</h4>
+          {payments.length === 0 ? (
+            <p>No payments yet</p>
+          ) : (
+            <>
+              <p className="ep-mono">
+                {Number(received).toLocaleString("en-US", { minimumFractionDigits: 2 })} of{" "}
+                {Number(expected).toLocaleString("en-US", { minimumFractionDigits: 2 })} {currency} received
+              </p>
+              {payments.map((p) => (
+                <div key={p.id} className="ep-invoices-payment-row">
+                  <span>{p.method.toUpperCase()}</span>
+                  <span className="ep-mono">{Number(p.amount).toFixed(2)}</span>
+                </div>
+              ))}
+              <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setSettlementOpen((v) => !v)}>
+                {settlementOpen ? "Hide settlement details" : "Settlement details"}
+              </button>
+              {settlementOpen
+                ? payments.map((p) => (
+                    <div key={`${p.id}-s`} className="ep-invoices-settlement-block">
+                      {p.method === "usdc" ? `${p.source_chain ?? "Stellar"} → settled on Stellar` : p.method}
+                    </div>
+                  ))
+                : null}
+            </>
+          )}
+        </section>
+        {shareInvoice ? <ShareInvoiceSheet invoice={shareInvoice} onClose={() => setShareInvoice(null)} /> : null}
+      </div>
+    );
+  }
+
+  const summary = summaryQuery.data;
+  const empty = !listQuery.isLoading && rows.length === 0;
 
   return (
-    <div className="ep-txn-screen" data-screen-label="Invoices">
-      <div className="ep-txn-toolbar">
-        <button type="button" className="ep-txn-pager__btn ep-txn-pager__btn--primary" onClick={onCreateInvoice}>
-          + New invoice
-        </button>
-        <div className="ep-txn-advanced-desktop">
-          <div className="ep-txn-advanced-fields">
-            <label>
-              <span>Network</span>
-              <select value={network} onChange={(event) => setNetwork(event.target.value)}>
-                {NETWORK_FILTERS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Date</span>
-              <select
-                value={dateRange}
-                onChange={(event) => setDateRange(event.target.value as "all" | "7d" | "30d")}
-              >
-                <option value="all">Any time</option>
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-              </select>
-            </label>
-          </div>
+    <div data-screen-label="Invoices" className="ep-invoices">
+      <header className="ep-invoices-page-head">
+        <div>
+          <h2 className="ep-invoices-title">Invoices</h2>
+          <p className="ep-invoices-subtitle">Create and manage payment requests across every payment method</p>
         </div>
-      </div>
-
-      <div className="ep-txn-filters" role="group" aria-label="Filter invoices by status">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => setStatus(f.key)}
-            className={`ep-txn-filter${status === f.key ? " ep-txn-filter--active" : ""}`}
-            aria-pressed={status === f.key}
-          >
-            {f.label}
+        {canWrite ? (
+          <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
+            + Create invoice
           </button>
+        ) : null}
+      </header>
+      <div className="ep-invoices-stats">
+        {(["total_invoiced", "total_paid", "total_pending", "total_overdue"] as const).map((key, i) => (
+          <div key={key} className="ep-invoices-stat">
+            <span className="ep-mono ep-invoices-stat__value">
+              {summary
+                ? Number(summary[key]).toLocaleString("en-US", {
+                    style: "currency",
+                    currency: summary.currency || "USD",
+                  })
+                : "—"}
+            </span>
+            <span className="ep-invoices-stat__label">
+              {["Total invoiced", "Paid", "Pending", "Overdue"][i]}
+            </span>
+          </div>
         ))}
       </div>
-
-      <InvoiceList items={listItems} emptyLabel={emptyLabel} />
-
-      {page.total > 0 || page.hasPrev ? (
-        <nav className="ep-txn-pager" aria-label="Invoice pages">
-          <span className="ep-txn-pager__meta" aria-live="polite">
-            Page {page.pageNumber} of {page.pageCount}
-            {page.total > 0 ? ` · ${page.total} total` : ""}
-            {page.isFetching ? <span className="ep-txn-pager__updating"> · Updating…</span> : null}
-          </span>
-          <div className="ep-txn-pager__actions">
-            <button
-              type="button"
-              onClick={page.prevPage}
-              disabled={!page.hasPrev}
-              className="ep-txn-pager__btn"
-              aria-label="Previous page"
-            >
-              Previous
+      <div className="ep-invoices-toolbar">
+        <input
+          placeholder="Search invoice, customer, or ID"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="partially_paid">Partially paid</option>
+          <option value="paid">Paid</option>
+          <option value="expired">Overdue</option>
+          <option value="canceled">Cancelled</option>
+        </select>
+        <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}>
+          <option value="">All methods</option>
+          <option value="usdc">USDC</option>
+          <option value="usdt">USDT</option>
+          <option value="mpesa">M-Pesa</option>
+          <option value="bank">Bank</option>
+        </select>
+      </div>
+      {empty ? (
+        <section className="ep-panel ep-invoices-empty">
+          <h3>Create your first invoice</h3>
+          <p>
+            Send customers one invoice and let them pay by USDC on any network, USDT, mobile money or bank transfer.
+          </p>
+          {canWrite ? (
+            <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setCreateOpen(true)}>
+              Create invoice
             </button>
-            <button
-              type="button"
-              onClick={page.nextPage}
-              disabled={!page.hasNext}
-              className={`ep-txn-pager__btn${page.hasNext ? " ep-txn-pager__btn--primary" : ""}`}
-              aria-label="Next page"
-            >
-              Next
-            </button>
-          </div>
-        </nav>
+          ) : null}
+        </section>
+      ) : (
+        <section className="ep-panel ep-invoices-table-wrap">
+          {rows.map((row) => (
+            <div key={row.id} className="ep-invoices-table-row">
+              <button type="button" className="ep-invoices-link ep-mono" onClick={() => setSelectedId(row.id)}>
+                {row.displayId}
+              </button>
+              <span>{row.customer}</span>
+              <span className="ep-mono">{row.amountLabel}</span>
+              <MethodChips methods={row.methods} />
+              <span className={`ep-invoices-status ep-invoices-status--${row.status}`}>{row.statusLabel}</span>
+              <span>{row.dueLabel}</span>
+              <div className="ep-invoices-row-menu">
+                <button type="button" onClick={() => setMenuId(menuId === row.id ? null : row.id)}>
+                  •••
+                </button>
+                {menuId === row.id ? (
+                  <div className="ep-invoices-row-menu__pop">
+                    <button type="button" onClick={() => setSelectedId(row.id)}>
+                      View invoice
+                    </button>
+                    <button type="button" onClick={() => void invoicesApi.get(row.id).then(setShareInvoice)}>
+                      Share invoice…
+                    </button>
+                    <button type="button" onClick={() => void downloadPdf(row.id)}>
+                      Download PDF
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+      {createOpen ? (
+        <CreateInvoiceModal
+          customers={customersQuery.data ?? []}
+          onRefreshCustomers={() => void customersQuery.refetch()}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => void refreshAll()}
+          canWrite={canWrite}
+        />
       ) : null}
+      {shareInvoice ? <ShareInvoiceSheet invoice={shareInvoice} onClose={() => setShareInvoice(null)} /> : null}
     </div>
   );
 }
