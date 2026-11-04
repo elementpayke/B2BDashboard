@@ -3,8 +3,10 @@ import {
   assertInvoiceUiCopyClean,
   buildCreatePayloadFromWizard,
   buildSimpleDraftPayload,
+  clampInvoiceListLimit,
   formatInvoiceAmount,
   formatMoneyAmount,
+  INVOICE_LIST_MAX_LIMIT,
   mapInvoiceToListRow,
   resolveUiStatus,
   shareMessage,
@@ -12,6 +14,12 @@ import {
 } from "./invoices";
 
 describe("invoices mappers", () => {
+  it("clamps list limit to Mboka maximum", () => {
+    expect(INVOICE_LIST_MAX_LIMIT).toBe(200);
+    expect(clampInvoiceListLimit(500)).toBe(200);
+    expect(clampInvoiceListLimit(100)).toBe(100);
+  });
+
   it("builds a minimal valid DraftPayloadIn from the dashboard's simple client+amount form", () => {
     const payload = buildSimpleDraftPayload("Acme GmbH", "4500.00");
     expect(payload.currency).toBe("USD");

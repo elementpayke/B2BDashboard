@@ -7,6 +7,9 @@ import ShareInvoiceSheet from "./ShareInvoiceSheet";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createInvoiceCustomer, fetchInvoiceCustomers } from "@/lib/services/invoiceCustomersApi";
 import {
+  INVOICE_LIST_MAX_LIMIT,
+  fetchInvoicePayments,
+  fetchInvoiceSummary,
   invoicesApi,
   mapInvoiceToListRow,
   summarizeInvoices,
@@ -115,20 +118,13 @@ export default function InvoicesScreen() {
       invoicesApi.list({
         status: statusFilter || undefined,
         payment_method: methodFilter || undefined,
-        limit: 100,
+        limit: INVOICE_LIST_MAX_LIMIT,
       }),
   });
 
   const summaryQuery = useQuery({
     queryKey: ["invoices-summary"],
-    queryFn: async (): Promise<InvoiceSummary> => {
-      try {
-        return await invoicesApi.summary();
-      } catch {
-        const list = await invoicesApi.list({ limit: 500 });
-        return summarizeInvoices(list.items);
-      }
-    },
+    queryFn: fetchInvoiceSummary,
   });
 
   const customersQuery = useQuery({
@@ -144,7 +140,7 @@ export default function InvoicesScreen() {
 
   const paymentsQuery = useQuery({
     queryKey: ["invoice-payments", selectedId],
-    queryFn: () => invoicesApi.payments(selectedId!),
+    queryFn: () => fetchInvoicePayments(selectedId!),
     enabled: selectedId != null,
   });
 

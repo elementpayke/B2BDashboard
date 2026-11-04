@@ -285,6 +285,14 @@ export function assertInvoiceUiCopyClean(text: string): void {
   }
 }
 
+/** Mboka `GET /v1/invoices` validates `limit` with `le=200`. */
+export const INVOICE_LIST_MAX_LIMIT = 200;
+
+export function clampInvoiceListLimit(limit?: number): number {
+  if (limit == null) return 50;
+  return Math.max(1, Math.min(limit, INVOICE_LIST_MAX_LIMIT));
+}
+
 export const invoicesApi = {
   nextId: () => apiEnvelope<{ next_invoice_number: string }>("GET", "/v1/invoices/next-id"),
 
@@ -303,7 +311,7 @@ export const invoicesApi = {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.payment_method) qs.set("payment_method", params.payment_method);
-    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.limit != null) qs.set("limit", String(clampInvoiceListLimit(params.limit)));
     if (params?.offset != null) qs.set("offset", String(params.offset));
     const query = qs.toString();
     return apiEnvelope<InvoiceList>("GET", `/v1/invoices${query ? `?${query}` : ""}`);
@@ -359,6 +367,49 @@ export const invoicesApi = {
     return { blob: await res.blob(), filename };
   },
 };
+
+export async function listAllInvoices(params?: {
+  status?: string;
+  payment_method?: string;
+}): Promise<Invoice[]> {
+  const all: Invoice[] = [];
+  let offset = 0;
+  for (let page = 0; page < 50; page++) {
+    const res = await invoicesApi.list({
+      ...params,
+      limit: INVOICE_LIST_MAX_LIMIT,
+      offset,
+    });
+    all.push(...res.items);
+    if (all.length >= res.total || res.items.length === 0) break;
+    offset += res.items.length;
+  }
+  return all;
+}
+
+/** Uses `/v1/invoices/summary` when present; otherwise paginates list + `summarizeInvoices`. */
+export async function fetchInvoiceSummary(): Promise<InvoiceSummary> {
+  try {
+    return await invoicesApi.summary();
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 401) throw err;
+  }
+  return summarizeInvoices(await listAllInvoices());
+}
+
+/** Older Mboka builds may not expose `GET /v1/invoices/{id}/payments` yet. */
+export async function fetchInvoicePayments(
+  invoiceId: number,
+): Promise<{ items: InvoicePayment[]; total: number }> {
+  try {
+    return await invoicesApi.payments(invoiceId);
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 404) {
+      return { items: [], total: 0 };
+    }
+    throw err;
+  }
+}
 
 /** Legacy helper for simple flows. */
 export function buildSimpleDraftPayload(clientName: string, amountUsd: string): DraftPayload {
