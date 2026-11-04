@@ -587,6 +587,62 @@ function depositRowsFromRailGroup(
   return rows;
 }
 
+/** When Mboka/bootstrap only sends flat coords (no nested rail groups). */
+function buildZarFlatRailSections(
+  account: DepositAccount,
+  otherRows: DepositAccountDetailRow[],
+): DepositAccountDetailSection[] | null {
+  const currency = (account.currency || "").trim().toUpperCase();
+  if (currency !== "ZAR") return null;
+  const accountNumber = nonEmpty(account.account_number);
+  const bic = nonEmpty(account.bic);
+  if (!accountNumber || !bic) return null;
+
+  const bankCode = nonEmpty(account.bank_code);
+  const bankName = nonEmpty(account.bank_name);
+  const domesticFields: Record<string, unknown> = {
+    account_number: accountNumber,
+    bank_name: bankName,
+  };
+  if (bankCode) domesticFields.bank_code = bankCode;
+
+  const sections: DepositAccountDetailSection[] = [
+    {
+      title: "Domestic transfer",
+      rows: depositRowsFromRailGroup(domesticFields, currency),
+    },
+    {
+      title: "International wire",
+      rows: depositRowsFromRailGroup(
+        {
+          account_number: accountNumber,
+          swift_bic: bic,
+          bank_name: bankName,
+          bank_address: account.bank_address,
+        },
+        currency,
+      ),
+    },
+  ];
+  if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
+  return sections;
+}
+
+/** Partner disclaimer, or ZAR interim copy when only ``reference`` is present. */
+export function resolveDepositDisclaimer(
+  account: Pick<DepositAccount, "currency" | "reference" | "deposit_disclaimer">,
+): string | null {
+  const fromApi = nonEmpty(account.deposit_disclaimer);
+  if (fromApi) return fromApi;
+  const reference = nonEmpty(account.reference);
+  const currency = (account.currency || "").trim().toUpperCase();
+  if (currency !== "ZAR" || !reference) return null;
+  return (
+    `Include ${reference} in the payment reference when sending funds. ` +
+    `Transfers without this reference may not credit your ${currency} balance.`
+  );
+}
+
 const BANK_ROW_LABEL_RE =
   /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
 
@@ -630,6 +686,9 @@ export function buildDepositAccountDetailSections(
     if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
     return sections;
   }
+
+  const zarFlat = buildZarFlatRailSections(account, otherRows);
+  if (zarFlat) return zarFlat;
 
   const iban = nonEmpty(account.iban);
   const bic = nonEmpty(account.bic);
