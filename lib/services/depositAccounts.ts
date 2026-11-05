@@ -277,6 +277,8 @@ export type DepositAccount = {
   deposit_disclaimer?: string | null;
   domestic?: Record<string, unknown> | null;
   international?: Record<string, unknown> | null;
+  /** Partner flag: no international wire coordinates (e.g. local-rail-only deposit). */
+  domestic_deposit_only?: boolean | null;
 };
 
 function nonEmpty(value: unknown): string | null {
@@ -362,6 +364,7 @@ const SYNC_OVERLAY_NULLABLE: (keyof DepositAccount)[] = [
   "deposit_reference_required",
   "domestic",
   "international",
+  "domestic_deposit_only",
   "instructions",
 ];
 
@@ -624,16 +627,33 @@ function depositRowsFromRailGroup(
   return rows;
 }
 
-/** When Mboka/bootstrap only sends flat coords (no nested rail groups). */
-function buildZarFlatRailSections(
+function isDomesticDepositOnly(
+  account: Pick<DepositAccount, "domestic_deposit_only">,
+): boolean {
+  return account.domestic_deposit_only === true;
+}
+
+export function formatDepositReferenceDisclaimer(
+  reference: string,
+  currency?: string | null,
+): string {
+  const ref = reference.trim();
+  const cur = (currency || "").trim().toUpperCase();
+  const tail = cur
+    ? `Transfers without this reference may not credit your ${cur} balance.`
+    : "Transfers without this reference may not credit your balance.";
+  return `Include ${ref} in the payment reference when sending funds. ${tail}`;
+}
+
+/** Flat domestic coords when the partner set ``domestic_deposit_only`` without rail groups. */
+function buildFlatDomesticRailSections(
   account: DepositAccount,
   otherRows: DepositAccountDetailRow[],
 ): DepositAccountDetailSection[] | null {
-  const currency = (account.currency || "").trim().toUpperCase();
-  if (currency !== "ZAR") return null;
-  const accountNumber = nonEmpty(account.account_number);
-  const bic = nonEmpty(account.bic);
-  if (!accountNumber || !bic) return null;
+  if (account.domestic_deposit_only !== true) return null;
+  const currency = (account.currency || "").trim();
+  const accountNumber = nonEmpty(account.account_number) || nonEmpty(account.iban);
+  if (!accountNumber) return null;
 
   const bankCode = nonEmpty(account.bank_code);
   const bankName = nonEmpty(account.bank_name);
@@ -648,35 +668,26 @@ function buildZarFlatRailSections(
       title: "Domestic transfer",
       rows: depositRowsFromRailGroup(domesticFields, currency),
     },
-    {
-      title: "International wire",
-      rows: depositRowsFromRailGroup(
-        {
-          account_number: accountNumber,
-          swift_bic: bic,
-          bank_name: bankName,
-          bank_address: account.bank_address,
-        },
-        currency,
-      ),
-    },
   ];
   if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
   return sections;
 }
 
-/** Partner disclaimer, or ZAR interim copy when only ``reference`` is present. */
+/** Partner disclaimer, or fallback when ``deposit_reference_required`` is set without disclaimer text. */
 export function resolveDepositDisclaimer(
-  account: Pick<DepositAccount, "currency" | "reference" | "deposit_disclaimer">,
+  account: Pick<
+    DepositAccount,
+    "currency" | "reference" | "deposit_disclaimer" | "deposit_reference_required"
+  >,
 ): string | null {
   const fromApi = nonEmpty(account.deposit_disclaimer);
   if (fromApi) return fromApi;
+  if (account.deposit_reference_required !== true) return null;
   const reference = nonEmpty(account.reference);
-  const currency = (account.currency || "").trim().toUpperCase();
-  if (currency !== "ZAR" || !reference) return null;
+  if (reference) return formatDepositReferenceDisclaimer(reference, account.currency);
   return (
-    `Include ${reference} in the payment reference when sending funds. ` +
-    `Transfers without this reference may not credit your ${currency} balance.`
+    "Include your account payment reference when sending funds. " +
+    "Use Refresh account if the reference is not shown below."
   );
 }
 
@@ -716,16 +727,18 @@ export function buildDepositAccountDetailSections(
       title: "Domestic transfer",
       rows: depositRowsFromRailGroup(domesticGroup, currency),
     });
-    sections.push({
-      title: "International wire",
-      rows: depositRowsFromRailGroup(internationalGroup, currency),
-    });
+    if (!isDomesticDepositOnly(account)) {
+      sections.push({
+        title: "International wire",
+        rows: depositRowsFromRailGroup(internationalGroup, currency),
+      });
+    }
     if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
     return sections;
   }
 
-  const zarFlat = buildZarFlatRailSections(account, otherRows);
-  if (zarFlat) return zarFlat;
+  const flatDomestic = buildFlatDomesticRailSections(account, otherRows);
+  if (flatDomestic) return flatDomestic;
 
   const iban = nonEmpty(account.iban);
   const bic = nonEmpty(account.bic);

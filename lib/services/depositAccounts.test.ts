@@ -13,6 +13,7 @@ import {
   mapDepositAccountToCardView,
   maskAccountIdentifier,
   mergeDepositAccount,
+  resolveDepositDisclaimer,
   networksForStablecoin,
   SUPPORTED_IBAN_CURRENCIES,
   supportedCurrenciesFromEligibility,
@@ -471,6 +472,7 @@ describe("buildDepositAccountDetailSections", () => {
       bic: "FIRNZAJJ",
       bank_name: "FirstRand Bank",
       reference: "0014181033",
+      domestic_deposit_only: true,
       domestic: {
         account_number: "63221650476",
         bank_code: "250655",
@@ -484,24 +486,18 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections[0]?.title).toBe("Domestic transfer");
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Settlement"]);
     expect(sections[0]?.rows).toEqual(
       expect.arrayContaining([
         { label: "Account number", value: "63221650476", copyValue: "63221650476" },
         { label: "Branch code", value: "250655", copyValue: "250655" },
       ]),
     );
-    expect(sections[1]?.title).toBe("International wire");
-    expect(sections[1]?.rows).toEqual(
-      expect.arrayContaining([
-        { label: "SWIFT/BIC", value: "FIRNZAJJ", copyValue: "FIRNZAJJ" },
-      ]),
-    );
     const settlement = sections.find((s) => s.title === "Settlement");
     expect(settlement?.rows.some((r) => r.label === "Reference")).toBe(true);
   });
 
-  it("splits ZAR from flat bootstrap fields when domestic/international are absent", () => {
+  it("uses flat domestic coords when partner sets domestic_deposit_only", () => {
     const account: DepositAccount = {
       currency: "ZAR",
       status: "active",
@@ -510,16 +506,12 @@ describe("buildDepositAccountDetailSections", () => {
       bic: "FIRNZAJJ",
       bank_name: "FirstRand Bank",
       reference: "0014181033",
+      domestic_deposit_only: true,
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.map((s) => s.title)).toEqual([
-      "Domestic transfer",
-      "International wire",
-      "Settlement",
-    ]);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Settlement"]);
     expect(sections[0]?.rows.some((r) => r.label === "Branch code")).toBe(true);
-    expect(sections[1]?.rows.some((r) => r.label === "SWIFT/BIC")).toBe(true);
   });
 
   it("keeps a single Bank details section for EUR/IBAN accounts", () => {
@@ -687,6 +679,41 @@ describe("formatBankAddress", () => {
   it("returns null when the partner sent no address text", () => {
     expect(formatBankAddress(null)).toBeNull();
     expect(formatBankAddress({})).toBeNull();
+  });
+});
+
+describe("resolveDepositDisclaimer", () => {
+  it("returns null when reference is not required", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("shows refresh hint when reference is required but not loaded yet", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: true,
+      }),
+    ).toMatch(/Refresh account/);
+  });
+
+  it("prefers API disclaimer text", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: "0017068033",
+        deposit_disclaimer: "Include 0017068033 in the payment reference.",
+        deposit_reference_required: true,
+      }),
+    ).toBe("Include 0017068033 in the payment reference.");
   });
 });
 
