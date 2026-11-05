@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CreateInvoiceModal from "./CreateInvoiceModal";
@@ -16,6 +17,12 @@ vi.mock("@/lib/services/invoices", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/services/invoiceBranding", () => ({
+  invoiceBrandingApi: {
+    get: vi.fn().mockResolvedValue({ issuer_name: null, address_lines: [], logo_data_url: null }),
+  },
+}));
+
 const customer = {
   id: "cust-1",
   name: "Joseph Thuku",
@@ -26,14 +33,17 @@ const customer = {
 };
 
 function renderModal() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <CreateInvoiceModal
-      customers={[customer]}
-      onRefreshCustomers={vi.fn()}
-      onSaveCustomer={vi.fn()}
-      onClose={vi.fn()}
-      onCreated={vi.fn()}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <CreateInvoiceModal
+        customers={[customer]}
+        onRefreshCustomers={vi.fn()}
+        onSaveCustomer={vi.fn()}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />
+    </QueryClientProvider>,
   );
 }
 

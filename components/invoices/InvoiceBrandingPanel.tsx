@@ -15,7 +15,6 @@ export default function InvoiceBrandingPanel() {
   const brandingQuery = useQuery({
     queryKey: ["invoice-branding"],
     queryFn: () => invoiceBrandingApi.get(),
-    enabled: open,
     retry: false,
   });
 
@@ -67,8 +66,23 @@ export default function InvoiceBrandingPanel() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        <span>Invoice appearance</span>
-        <span className="ep-invoices-muted">{open ? "Hide" : "Logo & company details on PDF"}</span>
+        <span className="ep-invoices-branding__toggle-main">
+          {branding?.logo_data_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={branding.logo_data_url} alt="Your logo" className="ep-invoices-branding__toggle-logo" />
+          ) : (
+            <span className="ep-invoices-branding__toggle-logo ep-invoices-branding__toggle-logo--empty" aria-hidden>
+              +
+            </span>
+          )}
+          <span className="ep-invoices-branding__toggle-text">
+            <strong>Invoice appearance</strong>
+            <span className="ep-invoices-muted">
+              {branding?.logo_data_url ? "Logo added — shown on every invoice" : "Add your logo — shown on every invoice"}
+            </span>
+          </span>
+        </span>
+        <span className="ep-invoices-muted">{open ? "Hide" : "Edit"}</span>
       </button>
       {open ? (
         <div className="ep-invoices-branding__body">
