@@ -407,7 +407,9 @@ export function isLegacyNonStellarUsdcAccount(account: FinancialAccount): boolea
 export function visibleStablecoinAccounts(
   accounts: FinancialAccount[],
 ): FinancialAccount[] {
-  return accounts.filter((a) => !isLegacyNonStellarUsdcAccount(a));
+  return accounts.filter(
+    (a) => !isLegacyNonStellarUsdcAccount(a) && !isClosedStatus(a.status),
+  );
 }
 
 /**

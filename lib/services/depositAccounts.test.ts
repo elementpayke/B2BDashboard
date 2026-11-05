@@ -13,6 +13,7 @@ import {
   mapDepositAccountToCardView,
   maskAccountIdentifier,
   mergeDepositAccount,
+  needsDepositInstructionsSync,
   resolveDepositDisclaimer,
   networksForStablecoin,
   SUPPORTED_IBAN_CURRENCIES,
@@ -267,6 +268,15 @@ describe("mapDepositAccountToCardView", () => {
     const blank = mapDepositAccountToCardView(empty);
     expect(blank.balance).toBe("—");
     expect(blank.hasBalance).toBe(false);
+  });
+
+  it("filters closed accounts from listedDepositAccounts", async () => {
+    const { listedDepositAccounts } = await import("./depositAccounts");
+    const rows = [
+      { id: "1", currency: "ZAR", status: "active" as const },
+      { id: "2", currency: "USD", status: "closed" as const },
+    ];
+    expect(listedDepositAccounts(rows)).toEqual([rows[0]]);
   });
 
   it("shows deposit unavailable copy instead of pending coordinates when fiat rails are off", () => {
@@ -679,6 +689,34 @@ describe("formatBankAddress", () => {
   it("returns null when the partner sent no address text", () => {
     expect(formatBankAddress(null)).toBeNull();
     expect(formatBankAddress({})).toBeNull();
+  });
+});
+
+describe("needsDepositInstructionsSync", () => {
+  it("returns true for active account with coords but no reference", () => {
+    expect(
+      needsDepositInstructionsSync({
+        id: "81",
+        status: "active",
+        account_number: "63221650476",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when reference and disclaimer are present", () => {
+    expect(
+      needsDepositInstructionsSync({
+        id: "81",
+        status: "active",
+        account_number: "63221650476",
+        reference: "0017068033",
+        deposit_disclaimer: "Include 0017068033 in the payment reference.",
+        deposit_reference_required: true,
+      }),
+    ).toBe(false);
   });
 });
 
