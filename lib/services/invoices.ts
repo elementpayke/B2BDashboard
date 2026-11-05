@@ -227,7 +227,7 @@ export function mapInvoiceToListRow(inv: Invoice): InvoiceListRow {
   };
 }
 
-function lineItemsTotal(items: LineItem[] | undefined): string {
+export function lineItemsTotal(items: LineItem[] | undefined): string {
   if (!items?.length) return "0";
   let sum = 0;
   for (const item of items) {
@@ -318,6 +318,8 @@ export const invoicesApi = {
   },
 
   listDrafts: () => apiEnvelope<{ items: InvoiceDraft[]; total: number }>("GET", "/v1/invoices/drafts"),
+
+  deleteDraft: (id: number) => apiEnvelope<null>("DELETE", `/v1/invoices/drafts/${id}`),
 
   summary: () => apiEnvelope<InvoiceSummary>("GET", "/v1/invoices/summary"),
 
