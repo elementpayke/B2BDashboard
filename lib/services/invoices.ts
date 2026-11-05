@@ -319,6 +319,8 @@ export const invoicesApi = {
 
   listDrafts: () => apiEnvelope<{ items: InvoiceDraft[]; total: number }>("GET", "/v1/invoices/drafts"),
 
+  deleteDraft: (id: number) => apiEnvelope<null>("DELETE", `/v1/invoices/drafts/${id}`),
+
   summary: () => apiEnvelope<InvoiceSummary>("GET", "/v1/invoices/summary"),
 
   get: (id: number) => apiEnvelope<Invoice>("GET", `/v1/invoices/${id}`),
