@@ -3989,7 +3989,7 @@ export default function DashboardApp(props: Props = {}) {
   const quickActionTiles = [
         { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
         { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Open local accounts and share your details.", open: guardScreenNav("wallets"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Bank accounts", icon: "↙", desc: "Open local accounts and share your details.", open: guardScreenNav("wallets"), iconBg: "var(--amber)", iconColor: "#fff" },
         { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const liveRates = liveRateRowsFromSummary(homeFxRates);
