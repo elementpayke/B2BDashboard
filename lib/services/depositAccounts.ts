@@ -673,6 +673,33 @@ function buildFlatDomesticRailSections(
   return sections;
 }
 
+/** One live sync when opening account detail — bootstrap no longer blocks on enrich (#338). */
+export function needsDepositInstructionsSync(
+  account: Pick<
+    DepositAccount,
+    | "id"
+    | "status"
+    | "reference"
+    | "account_number"
+    | "iban"
+    | "deposit_disclaimer"
+    | "deposit_reference_required"
+  >,
+): boolean {
+  const id = String(account.id ?? "").trim();
+  if (!id) return false;
+  if ((account.status || "").trim().toLowerCase() !== "active") return false;
+  const hasCoords = Boolean(nonEmpty(account.account_number) || nonEmpty(account.iban));
+  if (!hasCoords) return false;
+  const reference = nonEmpty(account.reference);
+  const disclaimer = nonEmpty(account.deposit_disclaimer);
+  if (reference && disclaimer) return false;
+  if (reference && account.deposit_reference_required !== true) return false;
+  if (!reference) return true;
+  if (account.deposit_reference_required === true && !disclaimer) return true;
+  return false;
+}
+
 /** Partner disclaimer, or fallback when ``deposit_reference_required`` is set without disclaimer text. */
 export function resolveDepositDisclaimer(
   account: Pick<
@@ -784,6 +811,11 @@ export function isCloseableDepositAccount(
   account: Pick<DepositAccount, "id" | "entity_id" | "status">,
 ): boolean {
   return Boolean(account.id && account.entity_id) && !isClosedDepositStatus(account.status);
+}
+
+/** Active fiat deposit accounts for wallets list / fund flows. */
+export function listedDepositAccounts(accounts: readonly DepositAccount[]): DepositAccount[] {
+  return accounts.filter((account) => !isClosedDepositStatus(account.status));
 }
 
 export type CreateBankAccountInput = {

@@ -69,6 +69,7 @@ import {
   buildDepositAccountDetailSections,
   mergeDepositAccount,
   applySyncedDepositAccount,
+  needsDepositInstructionsSync,
   resolveDepositDisclaimer,
   currencyIso,
   currencyLabel,
@@ -79,6 +80,7 @@ import {
   networksForStablecoin,
   isClosedDepositStatus,
   isCloseableDepositAccount,
+  listedDepositAccounts,
   type DepositAccount,
   type DepositAccountListResult,
 } from "@/lib/services/depositAccounts";
@@ -916,9 +918,11 @@ export default function DashboardApp(props: Props = {}) {
     state.screen === "home" ||
     state.screen === "wallets";
   const bootstrapFiatAccounts = bootstrapQuery.data?.fiatAccounts ?? [];
-  const fundingDepositAccounts = bootstrapReady
-    ? bootstrapFiatAccounts
-    : (depositAccountsQuery.data?.accounts ?? []);
+  const fundingDepositAccounts = listedDepositAccounts(
+    bootstrapReady
+      ? bootstrapFiatAccounts
+      : (depositAccountsQuery.data?.accounts ?? []),
+  );
   // Prefer IBAN USD once eligibility+list settle; still allow entity-account fallback.
   const usdFundingReady =
     bootstrapReady ||
@@ -1830,6 +1834,7 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const closeModalRef = useRef(closeModal);
+  const depositInstructionsSyncAttemptedRef = useRef(new Set<string>());
   closeModalRef.current = closeModal;
 
   useEffect(() => {
@@ -3367,6 +3372,35 @@ export default function DashboardApp(props: Props = {}) {
       }),
     );
   };
+  useEffect(() => {
+    if (state.modal !== "acctDetail") return;
+    if (state.selectedAcctKind !== "fiat") return;
+    if (!state.selectedAcctKey.startsWith("fiat:")) return;
+    const currency = state.selectedAcctKey.slice("fiat:".length).trim();
+    if (!currency) return;
+    const stub =
+      (bootstrapQuery.data?.fiatAccounts ?? []).find(
+        (row) => (row.currency || "").trim().toUpperCase() === currency.toUpperCase(),
+      ) ?? null;
+    const overlay =
+      (depositAccountsQuery.data?.accounts ?? []).find(
+        (row) => (row.currency || "").trim().toUpperCase() === currency.toUpperCase(),
+      ) ?? null;
+    const account = mergeDepositAccount(stub, overlay);
+    if (!account || !needsDepositInstructionsSync(account)) return;
+    const id = String(account.id ?? "").trim();
+    if (!id || depositInstructionsSyncAttemptedRef.current.has(id)) return;
+    depositInstructionsSyncAttemptedRef.current.add(id);
+    void refreshDepositAccount(id).catch(() => {
+      depositInstructionsSyncAttemptedRef.current.delete(id);
+    });
+  }, [
+    state.modal,
+    state.selectedAcctKind,
+    state.selectedAcctKey,
+    bootstrapQuery.data,
+    depositAccountsQuery.data,
+  ]);
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
     queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -3644,12 +3678,15 @@ export default function DashboardApp(props: Props = {}) {
       pending: ["var(--amber)", "var(--amber-tint)"],
       unavailable: ["var(--red)", "var(--red-tint)"],
       deposit_unavailable: ["var(--red)", "var(--red-tint)"],
+      closed: ["var(--muted)", "var(--surface2)"],
     };
     const depositStatusColors = (status: string): [string, string] =>
       depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
-    const depositAccountsList = bootstrapReady
-      ? (bootstrapQuery.data?.fiatAccounts ?? [])
-      : (depositAccountsQuery.data?.accounts ?? []);
+    const depositAccountsList = listedDepositAccounts(
+      bootstrapReady
+        ? (bootstrapQuery.data?.fiatAccounts ?? [])
+        : (depositAccountsQuery.data?.accounts ?? []),
+    );
     const stablecoinAccountsList = visibleStablecoinAccounts(
       bootstrapReady
         ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
