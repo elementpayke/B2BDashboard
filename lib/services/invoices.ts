@@ -227,7 +227,7 @@ export function mapInvoiceToListRow(inv: Invoice): InvoiceListRow {
   };
 }
 
-function lineItemsTotal(items: LineItem[] | undefined): string {
+export function lineItemsTotal(items: LineItem[] | undefined): string {
   if (!items?.length) return "0";
   let sum = 0;
   for (const item of items) {

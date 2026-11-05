@@ -12,6 +12,7 @@ import {
   fetchInvoicePayments,
   fetchInvoiceSummary,
   invoicesApi,
+  lineItemsTotal as computeLineItemsTotal,
   mapInvoiceToListRow,
   summarizeInvoices,
   formatMoneyAmount,
@@ -22,6 +23,7 @@ import {
   type InvoiceDraft,
   type InvoiceMethod,
   type InvoicePayment,
+  type LineItem,
   type UiInvoiceStatus,
 } from "@/lib/services/invoices";
 
@@ -110,6 +112,14 @@ function formatDateTime(value: string | null | undefined): string {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Prefixes formula-triggering leading characters so Excel/Sheets never
+ * executes a customer-controlled cell as a formula on open. */
+function csvCell(value: unknown): string {
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 /** CSV export is a plain client-side download — no backend endpoint needed
  * for "every column already visible in the table". */
 function exportInvoicesCsv(rows: ListRow[]) {
@@ -122,9 +132,7 @@ function exportInvoicesCsv(rows: ListRow[]) {
     r.statusLabel,
     r.dueLabel,
   ]);
-  const csv = [header, ...lines]
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
+  const csv = [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -236,7 +244,8 @@ function ManualPaymentForm({
       className="ep-invoices-manual-payment"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!amount || Number(amount) <= 0) {
+        const amountValue = Number(amount);
+        if (!amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0) {
           setError("Enter an amount greater than zero.");
           return;
         }
@@ -352,13 +361,17 @@ export default function InvoicesScreen() {
     const invoiceItems = listQuery.data?.items ?? [];
     const invoiceRows: ListRow[] = invoiceItems.map((inv) => ({ ...mapInvoiceToListRow(inv), isDraft: false }));
     const draftRows: ListRow[] =
-      !statusFilter || statusFilter === "draft" ? (draftsQuery.data?.items ?? []).map(draftToRow) : [];
+      !statusFilter || statusFilter === "draft"
+        ? (draftsQuery.data?.items ?? [])
+            .map(draftToRow)
+            .filter((r) => !methodFilter || r.methods.includes(methodFilter as InvoiceMethod))
+        : [];
     const combined = statusFilter === "draft" ? draftRows : [...draftRows, ...invoiceRows];
     const q = search.trim().toLowerCase();
     return combined.filter(
       (r) => !q || r.displayId.toLowerCase().includes(q) || r.customer.toLowerCase().includes(q),
     );
-  }, [listQuery.data, draftsQuery.data, statusFilter, search]);
+  }, [listQuery.data, draftsQuery.data, statusFilter, methodFilter, search]);
 
   const selected = detailQuery.data;
   const selectedDraft = (draftsQuery.data?.items ?? []).find((d) => d.id === selectedDraftId);
@@ -466,9 +479,14 @@ export default function InvoicesScreen() {
   if (selectedId != null && selected) {
     const payload: DraftPayload = selected.payload ?? { currency: "USD", line_items: [] };
     const currency = payload.currency || "USD";
-    const expected = selected.expected_amount ?? payload.amount ?? "0";
+    const expected =
+      selected.expected_amount ??
+      payload.amount ??
+      computeLineItemsTotal(payload.line_items as LineItem[]);
     const received = selected.amount_received ?? "0";
-    const outstanding = selected.outstanding_balance ?? "0";
+    const outstanding =
+      selected.outstanding_balance ??
+      String(Math.max(Number(expected) - Number(received), 0));
     const settledInFull = Number(outstanding) <= 0 && Number(received) > 0;
     const row = mapInvoiceToListRow(selected);
     const badge = STATUS_BADGE[row.status];
@@ -674,7 +692,6 @@ export default function InvoicesScreen() {
   }
 
   const loading = listQuery.isLoading || draftsQuery.isLoading;
-  const hasAnyInvoices = (listQuery.data?.items?.length ?? 0) > 0 || (draftsQuery.data?.items?.length ?? 0) > 0;
   const hasFilters = Boolean(search || statusFilter || methodFilter);
   const empty = !loading && rows.length === 0;
   const statsLoading = listQuery.isLoading || (summaryQuery.isLoading && !summary);
@@ -760,7 +777,7 @@ export default function InvoicesScreen() {
 
       {empty ? (
         <section className="ep-panel ep-invoices-empty">
-          {hasFilters && hasAnyInvoices ? (
+          {hasFilters ? (
             <>
               <h3>No invoices match these filters</h3>
               <p>Try a different search term, status, or payment method.</p>
