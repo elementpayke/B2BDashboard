@@ -61,13 +61,16 @@ describe("moneyFlowFromTransactions", () => {
     expect(flow).toEqual({ moneyInUsd: 0, moneyOutUsd: 0 });
   });
 
-  it("fails closed when a rate is missing", () => {
+  it("skips a row with no rate instead of blanking the whole total", () => {
     const flow = moneyFlowFromTransactions(
-      [tx({ currency: "GHS", amount_fiat: "100", direction: "in" })],
+      [
+        tx({ id: 1, currency: "GHS", amount_fiat: "100", direction: "in" }),
+        tx({ id: 2, currency: "KES", amount_fiat: "1300", direction: "in" }), // $10
+      ],
       fx,
       now,
     );
-    expect(flow).toEqual({ moneyInUsd: null, moneyOutUsd: null });
+    expect(flow).toEqual({ moneyInUsd: 10, moneyOutUsd: 0 });
   });
 
   it("does not sum raw mixed fiats as dollars", () => {
@@ -116,12 +119,15 @@ describe("pendingAmountFromTransactions", () => {
     expect(pending).toBe(0);
   });
 
-  it("fails closed when a rate is missing", () => {
+  it("skips a row with no rate instead of blanking the whole total", () => {
     const pending = pendingAmountFromTransactions(
-      [tx({ status: "processing", currency: "GHS", amount_fiat: "100" })],
+      [
+        tx({ id: 1, status: "processing", currency: "GHS", amount_fiat: "100" }),
+        tx({ id: 2, status: "processing", currency: "KES", amount_fiat: "1300" }), // $10
+      ],
       fx,
     );
-    expect(pending).toBeNull();
+    expect(pending).toBeCloseTo(10);
   });
 });
 
