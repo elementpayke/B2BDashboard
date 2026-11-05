@@ -136,8 +136,8 @@ export const authApi = {
   resendVerification: (email: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/resend-verification", { email }),
 
-  forgotPassword: (email: string) =>
-    authEnvelope<{ ok: boolean }>("POST", "/api/auth/forgot-password", { email }),
+  forgotPassword: (email: string, turnstileToken?: string) =>
+    authEnvelope<{ ok: boolean }>("POST", "/api/auth/forgot-password", { email, turnstileToken }),
 
   resetPassword: (email: string, token: string, new_password: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/reset-password", { email, token, new_password }),

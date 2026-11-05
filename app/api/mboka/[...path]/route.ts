@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyRequest } from "@/lib/server/mbokaProxy";
-
-// Server-to-server routes (HMAC-signature verified by the backend, not
-// JWT-authenticated) must never be reachable through this user-facing,
-// cookie-authenticated proxy.
-const BLOCKED_PREFIXES = ["webhooks"];
+import { mbokaProxyTarget } from "@/lib/server/mbokaProxyAllowlist";
 
 function backendPathWithQuery(request: NextRequest, path: string[]): string | null {
-  if (path.some((segment) => BLOCKED_PREFIXES.includes(segment))) {
-    return null;
-  }
-  const search = request.nextUrl.search;
-  return `/api/${path.join("/")}${search}`;
+  return mbokaProxyTarget(path, request.nextUrl.search);
 }
 
 async function handle(

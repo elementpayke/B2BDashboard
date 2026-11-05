@@ -59,4 +59,33 @@ describe("savedRecipientsStore", () => {
     const after = await listSavedRecipients(10);
     expect(after.map((r) => r.id)).toEqual([b.recipient.id]);
   });
+
+  it("refuses to store an account number in production without an encryption key", async () => {
+    const previous = process.env.VERCEL_ENV;
+    const savedKey = process.env.SAVED_RECIPIENTS_ENCRYPTION_KEY;
+    const nextAuth = process.env.NEXTAUTH_SECRET;
+    const sessionSecret = process.env.SESSION_SECRET;
+    process.env.VERCEL_ENV = "production";
+    delete process.env.SAVED_RECIPIENTS_ENCRYPTION_KEY;
+    delete process.env.NEXTAUTH_SECRET;
+    delete process.env.SESSION_SECRET;
+    try {
+      const result = await createSavedRecipient(10, {
+        label: "Jane",
+        accountNumber: "123456",
+        railType: "bank",
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.status).toBe(503);
+    } finally {
+      if (previous === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = previous;
+      if (savedKey === undefined) delete process.env.SAVED_RECIPIENTS_ENCRYPTION_KEY;
+      else process.env.SAVED_RECIPIENTS_ENCRYPTION_KEY = savedKey;
+      if (nextAuth === undefined) delete process.env.NEXTAUTH_SECRET;
+      else process.env.NEXTAUTH_SECRET = nextAuth;
+      if (sessionSecret === undefined) delete process.env.SESSION_SECRET;
+      else process.env.SESSION_SECRET = sessionSecret;
+    }
+  });
 });

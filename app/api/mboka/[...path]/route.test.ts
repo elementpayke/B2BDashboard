@@ -44,4 +44,11 @@ describe("GET /api/mboka/[...path]", () => {
     const [url] = fetchMock.mock.calls[0];
     expect(url).toContain("/api/v1/transactions?limit=10");
   });
+
+  it("does not proxy a prefix the dashboard does not use", async () => {
+    const req = new NextRequest("http://localhost:3000/api/mboka/admin/users");
+    const res = await GET(req, { params: Promise.resolve({ path: ["admin", "users"] }) });
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
