@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import type { InvoiceCustomer } from "@/lib/services/invoiceCustomers";
+import { invoiceBrandingApi } from "@/lib/services/invoiceBranding";
+import InvoicePreviewCard from "./InvoicePreviewCard";
 import {
   buildCreatePayloadFromWizard,
   formatInvoiceAmount,
@@ -89,6 +92,12 @@ export default function CreateInvoiceModal({
   useEffect(() => {
     void invoicesApi.nextId().then((r) => setInvoiceNumberHint(r.next_invoice_number.toUpperCase()));
   }, []);
+
+  const brandingQuery = useQuery({
+    queryKey: ["invoice-branding"],
+    queryFn: () => invoiceBrandingApi.get(),
+    retry: false,
+  });
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const total = useMemo(() => {
@@ -367,19 +376,15 @@ export default function CreateInvoiceModal({
         {step === 3 ? (
           <div className="ep-invoices-form">
             <p>This is what {selectedCustomer?.name} will see on the invoice.</p>
-            <div className="ep-invoices-preview-card">
-              <p className="ep-invoices-preview-card__brand">MBOKA</p>
-              <p className="ep-mono">Invoice {invoiceNumberHint}</p>
-              <p className="ep-mono ep-invoices-preview-card__amount">{formatInvoiceAmount(total, currency)}</p>
-              <p>{selectedCustomer?.name}</p>
-              <p>{description}</p>
-              <p className="ep-invoices-field-label">Ways to pay</p>
-              <div className="ep-invoices-preview-pay-row">
-                <span>{METHOD_META.usdc.label}</span>
-                <span className="ep-invoices-muted">{METHOD_META.usdc.detail}</span>
-              </div>
-              <p>Due {dueDate || "—"}</p>
-            </div>
+            <InvoicePreviewCard
+              branding={brandingQuery.data}
+              invoiceNumber={invoiceNumberHint}
+              amount={total}
+              currency={currency}
+              customerName={selectedCustomer?.name}
+              description={description}
+              dueDate={dueDate}
+            />
             <p>Settles to your USDC account on Stellar</p>
             <div className="ep-invoices-modal-actions">
               <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setStep(2)}>

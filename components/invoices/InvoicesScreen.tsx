@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import CreateInvoiceModal from "./CreateInvoiceModal";
 import InvoiceBrandingPanel from "./InvoiceBrandingPanel";
 import ShareInvoiceSheet from "./ShareInvoiceSheet";
+import InvoicePreviewModal from "./InvoicePreviewModal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createInvoiceCustomer, fetchInvoiceCustomers } from "@/lib/services/invoiceCustomersApi";
 import {
@@ -147,6 +148,7 @@ function InvoiceRowMenu({
   onToggle,
   row,
   onView,
+  onPreview,
   onShare,
   onPdf,
   onSendReminder,
@@ -158,6 +160,7 @@ function InvoiceRowMenu({
   onToggle: () => void;
   row: ListRow;
   onView: () => void;
+  onPreview: () => void;
   onShare: () => void;
   onPdf: () => void;
   onSendReminder: () => void;
@@ -188,6 +191,9 @@ function InvoiceRowMenu({
           </button>
           {!isDraft ? (
             <>
+              <button type="button" onClick={onPreview}>
+                Preview invoice
+              </button>
               <button type="button" onClick={onShare}>
                 Share invoice…
               </button>
@@ -311,6 +317,7 @@ export default function InvoicesScreen() {
   const [selectedDraftId, setSelectedDraftId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [shareInvoice, setShareInvoice] = useState<Invoice | null>(null);
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false);
   const [menuId, setMenuId] = useState<number | string | null>(null);
@@ -537,6 +544,13 @@ export default function InvoicesScreen() {
             <button
               type="button"
               className="ep-invoices-btn ep-invoices-btn--secondary"
+              onClick={() => setPreviewInvoice(selected)}
+            >
+              Preview invoice
+            </button>
+            <button
+              type="button"
+              className="ep-invoices-btn ep-invoices-btn--secondary"
               disabled={downloadingId === selected.id}
               onClick={() => void downloadPdf(selected.id)}
             >
@@ -678,6 +692,16 @@ export default function InvoicesScreen() {
         ) : null}
 
         {shareInvoice ? <ShareInvoiceSheet invoice={shareInvoice} onClose={() => setShareInvoice(null)} /> : null}
+        {previewInvoice ? (
+          <InvoicePreviewModal
+            invoice={previewInvoice}
+            onClose={() => setPreviewInvoice(null)}
+            onShare={() => {
+              setShareInvoice(previewInvoice);
+              setPreviewInvoice(null);
+            }}
+          />
+        ) : null}
       </div>
     );
   }
@@ -838,6 +862,7 @@ export default function InvoicesScreen() {
                     onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
                     row={row}
                     onView={openRow}
+                    onPreview={() => void invoicesApi.get(row.id).then(setPreviewInvoice)}
                     onShare={() => void invoicesApi.get(row.id).then(setShareInvoice)}
                     onPdf={() => void downloadPdf(row.id)}
                     onSendReminder={() => void runRowAction(() => invoicesApi.sendReminder(row.id))}
@@ -871,6 +896,16 @@ export default function InvoicesScreen() {
         />
       ) : null}
       {shareInvoice ? <ShareInvoiceSheet invoice={shareInvoice} onClose={() => setShareInvoice(null)} /> : null}
+        {previewInvoice ? (
+          <InvoicePreviewModal
+            invoice={previewInvoice}
+            onClose={() => setPreviewInvoice(null)}
+            onShare={() => {
+              setShareInvoice(previewInvoice);
+              setPreviewInvoice(null);
+            }}
+          />
+        ) : null}
     </div>
   );
 }
