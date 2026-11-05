@@ -34,7 +34,7 @@ const STATUS_BADGE: Record<
   draft: { color: "var(--muted2)", soft: "var(--surface2)" },
   pending: { color: "var(--amber, #b47700)", soft: "var(--amber-tint, #fbf2de)" },
   partially_paid: { color: "var(--amber, #b47700)", soft: "var(--amber-tint, #fbf2de)" },
-  paid: { color: "var(--indigo-text, #3b2ed3)", soft: "var(--indigo-tint, #eeedfb)" },
+  paid: { color: "var(--success, #1a8a4a)", soft: "var(--success-tint, rgba(26,138,74,0.12))" },
   overdue: { color: "var(--red-text, #c42a2f)", soft: "var(--red-tint, #fcebec)" },
   cancelled: { color: "var(--muted2)", soft: "var(--surface2)" },
 };
@@ -307,7 +307,6 @@ export default function InvoicesScreen() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [methodFilter, setMethodFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDraftId, setSelectedDraftId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -320,11 +319,10 @@ export default function InvoicesScreen() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ["invoices", statusFilter, methodFilter],
+    queryKey: ["invoices", statusFilter],
     queryFn: () =>
       invoicesApi.list({
         status: statusFilter || undefined,
-        payment_method: methodFilter || undefined,
         limit: INVOICE_LIST_MAX_LIMIT,
       }),
     enabled: statusFilter !== "draft",
@@ -361,17 +359,13 @@ export default function InvoicesScreen() {
     const invoiceItems = listQuery.data?.items ?? [];
     const invoiceRows: ListRow[] = invoiceItems.map((inv) => ({ ...mapInvoiceToListRow(inv), isDraft: false }));
     const draftRows: ListRow[] =
-      !statusFilter || statusFilter === "draft"
-        ? (draftsQuery.data?.items ?? [])
-            .map(draftToRow)
-            .filter((r) => !methodFilter || r.methods.includes(methodFilter as InvoiceMethod))
-        : [];
+      !statusFilter || statusFilter === "draft" ? (draftsQuery.data?.items ?? []).map(draftToRow) : [];
     const combined = statusFilter === "draft" ? draftRows : [...draftRows, ...invoiceRows];
     const q = search.trim().toLowerCase();
     return combined.filter(
       (r) => !q || r.displayId.toLowerCase().includes(q) || r.customer.toLowerCase().includes(q),
     );
-  }, [listQuery.data, draftsQuery.data, statusFilter, methodFilter, search]);
+  }, [listQuery.data, draftsQuery.data, statusFilter, search]);
 
   const selected = detailQuery.data;
   const selectedDraft = (draftsQuery.data?.items ?? []).find((d) => d.id === selectedDraftId);
@@ -580,10 +574,7 @@ export default function InvoicesScreen() {
         <section className="ep-panel ep-invoices-section">
           <h3 className="ep-invoices-section__title">Payment breakdown</h3>
           {payments.length === 0 ? (
-            <p className="ep-invoices-muted">
-              Your customer can pay with any of {row.methods.length || 1} method
-              {row.methods.length === 1 ? "" : "s"}.
-            </p>
+            <p className="ep-invoices-muted">Your customer can pay this invoice in USDC on Stellar.</p>
           ) : (
             <>
               <p className="ep-mono ep-invoices-muted">
@@ -692,24 +683,25 @@ export default function InvoicesScreen() {
   }
 
   const loading = listQuery.isLoading || draftsQuery.isLoading;
-  const hasFilters = Boolean(search || statusFilter || methodFilter);
+  const hasFilters = Boolean(search || statusFilter);
   const empty = !loading && rows.length === 0;
   const statsLoading = listQuery.isLoading || (summaryQuery.isLoading && !summary);
 
   return (
     <div className="ep-invoices">
-      <div className="ep-reports__stats ep-invoices__stats">
+      <div className="ep-invoices__stats">
         {(
           [
-            ["total_invoiced", "Total invoiced"],
-            ["total_paid", "Paid"],
-            ["total_pending", "Pending"],
-            ["total_overdue", "Overdue"],
+            ["total_invoiced", "Total invoiced", "total"],
+            ["total_paid", "Paid", "paid"],
+            ["total_pending", "Pending", "pending"],
+            ["total_overdue", "Overdue", "overdue"],
           ] as const
-        ).map(([key, label]) => (
-          <div key={key} className="ep-reports__stat">
-            <span className="ep-reports__stat-label">{label}</span>
-            <span className="ep-reports__stat-value ep-mono">
+        ).map(([key, label, tone]) => (
+          <div key={key} className={`ep-invoices-stat ep-invoices-stat--${tone}`}>
+            <span className="ep-invoices-stat__dot" aria-hidden />
+            <span className="ep-invoices-stat__label">{label}</span>
+            <span className="ep-invoices-stat__value ep-mono">
               {formatStat(summary?.[key], summaryCurrency, statsLoading)}
             </span>
           </div>
@@ -750,15 +742,9 @@ export default function InvoicesScreen() {
               <option value="canceled">Cancelled</option>
             </select>
           </label>
-          <label className="ep-statements__filter">
-            <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} aria-label="Payment method">
-              <option value="">All methods</option>
-              <option value="usdc">USDC</option>
-              <option value="usdt">USDT</option>
-              <option value="mpesa">M-Pesa</option>
-              <option value="bank">Bank</option>
-            </select>
-          </label>
+          <span className="ep-invoices-rail-pill" title="Every invoice settles in USDC on Stellar for now">
+            Stellar · USDC
+          </span>
         </div>
         <div className="ep-statements__toolbar-actions">
           <button
@@ -780,14 +766,13 @@ export default function InvoicesScreen() {
           {hasFilters ? (
             <>
               <h3>No invoices match these filters</h3>
-              <p>Try a different search term, status, or payment method.</p>
+              <p>Try a different search term or status.</p>
               <button
                 type="button"
                 className="ep-invoices-btn ep-invoices-btn--secondary"
                 onClick={() => {
                   setSearch("");
                   setStatusFilter("");
-                  setMethodFilter("");
                 }}
               >
                 Clear filters

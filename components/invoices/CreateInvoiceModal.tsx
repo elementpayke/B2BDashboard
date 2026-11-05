@@ -20,6 +20,9 @@ type CreateInvoiceModalProps = {
   onCreated: (invoice: Invoice) => void;
 };
 
+// Only the Stellar USDC rail is wired up today. The other entries stay here,
+// unused, so turning M-Pesa/bank/USDT back on later is a one-line change
+// rather than reconstructing this metadata from scratch.
 const METHOD_META: Record<
   InvoiceMethod,
   { label: string; detail: string; kind: string }
@@ -46,21 +49,8 @@ const METHOD_META: Record<
   },
 };
 
-const SETTLEMENT_OPTIONS: { value: SettlementPreference; title: string; detail: string }[] = [
-  {
-    value: "asset",
-    title: "Keep in the asset paid",
-    detail: "Fiat lands in its own currency. USDC from any network lands as USDC on Stellar",
-  },
-  {
-    value: "stellar_usdc",
-    title: "Convert everything to USDC on Stellar",
-    detail: "Settled to your USDC Account on Stellar",
-  },
-  { value: "USD", title: "Convert everything to USD", detail: "Settled to your US Dollar account" },
-  { value: "KES", title: "Convert everything to KES", detail: "Settled to your Kenyan Shilling account" },
-  { value: "EUR", title: "Convert everything to EUR", detail: "Settled to your Euro account" },
-];
+const INVOICE_METHODS: InvoiceMethod[] = ["usdc"];
+const INVOICE_SETTLEMENT: SettlementPreference = "stellar_usdc";
 
 export default function CreateInvoiceModal({
   customers,
@@ -90,8 +80,8 @@ export default function CreateInvoiceModal({
   const [lineQty, setLineQty] = useState("1");
   const [lineUnit, setLineUnit] = useState("");
   const [items, setItems] = useState<{ name: string; detail?: string; qty: number; unit_price: string }[]>([]);
-  const [methods, setMethods] = useState<InvoiceMethod[]>(["usdc"]);
-  const [settlement, setSettlement] = useState<SettlementPreference>("asset");
+  const methods = INVOICE_METHODS;
+  const settlement = INVOICE_SETTLEMENT;
   const [allowPartial, setAllowPartial] = useState(false);
   const [emailOnCreate, setEmailOnCreate] = useState(true);
   const [note, setNote] = useState("");
@@ -106,11 +96,6 @@ export default function CreateInvoiceModal({
   }, [items]);
 
   const step1Valid = Boolean(selectedCustomer && items.length > 0);
-  const step2Valid = methods.length > 0;
-
-  function toggleMethod(m: InvoiceMethod) {
-    setMethods((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
-  }
 
   async function saveNewCustomer() {
     const created = await onSaveCustomer({
@@ -161,7 +146,6 @@ export default function CreateInvoiceModal({
   }
 
   if (success) {
-    const n = success.payload.methods?.length ?? methods.length;
     return modalRoot(
       <div className="ep-invoices-modal-overlay" onClick={onClose} role="presentation">
         <div className="ep-invoices-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -174,8 +158,8 @@ export default function CreateInvoiceModal({
               {formatInvoiceAmount(success.payload.amount || total, currency)}
             </p>
             <p>
-              {selectedCustomer?.name} can pay with {n} payment methods. We emailed them the invoice PDF with
-              payment details.
+              {selectedCustomer?.name} can pay in USDC on Stellar. We emailed them the invoice PDF with payment
+              details.
             </p>
             <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={onClose}>
               Done
@@ -201,7 +185,7 @@ export default function CreateInvoiceModal({
           ))}
         </div>
         <p className="ep-invoices-step-label">
-          Step {step} · {step === 1 ? "Details" : step === 2 ? "Payment methods" : "Review and send"}
+          Step {step} · {step === 1 ? "Details" : step === 2 ? "Settlement" : "Review and send"}
         </p>
 
         {step === 1 ? (
@@ -343,51 +327,23 @@ export default function CreateInvoiceModal({
               disabled={!step1Valid}
               onClick={() => setStep(2)}
             >
-              {step1Valid ? "Continue to payment methods" : "Add a customer and one line item"}
+              {step1Valid ? "Continue to settlement" : "Add a customer and one line item"}
             </button>
           </div>
         ) : null}
 
         {step === 2 ? (
           <div className="ep-invoices-form">
-            <p className="ep-invoices-muted">
-              Your customer sees every method you enable on the invoice and picks one. USDC from any network settles on
-              Stellar.
-            </p>
-            {(Object.keys(METHOD_META) as InvoiceMethod[]).map((m) => (
-              <label key={m} className={`ep-invoices-method-card${methods.includes(m) ? " ep-invoices-method-card--on" : ""}`}>
-                <input type="checkbox" checked={methods.includes(m)} onChange={() => toggleMethod(m)} />
-                <span>
-                  <strong>{METHOD_META[m].label}</strong>
-                  <span className="ep-invoices-muted">
-                    {METHOD_META[m].kind} · {METHOD_META[m].detail}
-                  </span>
-                </span>
-              </label>
-            ))}
-            {!step2Valid ? (
-              <p className="ep-invoices-error" role="alert">
-                Select at least one payment method so your customer has a way to pay.
-              </p>
-            ) : null}
-            <p className="ep-invoices-field-label ep-invoices-field-label--spaced">Settlement preference</p>
-            {SETTLEMENT_OPTIONS.map((opt) => (
-              <label key={opt.value} className="ep-invoices-settlement-card">
-                <input
-                  type="radio"
-                  name="settlement"
-                  checked={settlement === opt.value}
-                  onChange={() => setSettlement(opt.value)}
-                />
-                <span>
-                  <strong>{opt.title}</strong>
-                  <span className="ep-invoices-muted">{opt.detail}</span>
-                </span>
-              </label>
-            ))}
+            <div className="ep-invoices-rail-banner">
+              <strong>Stellar · USDC</strong>
+              <span className="ep-invoices-muted">
+                Every invoice settles in USDC on Stellar for now. M-Pesa, bank transfer, and USDT are on the roadmap —
+                turning them on won&apos;t require re-creating invoices you send today.
+              </span>
+            </div>
             <label className="ep-invoices-check">
               <input type="checkbox" checked={allowPartial} onChange={(e) => setAllowPartial(e.target.checked)} />
-              Allow partial payments — Customer can pay across several methods
+              Allow partial payments — Customer can pay across several transactions
             </label>
             <label className="ep-invoices-check">
               <input type="checkbox" checked={emailOnCreate} onChange={(e) => setEmailOnCreate(e.target.checked)} />
@@ -401,7 +357,7 @@ export default function CreateInvoiceModal({
               <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setStep(1)}>
                 ← Back
               </button>
-              <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" disabled={!step2Valid} onClick={() => setStep(3)}>
+              <button type="button" className="ep-invoices-btn ep-invoices-btn--primary" onClick={() => setStep(3)}>
                 Review invoice
               </button>
             </div>
@@ -418,16 +374,13 @@ export default function CreateInvoiceModal({
               <p>{selectedCustomer?.name}</p>
               <p>{description}</p>
               <p className="ep-invoices-field-label">Ways to pay</p>
-              {methods.map((m) => (
-                <div key={m} className="ep-invoices-preview-pay-row">
-                  <span>{METHOD_META[m].label}</span>
-                  <span className="ep-invoices-muted">{METHOD_META[m].detail}</span>
-                </div>
-              ))}
+              <div className="ep-invoices-preview-pay-row">
+                <span>{METHOD_META.usdc.label}</span>
+                <span className="ep-invoices-muted">{METHOD_META.usdc.detail}</span>
+              </div>
               <p>Due {dueDate || "—"}</p>
             </div>
-            <p>Payment methods {methods.length} enabled</p>
-            <p>Settles to {SETTLEMENT_OPTIONS.find((o) => o.value === settlement)?.title}</p>
+            <p>Settles to your USDC account on Stellar</p>
             <div className="ep-invoices-modal-actions">
               <button type="button" className="ep-invoices-btn ep-invoices-btn--ghost" onClick={() => setStep(2)}>
                 ← Back
