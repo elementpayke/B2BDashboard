@@ -53,6 +53,20 @@ describe("proxyRequest", () => {
       vi.unstubAllEnvs();
     });
 
+    it("returns 503 and does not call Mboka when the flag is on and the secret is missing", async () => {
+      vi.stubEnv("MBOKA_PROXY_SIGNATURE_REQUIRED", "true");
+      vi.stubEnv("MBOKA_PROXY_SHARED_SECRET", "");
+      const req = makeRequest({
+        method: "POST",
+        path: "/api/v1/orders/quote",
+        cookies: { [ACCESS_COOKIE]: "token" },
+        body: "{}",
+      });
+      const res = await proxyRequest(req, "/api/v1/orders/quote");
+      expect(res.status).toBe(503);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("attaches no signature headers when no shared secret is configured (today's default)", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
       const req = makeRequest({ cookies: { [ACCESS_COOKIE]: "token" } });
