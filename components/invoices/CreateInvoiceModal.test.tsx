@@ -44,27 +44,18 @@ function completeStep1() {
   fireEvent.change(screen.getByPlaceholderText("Item name"), { target: { value: "Software development" } });
   fireEvent.change(screen.getByPlaceholderText("Unit price"), { target: { value: "1000" } });
   fireEvent.click(screen.getByRole("button", { name: "+ Add item" }));
-  fireEvent.click(screen.getByRole("button", { name: "Continue to payment methods" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to settlement" }));
 }
 
 describe("CreateInvoiceModal layout", () => {
-  it("renders payment method cards with inputs inside each label", () => {
+  it("steps straight to a Stellar USDC settlement banner — no method or settlement picker", () => {
     renderModal();
     completeStep1();
 
-    const usdc = screen.getByText("USDC").closest("label");
-    expect(usdc).toHaveClass("ep-invoices-method-card");
-    expect(usdc?.querySelector('input[type="checkbox"]')).toBeTruthy();
-    expect(screen.getByText(/Any network.*Stellar/)).toBeTruthy();
-  });
-
-  it("renders settlement options as selectable rows", () => {
-    renderModal();
-    completeStep1();
-
-    const settlement = screen.getByText("Convert everything to USDC on Stellar").closest("label");
-    expect(settlement).toHaveClass("ep-invoices-settlement-card");
-    expect(settlement?.querySelector('input[type="radio"]')).toBeTruthy();
+    expect(screen.getByText("Stellar · USDC")).toBeTruthy();
+    expect(screen.getByText(/M-Pesa, bank transfer, and USDT are on the roadmap/)).toBeTruthy();
+    expect(document.querySelector(".ep-invoices-method-card")).toBeNull();
+    expect(document.querySelector(".ep-invoices-settlement-card")).toBeNull();
   });
 
   it("shows review pay rows without merging label and detail", () => {
@@ -75,5 +66,6 @@ describe("CreateInvoiceModal layout", () => {
     const row = screen.getByText("USDC").closest(".ep-invoices-preview-pay-row");
     expect(row).toBeTruthy();
     expect(row?.querySelector(".ep-invoices-muted")?.textContent).toMatch(/Stellar/);
+    expect(screen.getByText("Settles to your USDC account on Stellar")).toBeTruthy();
   });
 });
