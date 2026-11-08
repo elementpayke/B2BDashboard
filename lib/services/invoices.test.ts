@@ -79,7 +79,7 @@ describe("invoices mappers", () => {
         currency: "USD",
         client_name: "Acme",
         amount: "100",
-        methods: ["usdc"] as const,
+        methods: ["usdc" as const],
         line_items: [],
       },
     };
