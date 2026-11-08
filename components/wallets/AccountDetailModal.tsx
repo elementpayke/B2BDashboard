@@ -73,21 +73,21 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   if (!rows.length) return [];
   const bankKeys =
     /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
-  const nuvionKeys = /^nuvion/i;
+  const mbokaKeys = /^mboka/i;
   const settleKeys = /^(settles|settlement|reference|asset|network|account id|status)/i;
   const bank: AccountDetailRow[] = [];
-  const nuvion: AccountDetailRow[] = [];
+  const mboka: AccountDetailRow[] = [];
   const settle: AccountDetailRow[] = [];
   const other: AccountDetailRow[] = [];
   for (const row of rows) {
     if (bankKeys.test(row.label)) bank.push(row);
-    else if (nuvionKeys.test(row.label)) nuvion.push(row);
+    else if (mbokaKeys.test(row.label)) mboka.push(row);
     else if (settleKeys.test(row.label)) settle.push(row);
     else other.push(row);
   }
   const sections: AccountDetailSection[] = [];
   if (bank.length) sections.push({ title: "Bank details", rows: bank });
-  if (nuvion.length) sections.push({ title: "Nuvion transfer", rows: nuvion });
+  if (mboka.length) sections.push({ title: "Mboka transfer", rows: mboka });
   if (settle.length) sections.push({ title: "Settlement", rows: settle });
   if (other.length) sections.push({ title: "Details", rows: other });
   return sections.length ? sections : [{ title: "Details", rows }];
@@ -115,8 +115,8 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
   const dateLine = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date());
 
   // Mirror modal bank-rail sections only — Settlement (available balance) and
-  // Nuvion transfer (the internal reference number) stay on the modal.
-  const EXCLUDED_LETTER_SECTIONS = new Set(["settlement", "nuvion transfer"]);
+  // Mboka transfer (the internal reference number) stay on the modal.
+  const EXCLUDED_LETTER_SECTIONS = new Set(["settlement", "mboka transfer"]);
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
   )

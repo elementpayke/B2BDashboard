@@ -495,15 +495,15 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Nuvion transfer"]);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Mboka transfer"]);
     expect(sections[0]?.rows).toEqual(
       expect.arrayContaining([
         { label: "Account number", value: "63221650476", copyValue: "63221650476" },
         { label: "Branch code", value: "250655", copyValue: "250655" },
       ]),
     );
-    const nuvionTransfer = sections.find((s) => s.title === "Nuvion transfer");
-    expect(nuvionTransfer?.rows.some((r) => r.label === "Nuvion number")).toBe(true);
+    const mbokaTransfer = sections.find((s) => s.title === "Mboka transfer");
+    expect(mbokaTransfer?.rows.some((r) => r.label === "Mboka number")).toBe(true);
   });
 
   it("uses flat domestic coords when partner sets domestic_deposit_only", () => {
@@ -519,7 +519,7 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Nuvion transfer"]);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Mboka transfer"]);
     expect(sections[0]?.rows.some((r) => r.label === "Branch code")).toBe(true);
   });
 
@@ -561,6 +561,81 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
+  it("splits a GB-style account that only has account_number + BIC (no iban), matching live SEK/GBP accounts", () => {
+    // The backend only aliases account_number -> iban for the legacy
+    // USD/EUR rails (map_upstream_account's is_legacy_rail check) — every
+    // other currency (GBP, SEK, ...) arrives with the identifier under
+    // account_number instead. This must still get the domestic/international
+    // split, not fall back to a flat "Bank details" section.
+    const account: DepositAccount = {
+      currency: "SEK",
+      status: "active",
+      account_number: "GB74GRFR04286206171089",
+      bic: "GRFRGB22XXX",
+      bank_name: "Global Remit Financial Services Ltd",
+      bank_address: {
+        line1: "Suite 6034, Unit 3A 34-35 Hatton Garden",
+        city: "Holborn, London",
+        postal_code: "EC1N 8DX",
+        country: "England",
+      },
+    };
+
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Domestic transfer",
+        rows: [
+          {
+            label: "Account number",
+            value: "GB74GRFR04286206171089",
+            copyValue: "GB74GRFR04286206171089",
+          },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "SWIFT/BIC", value: "GRFRGB22XXX", copyValue: "GRFRGB22XXX" },
+          {
+            label: "IBAN",
+            value: "GB74GRFR04286206171089",
+            copyValue: "GB74GRFR04286206171089",
+          },
+        ],
+      },
+      {
+        title: "Bank details",
+        rows: [
+          {
+            label: "Bank",
+            value: "Global Remit Financial Services Ltd",
+            copyValue: "Global Remit Financial Services Ltd",
+          },
+          {
+            label: "Bank address",
+            value: "Suite 6034, Unit 3A 34-35 Hatton Garden, Holborn, London, EC1N 8DX, England",
+            copyValue:
+              "Suite 6034, Unit 3A 34-35 Hatton Garden, Holborn, London, EC1N 8DX, England",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("labels the international identifier 'Account number', not 'IBAN', when account_number isn't IBAN-shaped", () => {
+    const account: DepositAccount = {
+      currency: "GHS",
+      status: "active",
+      account_number: "0123456789",
+      bic: "GHCBGHAC",
+      bank_name: "Ghana Commercial Bank",
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    const international = sections.find((s) => s.title === "International wire");
+    expect(international?.rows.map((r) => r.label)).toEqual(["SWIFT/BIC", "Account number"]);
+  });
+
   it("falls back to a single domestic-only section when there is no SWIFT/BIC yet", () => {
     const account: DepositAccount = {
       currency: "USD",
@@ -582,7 +657,7 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
-  it("puts the Nuvion reference in its own section", () => {
+  it("puts the partner reference in its own white-labeled section", () => {
     const account: DepositAccount = {
       currency: "USD",
       status: "active",
@@ -592,8 +667,8 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.find((s) => s.title === "Nuvion transfer")?.rows).toEqual([
-      { label: "Nuvion number", value: "INV-42", copyValue: "INV-42" },
+    expect(sections.find((s) => s.title === "Mboka transfer")?.rows).toEqual([
+      { label: "Mboka number", value: "INV-42", copyValue: "INV-42" },
     ]);
   });
 

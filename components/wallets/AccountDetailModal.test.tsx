@@ -122,7 +122,7 @@ describe("AccountDetailModal", () => {
     );
   });
 
-  it("bank letter also omits Nuvion transfer / Nuvion number", () => {
+  it("bank letter also omits Mboka transfer / Mboka number", () => {
     render(
       <AccountDetailModal
         copiedField=""
@@ -135,7 +135,7 @@ describe("AccountDetailModal", () => {
           railLabel: "IBAN",
           rows: [
             { label: "IBAN", value: "FR7630006000011234567890189" },
-            { label: "Nuvion number", value: "0017610033" },
+            { label: "Mboka number", value: "0017610033" },
           ],
           sections: [
             {
@@ -143,8 +143,8 @@ describe("AccountDetailModal", () => {
               rows: [{ label: "Account number", value: "FR7630006000011234567890189" }],
             },
             {
-              title: "Nuvion transfer",
-              rows: [{ label: "Nuvion number", value: "0017610033" }],
+              title: "Mboka transfer",
+              rows: [{ label: "Mboka number", value: "0017610033" }],
             },
           ],
         }}
@@ -154,9 +154,9 @@ describe("AccountDetailModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /Download bank letter/i }));
 
     const doc = vi.mocked(openBrandedDocument).mock.calls[0][0];
-    expect(doc.sections.map((s) => s.title)).not.toContain("Nuvion transfer");
+    expect(doc.sections.map((s) => s.title)).not.toContain("Mboka transfer");
     expect(doc.sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
-      "Nuvion number",
+      "Mboka number",
     );
   });
 
