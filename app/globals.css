@@ -8141,7 +8141,23 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+}
+
+.ep-wallets-detail__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ep-wallets-detail__actions .ep-wallets-detail__letter {
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  .ep-wallets-detail__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ep-wallets-detail__fund-hint {
@@ -8184,6 +8200,36 @@ button.ep-home__stat:focus-visible {
   color: var(--muted2);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* Domestic/International rail switcher — shows one rail's coordinates at a
+   time instead of stacking both full coordinate blocks (the scroll fix). */
+.ep-wallets-detail__rail-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface2);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.ep-wallets-detail__rail-tab {
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ep-wallets-detail__rail-tab[data-active="true"] {
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .ep-wallets-detail__beneficiary {
@@ -8260,7 +8306,7 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail__rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .ep-wallets-detail__row {
@@ -8270,9 +8316,9 @@ button.ep-home__stat:focus-visible {
     "label copy"
     "value copy";
   column-gap: 10px;
-  row-gap: 4px;
+  row-gap: 3px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   background: var(--surface2);
 }
@@ -8291,7 +8337,7 @@ button.ep-home__stat:focus-visible {
   grid-area: value;
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0.01em;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -8303,7 +8349,7 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail__value--iban {
   font-family: 'Space Grotesk', sans-serif;
   letter-spacing: 0.01em;
-  font-size: 14px;
+  font-size: 12.5px;
 }
 
 .ep-wallets-detail__copy {

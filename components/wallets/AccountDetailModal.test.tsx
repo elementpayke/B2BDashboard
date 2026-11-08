@@ -122,6 +122,129 @@ describe("AccountDetailModal", () => {
     );
   });
 
+  it("bank letter also omits Nuvion transfer / Nuvion number", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "EUR",
+          name: "Euro",
+          beneficiary: "Elementpay LTD",
+          showDownloadLetter: true,
+          railLabel: "IBAN",
+          rows: [
+            { label: "IBAN", value: "FR7630006000011234567890189" },
+            { label: "Nuvion number", value: "0017610033" },
+          ],
+          sections: [
+            {
+              title: "Domestic transfer",
+              rows: [{ label: "Account number", value: "FR7630006000011234567890189" }],
+            },
+            {
+              title: "Nuvion transfer",
+              rows: [{ label: "Nuvion number", value: "0017610033" }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Download bank letter/i }));
+
+    const doc = vi.mocked(openBrandedDocument).mock.calls[0][0];
+    expect(doc.sections.map((s) => s.title)).not.toContain("Nuvion transfer");
+    expect(doc.sections.flatMap((s) => s.rows.map((r) => r.label))).not.toContain(
+      "Nuvion number",
+    );
+  });
+
+  it("shows domestic and international rails as a tab switch, not stacked sections", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "SEK",
+          name: "Swedish Krona",
+          beneficiary: "Elementpay LTD",
+          rows: [
+            { label: "Account number", value: "GB74GRFR04286206171089" },
+            { label: "SWIFT/BIC", value: "GRFRGB22XXX" },
+          ],
+          sections: [
+            {
+              title: "Domestic transfer",
+              rows: [
+                { label: "Account number", value: "GB74GRFR04286206171089", copyValue: "GB74GRFR04286206171089" },
+                { label: "Bank", value: "Global Remit Financial Services Ltd" },
+              ],
+            },
+            {
+              title: "International wire",
+              rows: [
+                { label: "SWIFT/BIC", value: "GRFRGB22XXX", copyValue: "GRFRGB22XXX" },
+                { label: "IBAN", value: "GB74GRFR04286206171089", copyValue: "GB74GRFR04286206171089" },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Domestic transfer" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "International wire" })).toBeTruthy();
+
+    // Domestic is active by default — its rows show, international's don't.
+    expect(screen.getByText("Global Remit Financial Services Ltd")).toBeTruthy();
+    expect(screen.queryByText("GB74 GRFR 0428 6206 1710 89")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "International wire" }));
+
+    expect(screen.queryByText("Global Remit Financial Services Ltd")).toBeNull();
+    expect(screen.getByText("GB74 GRFR 0428 6206 1710 89")).toBeTruthy();
+  });
+
+  it("folds a separate Bank details section into whichever rail tab is active, with no extra header", () => {
+    render(
+      <AccountDetailModal
+        copiedField=""
+        copyField={() => () => undefined}
+        acctDetail={{
+          currency: "EUR",
+          name: "Euro",
+          rows: [{ label: "IBAN", value: "FR7630006000011234567890189" }],
+          sections: [
+            {
+              title: "Domestic transfer",
+              rows: [
+                { label: "Account number", value: "FR7630006000011234567890189", copyValue: "FR7630006000011234567890189" },
+              ],
+            },
+            {
+              title: "International wire",
+              rows: [
+                { label: "SWIFT/BIC", value: "MODRFR21", copyValue: "MODRFR21" },
+              ],
+            },
+            {
+              title: "Bank details",
+              rows: [{ label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" }],
+            },
+          ],
+        }}
+      />,
+    );
+
+    // No standalone "BANK DETAILS" section header — it rides along in the tab.
+    expect(screen.queryByText("Bank details")).toBeNull();
+    expect(screen.getByText("SOCIETE GENERALE")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "International wire" }));
+    expect(screen.getByText("SOCIETE GENERALE")).toBeTruthy();
+  });
+
   it("shows no Refresh details button without both an accountId and an onRefreshAccount handler", () => {
     render(
       <AccountDetailModal
