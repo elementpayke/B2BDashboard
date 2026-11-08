@@ -97,15 +97,26 @@ describe("transactionsApi.listPage payment enrichment", () => {
   });
 
   it("copies payment from /v1/transactions when orders omit the snapshot", async () => {
-    mockedApiEnvelope
-      .mockResolvedValueOnce({
-        items: [order({ id: 20, client_metadata: { origin_system: "mboka" } })],
-        total: 1,
-        limit: 10,
-        offset: 0,
-      })
-      .mockRejectedValueOnce(new Error("no credits"))
-      .mockResolvedValueOnce({ items: [payload], total: 1 });
+    // Route by path: listPage also probes other endpoints (account credits,
+    // card funding accounts) between the orders page and the enrichment feed,
+    // so order-based once-mocks would misalign.
+    mockedApiEnvelope.mockImplementation(async (_method, path) => {
+      const url = String(path);
+      if (url.startsWith("/v1/orders")) {
+        return {
+          items: [order({ id: 20, client_metadata: { origin_system: "mboka" } })],
+          total: 1,
+          limit: 10,
+          offset: 0,
+        };
+      }
+      if (url === "/v1/transactions") {
+        return { items: [payload], total: 1 };
+      }
+      // /v1/account-credits, entities/card lookups, etc. — fail so listPage
+      // takes its catch paths, as when those endpoints are unavailable.
+      throw new Error(`unavailable in test: ${url}`);
+    });
 
     const page = await transactionsApi.listPage({ limit: 10, offset: 0 });
     expect(page.items[0]?.payment?.party_name).toBe("test trader");
