@@ -76,7 +76,7 @@ describe("savedRecipientsStore", () => {
         railType: "bank",
       });
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.status).toBe(503);
+      if (result.ok === false) expect(result.status).toBe(503);
     } finally {
       if (previous === undefined) delete process.env.VERCEL_ENV;
       else process.env.VERCEL_ENV = previous;

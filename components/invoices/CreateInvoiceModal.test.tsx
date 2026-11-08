@@ -25,11 +25,12 @@ vi.mock("@/lib/services/invoiceBranding", () => ({
 
 const customer = {
   id: "cust-1",
+  businessId: 1,
   name: "Joseph Thuku",
   email: "j@example.com",
   country: "KE",
-  created_at: null,
-  updated_at: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 function renderModal() {
