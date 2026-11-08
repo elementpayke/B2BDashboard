@@ -562,7 +562,8 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
   if (holder) rows.push({ label: "Account name", value: holder, copyValue: holder });
   if (reference) {
-    rows.push({ label: "Nuvion number", value: reference, copyValue: reference });
+    // White-label: never surface the underlying partner's name to merchants.
+    rows.push({ label: "Mboka number", value: reference, copyValue: reference });
   }
   const monthlyFee = formatMonthlyFee(account.monthly_maintenance_fee);
   if (monthlyFee) {
@@ -759,17 +760,18 @@ const BANK_ROW_LABEL_RE =
  */
 /**
  * `otherRows` (anything that isn't a bank-coordinate field) splits into the
- * account's Nuvion reference — shown in its own "Nuvion transfer" section,
- * matching Nuvion's own account-details view (app.nuvion.co) — and
- * everything else (balance, fees, …) under "Settlement".
+ * account's partner reference — shown as "Mboka number" in its own "Mboka
+ * transfer" section (white-labeled; the underlying partner is Nuvion,
+ * app.nuvion.co, whose own account-details view this structure matches) —
+ * and everything else (balance, fees, …) under "Settlement".
  */
 function pushSettlementSections(
   sections: DepositAccountDetailSection[],
   otherRows: DepositAccountDetailRow[],
 ): void {
-  const nuvionRows = otherRows.filter((r) => /^nuvion/i.test(r.label));
-  const settlementRows = otherRows.filter((r) => !/^nuvion/i.test(r.label));
-  if (nuvionRows.length) sections.push({ title: "Nuvion transfer", rows: nuvionRows });
+  const mbokaRows = otherRows.filter((r) => /^mboka/i.test(r.label));
+  const settlementRows = otherRows.filter((r) => !/^mboka/i.test(r.label));
+  if (mbokaRows.length) sections.push({ title: "Mboka transfer", rows: mbokaRows });
   if (settlementRows.length) sections.push({ title: "Settlement", rows: settlementRows });
 }
 
@@ -821,6 +823,13 @@ export function buildDepositAccountDetailSections(
   const routingNumber = nonEmpty(account.routing_number);
   const bankName = nonEmpty(account.bank_name);
   const bankAddress = formatBankAddress(account.bank_address);
+  // Non-USD/EUR rails (GBP, SEK, …) arrive with the identifier under
+  // `account_number` rather than `iban` — the backend only aliases
+  // `account_number` into `iban` for the two legacy USD/EUR rails. Without
+  // this, every other IBAN-shaped currency fell straight through to the flat
+  // "Bank details" fallback below and never got a Domestic/International
+  // split at all.
+  const localIdentifier = iban || nonEmpty(account.account_number);
 
   if (iban && routingNumber) {
     const domestic: DepositAccountDetailRow[] = [
@@ -844,25 +853,31 @@ export function buildDepositAccountDetailSections(
       sections.push({ title: "International wire", rows: international });
       pushBankIdentitySection(sections, bankName, bankAddress);
     }
-  } else if (iban && bic) {
-    // IBAN-rail account with no US-style routing number (EUR, GBP, …) — the
-    // same IBAN doubles as both the domestic account number and (alongside
-    // the BIC) the international wire identifier, matching Nuvion's own
-    // domestic/international split for these accounts. Bank name/address are
-    // identical either way, so they get their own section instead of
-    // appearing twice.
+  } else if (localIdentifier && bic) {
+    // IBAN-rail account with no US-style routing number (EUR, GBP, SEK, …) —
+    // the same identifier doubles as both the domestic account number and
+    // (alongside the BIC) the international wire identifier, matching
+    // Nuvion's own domestic/international split for these accounts. Bank
+    // name/address are identical either way, so they get their own section
+    // instead of appearing twice.
     const domestic: DepositAccountDetailRow[] = [
-      { label: "Account number", value: iban, copyValue: iban },
+      { label: "Account number", value: localIdentifier, copyValue: localIdentifier },
     ];
     sections.push({ title: "Domestic transfer", rows: domestic });
 
-    // No separate "Account number" row here — it would be the exact same
-    // value as IBAN directly above it, which is the account identifier an
-    // international wire actually uses.
-    const international: DepositAccountDetailRow[] = [
-      { label: "SWIFT/BIC", value: bic, copyValue: bic },
-      { label: "IBAN", value: iban, copyValue: iban },
-    ];
+    // Only show a distinct "IBAN" row when the identifier is actually
+    // IBAN-shaped — otherwise it would just repeat "Account number" above
+    // under a label the value was never in the format of.
+    const international: DepositAccountDetailRow[] = [{ label: "SWIFT/BIC", value: bic, copyValue: bic }];
+    if (isIbanFormat(localIdentifier)) {
+      international.push({ label: "IBAN", value: localIdentifier, copyValue: localIdentifier });
+    } else {
+      international.push({
+        label: "Account number",
+        value: localIdentifier,
+        copyValue: localIdentifier,
+      });
+    }
     sections.push({ title: "International wire", rows: international });
     pushBankIdentitySection(sections, bankName, bankAddress);
   } else if (bankRows.length) {
