@@ -449,12 +449,6 @@ describe("buildDepositAccountDetailSections", () => {
         rows: [
           { label: "Account number", value: "391881521473", copyValue: "391881521473" },
           { label: "Routing number", value: "021214891", copyValue: "021214891" },
-          { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
-          {
-            label: "Bank address",
-            value: "2115 Linwood Ave, Fort Lee, US",
-            copyValue: "2115 Linwood Ave, Fort Lee, US",
-          },
         ],
       },
       {
@@ -462,6 +456,11 @@ describe("buildDepositAccountDetailSections", () => {
         rows: [
           { label: "Account number", value: "391881521473", copyValue: "391881521473" },
           { label: "SWIFT/BIC", value: "CSRVUS33COS", copyValue: "CSRVUS33COS" },
+        ],
+      },
+      {
+        title: "Bank details",
+        rows: [
           { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
           {
             label: "Bank address",
@@ -496,15 +495,15 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Settlement"]);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Nuvion transfer"]);
     expect(sections[0]?.rows).toEqual(
       expect.arrayContaining([
         { label: "Account number", value: "63221650476", copyValue: "63221650476" },
         { label: "Branch code", value: "250655", copyValue: "250655" },
       ]),
     );
-    const settlement = sections.find((s) => s.title === "Settlement");
-    expect(settlement?.rows.some((r) => r.label === "Reference")).toBe(true);
+    const nuvionTransfer = sections.find((s) => s.title === "Nuvion transfer");
+    expect(nuvionTransfer?.rows.some((r) => r.label === "Nuvion number")).toBe(true);
   });
 
   it("uses flat domestic coords when partner sets domestic_deposit_only", () => {
@@ -520,11 +519,11 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Settlement"]);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Nuvion transfer"]);
     expect(sections[0]?.rows.some((r) => r.label === "Branch code")).toBe(true);
   });
 
-  it("keeps a single Bank details section for EUR/IBAN accounts", () => {
+  it("splits an IBAN+BIC account (no routing number) into domestic/international, matching Nuvion's own account-details view", () => {
     const account: DepositAccount = {
       currency: "EUR",
       status: "active",
@@ -535,16 +534,29 @@ describe("buildDepositAccountDetailSections", () => {
 
     expect(buildDepositAccountDetailSections(account)).toEqual([
       {
-        title: "Bank details",
+        title: "Domestic transfer",
         rows: [
+          {
+            label: "Account number",
+            value: "FR7630006000011234567890189",
+            copyValue: "FR7630006000011234567890189",
+          },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "SWIFT/BIC", value: "MODRFR21", copyValue: "MODRFR21" },
           {
             label: "IBAN",
             value: "FR7630006000011234567890189",
             copyValue: "FR7630006000011234567890189",
           },
-          { label: "BIC / SWIFT", value: "MODRFR21", copyValue: "MODRFR21" },
-          { label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" },
         ],
+      },
+      {
+        title: "Bank details",
+        rows: [{ label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" }],
       },
     ]);
   });
@@ -570,7 +582,7 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
-  it("puts settlement fields in their own section for both currencies", () => {
+  it("puts the Nuvion reference in its own section", () => {
     const account: DepositAccount = {
       currency: "USD",
       status: "active",
@@ -580,8 +592,8 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.find((s) => s.title === "Settlement")?.rows).toEqual([
-      { label: "Reference", value: "INV-42", copyValue: "INV-42" },
+    expect(sections.find((s) => s.title === "Nuvion transfer")?.rows).toEqual([
+      { label: "Nuvion number", value: "INV-42", copyValue: "INV-42" },
     ]);
   });
 
