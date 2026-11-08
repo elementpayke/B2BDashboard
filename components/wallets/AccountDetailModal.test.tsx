@@ -11,10 +11,6 @@ vi.mock("@/lib/documents/brandedDocument", () => ({
   openBrandedDocument: vi.fn(),
 }));
 
-vi.mock("@/lib/services/accountActivity", () => ({
-  accountActivityApi: { listPage: vi.fn().mockResolvedValue({ entries: [], total: 0, limit: 10, offset: 0 }) },
-}));
-
 function renderWithClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
