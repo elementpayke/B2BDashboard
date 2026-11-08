@@ -2,7 +2,6 @@
 import React, { useMemo, useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import { MBOKA_LETTERHEAD } from "@/lib/documents/letterhead";
-import AccountActivityList from "./AccountActivityList";
 
 export type AccountDetailRow = {
   label: string;
@@ -114,8 +113,11 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
   const beneficiaryName = beneficiary || acctDetail.name;
   const dateLine = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date());
 
-  // Mirror modal bank-rail sections only — Settlement (available balance) and
-  // Mboka transfer (the internal reference number) stay on the modal.
+  // Mirror modal bank-rail sections only — Mboka transfer (the internal
+  // reference number) stays on the modal. "settlement" is kept here as
+  // defense-in-depth for the defaultSections() fallback path (raw rows
+  // without sections, e.g. a caller that hasn't adopted
+  // buildDepositAccountDetailSections, which no longer emits it at all).
   const EXCLUDED_LETTER_SECTIONS = new Set(["settlement", "mboka transfer"]);
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
@@ -407,10 +409,6 @@ export default function AccountDetailModal({
           </div>
         </div>
       )}
-
-      {acctDetail.accountId ? (
-        <AccountActivityList accountId={acctDetail.accountId} />
-      ) : null}
 
       {(() => {
         const canDownloadLetter = showLetter && !depositUnavailable;

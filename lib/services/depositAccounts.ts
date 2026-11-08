@@ -693,7 +693,7 @@ function buildFlatDomesticRailSections(
       rows: depositRowsFromRailGroup(domesticFields, currency),
     },
   ];
-  pushSettlementSections(sections, otherRows);
+  pushMbokaTransferSection(sections, otherRows);
   return sections;
 }
 
@@ -759,20 +759,22 @@ const BANK_ROW_LABEL_RE =
  * describes the account on its own.
  */
 /**
- * `otherRows` (anything that isn't a bank-coordinate field) splits into the
- * account's partner reference — shown as "Mboka number" in its own "Mboka
- * transfer" section (white-labeled; the underlying partner is Nuvion,
- * app.nuvion.co, whose own account-details view this structure matches) —
- * and everything else (balance, fees, …) under "Settlement".
+ * Pulls the account's partner reference out of `otherRows` (anything that
+ * isn't a bank-coordinate field) and shows it as "Mboka number" in its own
+ * "Mboka transfer" section (white-labeled; the underlying partner is
+ * Nuvion, app.nuvion.co, whose own account-details view this structure
+ * matches). Everything else in `otherRows` (balance, fees, settlement
+ * wallet/asset, …) is intentionally dropped here — this is the
+ * account-details modal, which is for sending/receiving to this account,
+ * not a balance or settlement view; those live on the account screen
+ * behind the modal.
  */
-function pushSettlementSections(
+function pushMbokaTransferSection(
   sections: DepositAccountDetailSection[],
   otherRows: DepositAccountDetailRow[],
 ): void {
   const mbokaRows = otherRows.filter((r) => /^mboka/i.test(r.label));
-  const settlementRows = otherRows.filter((r) => !/^mboka/i.test(r.label));
   if (mbokaRows.length) sections.push({ title: "Mboka transfer", rows: mbokaRows });
-  if (settlementRows.length) sections.push({ title: "Settlement", rows: settlementRows });
 }
 
 export function buildDepositAccountDetailSections(
@@ -811,7 +813,7 @@ export function buildDepositAccountDetailSections(
         formatBankAddress((internationalGroup as Record<string, unknown>).bank_address as Record<string, unknown> | null);
       pushBankIdentitySection(sections, bankName, bankAddress);
     }
-    pushSettlementSections(sections, otherRows);
+    pushMbokaTransferSection(sections, otherRows);
     return sections;
   }
 
@@ -884,7 +886,7 @@ export function buildDepositAccountDetailSections(
     sections.push({ title: "Bank details", rows: bankRows });
   }
 
-  pushSettlementSections(sections, otherRows);
+  pushMbokaTransferSection(sections, otherRows);
   return sections;
 }
 
