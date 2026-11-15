@@ -8,10 +8,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 import {
+  LEDGER_FIAT_CURRENCIES,
   describeConversionRate,
   describeFiatFiatPath,
   filterCrossCurrencyFiatAccounts,
   formatConvertAmount,
+  isLedgerFiatCurrency,
   needsUsdcBridge,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
@@ -153,5 +155,33 @@ describe("conversionsApi.accept idempotency", () => {
 
     const opts = mocked.mock.calls[0][3] as { headers?: Record<string, string> };
     expect(opts.headers?.["Idempotency-Key"]).toBe("caller-key");
+  });
+});
+
+describe("ledger fiat coverage", () => {
+  it("covers every currency the aggregator's ledger rail converts", () => {
+    // Mirrors LEDGER_FIAT_CURRENCIES in the aggregator's network_registry.py.
+    // Drifting from that list is the bug this guards: too narrow silently
+    // hides working currencies, too wide produces a 422 after the user
+    // has already picked a pair.
+    expect([...LEDGER_FIAT_CURRENCIES].sort()).toEqual(
+      ["AED", "CAD", "EUR", "GBP", "GHS", "NGN", "USD"].sort(),
+    );
+  });
+
+  it("excludes currencies a customer can hold but cannot convert", () => {
+    // Holdable per the account catalog, rejected by customer_conversion.py.
+    for (const code of ["KES", "TZS", "ZAR", "JPY", "CHF"]) {
+      expect(isLedgerFiatCurrency(code)).toBe(false);
+    }
+  });
+
+  it("treats the widened set as bridgeable, not just the original three", () => {
+    expect(needsUsdcBridge("CAD", "NGN")).toBe(true);
+    expect(needsUsdcBridge("AED", "GHS")).toBe(true);
+    // Same currency is a book transfer, not a conversion.
+    expect(needsUsdcBridge("CAD", "CAD")).toBe(false);
+    // Holdable but unconvertible stays out.
+    expect(needsUsdcBridge("KES", "USD")).toBe(false);
   });
 });

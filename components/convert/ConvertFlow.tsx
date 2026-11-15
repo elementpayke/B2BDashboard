@@ -72,14 +72,23 @@ export type ConvertFlowProps = {
 };
 
 const MODES: { key: ConvertMode; label: string; hint: string }[] = [
-  { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell EUR, USD, or GBP for USDC or USDT" },
-  { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for EUR, USD, or GBP" },
+  // Hints no longer name currencies: the pickers below are the source of
+  // truth and listing three of seven read as a limit that isn't real.
+  { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell a fiat balance for USDC or USDT" },
+  { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for a fiat balance" },
   {
     key: "fiat_to_fiat",
     label: "Fiat ↔ Fiat",
     hint: "Convert between your fiat accounts (same business, different currencies)",
   },
-  { key: "stable_to_stable", label: "Stellar stable → USDC", hint: "Convert allowlisted Stellar stables into USDC" },
+  // Named for what it does, not for the one rail that currently serves it.
+  // The route is chosen from the accounts picked, so Stellar is an option
+  // inside this mode rather than a tab of its own.
+  {
+    key: "stable_to_stable",
+    label: "Stablecoin ↔ Stablecoin",
+    hint: "Convert between your stablecoin balances",
+  },
 ];
 
 function friendlyError(message: string): { title: string; body: string } {

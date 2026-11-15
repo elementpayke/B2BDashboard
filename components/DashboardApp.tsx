@@ -222,6 +222,7 @@ import {
 import {
   conversionsApi,
   filterCrossCurrencyFiatAccounts,
+  isLedgerFiatCurrency,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
@@ -1036,7 +1037,7 @@ export default function DashboardApp(props: Props = {}) {
         ? (bootstrapQuery.data?.fiatAccounts ?? [])
         : (depositAccountsQuery.data?.accounts ?? [])
     )
-      .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+      .filter((a) => a.id && isLedgerFiatCurrency(a.currency))
       .map((a) => ({
         id: String(a.id),
         currency: String(a.currency || "").toUpperCase(),
@@ -5165,7 +5166,7 @@ export default function DashboardApp(props: Props = {}) {
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
   const fiatConvertAccounts = depositAccountsList
-    .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+    .filter((a) => a.id && isLedgerFiatCurrency(a.currency))
     .map((a) => {
       const view = mapDepositAccountToCardView(a);
       return {
@@ -5185,11 +5186,18 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
+  // Stellar is excluded on purpose. These accounts feed the ledger (Nuvion)
+  // conversion rail, and an Element-provisioned Stellar account carries an
+  // `ep_stellar:` id that Nuvion does not know — the aggregator's conversion
+  // path has no is_element_provisioned guard (unlike the swap path), so it
+  // gets as far as refreshing the balance and fails with a 502 rather than a
+  // clean rejection. Stellar stables convert through the swap lists below.
   const stableConvertAccounts = stablecoinAccountsList
     .filter(
       (a) =>
         (a.currency === "USDC" || a.currency === "USDT") &&
         isReadyStatus(a.status) &&
+        toPartnerNetwork(a.network) !== "Stellar" &&
         a.id,
     )
     .map((a) => ({
@@ -5262,9 +5270,12 @@ export default function DashboardApp(props: Props = {}) {
     convertMode === "fiat_to_fiat" && convertSourceCurrency && convertDestCurrency
       ? `${convertSourceCurrency} → ${convertDestCurrency}`
       : null;
+  // Says which route the chosen accounts will take, rather than naming a rail
+  // in the tab label. Stellar swaps settle to USDC only, so the user learns
+  // that from the destination list plus this line, not from a dedicated tab.
   const convertHopLabel =
     convertMode === "stable_to_stable"
-      ? "Stellar allowlisted stables settle into USDC."
+      ? "Stellar stables settle into USDC. Other pairs convert on the ledger."
       : convertMode === "fiat_to_fiat"
         ? "Ledger FX between your accounts — one quote, one confirm."
         : null;
