@@ -129,15 +129,4 @@ describe("ConvertFlow fee disclosure across all three directions", () => {
     expect(screen.getByTestId("convert-fee").textContent).toBe("0.50 EUR");
   });
 
-  it("discloses the Stellar swap fee", () => {
-    const swap = quote({
-      direction: "stable_to_stable",
-      source_currency: "USDT",
-      destination_currency: "USDC",
-      fee_amount: "0.0100",
-      fee_currency: "USDC",
-    });
-    render(<ConvertFlow {...props({ mode: "stable_to_stable", quote: swap })} />);
-    expect(screen.getByTestId("convert-fee").textContent).toBe("0.01 USDC");
-  });
 });

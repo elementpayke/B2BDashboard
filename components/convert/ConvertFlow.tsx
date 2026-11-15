@@ -18,21 +18,29 @@ export type ConvertAccountOption = {
   balanceAmount: number | null;
 };
 
-export type ConvertMode =
-  | "fiat_to_stable"
-  | "stable_to_fiat"
-  | "fiat_to_fiat"
-  | "stable_to_stable";
+/**
+ * `stable_to_stable` is intentionally absent.
+ *
+ * It only ever served Stellar `USDT|EURC → USDC` swaps, which Mboka gates
+ * behind `STELLAR_SWAPS_ENABLED` (default false — "stubbed until partner
+ * hardens the path"). With Stellar accounts kept out of the ledger
+ * conversion rail — they carry an `ep_stellar:` id Nuvion rejects with a 502 —
+ * the mode had no source accounts to offer and was a dead end in the UI.
+ *
+ * The route itself still exists server-side. Restore the mode here when
+ * either the Stellar flag is on, or Nuvion is confirmed to quote USC↔UST
+ * (see scripts/check_nuvion_fx_pair.py in the aggregator) — not before, or
+ * the tab is selectable with an empty source list again.
+ */
+export type ConvertMode = "fiat_to_stable" | "stable_to_fiat" | "fiat_to_fiat";
 
 export function isConvertMode(value: string | null | undefined): value is ConvertMode {
   return (
-    value === "fiat_to_stable" ||
-    value === "stable_to_fiat" ||
-    value === "fiat_to_fiat" ||
-    value === "stable_to_stable"
+    value === "fiat_to_stable" || value === "stable_to_fiat" || value === "fiat_to_fiat"
   );
 }
 
+/** Unknown values — including a persisted `stable_to_stable` — fall back. */
 export function normalizeConvertMode(value: string | null | undefined): ConvertMode {
   return isConvertMode(value) ? value : "fiat_to_stable";
 }
@@ -80,14 +88,6 @@ const MODES: { key: ConvertMode; label: string; hint: string }[] = [
     key: "fiat_to_fiat",
     label: "Fiat ↔ Fiat",
     hint: "Convert between your fiat accounts (same business, different currencies)",
-  },
-  // Named for what it does, not for the one rail that currently serves it.
-  // The route is chosen from the accounts picked, so Stellar is an option
-  // inside this mode rather than a tab of its own.
-  {
-    key: "stable_to_stable",
-    label: "Stablecoin ↔ Stablecoin",
-    hint: "Convert between your stablecoin balances",
   },
 ];
 
@@ -222,9 +222,10 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 ? "Open a fiat deposit account and a ready USDC or USDT account first."
                 : p.mode === "stable_to_fiat"
                   ? "Open a ready USDC or USDT account and a fiat deposit account first."
-                  : p.mode === "stable_to_stable"
-                    ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
-                  : "Open at least two fiat accounts in different currencies (EUR, USD, or GBP)."}
+                  : // Deliberately not listing the currencies: the set is seven
+                    // and grows, and naming a subset here is what made Convert
+                    // look GBP/USD-only in the first place.
+                    "Open at least two fiat accounts in different currencies."}
             </span>
           </div>
         ) : (
