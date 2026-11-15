@@ -146,13 +146,15 @@ export default function CreateAccountModal(p: CreateAccountModalProps) {
     </>
   ) : monthlyFee ? (
     <>
-      <strong className="ep-wallets-create__kind-amount">No monthly fee</strong> on this{" "}
+      {/* Not --kind-amount: that is red because it marks a charge. "No fee"
+          is the absence of one, so it emphasises without the alert colour. */}
+      <strong className="ep-wallets-create__kind-free">No monthly fee</strong> on this{" "}
       {feeLookupCurrency} account.
     </>
   ) : (
     <>
-      We don&apos;t have a published monthly fee for {feeLookupCurrency} yet. Any charge is
-      confirmed before it applies — this is not a promise the account is free.
+      We&rsquo;ll confirm any applicable monthly account fees before they take effect. No
+      published {feeLookupCurrency} monthly fee is currently available.
     </>
   );
 

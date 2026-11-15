@@ -86,9 +86,10 @@ describe("CreateAccountModal — monthly maintenance fee disclosure", () => {
     );
     // An omitted figure is "we were not told", not "it is free" — the copy must
     // not let the reader infer the latter, and there is nothing to consent to.
-    expect(
-      screen.getByText(/don't have a published monthly fee for USD/i),
-    ).toBeInTheDocument();
+    expect(feeNoticeText()).toMatch(
+      /confirm any applicable monthly account fees before they take effect/i,
+    );
+    expect(feeNoticeText()).toMatch(/no published USD monthly fee/i);
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Create account" }),

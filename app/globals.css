@@ -8474,14 +8474,20 @@ button.ep-home__stat:focus-visible {
   color: var(--muted);
 }
 
+/* An explicit zero still deserves emphasis, but not the charge colour. */
+.ep-wallets-create__kind-free {
+  font-weight: 700;
+  color: var(--ink);
+}
+
 .ep-wallets-create__kind-text {
   /* Disclosure copy reads at body size, not caption size — it carries the
      number the user is agreeing to pay. Regular weight with only the amount
      emphasised (see --kind-amount) keeps the figure the thing that stands out. */
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--ink);
-  line-height: 1.5;
+  line-height: 1.55;
   margin: 0;
 }
 
@@ -8489,8 +8495,12 @@ button.ep-home__stat:focus-visible {
   font-weight: 700;
   /* Brand numerals: amounts are set in DM Mono everywhere else in the app. */
   font-family: 'DM Mono', monospace;
-  font-size: 13px;
+  font-size: 13.5px;
   letter-spacing: -0.01em;
+  /* The charge is the one thing in this dialog that costs money. --red is the
+     brand's existing alert ink, already used for required-field markers, so
+     this stays inside the palette rather than introducing a new colour. */
+  color: var(--red);
 }
 
 
