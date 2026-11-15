@@ -203,6 +203,47 @@ describe("renderBrandedDocument", () => {
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   });
 
+  it("prints the fee the backend charged", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "450.00" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "KES 450.00" }]),
+    );
+    expect(renderBrandedDocument(doc)).toContain("KES 450.00");
+  });
+
+  it("uses the fee's own currency when it differs from the transaction's", () => {
+    const doc = buildTransactionReceipt({
+      ...settledPayout,
+      fee_amount: "1.20",
+      fee_currency: "USD",
+    });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "USD 1.20" }]),
+    );
+  });
+
+  it("documents a free transfer as No fee rather than leaving it blank", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "0.00" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "No fee" }]),
+    );
+  });
+
+  it("omits the fee row when the backend sent no figure — a receipt has no 'later'", () => {
+    const doc = buildTransactionReceipt(settledPayout);
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows.some((row) => row.label === "Fee")).toBe(false);
+  });
+
+  it("never reads an unparseable fee as free", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "n/a" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows.some((row) => row.label === "Fee")).toBe(false);
+  });
+
   it("embeds the wordmark inline rather than linking an asset", () => {
     const html = renderBrandedDocument(buildTransactionReceipt(settledPayout));
     expect(html).toContain('viewBox="0 0 166 44"');

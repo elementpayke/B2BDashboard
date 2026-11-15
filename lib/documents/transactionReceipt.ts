@@ -43,6 +43,10 @@ export type ReceiptTransaction = {
   /** Human rail label from quote (e.g. M-PESA). */
   networkName?: string | null;
   methodType?: string | null;
+  /** Fee charged on this transaction, exactly as the backend stated it. */
+  fee_amount?: string | null;
+  /** Currency of `fee_amount` when it differs from the transaction's. */
+  fee_currency?: string | null;
   /** On-chain hash when Mboka returned one (Stellar inbound credits). */
   tx_hash?: string | null;
 };
@@ -190,6 +194,21 @@ export function receiptFilename(tx: ReceiptTransaction): string {
   return `mboka-receipt-${ref}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
 }
 
+/**
+ * The receipt's fee line, or null when there is nothing honest to print.
+ *
+ * Reuses this module's own `formatMoney`, so the fee reads in the same
+ * "KES 1,234.56" shape as the headline amount beside it.
+ */
+export function receiptFeeValue(tx: ReceiptTransaction): string | null {
+  const raw = tx.fee_amount;
+  if (raw == null || !String(raw).trim()) return null;
+  const n = Number(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return null;
+  if (n === 0) return "No fee";
+  return formatMoney(String(raw), tx.fee_currency?.trim() || tx.currency);
+}
+
 export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument {
   const kind = kindLabel(tx.direction);
   const isOut = tx.direction === "out";
@@ -238,6 +257,13 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
       mono: true,
     });
   }
+  // What the payment actually cost. An explicit zero says "No fee" — on a
+  // receipt that is the difference between a documented free transfer and a
+  // silence the customer has to ring up about. A fee the backend never sent
+  // is omitted rather than guessed: unlike a pre-confirmation screen, a
+  // settled receipt has no later moment to point the reader at.
+  const feeRow = receiptFeeValue(tx);
+  if (feeRow) paymentRows.push({ label: "Fee", value: feeRow });
   if (tx.psp_transaction_id?.trim()) {
     paymentRows.push({
       label: receiptPaymentRefLabel(tx.provider, rail, tx.networkName),

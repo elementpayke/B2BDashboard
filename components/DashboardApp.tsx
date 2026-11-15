@@ -163,6 +163,7 @@ import {
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import { copyText } from "@/lib/clipboard";
 import {
+  feeOnTopUsd,
   formatLimitsLine,
   limitViolation,
   limitViolationAcrossCurrencies,
@@ -235,6 +236,7 @@ import ConvertFlow, {
   normalizeConvertMode,
   type ConvertMode,
 } from "@/components/convert/ConvertFlow";
+import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   cardsApi,
   cardholderPrefillFromKybProfile,
@@ -4724,18 +4726,28 @@ export default function DashboardApp(props: Props = {}) {
     currency: sendAmountCurrency,
     rate: sendIndicativeRate,
   };
+  // The stablecoin rail charges its fee ON TOP of the amount, so the balance
+  // has to cover both. Without this, 7,000 USDT of balance "passes" a 7,000
+  // send carrying a 17.50 fee and the backend rejects it with no warning
+  // ever shown. Taken from the preview — null until one exists, never guessed.
+  const sendPreviewFeeUsd = sendIsCountry ? null : s.sendPreview?.fee_amount ?? null;
   const sendCryptoMaxAmount = sendAvailableBalance === null
     ? null
-    : maxAmountForBalance(sendAvailableBalance, sendAmountMode);
+    : maxAmountForBalance(sendAvailableBalance, sendAmountMode, sendPreviewFeeUsd);
   const sendEnteredUsdAmount = toPayloadUsdAmount(s.sendAmount, sendAmountMode);
+  const sendBalanceLabel = `${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}`;
+  const sendFeeOnTopNote = feeOnTopUsd(sendPreviewFeeUsd)
+    ? ` once the ${sendPreviewFeeUsd} fee is added`
+    : "";
   const sendBalanceError = !sendIsCountry && amountExceedsBalance(
     s.sendAmount,
     sendAmountMode,
     sendAvailableBalance,
+    sendPreviewFeeUsd,
   )
       ? sendAmountCurrency.toUpperCase() === "USD"
-        ? `This amount is above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
-        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+        ? `This amount is above your available balance of ${sendBalanceLabel}${sendFeeOnTopNote}.`
+        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${sendBalanceLabel}${sendFeeOnTopNote}.`
       : null;
   const sendIndicativeRateLine = sendIsCountry
     ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
@@ -4862,8 +4874,15 @@ export default function DashboardApp(props: Props = {}) {
   const sendPreview = s.sendPreview;
   // Fee in both currencies, converted at the *quote's* rate so it lines up
   // with the figures beside it rather than with a rate that has since moved.
+  const sendFeeCurrency = sendPreview?.currency || sendAssetCode;
+  // A preview fee of "0" is real information, so it reads "No fee" rather
+  // than disappearing; an absent one says when it lands.
   const sendFeeText = s.sendGroup === "crypto"
-    ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} ${sendPreview.currency || sendAssetCode}` : "Fee from preview")
+    ? feeDisclosureText({
+        raw: sendPreview?.fee_amount,
+        formatted: `${sendPreview?.fee_amount} ${sendFeeCurrency}`,
+        whenUnknown: "Shown on review",
+      })
     : sendQuote
       ? formatFeeDual(
           formatQuoteFees(sendQuote.amounts.fees),
@@ -4871,6 +4890,15 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
         )
       : "Shown on review";
+  // The crypto rail charges its fee ON TOP of the amount — the recipient gets
+  // the full `amount` — so what actually leaves the account is a third figure.
+  // Taken verbatim from the aggregator's `total_debit`; never summed here.
+  const sendTotalDebitText =
+    s.sendGroup === "crypto" &&
+    sendPreview?.total_debit != null &&
+    String(sendPreview.total_debit).trim()
+      ? `${String(sendPreview.total_debit).trim()} ${sendFeeCurrency}`
+      : null;
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
   // Same wallet the submit handler settles from — resolved here too so the
   // balance check below reflects what Next would actually reject.
@@ -6226,6 +6254,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendQuoteLoading={sendQuoteLoading}
   sendQuoteRateText={sendQuoteRateText}
   sendFeeText={sendFeeText}
+  sendTotalDebitText={sendTotalDebitText}
   sendArrivalText={sendArrivalText}
   sendAcceptError={sendAcceptError}
   sendAccepting={sendAccepting}

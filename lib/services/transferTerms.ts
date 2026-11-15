@@ -15,6 +15,26 @@ export type AmountLimits = {
   currency: string;
 };
 
+/**
+ * A fee charged *on top* of the amount, normalized for arithmetic.
+ *
+ * Returns 0 — not null — when the fee is unknown or unparseable, so a
+ * balance check degrades to the old amount-only behaviour instead of
+ * blocking a transfer over a number nobody quoted. A zero fee and an unknown
+ * fee are the same thing to arithmetic; they are only different to the UI,
+ * which is why that distinction lives in `components/money/FeeDisclosure`.
+ */
+export function feeOnTopUsd(fee: string | number | null | undefined): number {
+  if (fee === null || fee === undefined) return 0;
+  const n = typeof fee === "number" ? fee : Number(String(fee).replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Sum amount + fee without accumulating binary noise at the cent boundary. */
+export function totalWithFee(amount: number, fee: number): number {
+  return Math.round((amount + fee) * 1e6) / 1e6;
+}
+
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(String(value).replace(/,/g, ""));
@@ -121,8 +141,16 @@ export function limitViolationAcrossCurrencies(
 }
 
 /**
- * "Max" fill: the smaller of whatever USD figures are known (corridor max,
- * source wallet balance, …), expressed in the currently typed currency.
+ * "Max" fill: the largest amount that still fits once the fee is added,
+ * taken from the smaller of whatever USD figures are known (corridor max,
+ * source wallet balance, …) and expressed in the currently typed currency.
+ *
+ * The fee is charged on top of the amount, so filling the raw balance leaves
+ * nothing to pay it with: the backend rejects the transfer the client had
+ * just declared fine. `feeUsd` is therefore subtracted from the binding
+ * bound. When the corridor max — rather than the balance — is what binds,
+ * that is marginally conservative, which is the safe direction to be wrong
+ * in: the figure is always one the rails accept.
  *
  * Rounds the result DOWN to cents — never to nearest. A wallet balance often
  * carries more precision than its rounded display (true 34.7398 shown as
@@ -134,10 +162,12 @@ export function maxSendableAmount(
   usdCandidates: Array<number | null | undefined>,
   displayCurrency: string,
   localPerUsdRate: number | null,
+  feeUsd?: string | number | null,
 ): string | null {
   const known = usdCandidates.filter((n): n is number => n != null);
   if (!known.length) return null;
-  const usd = Math.min(...known);
+  const usd = Math.min(...known) - feeOnTopUsd(feeUsd);
+  if (usd <= 0) return null;
   const floorToCents = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
   if (displayCurrency.trim().toUpperCase() === "USD") return floorToCents(usd);
   if (!localPerUsdRate) return null;

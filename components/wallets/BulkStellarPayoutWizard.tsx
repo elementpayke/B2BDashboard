@@ -10,7 +10,8 @@ import {
   writeBulkPayoutDraft,
   type BulkPayoutDraft,
 } from "@/lib/services/bulkPayoutDraft";
-import { validateConvertAmount } from "@/lib/services/conversions";
+import FeeDisclosureRows, { feeDisclosureText } from "@/components/money/FeeDisclosure";
+import { formatConvertAmount, validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
 import {
@@ -679,6 +680,18 @@ export default function BulkStellarPayoutWizard({
 
   const currency = preview?.currency || selectedAccount?.currency || "USDC";
   const totalLabel = preview?.total_amount || sumAmounts(parsedRows);
+  // The batch error copy already admits "plus fees" exist, so staying silent
+  // here is the one thing we must not do. The aggregator does not quote a
+  // batch fee yet, so say when it lands rather than sum one up locally.
+  const batchFeeText = feeDisclosureText({
+    raw: preview?.total_fee,
+    formatted: `${formatConvertAmount(preview?.total_fee)} ${currency}`,
+    whenUnknown: "Shown once the batch is confirmed",
+  });
+  const batchTotalDebitText =
+    preview?.total_debit != null && String(preview.total_debit).trim()
+      ? `${formatConvertAmount(String(preview.total_debit))} ${currency}`
+      : null;
   const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your wallet";
   const stepNum = stepIndex(stage) + 1;
   const subline =
@@ -923,6 +936,11 @@ export default function BulkStellarPayoutWizard({
                 {totalLabel} {currency}
               </span>
             </div>
+            <FeeDisclosureRows
+              fee={batchFeeText}
+              total={batchTotalDebitText}
+              totalWhenUnknown="Shown once the batch is confirmed"
+            />
             {parsedRows.map((row) => (
               <div key={row.__id} className="ep-money-review__row">
                 <span className="ep-money-review__k ep-bulk-payout__addr" title={row.destination}>

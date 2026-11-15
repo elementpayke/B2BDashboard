@@ -208,6 +208,70 @@ describe("SendModal memo (Stellar-only)", () => {
   });
 });
 
+describe("SendModal fee disclosure", () => {
+  const reviewStep = {
+    sendStepIs1: false,
+    sendStepIs3: true,
+    sendStepDots: [{ on: true }, { on: true }, { on: true }],
+  };
+
+  it("shows the total deducted from the backend beneath the fee", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...reviewStep,
+          sendFeeText: "17.50 USDT",
+          sendTotalDebitText: "7,017.50 USDT",
+        })}
+      />,
+    );
+    expect(screen.getByText("Fee")).toBeInTheDocument();
+    expect(screen.getByText("17.50 USDT")).toBeInTheDocument();
+    expect(screen.getByText("Total deducted")).toBeInTheDocument();
+    expect(screen.getByText("7,017.50 USDT")).toBeInTheDocument();
+  });
+
+  it("says when the total will be known rather than summing it client-side", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({ ...reviewStep, sendFeeText: "17.50 USDT", sendTotalDebitText: null })}
+      />,
+    );
+    expect(screen.getByText("Total deducted")).toBeInTheDocument();
+    expect(screen.getByText("Shown once confirmed")).toBeInTheDocument();
+  });
+
+  it("omits the total row on a country send, where You send is already the all-in figure", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          ...reviewStep,
+          sendIsCountry: true,
+          sendIsCrypto: false,
+          sendFeeText: "$1.20",
+          sendTotalDebitText: null,
+        })}
+      />,
+    );
+    expect(screen.getByText("$1.20")).toBeInTheDocument();
+    expect(screen.queryByText("Total deducted")).toBeNull();
+  });
+
+  it("discloses the fee under the amount field on the amount step", () => {
+    render(
+      <SendModal
+        {...cryptoStep1({
+          sendStepIs1: false,
+          sendStepIs2: true,
+          sendStepDots: [{ on: true }, { on: true }, { on: false }],
+          sendFeeText: "Shown on review",
+        })}
+      />,
+    );
+    expect(screen.getByText("Fee · Shown on review")).toBeInTheDocument();
+  });
+});
+
 describe("SendModal success step", () => {
   it("renders a receipt with amount, status, and explorer link", () => {
     render(

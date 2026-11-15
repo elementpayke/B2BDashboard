@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   describeConversionRate,
   formatConvertAmount,
@@ -56,6 +57,13 @@ export type ConvertFlowProps = {
   /** Optional path strip for fiat↔fiat, e.g. "EUR → USDC → USD". */
   pathLabel?: string | null;
   settlesViaLabel?: string | null;
+  /**
+   * Overrides the fee read off the quote. Only for a flow whose fee is not
+   * on `quote.fee_amount` — by default the quote's own figure is shown, so
+   * all three directions (ledger FX, ramp, Stellar swap) disclose a fee
+   * without the call site having to remember to pass one.
+   */
+  feeText?: string | null;
   done: boolean;
   doneBody?: string;
   onRefreshQuote: () => void;
@@ -130,6 +138,21 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     source && typeof source.balanceAmount === "number" && source.balanceAmount > 0
       ? source.balanceAmount
       : null;
+  // Every direction into this component (ledger FX, fiat↔USDC ramp, Stellar
+  // stable→stable) normalizes its preview into `ConversionOut`, so the fee is
+  // always on the quote — read it there rather than depend on three separate
+  // call sites remembering to forward it. Zero reads "No fee"; an absent
+  // figure says when it lands instead of implying the conversion is free.
+  const quoteFeeCurrency =
+    (p.quote?.fee_currency || p.quote?.source_currency || "").toUpperCase();
+  const feeText = p.quote
+    ? p.feeText?.trim() ||
+      feeDisclosureText({
+        raw: p.quote.fee_amount,
+        formatted: `${formatConvertAmount(p.quote.fee_amount)}${quoteFeeCurrency ? ` ${quoteFeeCurrency}` : ""}`,
+        whenUnknown: "Shown on your statement once settled",
+      })
+    : null;
 
   if (p.done) {
     return (
@@ -315,6 +338,15 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 <span className="ep-convert__meta-k">Rate</span>
                 <span className="ep-convert__meta-v ep-convert__meta-v--mono">
                   {describeConversionRate(p.quote)}
+                </span>
+              </div>
+              <div className="ep-convert__meta-row">
+                <span className="ep-convert__meta-k">Fee</span>
+                <span
+                  className="ep-convert__meta-v ep-convert__meta-v--mono"
+                  data-testid="convert-fee"
+                >
+                  {feeText}
                 </span>
               </div>
               <div className="ep-convert__meta-row">

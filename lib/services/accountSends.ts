@@ -213,6 +213,13 @@ export type AccountSend = {
   to_address: string;
   amount: string;
   fee_amount: string | null;
+  /**
+   * What leaves the account in total — `amount + fee_amount`, since the fee
+   * is charged on top and the recipient receives the full `amount`. Computed
+   * by the aggregator, never client-side. Optional: a preview from before
+   * the backend shipped it simply has no total to disclose.
+   */
+  total_debit?: string | null;
   receive_amount: string | null;
   preview_token: string | null;
   provider_send_id: string | null;
