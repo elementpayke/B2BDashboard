@@ -2,6 +2,7 @@
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ActivityList from "@/components/ui/ActivityList";
+import AssetMark from "@/components/money/AssetMark";
 
 export type WalletsAccountCard = {
   currency: string;
@@ -318,16 +319,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                   aria-label={`${acc.name} account, ${acc.rail}, balance ${acc.balance}. View details`}
                 >
                   <div className="ep-wallets__card-identity">
-                    <span className="ep-wallets__flag" aria-hidden>
-                      {acc.flagUrl ? (
-                        <div
-                          className="ep-wallets__flag-img"
-                          style={{ backgroundImage: `url(${acc.flagUrl})` }}
-                        />
-                      ) : (
-                        <span className="ep-wallets__flag-glyph">◈</span>
-                      )}
-                    </span>
+                    <AssetMark code={acc.currency} flagUrl={acc.flagUrl} />
                     <div style={{ minWidth: 0 }}>
                       <div className="ep-wallets__card-name">{acc.name}</div>
                       <div className="ep-wallets__card-rail">{acc.rail}</div>

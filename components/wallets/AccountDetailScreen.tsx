@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import StatusBadge from "@/components/ui/StatusBadge";
+import AssetMark from "@/components/money/AssetMark";
 
 export type AccountDetailSummaryLine = {
   k: string;
@@ -126,18 +127,12 @@ export default function AccountDetailScreen({
       </button>
 
       <div className="ep-acct-detail__identity">
-        {flagUrl ? (
-          <div
-            className="ep-acct-detail__flag"
-            style={{ backgroundImage: `url(${flagUrl})` }}
-            role="img"
-            aria-label={`${currency} flag`}
-          />
-        ) : (
-          <span className="ep-acct-detail__flag-fallback" aria-hidden>
-            ◈
-          </span>
-        )}
+        <AssetMark
+          code={currency}
+          flagUrl={flagUrl}
+          label={`${currency} account`}
+          className="ep-acct-detail__flag"
+        />
         <div className="ep-acct-detail__identity-text">
           <h1 className="ep-acct-detail__name">{name}</h1>
           <div className="ep-acct-detail__meta">
