@@ -7010,6 +7010,37 @@ button.ep-home__stat:focus-visible {
   line-height: 1;
 }
 
+/* Stablecoin coin mark. Transparent plate: the coin SVG carries its own
+   issuer colour (USDC #2775CA, USDT #26A17B), so a tinted tile behind it would
+   only muddy the brand. */
+.ep-wallets__flag--coin {
+  background: transparent;
+  overflow: visible;
+  position: relative;
+}
+
+/* Chain badge, notched into the coin's lower-right like a wallet app. The
+   ring is the card surface, so the badge reads as sitting on top of the coin
+   rather than being part of its artwork. */
+.ep-wallets__flag-chain {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  line-height: 0;
+}
+
+/* Shared currencies (XOF across 8 states, XAF across 6) and unknown assets
+   show their code: no single national flag is correct for them. */
+.ep-wallets__flag-code {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .ep-wallets__card-name {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
@@ -7730,28 +7761,32 @@ button.ep-home__stat:focus-visible {
   gap: 12px;
 }
 
+/* Container for AssetMark: the flag image, brand disc or code badge is a
+   child, so this holds the frame and the child fills it. */
 .ep-acct-detail__flag {
   width: 34px;
   height: 25px;
   border-radius: 5px;
-  background-size: cover;
-  background-position: center;
   border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.ep-acct-detail__flag-fallback {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--indigo-tint);
-  color: var(--indigo-text);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   flex-shrink: 0;
+}
+
+/* A stablecoin disc carries its own brand colour and reads as a coin, not a
+   flag, so it loses the rectangular frame. */
+.ep-acct-detail__flag.ep-wallets__flag--coin {
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .ep-acct-detail__identity-text {

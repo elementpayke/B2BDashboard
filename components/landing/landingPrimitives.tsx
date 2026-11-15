@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { flagCdnUrl } from "./landingTokens";
+import CoinMark from "@/components/brand/CoinMark";
 
 /** Shared pieces used across the landing page's hero, capability cards, and
  * talk-to-us sections. Split out so no single file has to carry the whole
@@ -134,23 +135,11 @@ export function PillChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const USDT_COIN = (
-  <svg width="1em" height="1em" viewBox="0 0 100 100" style={{ flexShrink: 0, display: "block" }} aria-hidden>
-    <circle cx="50" cy="50" r="50" fill="#26A17B" />
-    <path
-      d="M27 26H73V37H56V45C68 46 76 49 76 52.5C76 56 68 59 56 60V78H44V60C32 59 24 56 24 52.5C24 49 32 46 44 45V37H27Z"
-      fill="#FFFFFF"
-    />
-    <ellipse cx="50" cy="52.5" rx="21" ry="4.2" fill="#26A17B" />
-  </svg>
-);
+/**
+ * Coin marks live in `components/brand/CoinMark` so the landing page and the
+ * product dashboard draw the identical artwork. Re-exported here as elements
+ * to keep existing landing call sites unchanged.
+ */
+export const USDT_COIN = <CoinMark asset="USDT" size="1em" title={null} />;
 
-export const USDC_COIN = (
-  <svg width="1em" height="1em" viewBox="0 0 100 100" style={{ flexShrink: 0, display: "block" }} aria-hidden>
-    <circle cx="50" cy="50" r="50" fill="#2775CA" />
-    <path d="M38 22a30 30 0 0 0 0 56M62 22a30 30 0 0 1 0 56" stroke="#FFFFFF" strokeWidth="5" fill="none" strokeLinecap="round" />
-    <text x="50" y="64" textAnchor="middle" fontFamily="Space Grotesk,sans-serif" fontWeight={700} fontSize="40" fill="#FFFFFF">
-      $
-    </text>
-  </svg>
-);
+export const USDC_COIN = <CoinMark asset="USDC" size="1em" title={null} />;
