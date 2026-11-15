@@ -7010,16 +7010,27 @@ button.ep-home__stat:focus-visible {
   line-height: 1;
 }
 
-/* Stablecoin disc in the issuer's brand colour (USDC #2775CA, USDT #26A17B),
-   set inline by AssetMark. Round, because it represents a coin rather than a
-   country. */
-.ep-wallets__flag--brand {
-  border-radius: 50%;
+/* Stablecoin coin mark. Transparent plate: the coin SVG carries its own
+   issuer colour (USDC #2775CA, USDT #26A17B), so a tinted tile behind it would
+   only muddy the brand. */
+.ep-wallets__flag--coin {
+  background: transparent;
+  overflow: visible;
+  position: relative;
 }
 
-.ep-wallets__flag--brand .ep-wallets__flag-glyph {
-  font-size: 18px;
-  font-weight: 700;
+/* Chain badge, notched into the coin's lower-right like a wallet app. The
+   ring is the card surface, so the badge reads as sitting on top of the coin
+   rather than being part of its artwork. */
+.ep-wallets__flag-chain {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  line-height: 0;
 }
 
 /* Shared currencies (XOF across 8 states, XAF across 6) and unknown assets
@@ -7770,11 +7781,12 @@ button.ep-home__stat:focus-visible {
 
 /* A stablecoin disc carries its own brand colour and reads as a coin, not a
    flag, so it loses the rectangular frame. */
-.ep-acct-detail__flag.ep-wallets__flag--brand {
+.ep-acct-detail__flag.ep-wallets__flag--coin {
   border-radius: 50%;
   width: 30px;
   height: 30px;
   border-color: transparent;
+  background: transparent;
 }
 
 .ep-acct-detail__identity-text {

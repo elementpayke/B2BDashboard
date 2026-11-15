@@ -8,6 +8,8 @@ export type WalletsAccountCard = {
   currency: string;
   name: string;
   flagUrl: string | null;
+  /** Settlement chain for stablecoin accounts; badges the coin mark. */
+  network?: string | null;
   /** Rail chip under the name, e.g. "IBAN · SWIFT" or "Stablecoin · Base". */
   rail: string;
   /** Balance display — "—" until a real source exists. */
@@ -319,7 +321,7 @@ export default function WalletsScreen(p: WalletsScreenProps) {
                   aria-label={`${acc.name} account, ${acc.rail}, balance ${acc.balance}. View details`}
                 >
                   <div className="ep-wallets__card-identity">
-                    <AssetMark code={acc.currency} flagUrl={acc.flagUrl} />
+                    <AssetMark code={acc.currency} flagUrl={acc.flagUrl} network={acc.network} />
                     <div style={{ minWidth: 0 }}>
                       <div className="ep-wallets__card-name">{acc.name}</div>
                       <div className="ep-wallets__card-rail">{acc.rail}</div>

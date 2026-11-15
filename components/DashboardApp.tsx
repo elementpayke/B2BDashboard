@@ -4080,6 +4080,7 @@ export default function DashboardApp(props: Props = {}) {
       name: a.currency,
       label: `${a.currency} · ${networkLabel}`,
       flagUrl: null as string | null,
+      network: a.network,
       rail: `Stablecoin · ${networkLabel}`,
       balance,
       detail: networkLabel,

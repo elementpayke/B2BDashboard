@@ -3,7 +3,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import AssetMark, { BRAND_MARKS, assetMarkKind } from "./AssetMark";
+import AssetMark, { assetMarkKind } from "./AssetMark";
 
 describe("AssetMark", () => {
   it("renders the flag image when the currency maps to one country", () => {
@@ -15,20 +15,39 @@ describe("AssetMark", () => {
     expect(img.style.backgroundImage).toContain("flagcdn.com/w40/ke.png");
   });
 
-  it("gives each stablecoin its own issuer brand colour, not a shared glyph", () => {
+  it("draws each stablecoin's own brand coin, not one shared glyph", () => {
     const { container: usdc } = render(<AssetMark code="USDC" flagUrl={null} />);
     const { container: usdt } = render(<AssetMark code="USDT" flagUrl={null} />);
 
-    const a = usdc.querySelector(".ep-wallets__flag--brand") as HTMLElement;
-    const b = usdt.querySelector(".ep-wallets__flag--brand") as HTMLElement;
+    // Circle's blue vs Tether's "Jungle Green" — the whole point is that these
+    // two are no longer indistinguishable.
+    expect(usdc.querySelector('circle[fill="#2775CA"]')).toBeTruthy();
+    expect(usdt.querySelector('circle[fill="#26A17B"]')).toBeTruthy();
 
-    // Circle's USDC blue and Tether's "Jungle Green" — the whole point is that
-    // these two are no longer indistinguishable.
-    expect(a.style.background).toBe("rgb(39, 117, 202)");
-    expect(b.style.background).toBe("rgb(38, 161, 123)");
-    expect(a.style.background).not.toBe(b.style.background);
-    expect(a.textContent).toBe("$");
-    expect(b.textContent).toBe("₮");
+    // Tether's mark is a filled ₮ path, not a text glyph.
+    expect(usdt.querySelector("path[fill='#FFFFFF']")).toBeTruthy();
+    expect(usdc.textContent).toContain("$");
+  });
+
+  it("badges the coin with the chain it settles on", () => {
+    const { container } = render(
+      <AssetMark code="USDC" flagUrl={null} network="Stellar" />,
+    );
+    const chain = container.querySelector(".ep-wallets__flag-chain");
+    expect(chain).toBeTruthy();
+    // Real brand art from public/brand, not a lettered stand-in.
+    expect(chain?.querySelector("image")?.getAttribute("href")).toBe(
+      "/brand/stellar-mark.png",
+    );
+  });
+
+  it("omits the chain badge for a network with no brand art", () => {
+    const { container } = render(
+      <AssetMark code="USDC" flagUrl={null} network="Optimism" />,
+    );
+    expect(container.querySelector(".ep-wallets__flag-chain")).toBeNull();
+    // The coin itself still renders.
+    expect(container.querySelector('circle[fill="#2775CA"]')).toBeTruthy();
   });
 
   it("shows a code badge for shared currencies rather than a misleading flag", () => {
@@ -45,12 +64,24 @@ describe("AssetMark", () => {
 
   it("classifies marks without rendering", () => {
     expect(assetMarkKind("KES", "https://flagcdn.com/w40/ke.png")).toBe("flag");
-    expect(assetMarkKind("USDT", null)).toBe("stablecoin");
+    expect(assetMarkKind("USDT", null)).toBe("coin");
     expect(assetMarkKind("XOF", null)).toBe("badge");
   });
+});
 
-  it("keeps every brand mark visually distinct", () => {
-    const colours = Object.values(BRAND_MARKS).map((m) => `${m.background}|${m.glyph}`);
-    expect(new Set(colours).size).toBe(colours.length);
+describe("chain badge sizing", () => {
+  it("sizes the chain badge relative to the coin, not the NetworkMark default", () => {
+    // `.ep-network-mark` hard-codes 28px in CSS, which used to beat the
+    // width/height attributes and swallow the 38px coin it sits on.
+    const { container } = render(
+      <AssetMark code="USDC" flagUrl={null} network="Stellar" coinSize={38} />,
+    );
+    const chain = container.querySelector(
+      ".ep-wallets__flag-chain svg",
+    ) as SVGElement | null;
+    expect(chain).toBeTruthy();
+    expect(chain?.getAttribute("width")).toBe("14");
+    // Inline style is what actually wins over the class rule.
+    expect((chain as unknown as HTMLElement).style.width).toBe("14px");
   });
 });

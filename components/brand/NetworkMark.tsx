@@ -104,6 +104,10 @@ export default function NetworkMark({
       viewBox="0 0 32 32"
       width={size}
       height={size}
+      // `.ep-network-mark` hard-codes 28px, which beats the width/height
+      // attributes and silently ignored the `size` prop. Inline style wins, so
+      // callers get the size they asked for; the default is still 28.
+      style={{ width: size, height: size }}
       className={`ep-network-mark${className ? ` ${className}` : ""}`}
       role={decorative ? undefined : "img"}
       aria-label={decorative ? undefined : label}
