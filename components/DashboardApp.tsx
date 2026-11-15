@@ -223,6 +223,7 @@ import {
   conversionsApi,
   filterCrossCurrencyFiatAccounts,
   isLedgerFiatCurrency,
+  isFiatCurrencyForMode,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
@@ -1036,7 +1037,7 @@ export default function DashboardApp(props: Props = {}) {
         ? (bootstrapQuery.data?.fiatAccounts ?? [])
         : (depositAccountsQuery.data?.accounts ?? [])
     )
-      .filter((a) => a.id && isLedgerFiatCurrency(a.currency))
+      .filter((a) => a.id && isFiatCurrencyForMode(a.currency, state.convertMode))
       .map((a) => ({
         id: String(a.id),
         currency: String(a.currency || "").toUpperCase(),
@@ -5154,8 +5155,13 @@ export default function DashboardApp(props: Props = {}) {
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
+  const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
+  // Fiat↔fiat and fiat↔stablecoin do not share a backend, so they do not
+  // share a currency set: the ledger rail takes all seven, Mboka's
+  // conversions quote takes EUR/GBP/USD only. One list for both put NGN in
+  // the ramp picker and 422'd after the user had typed an amount.
   const fiatConvertAccounts = depositAccountsList
-    .filter((a) => a.id && isLedgerFiatCurrency(a.currency))
+    .filter((a) => a.id && isFiatCurrencyForMode(a.currency, convertMode))
     .map((a) => {
       const view = mapDepositAccountToCardView(a);
       return {
@@ -5198,7 +5204,6 @@ export default function DashboardApp(props: Props = {}) {
       balanceAmount: parseBalanceNumber(a.balance),
       network: a.network,
     }));
-  const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
   const convertSourceAccounts =
     convertMode === "stable_to_fiat" ? stableConvertAccounts : fiatConvertAccounts;
   const convertSourceCurrency =

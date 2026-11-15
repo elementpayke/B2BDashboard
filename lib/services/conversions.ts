@@ -109,6 +109,36 @@ export function isLedgerFiatCurrency(code: string | null | undefined): boolean {
   return (LEDGER_FIAT_CURRENCIES as readonly string[]).includes(upper);
 }
 
+/**
+ * Fiat currencies convertible *to or from a stablecoin*.
+ *
+ * Narrower than {@link LEDGER_FIAT_CURRENCIES} because the two directions do
+ * not share a backend. Fiat↔fiat goes to the aggregator's ledger-conversion
+ * endpoint, which allows all seven above. Fiat↔stablecoin goes to Mboka's
+ * `/v1/conversions/quote`, whose `resolve_pair` accepts only
+ * `EUR/GBP/USD ↔ USDC|USDT` and 422s on anything else:
+ *
+ *   "conversions support only EUR/GBP/USD ↔ USDC|USDT"
+ *
+ * Listing NGN here produced exactly that error — after the user had chosen a
+ * pair and typed an amount. Widen this only when Mboka's `FIAT_CURRENCIES`
+ * widens with it.
+ */
+export const RAMP_FIAT_CURRENCIES = ["EUR", "GBP", "USD"] as const;
+
+export function isRampFiatCurrency(code: string | null | undefined): boolean {
+  const upper = String(code ?? "").trim().toUpperCase();
+  return (RAMP_FIAT_CURRENCIES as readonly string[]).includes(upper);
+}
+
+/** Fiat currencies valid for a given convert direction. */
+export function isFiatCurrencyForMode(
+  code: string | null | undefined,
+  mode: string,
+): boolean {
+  return mode === "fiat_to_fiat" ? isLedgerFiatCurrency(code) : isRampFiatCurrency(code);
+}
+
 /** True when this pair needs a USDC bridge (fiat↔fiat). */
 export function needsUsdcBridge(sourceCcy: string, destCcy: string): boolean {
   const s = sourceCcy.trim().toUpperCase();
