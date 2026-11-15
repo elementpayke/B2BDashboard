@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { bookTransfersApi } from "@/lib/services/bookTransfers";
+import FeeDisclosureRows, { feeDisclosureText } from "@/components/money/FeeDisclosure";
+import {
+  bookTransferTotalDebit,
+  bookTransfersApi,
+  type BookTransferPreview,
+} from "@/lib/services/bookTransfers";
+import { formatConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { ApiRequestError } from "@/lib/apiClient";
 
@@ -35,8 +41,18 @@ export default function BookTransferModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  // Preview and confirm used to fire from the same click, so the fee the
+  // aggregator returned was fetched and thrown away without the user ever
+  // seeing a number. The preview now parks here as a review step instead.
+  const [preview, setPreview] = useState<BookTransferPreview | null>(null);
 
-  const submit = async () => {
+  const currency = (source.currency || "").toUpperCase();
+  const money = (value: unknown): string => {
+    if (value == null || String(value).trim() === "") return "";
+    return `${formatConvertAmount(String(value))}${currency ? ` ${currency}` : ""}`;
+  };
+
+  const requestPreview = async () => {
     setError("");
     if (!destId || !amount.trim()) {
       setError("Choose a destination and amount.");
@@ -44,11 +60,29 @@ export default function BookTransferModal({
     }
     setBusy(true);
     try {
-      const preview = await bookTransfersApi.preview(entityId, source.id, {
-        destination_account_id: destId,
-        amount: amount.trim(),
-        currency: source.currency,
-      });
+      setPreview(
+        await bookTransfersApi.preview(entityId, source.id, {
+          destination_account_id: destId,
+          amount: amount.trim(),
+          currency: source.currency,
+        }),
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError
+          ? err.message
+          : "Couldn't price this move. Try again or contact support.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!preview) return;
+    setError("");
+    setBusy(true);
+    try {
       const confirmed = await bookTransfersApi.confirm(entityId, source.id, {
         ...preview,
         destination_account_id: destId,
@@ -68,6 +102,62 @@ export default function BookTransferModal({
       setBusy(false);
     }
   };
+
+  if (preview) {
+    const destination = sameCurrency.find((a) => a.id === destId);
+    const feeText = feeDisclosureText({
+      raw: preview.fee,
+      formatted: money(preview.fee),
+      whenUnknown: "Shown on your statement once settled",
+    });
+    const totalText = money(bookTransferTotalDebit(preview));
+
+    return (
+      <div className="ep-book-transfer">
+        <span className="ep-money-step-label">Step 2 · Review &amp; confirm</span>
+        <div className="ep-money-review" role="group" aria-label="Move summary">
+          <div className="ep-money-review__row">
+            <span className="ep-money-review__k">From</span>
+            <span className="ep-money-review__v">{currency} account</span>
+          </div>
+          <div className="ep-money-review__row">
+            <span className="ep-money-review__k">To</span>
+            <span className="ep-money-review__v">
+              {destination ? `${destination.currency} · ${destination.id}` : destId}
+            </span>
+          </div>
+          <div className="ep-money-review__row ep-money-review__row--emphasis">
+            <span className="ep-money-review__k">Amount</span>
+            <span className="ep-money-review__v ep-money-review__v--mono">
+              {money(preview.amount ?? amount.trim())}
+            </span>
+          </div>
+          <FeeDisclosureRows
+            fee={feeText}
+            total={totalText}
+            totalWhenUnknown="Shown on your statement once settled"
+          />
+        </div>
+        <p className="ep-money-hint" role="note">
+          Same currency, no FX. Both accounts are yours, so the money stays inside Element.
+        </p>
+        {error ? (
+          <div className="ep-money-banner ep-money-banner--danger" role="alert">
+            {error}
+          </div>
+        ) : null}
+        {status ? <p className="ep-muted">Status: {status}</p> : null}
+        <div className="ep-modal-actions">
+          <button type="button" onClick={() => setPreview(null)} disabled={busy}>
+            Back
+          </button>
+          <button type="button" onClick={submit} disabled={busy}>
+            {busy ? "Moving…" : "Confirm move"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ep-book-transfer">
@@ -103,13 +193,12 @@ export default function BookTransferModal({
         />
       </label>
       {error ? <p className="ep-error" role="alert">{error}</p> : null}
-      {status ? <p className="ep-muted">Status: {status}</p> : null}
       <div className="ep-modal-actions">
         <button type="button" onClick={onCancel} disabled={busy}>
           Cancel
         </button>
-        <button type="button" onClick={submit} disabled={busy || !destId}>
-          {busy ? "Moving…" : "Confirm move"}
+        <button type="button" onClick={requestPreview} disabled={busy || !destId}>
+          {busy ? "Pricing…" : "Review move"}
         </button>
       </div>
     </div>

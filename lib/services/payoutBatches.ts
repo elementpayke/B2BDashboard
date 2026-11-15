@@ -56,6 +56,16 @@ export type MixedPayoutPreview = {
   total_items: number;
   stellar_item_count: number;
   fiat_item_count: number;
+  /**
+   * Batch-wide fee. The aggregator does not return one yet, so the review
+   * step says when it will be known rather than showing a figure nobody
+   * quoted — declared here so it renders the moment the backend ships it.
+   */
+  total_fee?: string | null;
+  /** Currency `total_fee` / `total_debit` are expressed in. */
+  currency?: string | null;
+  /** What leaves the source account in total, when the aggregator states it. */
+  total_debit?: string | null;
   items: MixedPayoutPreviewItem[];
 };
 

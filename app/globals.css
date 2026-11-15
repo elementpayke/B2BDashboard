@@ -8453,38 +8453,46 @@ button.ep-home__stat:focus-visible {
   gap: 16px;
 }
 
+/* Fee notice. Deliberately quiet: a neutral surface with a single outline
+   icon, so the amount inside it is the only thing competing for attention.
+   The old indigo tint + uppercase pill badge shouted louder than the number. */
 .ep-wallets-create__kind {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--indigo-tint);
-  border: 1px solid color-mix(in srgb, var(--indigo) 18%, var(--border));
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
 }
 
-.ep-wallets-create__kind-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--indigo);
-  color: var(--indigo-on);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.ep-wallets-create__kind-icon {
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--muted);
 }
 
 .ep-wallets-create__kind-text {
-  font-size: 12.5px;
-  font-weight: 500;
+  /* Disclosure copy reads at body size, not caption size — it carries the
+     number the user is agreeing to pay. Regular weight with only the amount
+     emphasised (see --kind-amount) keeps the figure the thing that stands out. */
+  font-size: 13.5px;
+  font-weight: 400;
   color: var(--ink);
-  line-height: 1.45;
+  line-height: 1.5;
+  margin: 0;
 }
+
+.ep-wallets-create__kind-amount {
+  font-weight: 700;
+  /* Brand numerals: amounts are set in DM Mono everywhere else in the app. */
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
 
 .ep-wallets-create__field {
   display: flex;
@@ -8493,9 +8501,10 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-wallets-create__label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  letter-spacing: -0.005em;
 }
 
 .ep-wallets-create__req {

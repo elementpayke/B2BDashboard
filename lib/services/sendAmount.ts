@@ -21,6 +21,8 @@
  * currency the user typed in, because that is what the backend prices from.
  */
 
+import { feeOnTopUsd, totalWithFee } from "@/lib/services/transferTerms";
+
 /** Amount the payload is built from — always USD, whatever was typed. */
 export const PAYLOAD_CURRENCY = "USD";
 
@@ -79,34 +81,52 @@ export function toPayloadUsdAmount(raw: string, mode: AmountEntryMode): string |
   return (amount / mode.rate).toFixed(2);
 }
 
-/** Whether a typed amount converts to more than the known USD-equivalent balance. */
+/**
+ * Whether a typed amount — *plus the fee charged on top of it* — converts to
+ * more than the known USD-equivalent balance.
+ *
+ * Comparing the amount alone is the bug this guards against: someone holding
+ * exactly 7,000 and sending 7,000 against a 17.50 fee passed the client-side
+ * check with no warning, then got rejected by the backend. `feeUsd` is
+ * omitted until a quote or preview has returned one, at which point the
+ * check becomes exact — it is never estimated in the meantime.
+ */
 export function amountExceedsBalance(
   raw: string,
   mode: AmountEntryMode,
   availableUsd: number | null,
+  feeUsd?: string | number | null,
 ): boolean {
   if (availableUsd === null || !Number.isFinite(availableUsd) || availableUsd < 0) return false;
   const usdAmount = toPayloadUsdAmount(raw, mode);
-  return usdAmount !== null && Number(usdAmount) > availableUsd;
+  if (usdAmount === null) return false;
+  return totalWithFee(Number(usdAmount), feeOnTopUsd(feeUsd)) > availableUsd;
 }
 
-/** Maximum entry amount that converts to no more than the available USD value. */
+/**
+ * Maximum entry amount whose USD value *plus the fee* fits the available USD
+ * balance — the largest figure "Max" can fill that the rails will actually
+ * accept. Without a known fee this is the balance itself, as before.
+ */
 export function maxAmountForBalance(
   availableUsd: number,
   mode: AmountEntryMode,
+  feeUsd?: string | number | null,
 ): string | null {
   if (!Number.isFinite(availableUsd) || availableUsd <= 0) return null;
+  const budget = availableUsd - feeOnTopUsd(feeUsd);
+  if (budget <= 0) return null;
   const currency = mode.currency.toUpperCase();
   let multiplier = 1;
   if (currency !== PAYLOAD_CURRENCY) {
     if (mode.rate === null || !Number.isFinite(mode.rate) || mode.rate <= 0) return null;
     multiplier = mode.rate;
   }
-  let amount = Math.floor((availableUsd * multiplier + Number.EPSILON) * 100) / 100;
+  let amount = Math.floor((budget * multiplier + Number.EPSILON) * 100) / 100;
   while (amount > 0) {
     const entered = amount.toFixed(2);
     const usdAmount = toPayloadUsdAmount(entered, mode);
-    if (usdAmount !== null && Number(usdAmount) <= availableUsd) return entered;
+    if (usdAmount !== null && Number(usdAmount) <= budget) return entered;
     amount = Math.round((amount - 0.01) * 100) / 100;
   }
   return null;

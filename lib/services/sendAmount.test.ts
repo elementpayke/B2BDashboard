@@ -92,6 +92,62 @@ describe("amountExceedsBalance", () => {
   });
 });
 
+describe("amount + fee against balance (the fee is charged on top)", () => {
+  const usd = { currency: "USD", rate: null };
+
+  // The reported bug: exactly enough for the amount, not for amount + fee.
+  it("flags the boundary where the amount fits but the amount plus fee does not", () => {
+    expect(amountExceedsBalance("7000", usd, 7000)).toBe(false);
+    expect(amountExceedsBalance("7000", usd, 7000, "17.50")).toBe(true);
+    expect(amountExceedsBalance("7000", usd, 7017.5, "17.50")).toBe(false);
+    // One cent short of covering both.
+    expect(amountExceedsBalance("7000", usd, 7017.49, "17.50")).toBe(true);
+  });
+
+  it("leaves the check untouched when no fee has been quoted yet", () => {
+    expect(amountExceedsBalance("7000", usd, 7000, null)).toBe(false);
+    expect(amountExceedsBalance("7000", usd, 7000, undefined)).toBe(false);
+    expect(amountExceedsBalance("7000", usd, 7000, "")).toBe(false);
+    expect(amountExceedsBalance("7000", usd, 7000, "0")).toBe(false);
+  });
+
+  it("does not accumulate binary noise at the cent boundary", () => {
+    expect(amountExceedsBalance("0.1", usd, 0.3, "0.2")).toBe(false);
+    expect(amountExceedsBalance("1.005", usd, 1.015, "0.01")).toBe(false);
+  });
+
+  it("adds the fee in the converted currency's own terms via the USD payload", () => {
+    const mode = { currency: "KES", rate: 132.16 };
+    // 58.15 KES ≈ 0.44 USD, which exactly fits a 0.44 balance...
+    expect(amountExceedsBalance("58.15", mode, 0.44)).toBe(false);
+    // ...but not once a 0.05 USD fee rides on top.
+    expect(amountExceedsBalance("58.15", mode, 0.44, 0.05)).toBe(true);
+  });
+
+  it("makes Max fill the largest amount whose amount plus fee still fits", () => {
+    expect(maxAmountForBalance(7017.5, usd, "17.50")).toBe("7000.00");
+    const filled = maxAmountForBalance(7017.5, usd, "17.50");
+    expect(amountExceedsBalance(filled!, usd, 7017.5, "17.50")).toBe(false);
+  });
+
+  it("offers no Max when the fee alone would consume the balance", () => {
+    expect(maxAmountForBalance(17.5, usd, "17.50")).toBeNull();
+    expect(maxAmountForBalance(10, usd, "17.50")).toBeNull();
+  });
+
+  it("keeps the fee-less Max unchanged", () => {
+    expect(maxAmountForBalance(0.445, usd)).toBe("0.44");
+    expect(maxAmountForBalance(0.445, usd, null)).toBe("0.44");
+  });
+
+  it("round-trips a local-currency Max against the fee-aware check", () => {
+    const mode = { currency: "KES", rate: 132.16 };
+    const filled = maxAmountForBalance(10, mode, "0.44");
+    expect(filled).not.toBeNull();
+    expect(amountExceedsBalance(filled!, mode, 10, "0.44")).toBe(false);
+  });
+});
+
 describe("describeAmountEquivalent", () => {
   it("shows the local side while typing USD, marked as an estimate", () => {
     expect(describeAmountEquivalent("1000", { currency: "USD", rate: 130.5 }, "KES")).toBe(

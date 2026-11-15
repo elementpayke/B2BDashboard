@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ApiRequestError } from "@/lib/apiClient";
-import { validateConvertAmount } from "@/lib/services/conversions";
+import FeeDisclosureRows, { feeDisclosureText } from "@/components/money/FeeDisclosure";
+import { formatConvertAmount, validateConvertAmount } from "@/lib/services/conversions";
 import type { FinancialAccount } from "@/lib/services/entities";
 import { formatNetworkLabel } from "@/lib/services/entities";
 import { useSendCatalog } from "@/lib/hooks/useSendCatalog";
@@ -768,6 +769,21 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
 
   const sourceLabel = selectedAccount ? walletLabel(selectedAccount) : "your USDC balance";
   const usdcTotal = sumUsdcAmounts(parsedRows);
+  // A batch fee is charged against the funding account, not the individual
+  // rows, so it cannot be read off the per-item amounts. The aggregator does
+  // not quote one yet — say when it lands rather than imply the batch is free.
+  const batchFeeCurrency = (
+    preview?.currency || selectedAccount?.currency || "USDC"
+  ).toUpperCase();
+  const batchFeeText = feeDisclosureText({
+    raw: preview?.total_fee,
+    formatted: `${formatConvertAmount(preview?.total_fee)} ${batchFeeCurrency}`,
+    whenUnknown: "Shown once the batch is confirmed",
+  });
+  const batchTotalDebitText =
+    preview?.total_debit != null && String(preview.total_debit).trim()
+      ? `${formatConvertAmount(String(preview.total_debit))} ${batchFeeCurrency}`
+      : null;
   const stepNum = stepIndex(stage) + 1;
   const subline =
     stage === "intent"
@@ -1187,6 +1203,11 @@ export default function PayoutBatchWizard({ sourceAccounts, onDone, onCancel }: 
                 {preview.stellar_item_count} wallet · {preview.fiat_item_count} mobile money
               </span>
             </div>
+            <FeeDisclosureRows
+              fee={batchFeeText}
+              total={batchTotalDebitText}
+              totalWhenUnknown="Shown once the batch is confirmed"
+            />
             {preview.items.map((item) => (
               <div key={item.row_index} className="ep-money-review__row">
                 <span

@@ -9,6 +9,7 @@ import {
 } from "@/lib/clients/savedRecipientsApi";
 import { isMobileMoneyRail, mobileMoneyDisplayLabel } from "@/lib/services/mobileMoneyBrands";
 import MobileMoneyMark from "@/components/money/MobileMoneyMark";
+import FeeDisclosureRows from "@/components/money/FeeDisclosure";
 import TermsLine from "@/components/money/TermsLine";
 
 /** Presentational Send modal body — props-driven; state lives in DashboardApp. */
@@ -129,6 +130,13 @@ export type SendModalProps = {
   sendQuoteLoading: boolean;
   sendQuoteRateText: string | null;
   sendFeeText: string;
+  /**
+   * What actually leaves the account — the backend's `total_debit`
+   * (amount + fee, because the fee is charged on top and the recipient
+   * receives the full amount). Never derived here. Null before a
+   * preview/quote exists, where the row says when it will be known.
+   */
+  sendTotalDebitText?: string | null;
   sendArrivalText: string;
   sendAcceptError: string;
   sendAccepting: boolean;
@@ -770,7 +778,7 @@ export default function SendModal(p: SendModalProps) {
                       aria-invalid={p.sendLimitError || p.sendBalanceError ? true : undefined}
                       aria-describedby={
                         [
-                          p.sendLimitError ? "send-limits" : "",
+                          p.sendLimitError || p.sendFeeText ? "send-limits" : "",
                           p.sendBalanceError ? "send-balance" : "",
                           p.sendQuoteError
                             ? "send-quote-error"
@@ -801,7 +809,7 @@ export default function SendModal(p: SendModalProps) {
                       </button>
                     ) : null}
                   </div>
-                  <TermsLine id="send-limits" error={p.sendLimitError} />
+                  <TermsLine id="send-limits" error={p.sendLimitError} fee={p.sendFeeText} />
                   <TermsLine id="send-balance" error={p.sendBalanceError} />
                   {p.sendAmountEquivalent ? (
                     <span className="ep-money-equiv" id="send-amount-equiv">
@@ -927,10 +935,16 @@ export default function SendModal(p: SendModalProps) {
                     </span>
                   </div>
                 ) : null}
-                <div className="ep-money-review__row">
-                  <span className="ep-money-review__k">Fee</span>
-                  <span className="ep-money-review__v ep-money-review__v--mono">{p.sendFeeText}</span>
-                </div>
+                {/* Crypto sends charge the fee on top of the amount, so the
+                    total debit is a separate figure the user has to be told.
+                    On a country send the quote's "You send" is already the
+                    all-in `user_pays`, so there is no second number to
+                    promise — hence no unknown-total copy on that path. */}
+                <FeeDisclosureRows
+                  fee={p.sendFeeText}
+                  total={p.sendTotalDebitText}
+                  totalWhenUnknown={p.sendIsCrypto ? "Shown once confirmed" : null}
+                />
                 <div className="ep-money-review__row">
                   <span className="ep-money-review__k">Arrival</span>
                   <span className="ep-money-review__v">{p.sendArrivalText}</span>
