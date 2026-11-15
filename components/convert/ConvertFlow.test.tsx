@@ -2,9 +2,11 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import ConvertFlow, { type ConvertFlowProps, type ConvertMode } from "./ConvertFlow";
+import ConvertFlow, { type ConvertFlowProps } from "./ConvertFlow";
 import { ledgerPreviewToConversionOut } from "@/lib/services/ledgerConversions";
+import { bookTransferPreviewToConversionOut } from "@/lib/services/bookTransfers";
 import type { ConversionOut } from "@/lib/services/conversions";
+import { resolveConvertRoute } from "@/lib/services/convertRoutes";
 
 const account = (id: string, currency: string) => ({
   id,
@@ -38,8 +40,11 @@ function quote(overrides: Partial<ConversionOut> = {}): ConversionOut {
 function props(overrides: Partial<ConvertFlowProps> = {}): ConvertFlowProps {
   const noop = () => {};
   return {
-    mode: "fiat_to_fiat" as ConvertMode,
-    onMode: noop,
+    // EUR → USD: ledger FX, the same route the default quote describes.
+    route: resolveConvertRoute(
+      { id: "src", currency: "EUR" },
+      { id: "dst", currency: "USD" },
+    ),
     sourceAccounts: [account("src", "EUR")],
     destinationAccounts: [account("dst", "USD")],
     sourceAccountId: "src",
@@ -95,8 +100,8 @@ describe("ConvertFlow fee disclosure", () => {
   });
 });
 
-describe("ConvertFlow fee disclosure across all three directions", () => {
-  // Every direction normalizes into ConversionOut, which is why the fee row
+describe("ConvertFlow fee disclosure across every rail", () => {
+  // Every rail normalizes into ConversionOut, which is why the fee row
   // needs no per-flow wiring. These assert that contract holds rather than
   // trusting it.
   it("discloses the ledger FX fee", () => {
@@ -114,7 +119,7 @@ describe("ConvertFlow fee disclosure across all three directions", () => {
       },
       { sourceAccountId: "src", destinationAccountId: "dst" },
     );
-    render(<ConvertFlow {...props({ mode: "fiat_to_fiat", quote: ledger })} />);
+    render(<ConvertFlow {...props({ quote: ledger })} />);
     expect(screen.getByTestId("convert-fee").textContent).toBe("1.25 EUR");
   });
 
@@ -125,8 +130,134 @@ describe("ConvertFlow fee disclosure across all three directions", () => {
       fee_amount: "0.50",
       fee_currency: "EUR",
     });
-    render(<ConvertFlow {...props({ mode: "fiat_to_stable", quote: ramp })} />);
+    render(
+      <ConvertFlow
+        {...props({
+          route: resolveConvertRoute(
+            { id: "src", currency: "EUR" },
+            { id: "dst", currency: "USDC" },
+          ),
+          quote: ramp,
+        })}
+      />,
+    );
     expect(screen.getByTestId("convert-fee").textContent).toBe("0.50 EUR");
   });
 
+  it("reads a book transfer's explicit zero as No fee, never blank", () => {
+    const book = bookTransferPreviewToConversionOut(
+      {
+        preview_token: "tok",
+        from_account_id: "src",
+        to_account_id: "dst",
+        currency: "EUR",
+        amount: "100.00",
+        fee: "0.00",
+        expires_at: null,
+      },
+      { sourceAccountId: "src", destinationAccountId: "dst", currency: "EUR" },
+    );
+    render(
+      <ConvertFlow
+        {...props({
+          route: resolveConvertRoute(
+            { id: "src", currency: "EUR" },
+            { id: "dst", currency: "EUR" },
+          ),
+          quote: book,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("convert-fee").textContent).toBe("No fee");
+  });
+});
+
+describe("ConvertFlow states the derived route and refuses the rest", () => {
+  const routeFor = (
+    from: { id: string; currency: string; network?: string | null },
+    to: { id: string; currency: string; network?: string | null },
+  ) => resolveConvertRoute(from, to);
+
+  it("names the rail instead of asking the user to choose one", () => {
+    render(<ConvertFlow {...props({ quote: null })} />);
+    expect(screen.getByTestId("convert-route").textContent).toContain(
+      "Converts on the ledger",
+    );
+    // The mode tabs are gone — there is nothing to select a direction with.
+    expect(screen.queryByRole("tablist")).toBeNull();
+  });
+
+  it("calls a same-currency move instant and free before any quote", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor({ id: "a", currency: "EUR" }, { id: "b", currency: "EUR" }),
+          quote: null,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("convert-route").textContent).toContain("no fee");
+  });
+
+  it("announces USDC → USDT as a ledger conversion", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor(
+            { id: "a", currency: "USDC", network: "polygon" },
+            { id: "b", currency: "USDT", network: "polygon" },
+          ),
+          quote: null,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("convert-route").textContent).toContain(
+      "Converts on the ledger",
+    );
+  });
+
+  it("explains an unsupported pair and disables the quote button", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor({ id: "a", currency: "KES" }, { id: "b", currency: "EUR" }),
+          quote: null,
+        })}
+      />,
+    );
+    const why = screen.getByTestId("convert-unsupported").textContent || "";
+    expect(why).toContain("KES");
+    expect(why).toContain("EUR, USD, GBP, CAD, NGN, GHS, AED, USDC and USDT");
+    expect(screen.getByRole("button", { name: /get quote/i })).toBeDisabled();
+  });
+
+  it("hides the amount field for an unsupported pair", () => {
+    // Catching the refusal only after an amount is typed is the failure this
+    // routing change exists to prevent.
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor(
+            { id: "a", currency: "USDC", network: "stellar" },
+            { id: "b", currency: "USDT", network: "polygon" },
+          ),
+          quote: null,
+        })}
+      />,
+    );
+    expect(screen.queryByLabelText(/^Amount/)).toBeNull();
+    expect(screen.getByTestId("convert-unsupported").textContent).toContain("Stellar");
+  });
+
+  it("keeps the quote button live for a supported pair", () => {
+    render(<ConvertFlow {...props({ quote: null })} />);
+    expect(screen.getByRole("button", { name: /get quote/i })).toBeEnabled();
+  });
+
+  it("labels Settles via from the route when the call site passes none", () => {
+    render(<ConvertFlow {...props()} />);
+    expect(screen.getByTestId("convert-settles-via").textContent).toBe(
+      "Ledger FX · same customer",
+    );
+  });
 });
