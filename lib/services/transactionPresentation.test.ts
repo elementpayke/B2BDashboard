@@ -442,3 +442,47 @@ describe("collectStagePhrase corridor stages", () => {
     expect(collectStagePhrase("credited")).toBe("Credited");
   });
 });
+
+describe("fee disclosure on transaction rows", () => {
+  it("shows a real fee as a bare figure, labelled by the row", () => {
+    const p = presentTransaction(
+      transaction({ status: "completed", fee_amount: "1.5", fee_currency: "KES" }),
+    );
+    // No "Fee " prefix: the slot is labelled, and repeating it reads oddly
+    // beside the amount.
+    expect(p.feeLabel).toBe("1.50 KES");
+  });
+
+  it("falls back to the transaction currency when the fee has none", () => {
+    const p = presentTransaction(
+      transaction({ status: "completed", fee_amount: "2", fee_currency: null }),
+    );
+    expect(p.feeLabel).toBe("2.00 KES");
+  });
+
+  it("states an explicit zero as free instead of going blank", () => {
+    // The old behaviour returned null here, making a free transfer and one
+    // whose fee never arrived look identical.
+    const p = presentTransaction(
+      transaction({ status: "completed", fee_amount: "0.00", fee_currency: "KES" }),
+    );
+    expect(p.feeLabel).toBe("No fee");
+  });
+
+  it("says a settled row's fee was never reported, rather than implying free", () => {
+    const p = presentTransaction(transaction({ status: "completed", fee_amount: null }));
+    expect(p.feeLabel).toBe("Fee not reported");
+  });
+
+  it("promises nothing while the transaction is still moving", () => {
+    const p = presentTransaction(transaction({ status: "processing", fee_amount: null }));
+    expect(p.feeLabel).toBeNull();
+  });
+
+  it("keeps the fee out of the truncating meta line", () => {
+    const p = presentTransaction(
+      transaction({ status: "completed", fee_amount: "1.5", fee_currency: "KES" }),
+    );
+    expect(p.meta).not.toMatch(/fee/i);
+  });
+});

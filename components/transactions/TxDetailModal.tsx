@@ -2,6 +2,7 @@
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useEffect, useId, useRef, useState } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { NO_FEE_TEXT, feeState } from "@/components/money/FeeDisclosure";
 import {
   buildReceiptPdfBlob,
   downloadPdfBlob,
@@ -436,13 +437,23 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       : "";
   const feeStatus =
     typeof txDetail.fee_status === "string" ? txDetail.fee_status.trim() : "";
-  if (feeAmount) {
+  // The fee row is unconditional. It used to render only for a non-zero
+  // amount, so a free transfer and one whose fee we simply never received
+  // looked identical — both blank. A settled transaction that cost nothing
+  // should say so.
+  {
     const feeLabel = collect ? "Circle fee" : "Fee";
     const feeBase = feeCurrency ? `${feeAmount} ${feeCurrency}` : feeAmount;
     const feeValue =
-      feeStatus && feeStatus.toLowerCase() !== "final"
-        ? `${feeBase} · ${feeStatus.replace(/_/g, " ")}`
-        : feeBase;
+      feeState(feeAmount) === "none"
+        ? NO_FEE_TEXT
+        : feeAmount
+          ? feeStatus && feeStatus.toLowerCase() !== "final"
+            ? `${feeBase} · ${feeStatus.replace(/_/g, " ")}`
+            : feeBase
+          : // Settled and still no figure: there is no later moment to point
+            // the reader at, so say what we know rather than promise one.
+            "Not reported";
     rows.push({ label: feeLabel, value: feeValue });
   }
 

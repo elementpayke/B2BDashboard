@@ -430,6 +430,26 @@ select option {
   letter-spacing: -0.01em;
 }
 
+/* Amount with its fee beneath, right-aligned so the figures stack cleanly.
+   The fee sat at the end of `meta` before, which truncates — a fee behind an
+   ellipsis is not disclosure. */
+.ep-activity__amount-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.ep-activity__fee {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--muted2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .ep-activity__desktop {
   display: none;
 }
