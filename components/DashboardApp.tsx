@@ -5164,6 +5164,7 @@ export default function DashboardApp(props: Props = {}) {
         label: `${view.name} (${a.currency.toUpperCase()})`,
         balanceLabel: view.hasBalance ? view.balance : "—",
         balanceAmount: parseBalanceNumber(a.balance),
+        flagUrl: view.iso ? flagUrl(view.iso) : null,
       };
     });
   const usdcConvertAccounts = stablecoinAccountsList
@@ -5195,6 +5196,7 @@ export default function DashboardApp(props: Props = {}) {
       label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
+      network: a.network,
     }));
   const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
   const convertSourceAccounts =

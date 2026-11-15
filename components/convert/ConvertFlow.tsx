@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import AssetSelect from "@/components/money/AssetSelect";
 import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   describeConversionRate,
@@ -16,6 +17,10 @@ export type ConvertAccountOption = {
   balanceLabel: string;
   /** Raw available balance. Null when the partner returned none. */
   balanceAmount: number | null;
+  /** Flag image for fiat with one country; null for shared/stablecoin. */
+  flagUrl?: string | null;
+  /** Settlement chain, badged onto a stablecoin's coin mark. */
+  network?: string | null;
 };
 
 /**
@@ -113,6 +118,14 @@ function friendlyError(message: string): { title: string; body: string } {
 }
 
 export default function ConvertFlow(p: ConvertFlowProps) {
+  // The conversion keeps running whether or not the overlay is on screen —
+  // hiding is a view preference, never a cancel. Re-arms for the next
+  // attempt so dismissing once doesn't permanently silence progress.
+  const [progressHidden, setProgressHidden] = React.useState(false);
+  React.useEffect(() => {
+    if (!p.acceptLoading) setProgressHidden(false);
+  }, [p.acceptLoading]);
+
   const expired = p.quoteSeconds <= 0 && Boolean(p.quote);
   const source = p.sourceAccounts.find((a) => a.id === p.sourceAccountId);
   const dest = p.destinationAccounts.find((a) => a.id === p.destinationAccountId);
@@ -137,6 +150,8 @@ export default function ConvertFlow(p: ConvertFlowProps) {
   const canAccept = Boolean(p.quote) && !expired && !p.acceptLoading && !p.done;
   const modeMeta = MODES.find((m) => m.key === p.mode) || MODES[0];
   const err = p.error ? friendlyError(p.error) : null;
+  const noAccounts =
+    p.sourceAccounts.length === 0 || p.destinationAccounts.length === 0;
   const available =
     source && source.balanceLabel && source.balanceLabel !== "—"
       ? source.balanceLabel
@@ -189,6 +204,24 @@ export default function ConvertFlow(p: ConvertFlowProps) {
 
   return (
     <div className="ep-convert">
+      {p.acceptLoading && !progressHidden ? (
+        <div className="ep-convert__progress" role="status" aria-live="polite">
+          <span className="ep-convert__spinner" aria-hidden />
+          <span className="ep-convert__progress-text">
+            <strong>Converting your balance…</strong>
+            This usually takes a few seconds. You can keep watching or hide this —
+            the conversion carries on either way.
+          </span>
+          <button
+            type="button"
+            className="ep-convert__progress-hide"
+            onClick={() => setProgressHidden(true)}
+          >
+            Hide
+          </button>
+        </div>
+      ) : null}
+
       <div className="ep-convert__panel">
         <div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
           {MODES.map((m) => (
@@ -214,7 +247,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
         ) : null}
         {p.hopLabel ? <p className="ep-money-hint">{p.hopLabel}</p> : null}
 
-        {p.sourceAccounts.length === 0 || p.destinationAccounts.length === 0 ? (
+        {noAccounts ? (
           <div className="ep-convert__expired" role="status">
             <span className="ep-convert__expired-title">Accounts needed</span>
             <span className="ep-convert__expired-body">
@@ -231,49 +264,27 @@ export default function ConvertFlow(p: ConvertFlowProps) {
         ) : (
           <>
             <div className="ep-convert__legs">
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="convert-source">
-                  From
-                </label>
-                <select
-                  id="convert-source"
-                  className="ep-money-input"
-                  value={p.sourceAccountId}
-                  onChange={(e) => p.onSourceAccount(e.target.value)}
-                >
-                  <option value="">Select source</option>
-                  {p.sourceAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                      {a.balanceLabel !== "—" ? ` · ${a.balanceLabel}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <AssetSelect
+                id="convert-source"
+                label="From"
+                placeholder="Choose an account to convert from"
+                value={p.sourceAccountId}
+                options={p.sourceAccounts}
+                onChange={p.onSourceAccount}
+              />
 
               <div className="ep-convert__swap" aria-hidden>
                 ↓
               </div>
 
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="convert-dest">
-                  To
-                </label>
-                <select
-                  id="convert-dest"
-                  className="ep-money-input"
-                  value={p.destinationAccountId}
-                  onChange={(e) => p.onDestinationAccount(e.target.value)}
-                >
-                  <option value="">Select destination</option>
-                  {p.destinationAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                      {a.balanceLabel !== "—" ? ` · ${a.balanceLabel}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <AssetSelect
+                id="convert-dest"
+                label="To"
+                placeholder="Choose an account to receive"
+                value={p.destinationAccountId}
+                options={p.destinationAccounts}
+                onChange={p.onDestinationAccount}
+              />
             </div>
 
             <div className="ep-money-field">
@@ -324,6 +335,15 @@ export default function ConvertFlow(p: ConvertFlowProps) {
           </div>
         ) : null}
 
+        {/* Fee is stated before the quote too. Showing it only after quoting
+            means a user decides to convert without knowing whether it costs
+            anything, which is the gap this whole change set exists to close. */}
+        {!p.quote && !noAccounts ? (
+          <p className="ep-convert__prefee" role="status">
+            Fees are shown with your quote, before you confirm anything.
+          </p>
+        ) : null}
+
         {p.quote ? (
           <>
             <div className="ep-convert__quote">
@@ -357,6 +377,13 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                   data-testid="convert-fee"
                 >
                   {feeText}
+                </span>
+              </div>
+              <div className="ep-convert__meta-row ep-convert__meta-row--total">
+                <span className="ep-convert__meta-k">You receive</span>
+                <span className="ep-convert__meta-v ep-convert__meta-v--mono">
+                  {formatConvertAmount(p.quote.destination_amount)}{" "}
+                  {p.quote.destination_currency}
                 </span>
               </div>
               <div className="ep-convert__meta-row">
@@ -417,7 +444,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 onClick={p.onAccept}
                 disabled={!canAccept}
               >
-                {p.acceptLoading ? "Settling…" : "Accept & settle"}
+                {p.acceptLoading ? "Converting…" : "Accept & convert"}
               </button>
             </>
           )}
