@@ -82,12 +82,38 @@ export function describeConversionRate(quote: ConversionOut): string {
   })} ${quote.destination_currency}`;
 }
 
+/**
+ * Fiat currencies the aggregator's ledger (Nuvion) rail can convert.
+ *
+ * Mirrors `LEDGER_FIAT_CURRENCIES` in the aggregator's
+ * `partner_orders/network_registry.py`. A customer can *hold* far more than
+ * this — the account catalog lists 30 — but `customer_conversion.py` rejects
+ * any leg outside this set with a 422, so offering KES/TZS/ZAR in a convert
+ * picker only moves the failure to after the user has committed to a pair.
+ *
+ * Keep in sync with the aggregator: widening here alone produces a confusing
+ * 422, narrowing hides currencies that do work.
+ */
+export const LEDGER_FIAT_CURRENCIES = [
+  "EUR",
+  "USD",
+  "GBP",
+  "CAD",
+  "NGN",
+  "GHS",
+  "AED",
+] as const;
+
+export function isLedgerFiatCurrency(code: string | null | undefined): boolean {
+  const upper = String(code ?? "").trim().toUpperCase();
+  return (LEDGER_FIAT_CURRENCIES as readonly string[]).includes(upper);
+}
+
 /** True when this pair needs a USDC bridge (fiat↔fiat). */
 export function needsUsdcBridge(sourceCcy: string, destCcy: string): boolean {
-  const fiat = new Set(["EUR", "USD", "GBP"]);
   const s = sourceCcy.trim().toUpperCase();
   const d = destCcy.trim().toUpperCase();
-  return fiat.has(s) && fiat.has(d) && s !== d;
+  return isLedgerFiatCurrency(s) && isLedgerFiatCurrency(d) && s !== d;
 }
 
 export type ConvertPickAccount = {
