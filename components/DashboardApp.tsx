@@ -591,8 +591,13 @@ export default function DashboardApp(props: Props = {}) {
     screen === "cards" ||
     screen === "reports" ||
     screen === "transactions";
+  // accountDetail included: a book transfer closes onto it, so without a
+  // poll here a settling transfer never appears on the account it left.
   const activityPoll =
-    screen === "home" || screen === "transactions" || screen === "wallets";
+    screen === "home" ||
+    screen === "transactions" ||
+    screen === "wallets" ||
+    screen === "accountDetail";
   const kybWizard = useKybWizard({
     businessId,
     kybSummary: meQuery.data?.kyb_summary,
@@ -714,6 +719,12 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     enabled: needsActivityFeed,
     refetchInterval: activityPollMs,
+    // The global 30s staleTime suppressed the recovery paths: navigating to
+    // Home, or alt-tabbing back, would not refetch if the feed had been
+    // fetched seconds earlier. That is what made a missing transfer feel
+    // random rather than consistently late. The activity feed is the one
+    // query where freshness beats the request saved.
+    staleTime: 0,
   });
   const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
     enabled: screen === "transactions",
@@ -1810,6 +1821,31 @@ export default function DashboardApp(props: Props = {}) {
         depositAcceptError: "",
       };
     });
+  /**
+   * Refresh everything that shows money after a transfer settles.
+   *
+   * Book transfers used to close their modal without invalidating anything,
+   * so a completed move stayed invisible until something else happened to
+   * refetch. Worse, it closes onto `accountDetail`, which is not in
+   * `activityPoll` — so there was no 15s poll to rescue it either, and the
+   * transfer could sit unseen indefinitely on the very account it left.
+   *
+   * Every other money flow already did this inline; this just names it so a
+   * new flow cannot forget a key.
+   */
+  const refreshMoneyViews = () => {
+    for (const key of [
+      "transactions",
+      "transactions-page",
+      "dashboard-summary",
+      "deposit-accounts",
+      "stablecoin-accounts",
+      "bootstrap",
+    ]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
   const closeModal = () => {
     // Escape reaches every open modal through this shared function — block
     // it here too while a disable-2FA request is in flight (see
@@ -6529,7 +6565,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     network: "",
     status: String(a.status || ""),
   }))}
-  onDone={closeModal}
+  onDone={() => {
+    // The confirm already succeeded upstream; refresh before closing so
+    // the row is present on the screen the user lands back on.
+    refreshMoneyViews();
+    closeModal();
+  }}
   onCancel={closeModal}
 />
 </>) : null}
