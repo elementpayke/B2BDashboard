@@ -18,6 +18,13 @@ export type ActivityItem = {
   openDetail?: () => void;
   /** Optional secondary line for mobile cards (e.g. date/ref) */
   meta?: string;
+  /**
+   * Already-formatted fee, sitting under the amount — "1.50 KES", "No fee",
+   * or "Not reported". Resolved by the caller through `feeDisclosureText` so
+   * a zero reads as free rather than blank, and an absent figure never
+   * implies one. Undefined renders nothing, for lists with no fee concept.
+   */
+  feeLabel?: string | null;
 };
 
 type Props = {
@@ -86,7 +93,15 @@ export default function ActivityList({
                     className="ep-activity__row"
                     onClick={tx.openDetail}
                     disabled={!tx.openDetail}
-                    aria-label={`${tx.client}, ${tx.type}, ${tx.amount}, ${tx.statusLabel}`}
+                    aria-label={[
+                      tx.client,
+                      tx.type,
+                      tx.amount,
+                      tx.feeLabel ? `fee ${tx.feeLabel}` : null,
+                      tx.statusLabel,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
                   >
                     <div className="ep-activity__card">
                       <div className="ep-activity__card-top">
@@ -105,11 +120,19 @@ export default function ActivityList({
                             ) : null}
                           </div>
                         </div>
-                        <span
-                          className="ep-mono ep-activity__amount"
-                          style={{ color: tx.amountColor || "var(--ink)" }}
-                        >
-                          {tx.amount}
+                        <span className="ep-activity__amount-stack">
+                          <span
+                            className="ep-mono ep-activity__amount"
+                            style={{ color: tx.amountColor || "var(--ink)" }}
+                          >
+                            {tx.amount}
+                          </span>
+                          {tx.feeLabel ? (
+                            <span className="ep-activity__fee">
+                              <span className="ep-activity__sr">Fee: </span>
+                              {tx.feeLabel}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                       <div className="ep-activity__card-bottom">
@@ -140,11 +163,19 @@ export default function ActivityList({
                         </div>
                       </div>
                       <span className="ep-activity__type">{tx.type}</span>
-                      <span
-                        className="ep-mono ep-activity__amount ep-align-end"
-                        style={{ color: tx.amountColor || "var(--ink)" }}
-                      >
-                        {tx.amount}
+                      <span className="ep-activity__amount-stack ep-align-end">
+                        <span
+                          className="ep-mono ep-activity__amount"
+                          style={{ color: tx.amountColor || "var(--ink)" }}
+                        >
+                          {tx.amount}
+                        </span>
+                        {tx.feeLabel ? (
+                          <span className="ep-activity__fee">
+                            <span className="ep-activity__sr">Fee: </span>
+                            {tx.feeLabel}
+                          </span>
+                        ) : null}
                       </span>
                       <StatusBadge
                         label={tx.statusLabel}
