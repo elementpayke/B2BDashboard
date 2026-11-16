@@ -221,22 +221,27 @@ import {
 } from "@/lib/services/balances";
 import {
   conversionsApi,
-  filterCrossCurrencyFiatAccounts,
-  isLedgerFiatCurrency,
-  isFiatCurrencyForMode,
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
 } from "@/lib/services/conversions";
 import {
+  isQuotableRoute,
+  resolveConvertRoute,
+  type ConvertRouteLeg,
+} from "@/lib/services/convertRoutes";
+import {
   ledgerConversionsApi,
   ledgerPreviewToConversionOut,
   ledgerResultToConversionOut,
 } from "@/lib/services/ledgerConversions";
-import ConvertFlow, {
-  normalizeConvertMode,
-  type ConvertMode,
-} from "@/components/convert/ConvertFlow";
+import {
+  bookTransferPreviewToConversionOut,
+  bookTransferResultToConversionOut,
+  bookTransfersApi,
+  type BookTransferPreview,
+} from "@/lib/services/bookTransfers";
+import ConvertFlow from "@/components/convert/ConvertFlow";
 import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   cardsApi,
@@ -417,11 +422,14 @@ export default function DashboardApp(props: Props = {}) {
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
-    convertMode: "fiat_to_stable" as ConvertMode,
+    // No convertMode: the rail is derived from the account pair.
     convertSourceAccountId: "",
     convertDestAccountId: "",
     convertAmount: "",
     convertQuote: null as ConversionOut | null,
+    // Raw book-transfer preview, kept so confirm can echo it back the way
+    // BookTransferModal does rather than guess which fields Mboka needs.
+    convertBookPreview: null as BookTransferPreview | null,
     convertQuoteLoading: false,
     convertAccepting: false,
     convertError: "",
@@ -592,8 +600,13 @@ export default function DashboardApp(props: Props = {}) {
     screen === "cards" ||
     screen === "reports" ||
     screen === "transactions";
+  // accountDetail included: a book transfer closes onto it, so without a
+  // poll here a settling transfer never appears on the account it left.
   const activityPoll =
-    screen === "home" || screen === "transactions" || screen === "wallets";
+    screen === "home" ||
+    screen === "transactions" ||
+    screen === "wallets" ||
+    screen === "accountDetail";
   const kybWizard = useKybWizard({
     businessId,
     kybSummary: meQuery.data?.kyb_summary,
@@ -715,6 +728,12 @@ export default function DashboardApp(props: Props = {}) {
     retry: false,
     enabled: needsActivityFeed,
     refetchInterval: activityPollMs,
+    // The global 30s staleTime suppressed the recovery paths: navigating to
+    // Home, or alt-tabbing back, would not refetch if the feed had been
+    // fetched seconds earlier. That is what made a missing transfer feel
+    // random rather than consistently late. The activity feed is the one
+    // query where freshness beats the request saved.
+    staleTime: 0,
   });
   const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
     enabled: screen === "transactions",
@@ -1029,65 +1048,97 @@ export default function DashboardApp(props: Props = {}) {
       cardTxnSurfaceOpen || activityPoll ? 15_000 : false,
   });
 
-  // Prefill convert accounts once lists load — prefer funded From accounts.
+  // Prefill convert accounts once lists load.
+  //
+  // Prefers a funded source *that has a routable destination*. Ranking by
+  // balance alone used to be enough when the mode narrowed the lists for us;
+  // now that both lists hold every account, the best-funded one might be a
+  // KES balance with nowhere to go, and Convert would open on a refusal.
   useEffect(() => {
     if (state.screen !== "convert" && state.modal !== "convert") return;
-    const fiatRows = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.fiatAccounts ?? [])
-        : (depositAccountsQuery.data?.accounts ?? [])
-    )
-      .filter((a) => a.id && isFiatCurrencyForMode(a.currency, state.convertMode))
-      .map((a) => ({
-        id: String(a.id),
-        currency: String(a.currency || "").toUpperCase(),
-        balanceAmount: parseBalanceNumber(a.balance),
-      }));
-    const convertStables = resolvedStablecoinAccounts
-      .filter(
-        (a) =>
-          (a.currency === "USDC" || a.currency === "USDT") &&
-          isReadyStatus(a.status) &&
-          a.id,
+    // Built from the same helpers the rendered pickers use, so the prefill
+    // can never land on an account (a closed one, say) that the list hides —
+    // which would leave the picker showing its placeholder over a set value.
+    const rows: (ConvertRouteLeg & { balanceAmount: number | null })[] = [
+      ...listedDepositAccounts(
+        bootstrapReady
+          ? (bootstrapQuery.data?.fiatAccounts ?? [])
+          : (depositAccountsQuery.data?.accounts ?? []),
       )
-      .map((a) => ({
-        id: String(a.id),
-        currency: String(a.currency || "").toUpperCase(),
-        balanceAmount: parseBalanceNumber(a.balance),
-      }));
-    const mode = state.convertMode;
-    const sourceRows = mode === "stable_to_fiat" ? convertStables : fiatRows;
-    const preferredSourceId = pickPreferredConvertAccountId(sourceRows);
-    const sourceId = state.convertSourceAccountId || preferredSourceId;
-    const sourceCcy =
-      sourceRows.find((a) => a.id === sourceId)?.currency ||
-      fiatRows.find((a) => a.id === sourceId)?.currency ||
-      "";
-    const destRows =
-      mode === "fiat_to_stable"
-        ? convertStables
-        : mode === "fiat_to_fiat"
-          ? filterCrossCurrencyFiatAccounts(fiatRows, sourceCcy, sourceId)
-          : fiatRows.filter((a) => a.id !== sourceId);
-    const preferredDestId = pickPreferredConvertAccountId(destRows, [sourceId]);
+        .filter((a) => a.id)
+        .map((a) => ({
+          id: String(a.id),
+          currency: String(a.currency || "").toUpperCase(),
+          network: null,
+          balanceAmount: parseBalanceNumber(a.balance),
+        })),
+      ...resolvedStablecoinAccounts
+        .filter(
+          (a) =>
+            (a.currency === "USDC" || a.currency === "USDT") &&
+            isReadyStatus(a.status) &&
+            a.id,
+        )
+        .map((a) => ({
+          id: String(a.id),
+          currency: String(a.currency || "").toUpperCase(),
+          network: a.network ?? null,
+          balanceAmount: parseBalanceNumber(a.balance),
+        })),
+    ];
+    const bestDestinationFor = (sourceId: string): string => {
+      const source = rows.find((a) => a.id === sourceId) || null;
+      if (!source) return "";
+      return pickPreferredConvertAccountId(
+        rows.filter(
+          (a) => a.id !== sourceId && isQuotableRoute(resolveConvertRoute(source, a)),
+        ),
+        [sourceId],
+      );
+    };
+    const existingSourceId = String(state.convertSourceAccountId || "");
+    let openingSourceId = existingSourceId;
+    let openingDestId = existingSourceId ? bestDestinationFor(existingSourceId) : "";
+    if (!existingSourceId) {
+      // Walk sources best-funded first and stop at the first one that can
+      // actually reach somewhere. `tried` grows every pass, so this ends.
+      const tried = new Set<string>();
+      for (;;) {
+        const candidateId = pickPreferredConvertAccountId(rows, tried);
+        if (!candidateId) break;
+        tried.add(candidateId);
+        const destId = bestDestinationFor(candidateId);
+        if (destId) {
+          openingSourceId = candidateId;
+          openingDestId = destId;
+          break;
+        }
+      }
+      // Nothing routes: still open on the funded account rather than empty
+      // pickers, and let the route explain itself.
+      if (!openingSourceId) openingSourceId = pickPreferredConvertAccountId(rows);
+    }
     setState((s: any) => {
       const next: Record<string, string> = {};
-      if (!s.convertSourceAccountId && preferredSourceId) {
-        next.convertSourceAccountId = preferredSourceId;
+      if (!s.convertSourceAccountId && openingSourceId) {
+        next.convertSourceAccountId = openingSourceId;
       }
-      if (!s.convertDestAccountId && preferredDestId) {
-        next.convertDestAccountId = preferredDestId;
+      if (!s.convertDestAccountId && openingDestId) {
+        next.convertDestAccountId = openingDestId;
       }
       return Object.keys(next).length ? next : {};
     });
   }, [
     state.screen,
     state.modal,
-    state.convertMode,
     state.convertSourceAccountId,
     state.convertDestAccountId,
     bootstrapReady,
     bootstrapQuery.data,
+    // The query payloads, deliberately — NOT `resolvedStablecoinAccounts`.
+    // That is recomputed into a fresh array every render, and `setState`
+    // always spreads into a new object, so depending on it would re-run this
+    // effect on every render forever.
     depositAccountsQuery.data,
     stablecoinAccountsQuery.data,
     setState,
@@ -1252,11 +1303,11 @@ export default function DashboardApp(props: Props = {}) {
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
-    convertMode: "fiat_to_stable" as ConvertMode,
     convertSourceAccountId: "",
     convertDestAccountId: "",
     convertAmount: "",
     convertQuote: null,
+    convertBookPreview: null,
     convertQuoteLoading: false,
     convertAccepting: false,
     convertError: "",
@@ -1811,6 +1862,31 @@ export default function DashboardApp(props: Props = {}) {
         depositAcceptError: "",
       };
     });
+  /**
+   * Refresh everything that shows money after a transfer settles.
+   *
+   * Book transfers used to close their modal without invalidating anything,
+   * so a completed move stayed invisible until something else happened to
+   * refetch. Worse, it closes onto `accountDetail`, which is not in
+   * `activityPoll` — so there was no 15s poll to rescue it either, and the
+   * transfer could sit unseen indefinitely on the very account it left.
+   *
+   * Every other money flow already did this inline; this just names it so a
+   * new flow cannot forget a key.
+   */
+  const refreshMoneyViews = () => {
+    for (const key of [
+      "transactions",
+      "transactions-page",
+      "dashboard-summary",
+      "deposit-accounts",
+      "stablecoin-accounts",
+      "bootstrap",
+    ]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
   const closeModal = () => {
     // Escape reaches every open modal through this shared function — block
     // it here too while a disable-2FA request is in flight (see
@@ -2561,25 +2637,77 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  const setConvertMode = (mode: ConvertMode) =>
-    setState({
-      convertMode: mode,
-      convertSourceAccountId: "",
-      convertDestAccountId: "",
-      convertQuote: null,
-      convertError: "",
-      convertHop: 1,
-      swapAccepted: false,
-      quoteSeconds: 0,
-    });
+  /**
+   * The rail for the pair currently selected, read off raw account data.
+   *
+   * The render body derives the same route for display; this reads it again
+   * from the query caches because the handlers run against `state`, not the
+   * rendered snapshot. Both go through `resolveConvertRoute`, so the button
+   * the user pressed and the endpoint we call can never disagree.
+   */
+  const convertLegFor = (accountId: string): ConvertRouteLeg | null => {
+    const id = String(accountId || "").trim();
+    if (!id) return null;
+    const fiat =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === id);
+    if (fiat) {
+      return { id, currency: String(fiat.currency || ""), network: null };
+    }
+    const stable =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === id);
+    if (stable) {
+      return {
+        id,
+        currency: String(stable.currency || ""),
+        network: stable.network ?? null,
+      };
+    }
+    return null;
+  };
+  const currentConvertRoute = () =>
+    resolveConvertRoute(
+      convertLegFor(state.convertSourceAccountId),
+      convertLegFor(state.convertDestAccountId),
+    );
+  /**
+   * Owning entity for a convert source account.
+   *
+   * Book transfers and ledger FX are both entity-scoped, and ledger FX now
+   * runs from stablecoin sources too (USDC → USDT), so this cannot read
+   * `entity_id` off the fiat list alone — stablecoin accounts carry it as
+   * `entityId`.
+   */
+  const convertEntityIdFor = (accountId: string): string => {
+    const id = String(accountId || "").trim();
+    if (!id) return "";
+    const fiat =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === id);
+    if (fiat) return String(fiat.entity_id || "").trim();
+    const stable =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === id);
+    return stable ? String(stable.entityId || "").trim() : "";
+  };
   const refreshConvertQuote = async () => {
     const sourceId = state.convertSourceAccountId;
     const selectedDestId = state.convertDestAccountId;
     const amount = state.convertAmount;
-    const ledgerFiatFx = state.convertMode === "fiat_to_fiat";
+    const route = currentConvertRoute();
 
     if (!sourceId || !selectedDestId || !amount.trim()) {
       setState({ convertError: "Pick both accounts and enter an amount (min 1.00)." });
+      return;
+    }
+
+    // The CTA is already disabled for an unsupported pair; this is the
+    // belt-and-braces so no programmatic path can quote one.
+    if (!isQuotableRoute(route)) {
+      setState({
+        convertError: route.reason || "This pair can't be converted yet.",
+      });
       return;
     }
 
@@ -2611,27 +2739,40 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
 
-    if (ledgerFiatFx) {
-      const entityId = String(fiatSource?.entity_id || "").trim();
-      if (!entityId) {
-        setState({
-          convertError: "Couldn't resolve the business entity for this fiat account.",
-        });
-        return;
-      }
+    // Book transfers and ledger FX are entity-scoped endpoints; the ramp is
+    // not. Resolving the entity up front keeps the failure in front of the
+    // spinner rather than behind it.
+    const entityId = convertEntityIdFor(sourceId);
+    if ((route.kind === "ledger_fx" || route.kind === "book_transfer") && !entityId) {
+      setState({
+        convertError: "Couldn't resolve the business entity for this account.",
+      });
+      return;
     }
 
     setState({
       convertQuoteLoading: true,
       convertError: "",
       convertQuote: null,
+      convertBookPreview: null,
       swapAccepted: false,
       convertHop: 1,
     });
     try {
       let quote: ConversionOut;
-      if (ledgerFiatFx) {
-        const entityId = String(fiatSource?.entity_id || "").trim();
+      let bookPreview: BookTransferPreview | null = null;
+      if (route.kind === "book_transfer") {
+        bookPreview = await bookTransfersApi.preview(entityId, sourceId, {
+          destination_account_id: selectedDestId,
+          amount: amount.trim(),
+          currency: String(fiatSource?.currency || ""),
+        });
+        quote = bookTransferPreviewToConversionOut(bookPreview, {
+          sourceAccountId: sourceId,
+          destinationAccountId: selectedDestId,
+          currency: String(fiatSource?.currency || ""),
+        });
+      } else if (route.kind === "ledger_fx") {
         const preview = await ledgerConversionsApi.preview(entityId, sourceId, {
           destination_account_id: selectedDestId,
           amount,
@@ -2650,6 +2791,7 @@ export default function DashboardApp(props: Props = {}) {
       setState({
         convertQuoteLoading: false,
         convertQuote: quote,
+        convertBookPreview: bookPreview,
         quoteSeconds: secondsUntilExpiry(quote.expires_at) || 120,
       });
     } catch (err) {
@@ -2676,23 +2818,36 @@ export default function DashboardApp(props: Props = {}) {
   const acceptConvertQuote = async () => {
     const quote = state.convertQuote;
     if (!quote?.quote_id || state.quoteSeconds <= 0) return;
-    const ledgerFiatFx = state.convertMode === "fiat_to_fiat";
+    // Re-derive rather than trusting a stashed flag: the accept must hit the
+    // same rail that produced the quote the user is looking at.
+    const route = currentConvertRoute();
     setState({ convertAccepting: true, convertError: "" });
     try {
       let accepted: ConversionOut;
-      if (ledgerFiatFx) {
-        const sourceId = state.convertSourceAccountId;
-        const fiatSource =
-          (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === sourceId) ||
-          (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === sourceId);
-        const entityId = String(fiatSource?.entity_id || "").trim();
+      const sourceId = state.convertSourceAccountId;
+      if (route.kind === "book_transfer" || route.kind === "ledger_fx") {
+        const entityId = convertEntityIdFor(sourceId);
         if (!entityId) {
-          throw new Error("Couldn't resolve the business entity for this fiat account.");
+          throw new Error("Couldn't resolve the business entity for this account.");
         }
-        const result = await ledgerConversionsApi.confirm(entityId, sourceId, {
-          preview_token: quote.quote_id,
-        });
-        accepted = ledgerResultToConversionOut(result, quote);
+        if (route.kind === "book_transfer") {
+          // Echoes the preview back the way BookTransferModal does — that is
+          // the shape Mboka's confirm is known to accept, and a money move is
+          // the wrong place to find out which fields were actually optional.
+          const result = await bookTransfersApi.confirm(entityId, sourceId, {
+            ...(state.convertBookPreview ?? {}),
+            destination_account_id: state.convertDestAccountId,
+            amount: quote.source_amount,
+            currency: quote.source_currency,
+            preview_token: quote.quote_id,
+          });
+          accepted = bookTransferResultToConversionOut(result, quote);
+        } else {
+          const result = await ledgerConversionsApi.confirm(entityId, sourceId, {
+            preview_token: quote.quote_id,
+          });
+          accepted = ledgerResultToConversionOut(result, quote);
+        }
       } else {
         accepted = await conversionsApi.accept(quote.quote_id);
       }
@@ -3429,18 +3584,37 @@ export default function DashboardApp(props: Props = {}) {
   };
   /** Send opens on a method chooser. Bank/mobile preselect that rail, then the
    *  flow runs the design's three steps: destination → recipient → review.
-   *  Internal transfer jumps to Convert (USDC/USDT → fiat VA). */
+   *
+   *  Internal transfer jumps to Convert meaning "move a stablecoin balance
+   *  into a fiat VA". Convert no longer has a mode to set for that, so the
+   *  intent is expressed as a preselected source instead — a funded, non-
+   *  Stellar stablecoin account. The route is still derived from the pair,
+   *  and the prefill effect fills in a destination that actually routes. */
   const openInternalTransfer = () =>
     setState({
       ...moneyFlowReset,
       modal: "convert",
       moreOpen: false,
       sidebarOpen: false,
-      convertMode: "stable_to_fiat",
-      convertSourceAccountId: "",
+      convertSourceAccountId: pickPreferredConvertAccountId(
+        resolvedStablecoinAccounts
+          .filter(
+            (a) =>
+              (a.currency === "USDC" || a.currency === "USDT") &&
+              isReadyStatus(a.status) &&
+              toPartnerNetwork(a.network) !== "Stellar" &&
+              a.id,
+          )
+          .map((a) => ({
+            id: String(a.id),
+            currency: String(a.currency || "").toUpperCase(),
+            balanceAmount: parseBalanceNumber(a.balance),
+          })),
+      ),
       convertDestAccountId: "",
       convertAmount: "",
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       convertHop: 1,
       swapAccepted: false,
@@ -5155,13 +5329,15 @@ export default function DashboardApp(props: Props = {}) {
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
-  const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
-  // Fiat↔fiat and fiat↔stablecoin do not share a backend, so they do not
-  // share a currency set: the ledger rail takes all seven, Mboka's
-  // conversions quote takes EUR/GBP/USD only. One list for both put NGN in
-  // the ramp picker and 422'd after the user had typed an amount.
+  // Convert offers every account the customer owns on both sides and derives
+  // the rail from the pair (lib/services/convertRoutes.ts). No currency
+  // filter here on purpose: a same-currency move is a book transfer, which
+  // the aggregator allows on *any* fiat currency, so a KES account belongs in
+  // this list even though KES itself is not convertible. Filtering the list
+  // by currency would hide a pair that works; the route object is what
+  // refuses the pairs that don't, with a reason.
   const fiatConvertAccounts = depositAccountsList
-    .filter((a) => a.id && isFiatCurrencyForMode(a.currency, convertMode))
+    .filter((a) => a.id)
     .map((a) => {
       const view = mapDepositAccountToCardView(a);
       return {
@@ -5171,6 +5347,7 @@ export default function DashboardApp(props: Props = {}) {
         balanceLabel: view.hasBalance ? view.balance : "—",
         balanceAmount: parseBalanceNumber(a.balance),
         flagUrl: view.iso ? flagUrl(view.iso) : null,
+        network: null as string | null,
       };
     });
   const usdcConvertAccounts = stablecoinAccountsList
@@ -5182,18 +5359,19 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
-  // Stellar is excluded on purpose. These accounts feed the ledger (Nuvion)
-  // conversion rail, and an Element-provisioned Stellar account carries an
-  // `ep_stellar:` id that Nuvion does not know — the aggregator's conversion
-  // path has no is_element_provisioned guard (unlike the swap path), so it
-  // gets as far as refreshing the balance and fails with a 502 rather than a
-  // clean rejection. Stellar stables convert through the swap lists below.
+  // Stellar accounts are listed but never routable: `resolveConvertRoute`
+  // refuses any pair with a Stellar leg because an Element-provisioned
+  // Stellar account carries an `ep_stellar:` id Nuvion does not know, and the
+  // conversion path has no is_element_provisioned guard (unlike the swap
+  // path) — it gets as far as refreshing the balance and fails with a 502
+  // rather than a clean rejection. They are shown and explained rather than
+  // hidden, so the balance the user can see on Home does not silently vanish
+  // from Convert with no account of itself.
   const stableConvertAccounts = stablecoinAccountsList
     .filter(
       (a) =>
         (a.currency === "USDC" || a.currency === "USDT") &&
         isReadyStatus(a.status) &&
-        toPartnerNetwork(a.network) !== "Stellar" &&
         a.id,
     )
     .map((a) => ({
@@ -5202,36 +5380,28 @@ export default function DashboardApp(props: Props = {}) {
       label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
-      network: a.network,
+      network: a.network as string | null,
+      flagUrl: null as string | null,
     }));
-  const convertSourceAccounts =
-    convertMode === "stable_to_fiat" ? stableConvertAccounts : fiatConvertAccounts;
-  const convertSourceCurrency =
-    convertSourceAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
-    fiatConvertAccounts.find((a) => a.id === s.convertSourceAccountId)?.currency ||
-    "";
-  // Fiat↔fiat: direct ledger FX between different currencies (Aggregator conversions).
-  const convertDestAccounts =
-    convertMode === "fiat_to_stable"
-      ? stableConvertAccounts
-      : convertMode === "fiat_to_fiat"
-        ? filterCrossCurrencyFiatAccounts(
-            fiatConvertAccounts,
-            convertSourceCurrency,
-            s.convertSourceAccountId,
-          )
-        : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
-  const convertDestCurrency =
-    convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
-    fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
-    "";
+  const convertSourceAccounts = [...fiatConvertAccounts, ...stableConvertAccounts];
+  // The destination list is the same set minus the chosen source — picking
+  // the same account twice is the one pair that needs no explanation.
+  const convertDestAccounts = convertSourceAccounts.filter(
+    (a) => a.id !== s.convertSourceAccountId,
+  );
+  const convertSourceAccount =
+    convertSourceAccounts.find((a) => a.id === s.convertSourceAccountId) || null;
+  const convertDestAccount =
+    convertSourceAccounts.find((a) => a.id === s.convertDestAccountId) || null;
+  // The whole mode machinery collapses into this one call.
+  const convertRoute = resolveConvertRoute(convertSourceAccount, convertDestAccount);
+  const convertSourceCurrency = convertSourceAccount?.currency || "";
+  const convertDestCurrency = convertDestAccount?.currency || "";
   const convertPathLabel =
-    convertMode === "fiat_to_fiat" && convertSourceCurrency && convertDestCurrency
+    convertSourceCurrency &&
+    convertDestCurrency &&
+    convertSourceCurrency !== convertDestCurrency
       ? `${convertSourceCurrency} → ${convertDestCurrency}`
-      : null;
-  const convertHopLabel =
-    convertMode === "fiat_to_fiat"
-      ? "Ledger FX between your accounts — one quote, one confirm."
       : null;
   const swapAccepted = s.swapAccepted;
   const cardIsFrozen = isCardFrozenStatus(cardSel?.status);
@@ -6348,58 +6518,48 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {(isConvertFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Convert">
 <ConvertFlow
-  mode={convertMode}
-  onMode={(mode) => setConvertMode(mode)}
+  route={convertRoute}
   sourceAccounts={convertSourceAccounts}
   destinationAccounts={convertDestAccounts}
   sourceAccountId={s.convertSourceAccountId}
   destinationAccountId={s.convertDestAccountId}
-  onSourceAccount={(id) => {
-    const nextSrcCcy =
-      convertSourceAccounts.find((a) => a.id === id)?.currency ||
-      fiatConvertAccounts.find((a) => a.id === id)?.currency ||
-      "";
-    const destStillValid =
-      convertMode !== "fiat_to_fiat" ||
-      !nextSrcCcy ||
-      !s.convertDestAccountId ||
-      (fiatConvertAccounts.find((a) => a.id === s.convertDestAccountId)?.currency ||
-        "") !== nextSrcCcy;
-    const replacementDest =
-      convertMode === "fiat_to_fiat" && !destStillValid
-        ? pickPreferredConvertAccountId(
-            filterCrossCurrencyFiatAccounts(fiatConvertAccounts, nextSrcCcy, id),
-            [id],
-          )
-        : "";
+  onSourceAccount={(id) =>
     setState({
       convertSourceAccountId: id,
-      ...(destStillValid
-        ? {}
-        : { convertDestAccountId: replacementDest }),
+      // Picking the source you were about to receive into would leave the
+      // pair pointing at one account; drop the destination and let the
+      // user (or the prefill) choose again.
+      ...(id === s.convertDestAccountId ? { convertDestAccountId: "" } : {}),
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       swapAccepted: false,
-    });
-  }}
+    })
+  }
   onDestinationAccount={(id) =>
     setState({
       convertDestAccountId: id,
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       swapAccepted: false,
     })
   }
   amount={s.convertAmount}
-  onAmount={(value) => setState({ convertAmount: value, convertQuote: null, convertError: "" })}
+  onAmount={(value) =>
+    setState({
+      convertAmount: value,
+      convertQuote: null,
+      convertBookPreview: null,
+      convertError: "",
+    })
+  }
   quote={s.convertQuote}
   quoteSeconds={s.quoteSeconds}
   quoteLoading={s.convertQuoteLoading}
   acceptLoading={s.convertAccepting}
   error={s.convertError}
-  hopLabel={convertHopLabel}
   pathLabel={convertPathLabel}
-  settlesViaLabel={convertMode === "fiat_to_fiat" ? "Ledger FX · same customer" : null}
   done={swapAccepted}
   doneBody={
     s.convertQuote
@@ -6534,7 +6694,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     network: "",
     status: String(a.status || ""),
   }))}
-  onDone={closeModal}
+  onDone={() => {
+    // The confirm already succeeded upstream; refresh before closing so
+    // the row is present on the screen the user lands back on.
+    refreshMoneyViews();
+    closeModal();
+  }}
   onCancel={closeModal}
 />
 </>) : null}

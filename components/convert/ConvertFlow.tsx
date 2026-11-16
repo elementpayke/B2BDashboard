@@ -8,6 +8,7 @@ import {
   formatConvertAmount,
   type ConversionOut,
 } from "@/lib/services/conversions";
+import { isQuotableRoute, type ConvertRoute } from "@/lib/services/convertRoutes";
 
 export type ConvertAccountOption = {
   id: string;
@@ -24,35 +25,19 @@ export type ConvertAccountOption = {
 };
 
 /**
- * `stable_to_stable` is intentionally absent.
+ * There are no mode tabs any more.
  *
- * It only ever served Stellar `USDT|EURC → USDC` swaps, which Mboka gates
- * behind `STELLAR_SWAPS_ENABLED` (default false — "stubbed until partner
- * hardens the path"). With Stellar accounts kept out of the ledger
- * conversion rail — they carry an `ep_stellar:` id Nuvion rejects with a 502 —
- * the mode had no source accounts to offer and was a dead end in the UI.
+ * The user used to pick a direction ("Fiat → Stablecoin", …) which then
+ * filtered the account lists. That asked them to know which of our three
+ * backends services a pair — and left USDC ↔ USDT, an advertised product,
+ * with no tab and therefore no route at all. Now both pickers list every
+ * account they own and `resolveConvertRoute` derives the rail from the pair.
  *
- * The route itself still exists server-side. Restore the mode here when
- * either the Stellar flag is on, or Nuvion is confirmed to quote USC↔UST
- * (see scripts/check_nuvion_fx_pair.py in the aggregator) — not before, or
- * the tab is selectable with an empty source list again.
+ * @see lib/services/convertRoutes.ts for the routing table and its refusals.
  */
-export type ConvertMode = "fiat_to_stable" | "stable_to_fiat" | "fiat_to_fiat";
-
-export function isConvertMode(value: string | null | undefined): value is ConvertMode {
-  return (
-    value === "fiat_to_stable" || value === "stable_to_fiat" || value === "fiat_to_fiat"
-  );
-}
-
-/** Unknown values — including a persisted `stable_to_stable` — fall back. */
-export function normalizeConvertMode(value: string | null | undefined): ConvertMode {
-  return isConvertMode(value) ? value : "fiat_to_stable";
-}
-
 export type ConvertFlowProps = {
-  mode: ConvertMode;
-  onMode: (mode: ConvertMode) => void;
+  /** Derived from the chosen pair — never chosen by the user. */
+  route: ConvertRoute;
   sourceAccounts: ConvertAccountOption[];
   destinationAccounts: ConvertAccountOption[];
   sourceAccountId: string;
@@ -73,8 +58,8 @@ export type ConvertFlowProps = {
   /**
    * Overrides the fee read off the quote. Only for a flow whose fee is not
    * on `quote.fee_amount` — by default the quote's own figure is shown, so
-   * all three directions (ledger FX, ramp, Stellar swap) disclose a fee
-   * without the call site having to remember to pass one.
+   * all three rails (book transfer, ramp, ledger FX) disclose a fee without
+   * the call site having to remember to pass one.
    */
   feeText?: string | null;
   done: boolean;
@@ -83,18 +68,6 @@ export type ConvertFlowProps = {
   onAccept: () => void;
   onDone: () => void;
 };
-
-const MODES: { key: ConvertMode; label: string; hint: string }[] = [
-  // Hints no longer name currencies: the pickers below are the source of
-  // truth and listing three of seven read as a limit that isn't real.
-  { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell a fiat balance for USDC or USDT" },
-  { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for a fiat balance" },
-  {
-    key: "fiat_to_fiat",
-    label: "Fiat ↔ Fiat",
-    hint: "Convert between your fiat accounts (same business, different currencies)",
-  },
-];
 
 function friendlyError(message: string): { title: string; body: string } {
   const m = (message || "").trim();
@@ -138,7 +111,11 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     amountNum > 0 &&
     amountNum > knownBalance;
   const zeroKnownBalance = knownBalance !== null && knownBalance <= 0;
+  // An unsupported pair is refused here, before the amount field matters, so
+  // the user never types a figure and presses a button to discover a 422.
+  const routeQuotable = isQuotableRoute(p.route);
   const canQuote =
+    routeQuotable &&
     Boolean(p.sourceAccountId) &&
     Boolean(p.destinationAccountId) &&
     Boolean(p.amount.trim()) &&
@@ -148,7 +125,6 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     p.sourceAccounts.length > 0 &&
     p.destinationAccounts.length > 0;
   const canAccept = Boolean(p.quote) && !expired && !p.acceptLoading && !p.done;
-  const modeMeta = MODES.find((m) => m.key === p.mode) || MODES[0];
   const err = p.error ? friendlyError(p.error) : null;
   const noAccounts =
     p.sourceAccounts.length === 0 || p.destinationAccounts.length === 0;
@@ -162,10 +138,10 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     source && typeof source.balanceAmount === "number" && source.balanceAmount > 0
       ? source.balanceAmount
       : null;
-  // Every direction into this component (ledger FX, fiat↔USDC ramp, Stellar
-  // stable→stable) normalizes its preview into `ConversionOut`, so the fee is
-  // always on the quote — read it there rather than depend on three separate
-  // call sites remembering to forward it. Zero reads "No fee"; an absent
+  // Every rail into this component (book transfer, ramp, ledger FX)
+  // normalizes its preview into `ConversionOut`, so the fee is always on the
+  // quote — read it there rather than depend on three separate call sites
+  // remembering to forward it. Zero reads "No fee"; an absent
   // figure says when it lands instead of implying the conversion is free.
   const quoteFeeCurrency =
     (p.quote?.fee_currency || p.quote?.source_currency || "").toUpperCase();
@@ -223,23 +199,11 @@ export default function ConvertFlow(p: ConvertFlowProps) {
       ) : null}
 
       <div className="ep-convert__panel">
-        <div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
-          {MODES.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              role="tab"
-              aria-selected={p.mode === m.key}
-              data-active={p.mode === m.key ? "true" : "false"}
-              className="ep-convert__tab"
-              onClick={() => p.onMode(m.key)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-
-        <p className="ep-convert__lede">{modeMeta.hint}</p>
+        {/* The derived route, stated plainly. This replaced the mode tabs:
+            the pair the user picked is the input, this line is the output. */}
+        <p className="ep-convert__lede" data-testid="convert-route">
+          {p.route.summary}
+        </p>
         {p.pathLabel ? (
           <p className="ep-money-hint" data-testid="convert-path">
             Path: {p.pathLabel}
@@ -251,14 +215,11 @@ export default function ConvertFlow(p: ConvertFlowProps) {
           <div className="ep-convert__expired" role="status">
             <span className="ep-convert__expired-title">Accounts needed</span>
             <span className="ep-convert__expired-body">
-              {p.mode === "fiat_to_stable"
-                ? "Open a fiat deposit account and a ready USDC or USDT account first."
-                : p.mode === "stable_to_fiat"
-                  ? "Open a ready USDC or USDT account and a fiat deposit account first."
-                  : // Deliberately not listing the currencies: the set is seven
-                    // and grows, and naming a subset here is what made Convert
-                    // look GBP/USD-only in the first place.
-                    "Open at least two fiat accounts in different currencies."}
+              {/* Deliberately not listing currencies: the convertible set is
+                  nine and grows, and naming a subset here is what made
+                  Convert look GBP/USD-only in the first place. */}
+              Open at least two accounts — Convert works out the route between
+              whichever two you pick.
             </span>
           </div>
         ) : (
@@ -287,6 +248,22 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               />
             </div>
 
+            {p.route.kind === "unsupported" ? (
+              // Shown instead of the amount field, not after it. Letting a
+              // user price a pair we are going to refuse is the failure this
+              // whole routing change exists to prevent.
+              <div className="ep-convert__expired" role="status">
+                <span className="ep-convert__expired-title">
+                  We can&apos;t convert this pair
+                </span>
+                <span
+                  className="ep-convert__expired-body"
+                  data-testid="convert-unsupported"
+                >
+                  {p.route.reason}
+                </span>
+              </div>
+            ) : (
             <div className="ep-money-field">
               <div className="ep-convert__amount-head">
                 <label className="ep-money-label" htmlFor="convert-amount">
@@ -325,6 +302,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 </p>
               ) : null}
             </div>
+            )}
           </>
         )}
 
@@ -338,7 +316,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
         {/* Fee is stated before the quote too. Showing it only after quoting
             means a user decides to convert without knowing whether it costs
             anything, which is the gap this whole change set exists to close. */}
-        {!p.quote && !noAccounts ? (
+        {!p.quote && !noAccounts && routeQuotable ? (
           <p className="ep-convert__prefee" role="status">
             Fees are shown with your quote, before you confirm anything.
           </p>
@@ -388,8 +366,10 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               </div>
               <div className="ep-convert__meta-row">
                 <span className="ep-convert__meta-k">Settles via</span>
-                <span className="ep-convert__meta-v">
-                  {p.settlesViaLabel || `Ledger FX${dest ? ` · ${dest.label}` : ""}`}
+                <span className="ep-convert__meta-v" data-testid="convert-settles-via">
+                  {p.settlesViaLabel ||
+                    p.route.settlesVia ||
+                    `Ledger FX${dest ? ` · ${dest.label}` : ""}`}
                 </span>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { transactionPartyLabel } from "./channelLabels";
 import { formatNetworkLabel } from "./entities";
 import type { Transaction } from "./transactions";
 import { describeTransactionStatus } from "./transactionStatus";
+import { NO_FEE_TEXT, feeState } from "@/components/money/FeeDisclosure";
 
 export type TransactionPresentation = Transaction & {
   client: string;
@@ -19,6 +20,12 @@ export type TransactionPresentation = Transaction & {
   statusColor: string;
   statusSoft: string;
   flagUrl: null;
+  /**
+   * Formatted fee for the row's own slot: a figure, "No fee", "Fee not
+   * reported" for a terminal row we never got one for, or null while the
+   * transaction is still moving and a figure may yet arrive.
+   */
+  feeLabel: string | null;
   /** Flattened for modal + PDF receipt. Recipient (out) / payer (in). */
   partyName: string | null;
   /**
@@ -204,6 +211,47 @@ export function fiatPaymentReference(transaction: Transaction): string | null {
   return psp;
 }
 
+/**
+ * Fee chip for a list row's meta line, or null to omit it.
+ *
+ * Only a real charge appears here. A list is scanned, not read, and tagging
+ * every free row "No fee" would bury the rows that did cost something — the
+ * detail view and the receipt state zero explicitly, so nothing is hidden by
+ * leaving it out of the list. An unparseable or absent figure is also omitted
+ * rather than guessed at.
+ */
+/**
+ * Fee for a transaction row, resolved to one of three states.
+ *
+ * This used to return null for a zero fee, so a transfer that genuinely cost
+ * nothing and one whose fee we never received looked identical — both blank.
+ * A settled transaction that cost nothing should say so; one we have no
+ * figure for must not imply it was free.
+ *
+ * Returns a bare figure ("1.50 KES") rather than "Fee 1.50 KES" — the row
+ * labels the slot, and ActivityList prefixes it for screen readers.
+ */
+export function feeMetaLabel(transaction: Transaction): string | null {
+  const raw = typeof transaction.fee_amount === "string" ? transaction.fee_amount.trim() : "";
+  const state = feeState(raw);
+  if (state === "none") return NO_FEE_TEXT;
+  if (state === "unknown") {
+    // Still moving: the fee may yet arrive, so promising nothing beats
+    // asserting "not reported" about a transaction that isn't finished.
+    const terminal = describeTransactionStatus(transaction.status).terminal;
+    return terminal ? "Fee not reported" : null;
+  }
+  const n = Number(raw.replace(/,/g, ""));
+  const ccy =
+    (typeof transaction.fee_currency === "string" && transaction.fee_currency.trim()) ||
+    transaction.currency;
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+  return `${formatted} ${String(ccy || "").toUpperCase()}`.trim();
+}
+
 export function presentTransaction(transaction: Transaction): TransactionPresentation {
   const status = describeTransactionStatus(transaction.status);
   const kind = typeLabel(transaction);
@@ -255,6 +303,9 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
         : cryptoSend && cryptoNetworkLabel
           ? `${kind} to ${cryptoNetworkLabel} · ${currency}`
           : workflowLabel;
+  // Fee moved out of `meta`: that line truncates, and a fee buried behind
+  // an ellipsis is not disclosure. It renders under the amount instead.
+  const feeLabel = feeMetaLabel(transaction);
   const metaParts = partyName && !collect
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];
@@ -286,6 +337,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
     ref,
     meta,
+    feeLabel,
     dateLabel,
     statusLabel,
     statusIcon: status.icon,

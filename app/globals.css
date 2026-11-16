@@ -430,6 +430,26 @@ select option {
   letter-spacing: -0.01em;
 }
 
+/* Amount with its fee beneath, right-aligned so the figures stack cleanly.
+   The fee sat at the end of `meta` before, which truncates — a fee behind an
+   ellipsis is not disclosure. */
+.ep-activity__amount-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.ep-activity__fee {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--muted2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .ep-activity__desktop {
   display: none;
 }
@@ -4444,9 +4464,12 @@ button.ep-home__stat:focus-visible {
   position: fixed;
   inset: 0;
   background: var(--overlay-bg);
-  /* Soften background chrome so page copy stays unreadable behind the dialog */
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  /* A scrim, not a mirror. The saturate() boost pushed colour back through
+     the blur, so the page behind stayed legible as a shimmering reflection
+     under the dialog -- the glassy look this is meant to prevent. A heavier
+     scrim plus a plain blur hides the chrome without the mirror. */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   z-index: 100;
   display: flex;
   align-items: flex-end;
@@ -4467,11 +4490,19 @@ button.ep-home__stat:focus-visible {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  /* Opaque panel — no glass/blur so background UI never bleeds through */
-  background: var(--modal-bg);
-  border: 1px solid var(--glass-border);
+  /* Opaque panel — no glass/blur so background UI never bleeds through.
+     The fallback matters: --modal-bg is set at runtime by applyThemeVars, so
+     before that lands (or on any surface that renders outside the themed
+     tree) an undefined var computes to `transparent` and the dialog really
+     does become a window onto the page. */
+  background: var(--modal-bg, var(--panel, #ffffff));
+  border: 1px solid var(--glass-border, var(--border));
   border-radius: 24px 24px 0 0;
-  box-shadow: 0 34px 90px -22px rgba(19, 17, 38, 0.5);
+  /* Heavier and tighter: the dialog should read as sitting above the page,
+     not floating in it. */
+  box-shadow:
+    0 2px 10px rgba(19, 17, 38, 0.10),
+    0 40px 96px -20px rgba(19, 17, 38, 0.62);
   /* Extra top padding for the sheet grabber on phones */
   padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   display: flex;

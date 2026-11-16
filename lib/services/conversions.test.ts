@@ -18,7 +18,6 @@ import {
   pickPreferredConvertAccountId,
   secondsUntilExpiry,
   validateConvertAmount,
-  isFiatCurrencyForMode,
 } from "@/lib/services/conversions";
 
 describe("validateConvertAmount", () => {
@@ -184,32 +183,5 @@ describe("ledger fiat coverage", () => {
     expect(needsUsdcBridge("CAD", "CAD")).toBe(false);
     // Holdable but unconvertible stays out.
     expect(needsUsdcBridge("KES", "USD")).toBe(false);
-  });
-});
-
-describe("currency sets differ per convert direction", () => {
-  it("allows all seven ledger currencies for fiat↔fiat", () => {
-    for (const c of ["EUR", "USD", "GBP", "CAD", "NGN", "GHS", "AED"]) {
-      expect(isFiatCurrencyForMode(c, "fiat_to_fiat")).toBe(true);
-    }
-  });
-
-  it("allows only EUR/GBP/USD when a stablecoin leg is involved", () => {
-    // Mboka's resolve_pair 422s anything else with
-    // "conversions support only EUR/GBP/USD ↔ USDC|USDT".
-    for (const mode of ["fiat_to_stable", "stable_to_fiat"]) {
-      expect(isFiatCurrencyForMode("USD", mode)).toBe(true);
-      expect(isFiatCurrencyForMode("NGN", mode)).toBe(false);
-      expect(isFiatCurrencyForMode("CAD", mode)).toBe(false);
-      expect(isFiatCurrencyForMode("AED", mode)).toBe(false);
-    }
-  });
-
-  it("keeps currencies the backend cannot convert out of every picker", () => {
-    for (const mode of ["fiat_to_fiat", "fiat_to_stable", "stable_to_fiat"]) {
-      // Holdable, but customer_conversion.py rejects the leg with a 422.
-      expect(isFiatCurrencyForMode("KES", mode)).toBe(false);
-      expect(isFiatCurrencyForMode("TZS", mode)).toBe(false);
-    }
   });
 });
