@@ -25,7 +25,6 @@
  */
 
 import {
-  LEDGER_FIAT_CURRENCIES,
   RAMP_FIAT_CURRENCIES,
   isRampFiatCurrency,
 } from "@/lib/services/conversions";
@@ -35,20 +34,23 @@ import { isStellarNetwork } from "@/lib/stellar/network";
 export const CONVERT_STABLECOINS = ["USDC", "USDT"] as const;
 
 /**
- * Every currency the ledger-FX rail (routes 3 and 4) will convert.
+ * There is deliberately no `LEDGER_CONVERTIBLE_CURRENCIES` list here.
  *
- * Mirrors `_ALLOWED_CURRENCIES` in the aggregator's
- * `app/services/psp/nuvion/transfers/customer_conversion.py`, which is
- * `LEDGER_FIAT_CURRENCIES | {USDC, USDT}` and 422s anything outside it
- * ("Source account currency is not supported for conversion").
+ * There used to be: a mirror of `_ALLOWED_CURRENCIES` from the aggregator's
+ * `customer_conversion.py`, back when that was a hand-written set of seven
+ * fiats plus the stablecoins. The aggregator's gate is now "can the customer
+ * hold this currency" (`NUVION_FIAT_CATALOG` plus the stablecoins, ~32 codes),
+ * and the stale copy here is what refused KES → USD in the UI while both the
+ * backend and the published pricing allowed it.
  *
- * A customer can *hold* far more than these — the account catalog lists ~30 —
- * so KES/TZS/ZAR balances are real and spendable, just not convertible.
+ * Holding an account *is* the precondition, and both legs of a convert come
+ * from the customer's own accounts — so there is nothing left for the client
+ * to check. A list here can only ever be wrong in one direction: refusing a
+ * pair the backend would have quoted. Whether a specific pair is quotable is
+ * the provider's answer to give, and it comes back as a 422 naming the pair.
+ *
+ * If you are about to add the list back, add it to the aggregator instead.
  */
-export const LEDGER_CONVERTIBLE_CURRENCIES = [
-  ...LEDGER_FIAT_CURRENCIES,
-  ...CONVERT_STABLECOINS,
-] as const;
 
 export type ConvertAssetKind = "fiat" | "stablecoin";
 
@@ -57,11 +59,6 @@ export function convertAssetKind(code: string | null | undefined): ConvertAssetK
   return (CONVERT_STABLECOINS as readonly string[]).includes(upper)
     ? "stablecoin"
     : "fiat";
-}
-
-export function isLedgerConvertibleCurrency(code: string | null | undefined): boolean {
-  const upper = String(code ?? "").trim().toUpperCase();
-  return (LEDGER_CONVERTIBLE_CURRENCIES as readonly string[]).includes(upper);
 }
 
 /** One side of the pair. `network` only matters for stablecoins. */
@@ -220,13 +217,12 @@ export function resolveConvertRoute(
   // must NOT go through Mboka's `/v1/conversions/quote`, whose `resolve_pair`
   // explicitly raises "stablecoin-to-stablecoin conversions are not
   // supported".
-  const offending = [src, dst].find((leg) => !isLedgerConvertibleCurrency(leg.currency));
-  if (offending) {
-    return unsupported(
-      `${offending.currency} accounts can't be converted yet — available for ` +
-        `${listCurrencies(LEDGER_CONVERTIBLE_CURRENCIES)}.`,
-    );
-  }
+  // No currency gate here on purpose. The aggregator accepts any currency the
+  // customer can hold, and every leg above came from their own accounts, so a
+  // client-side list could only ever be wrong in one direction: refusing a
+  // pair the backend would have quoted. That is exactly what happened to
+  // KES → USD. An unquotable pair now returns a 422 naming both currencies,
+  // which is a better answer than a guess made here.
 
   return {
     kind: "ledger_fx",

@@ -217,18 +217,38 @@ describe("ConvertFlow states the derived route and refuses the rest", () => {
   });
 
   it("explains an unsupported pair and disables the quote button", () => {
+    // This used to use KES → EUR. That pair is now routable: the ledger-FX
+    // rail no longer carries a client-side currency list, so fiat ↔ fiat is
+    // always quotable and the only fiat refusal left is the *ramp* list —
+    // Mboka's `resolve_pair` takes EUR/GBP/USD against a stablecoin and
+    // nothing else. So the refusal example has to be a ramp pair.
     render(
       <ConvertFlow
         {...props({
-          route: routeFor({ id: "a", currency: "KES" }, { id: "b", currency: "EUR" }),
+          route: routeFor({ id: "a", currency: "KES" }, { id: "b", currency: "USDC" }),
           quote: null,
         })}
       />,
     );
     const why = screen.getByTestId("convert-unsupported").textContent || "";
     expect(why).toContain("KES");
-    expect(why).toContain("EUR, USD, GBP, CAD, NGN, GHS, AED, USDC and USDT");
+    expect(why).toContain("EUR, GBP and USD");
     expect(screen.getByRole("button", { name: /get quote/i })).toBeDisabled();
+  });
+
+  it("does not refuse a fiat pair the old ledger list excluded", () => {
+    // The regression this change exists to kill: KES → USD was refused in the
+    // UI while both the aggregator and the published pricing allowed it.
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor({ id: "a", currency: "KES" }, { id: "b", currency: "USD" }),
+          quote: null,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("convert-unsupported")).toBeNull();
+    expect(screen.getByRole("button", { name: /get quote/i })).toBeEnabled();
   });
 
   it("hides the amount field for an unsupported pair", () => {
