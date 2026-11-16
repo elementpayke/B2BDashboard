@@ -170,10 +170,21 @@ export function ledgerResultToConversionOut(
   };
 }
 
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/**
+ * The aggregator's error `data`, wherever Mboka put it. Business 4xx arrive
+ * flat (`data.supported`); statuses Mboka passes through as-is (404, 409,
+ * 503, 504) arrive as `data.upstream.data`.
+ */
 function dataRecord(err: unknown): Record<string, unknown> | null {
   if (!(err instanceof ApiRequestError)) return null;
-  const d = err.data;
-  return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : null;
+  const flat = asRecord(err.data);
+  if (!flat) return null;
+  const nested = asRecord(asRecord(flat.upstream)?.data);
+  return nested ?? flat;
 }
 
 /**
@@ -192,6 +203,14 @@ export function describeLedgerConversionError(err: unknown, fallback: string): s
       message ||
       "Converting Stellar USDC isn't switched on yet. Move the balance to a Base or Polygon USDC account to convert it now."
     );
+  }
+
+  // The staging USDC account for a bridged conversion is still opening.
+  if (
+    (err instanceof ApiRequestError && err.status === 409) ||
+    (data && String(data.code || "") === "bridge_account_pending")
+  ) {
+    return "We're still setting up the account this conversion runs through. Try again in a minute.";
   }
 
   if (data && String(data.code || "") === "insufficient_balance") {

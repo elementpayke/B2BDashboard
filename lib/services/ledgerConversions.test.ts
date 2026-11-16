@@ -181,6 +181,22 @@ describe("describeLedgerConversionError", () => {
     expect(msg).toContain("10.05 USD needed");
   });
 
+  it("reads data Mboka nests under upstream for pass-through statuses", () => {
+    const err = new ApiRequestError("Bridge account pending", 409, {
+      upstream: { message: "Bridge account pending", data: { code: "bridge_account_pending" } },
+    });
+    expect(describeLedgerConversionError(err, "x")).toContain("Try again in a minute");
+  });
+
+  it("finds insufficient_balance under upstream too", () => {
+    const err = new ApiRequestError("Insufficient balance", 422, {
+      upstream: {
+        data: { code: "insufficient_balance", available: "1.00", currency: "USDC" },
+      },
+    });
+    expect(describeLedgerConversionError(err, "x")).toContain("1.00 USDC available");
+  });
+
   it("explains a 503 as the bridge being switched off", () => {
     const err = new ApiRequestError("", 503, null);
     expect(describeLedgerConversionError(err, "x")).toContain("isn't switched on");

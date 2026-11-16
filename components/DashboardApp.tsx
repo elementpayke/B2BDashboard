@@ -2873,8 +2873,12 @@ export default function DashboardApp(props: Props = {}) {
 
       // A bridged confirm returns a job still in flight: keep where to poll
       // it, and the polling effect takes it from there.
+      // Only bridged jobs (`cvj_…`) are pollable: a direct confirm is already
+      // final, and the aggregator answers 404 for its transfer id.
       const inFlight =
-        route.kind === "ledger_fx" && !isTerminalConversionStatus(accepted.status);
+        route.kind === "ledger_fx" &&
+        accepted.route === "bridged" &&
+        !isTerminalConversionStatus(accepted.status);
       setState({
         convertAccepting: false,
         swapAccepted: true,
@@ -2932,11 +2936,12 @@ export default function DashboardApp(props: Props = {}) {
         }
       } catch (err) {
         if (cancelled) return;
-        // No status route behind this backend: stop asking, say where to look.
+        // Job unknown upstream (404), or no status route on this backend
+        // (405): stop asking and say where to look.
         if (err instanceof ApiRequestError && (err.status === 404 || err.status === 405)) {
           setState({
             convertJobNote:
-              "Live progress isn't available here. The conversion carries on — check Transactions for the result.",
+              "Couldn't load live progress. The conversion carries on — check Transactions for the result.",
             convertJobEntityId: "",
             convertJobAccountId: "",
           });
