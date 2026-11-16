@@ -14480,7 +14480,9 @@ button.ep-card-face:focus-visible {
   overflow-y: auto;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  /* Opaque: --surface is translucent glass, so a dropdown painted with it
+     shows the form fields behind it through the list. */
+  background: var(--panel);
   box-shadow: 0 16px 40px rgba(19, 17, 38, 0.14);
 }
 
