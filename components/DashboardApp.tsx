@@ -231,6 +231,8 @@ import {
   type ConvertRouteLeg,
 } from "@/lib/services/convertRoutes";
 import {
+  describeLedgerConversionError,
+  isTerminalConversionStatus,
   ledgerConversionsApi,
   ledgerPreviewToConversionOut,
   ledgerResultToConversionOut,
@@ -433,6 +435,12 @@ export default function DashboardApp(props: Props = {}) {
     convertQuoteLoading: false,
     convertAccepting: false,
     convertError: "",
+    // A bridged conversion confirms into a job that settles over minutes;
+    // these say where to poll it. Empty when nothing is in flight.
+    convertJobEntityId: "",
+    convertJobAccountId: "",
+    /** Set when live progress can't be fetched — the job still runs. */
+    convertJobNote: "",
     convertHop: 1 as 1 | 2,
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
@@ -2810,18 +2818,24 @@ export default function DashboardApp(props: Props = {}) {
       setState({
         convertQuoteLoading: false,
         convertError:
-          upstream ||
-          (err instanceof Error ? err.message : "Couldn't get a conversion quote."),
+          route.kind === "ledger_fx"
+            ? describeLedgerConversionError(err, "Couldn't get a conversion quote.")
+            : upstream ||
+              (err instanceof Error ? err.message : "Couldn't get a conversion quote."),
       });
     }
   };
   const acceptConvertQuote = async () => {
     const quote = state.convertQuote;
-    if (!quote?.quote_id || state.quoteSeconds <= 0) return;
+    if (!quote?.quote_id) return;
+    // Only a locked rate expires client-side. A bridged quote prices on
+    // arrival and shows no countdown; the backend judges its token.
+    if (quote.rate_locked !== false && state.quoteSeconds <= 0) return;
     // Re-derive rather than trusting a stashed flag: the accept must hit the
     // same rail that produced the quote the user is looking at.
     const route = currentConvertRoute();
-    setState({ convertAccepting: true, convertError: "" });
+    setState({ convertAccepting: true, convertError: "", convertJobNote: "" });
+    let jobEntityId = "";
     try {
       let accepted: ConversionOut;
       const sourceId = state.convertSourceAccountId;
@@ -2847,6 +2861,7 @@ export default function DashboardApp(props: Props = {}) {
             preview_token: quote.quote_id,
           });
           accepted = ledgerResultToConversionOut(result, quote);
+          jobEntityId = entityId;
         }
       } else {
         accepted = await conversionsApi.accept(quote.quote_id);
@@ -2856,20 +2871,87 @@ export default function DashboardApp(props: Props = {}) {
       queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
 
+      // A bridged confirm returns a job still in flight: keep where to poll
+      // it, and the polling effect takes it from there.
+      const inFlight =
+        route.kind === "ledger_fx" && !isTerminalConversionStatus(accepted.status);
       setState({
         convertAccepting: false,
         swapAccepted: true,
         convertQuote: accepted,
         convertHop: 1,
+        convertJobEntityId: inFlight ? jobEntityId : "",
+        convertJobAccountId: inFlight ? sourceId : "",
       });
     } catch (err) {
       setState({
         convertAccepting: false,
         convertError:
-          err instanceof Error ? err.message : "Couldn't accept this conversion.",
+          route.kind === "ledger_fx"
+            ? describeLedgerConversionError(err, "Couldn't accept this conversion.")
+            : err instanceof Error
+              ? err.message
+              : "Couldn't accept this conversion.",
       });
     }
   };
+
+  // Poll an in-flight bridged conversion until it reaches a terminal status.
+  // The job runs server-side regardless; this only keeps the view current.
+  const convertJobId = state.convertJobAccountId ? state.convertQuote?.id ?? "" : "";
+  const convertJobEntityId = state.convertJobEntityId;
+  const convertJobAccountId = state.convertJobAccountId;
+  useEffect(() => {
+    if (!convertJobId || !convertJobEntityId || !convertJobAccountId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      try {
+        const result = await ledgerConversionsApi.get(
+          convertJobEntityId,
+          convertJobAccountId,
+          convertJobId,
+        );
+        if (cancelled) return;
+        // Read off the response, not inside the updater — React may run
+        // the updater after this function has moved on.
+        const terminal = isTerminalConversionStatus(result.status);
+        setState((s: any) => {
+          if (!s.convertQuote || s.convertQuote.id !== convertJobId) return {};
+          const next = ledgerResultToConversionOut(result, s.convertQuote);
+          return terminal
+            ? { convertQuote: next, convertJobEntityId: "", convertJobAccountId: "" }
+            : { convertQuote: next };
+        });
+        if (terminal) {
+          queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+          queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+          queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+          queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          return;
+        }
+      } catch (err) {
+        if (cancelled) return;
+        // No status route behind this backend: stop asking, say where to look.
+        if (err instanceof ApiRequestError && (err.status === 404 || err.status === 405)) {
+          setState({
+            convertJobNote:
+              "Live progress isn't available here. The conversion carries on — check Transactions for the result.",
+            convertJobEntityId: "",
+            convertJobAccountId: "",
+          });
+          return;
+        }
+        // Anything else is likely transient; keep polling.
+      }
+      if (!cancelled) timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 3000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [convertJobId, convertJobEntityId, convertJobAccountId, queryClient, setState]);
   const setTxFilter = (filter: PrimaryTransactionFilter) => () =>
     setState({ txFilter: filter });
   // Add Account: a small menu that branches into two create modals.
@@ -5359,14 +5441,9 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
-  // Stellar accounts are listed but never routable: `resolveConvertRoute`
-  // refuses any pair with a Stellar leg because an Element-provisioned
-  // Stellar account carries an `ep_stellar:` id Nuvion does not know, and the
-  // conversion path has no is_element_provisioned guard (unlike the swap
-  // path) — it gets as far as refreshing the balance and fails with a 502
-  // rather than a clean rejection. They are shown and explained rather than
-  // hidden, so the balance the user can see on Home does not silently vanish
-  // from Convert with no account of itself.
+  // Stellar USDC accounts convert too: `resolveConvertRoute` sends any pair
+  // with a Stellar leg to the ledger conversion, which bridges it over CCTP
+  // (`route: "bridged"`) and reports progress stage by stage.
   const stableConvertAccounts = stablecoinAccountsList
     .filter(
       (a) =>
@@ -6559,6 +6636,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   quoteLoading={s.convertQuoteLoading}
   acceptLoading={s.convertAccepting}
   error={s.convertError}
+  progressNote={s.convertJobNote}
   pathLabel={convertPathLabel}
   done={swapAccepted}
   doneBody={

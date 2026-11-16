@@ -9134,6 +9134,48 @@ select.ep-wallets-create__control {
   color: var(--muted);
 }
 
+/* Bridged conversion steps: done / current / todo. */
+.ep-convert__stages {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+.ep-convert__stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ep-convert__stage[data-state="done"],
+.ep-convert__stage[data-state="current"] {
+  color: var(--ink);
+}
+
+.ep-convert__stage[data-state="current"] {
+  font-weight: 700;
+}
+
+.ep-convert__stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  flex: none;
+}
+
+.ep-convert__stage[data-state="done"] .ep-convert__stage-dot,
+.ep-convert__stage[data-state="current"] .ep-convert__stage-dot {
+  background: var(--indigo);
+  border-color: var(--indigo);
+}
+
 .ep-money-step-label {
   font-size: 12.5px;
   font-weight: 700;

@@ -9,6 +9,10 @@ import {
   type ConversionOut,
 } from "@/lib/services/conversions";
 import { isQuotableRoute, type ConvertRoute } from "@/lib/services/convertRoutes";
+import {
+  CONVERSION_STAGE_LABELS,
+  isTerminalConversionStatus,
+} from "@/lib/services/ledgerConversions";
 
 export type ConvertAccountOption = {
   id: string;
@@ -64,6 +68,8 @@ export type ConvertFlowProps = {
   feeText?: string | null;
   done: boolean;
   doneBody?: string;
+  /** Shown under a bridged job's progress, e.g. when live status is unavailable. */
+  progressNote?: string | null;
   onRefreshQuote: () => void;
   onAccept: () => void;
   onDone: () => void;
@@ -77,6 +83,12 @@ function friendlyError(message: string): { title: string; body: string } {
       title: "Couldn't get a quote",
       body: "Something went wrong on our side. Try again in a moment.",
     };
+  }
+  if (lower.includes("can't be converted") || lower.includes("not supported for conversion")) {
+    return { title: "Currency not supported", body: m };
+  }
+  if (lower.includes("isn't switched on")) {
+    return { title: "Not available yet", body: m };
   }
   if (lower.includes("insufficient")) {
     return { title: "Not enough balance", body: m };
@@ -99,7 +111,12 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     if (!p.acceptLoading) setProgressHidden(false);
   }, [p.acceptLoading]);
 
-  const expired = p.quoteSeconds <= 0 && Boolean(p.quote);
+  // A bridged quote prices on arrival: no rate to lock, so no countdown and
+  // nothing to expire client-side.
+  const rateLocked = p.quote?.rate_locked !== false;
+  const estimated = Boolean(p.quote?.destination_amount_estimated);
+  const approx = estimated ? "≈ " : "";
+  const expired = rateLocked && p.quoteSeconds <= 0 && Boolean(p.quote);
   const source = p.sourceAccounts.find((a) => a.id === p.sourceAccountId);
   const dest = p.destinationAccounts.find((a) => a.id === p.destinationAccountId);
   const amountNum = Number(String(p.amount || "").trim().replace(/,/g, ""));
@@ -150,9 +167,18 @@ export default function ConvertFlow(p: ConvertFlowProps) {
       feeDisclosureText({
         raw: p.quote.fee_amount,
         formatted: `${formatConvertAmount(p.quote.fee_amount)}${quoteFeeCurrency ? ` ${quoteFeeCurrency}` : ""}`,
-        whenUnknown: "Shown on your statement once settled",
+        whenUnknown:
+          p.quote.fee_status === "estimated"
+            ? "Charged on top by the provider — final figure once settled"
+            : "Shown on your statement once settled",
       })
     : null;
+
+  // A bridged confirm returns a job, not a settled conversion: show where it is.
+  const jobStatus = String(p.quote?.status || "").toLowerCase();
+  if (p.done && p.quote && p.quote.route === "bridged" && jobStatus !== "completed") {
+    return <BridgedProgress quote={p.quote} note={p.progressNote} onDone={p.onDone} />;
+  }
 
   if (p.done) {
     return (
@@ -336,6 +362,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               </div>
               <div className="ep-convert__row">
                 <span className="ep-convert__amount ep-convert__amount--out">
+                  {approx}
                   {formatConvertAmount(p.quote.destination_amount)}
                 </span>
                 <span className="ep-convert__ccy">{p.quote.destination_currency}</span>
@@ -346,6 +373,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 <span className="ep-convert__meta-k">Rate</span>
                 <span className="ep-convert__meta-v ep-convert__meta-v--mono">
                   {describeConversionRate(p.quote)}
+                  {rateLocked ? "" : " · estimated"}
                 </span>
               </div>
               <div className="ep-convert__meta-row">
@@ -358,8 +386,14 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 </span>
               </div>
               <div className="ep-convert__meta-row ep-convert__meta-row--total">
-                <span className="ep-convert__meta-k">You receive</span>
-                <span className="ep-convert__meta-v ep-convert__meta-v--mono">
+                <span className="ep-convert__meta-k">
+                  {estimated ? "You receive (estimate)" : "You receive"}
+                </span>
+                <span
+                  className="ep-convert__meta-v ep-convert__meta-v--mono"
+                  data-testid="convert-receive"
+                >
+                  {approx}
                   {formatConvertAmount(p.quote.destination_amount)}{" "}
                   {p.quote.destination_currency}
                 </span>
@@ -373,7 +407,12 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 </span>
               </div>
             </div>
-            {expired ? (
+            {p.quote.notice ? (
+              <p className="ep-convert__prefee" role="note" data-testid="convert-notice">
+                {p.quote.notice}
+              </p>
+            ) : null}
+            {!rateLocked ? null : expired ? (
               <div className="ep-convert__expired" role="alert">
                 <span className="ep-convert__expired-title">Rate expired</span>
                 <span className="ep-convert__expired-body">
@@ -429,6 +468,100 @@ export default function ConvertFlow(p: ConvertFlowProps) {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Progress for a bridged conversion (Stellar USDC over CCTP). The job settles
+ * over minutes and keeps running if this is closed; polling lives in the
+ * parent, which feeds the latest job back in as `quote`.
+ */
+function BridgedProgress({
+  quote,
+  note,
+  onDone,
+}: {
+  quote: ConversionOut;
+  note?: string | null;
+  onDone: () => void;
+}) {
+  const status = String(quote.status || "pending").toLowerCase();
+  const terminal = isTerminalConversionStatus(status);
+  const stages = quote.stages && quote.stages.length > 0 ? quote.stages : [status];
+  const currentIndex = stages.indexOf(status);
+  const amounts = `${formatConvertAmount(quote.source_amount)} ${quote.source_currency} → ${
+    quote.destination_amount_estimated ? "≈ " : ""
+  }${formatConvertAmount(quote.destination_amount)} ${quote.destination_currency}`;
+
+  let title = "Conversion in progress";
+  let body = quote.stage || "This usually takes a few minutes.";
+  let icon = "…";
+  if (status === "returning") {
+    title = "Returning your funds";
+    body = quote.return_reason || quote.stage || "A step failed, so the balance is going back to the source account.";
+    icon = "↺";
+  } else if (status === "returned") {
+    title = "Conversion returned";
+    body =
+      (quote.return_reason ? `${quote.return_reason} ` : "") +
+      "The balance has been sent back to the source account.";
+    icon = "↺";
+  } else if (status === "failed") {
+    title = "Conversion needs support";
+    body =
+      (quote.error ? `${quote.error} ` : "") +
+      "Our team has to finish this one — contact support with the reference below.";
+    icon = "!";
+  }
+
+  return (
+    <div className="ep-convert">
+      <div className="ep-convert__success" role="status" aria-live="polite" data-testid="convert-job">
+        <span className="ep-convert__success-icon" aria-hidden>
+          {icon}
+        </span>
+        <span className="ep-convert__success-title">{title}</span>
+        <span className="ep-convert__success-body">{body}</span>
+        <span className="ep-convert__success-body">{amounts}</span>
+
+        {status === "failed" || status === "returned" ? null : (
+          <ol className="ep-convert__stages" aria-label="Conversion steps">
+            {stages.map((stage, i) => {
+              const state =
+                status === "completed" || (currentIndex >= 0 && i < currentIndex)
+                  ? "done"
+                  : i === currentIndex
+                    ? "current"
+                    : "todo";
+              return (
+                <li key={stage} className="ep-convert__stage" data-state={state}>
+                  <span className="ep-convert__stage-dot" aria-hidden />
+                  {CONVERSION_STAGE_LABELS[stage] || stage.replace(/_/g, " ")}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <span className="ep-convert__success-body">
+          Reference <code>{quote.id}</code>
+        </span>
+        {!terminal ? (
+          <span className="ep-convert__success-body">
+            You can close this — the conversion carries on.
+          </span>
+        ) : null}
+        {note ? <span className="ep-convert__success-body">{note}</span> : null}
+        <button
+          type="button"
+          className="ep-convert__btn ep-convert__btn--ghost"
+          style={{ width: "auto", minWidth: 120, marginTop: 6 }}
+          onClick={onDone}
+        >
+          {terminal ? "Done" : "Close"}
+        </button>
       </div>
     </div>
   );

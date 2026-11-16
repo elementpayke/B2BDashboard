@@ -24,6 +24,24 @@ export type ConversionOut = {
   order_id: string | null;
   ledger_journal_reference: string | null;
   expires_at: string | null;
+  /**
+   * Ledger conversions only: `direct` settles in one call at a locked rate;
+   * `bridged` (a Stellar USDC leg) settles over minutes, in stages.
+   */
+  route?: "direct" | "bridged" | null;
+  /** False when the destination amount is priced on arrival — no countdown. */
+  rate_locked?: boolean;
+  /** True when `destination_amount` is an estimate, not a firm figure. */
+  destination_amount_estimated?: boolean;
+  /** "estimated" until settled: Nuvion debits its fee on top and won't quote it. */
+  fee_status?: string | null;
+  /** Backend copy to show with the quote (e.g. "takes a few minutes"). */
+  notice?: string | null;
+  /** Bridged job progress — see `ConversionJobStatus`. */
+  stage?: string | null;
+  stages?: string[];
+  return_reason?: string | null;
+  error?: string | null;
 };
 
 export type ConversionQuoteIn = {

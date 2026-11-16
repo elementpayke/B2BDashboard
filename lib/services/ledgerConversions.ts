@@ -4,9 +4,10 @@
  * Distinct from Phase-3 ramp `/v1/conversions` (fiat↔stable orders).
  */
 
-import { apiEnvelope, type RequestOptions } from "@/lib/apiClient";
+import { ApiRequestError, apiEnvelope, type RequestOptions } from "@/lib/apiClient";
 import type { ConversionOut } from "@/lib/services/conversions";
 import { validateConvertAmount } from "@/lib/services/conversions";
+import { listCurrencies } from "@/lib/services/convertRoutes";
 
 export type LedgerConversionPreview = {
   preview_token?: string;
@@ -20,7 +21,49 @@ export type LedgerConversionPreview = {
   fee?: string | null;
   fee_status?: string | null;
   expires_at?: string | null;
+  route?: "direct" | "bridged" | string | null;
+  rate_locked?: boolean | null;
+  amount_to_status?: "locked" | "estimated" | string | null;
+  notice?: string | null;
+  stages?: string[] | null;
   [key: string]: unknown;
+};
+
+/**
+ * Public status of a conversion. A `direct` confirm comes back `completed`;
+ * a `bridged` one comes back as a job (`cvj_…`) that walks these stages.
+ */
+export type ConversionJobStatus =
+  | "pending"
+  | "converting"
+  | "processing_onchain"
+  | "processing_to_fiat"
+  | "completed"
+  | "returning"
+  | "returned"
+  | "failed";
+
+/** Statuses after which polling stops. */
+export const TERMINAL_CONVERSION_STATUSES: readonly string[] = [
+  "completed",
+  "returned",
+  "failed",
+];
+
+export function isTerminalConversionStatus(status: string | null | undefined): boolean {
+  return TERMINAL_CONVERSION_STATUSES.includes(String(status ?? "").toLowerCase());
+}
+
+/** Short label per stage, for the progress list. `stage` carries the sentence. */
+export const CONVERSION_STAGE_LABELS: Record<string, string> = {
+  pending: "Accepted",
+  converting: "Converting to USDC",
+  processing_onchain: "Moving USDC on-chain",
+  processing_to_fiat: "Converting from USDC",
+  completed: "Completed",
+  returning: "Returning funds",
+  returned: "Returned",
+  failed: "Needs support",
 };
 
 export type LedgerConversionResult = {
@@ -33,8 +76,21 @@ export type LedgerConversionResult = {
   amount_from?: string;
   amount_to?: string;
   rate?: number | string | null;
+  route?: "direct" | "bridged" | string | null;
+  rate_locked?: boolean | null;
+  stage?: string | null;
+  stages?: string[] | null;
+  fee?: string | null;
+  fee_status?: string | null;
+  error?: string | null;
+  return_reason?: string | null;
   [key: string]: unknown;
 };
+
+function normalizeRoute(raw: unknown): "direct" | "bridged" | null {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return v === "direct" || v === "bridged" ? v : null;
+}
 
 function idempotencyHeaders(key: string): RequestOptions {
   return { headers: { "Idempotency-Key": key } };
@@ -68,6 +124,14 @@ export function ledgerPreviewToConversionOut(
     order_id: null,
     ledger_journal_reference: null,
     expires_at: preview.expires_at ? String(preview.expires_at) : null,
+    route: normalizeRoute(preview.route),
+    // Absent means a pre-bridge backend, whose previews were always locked.
+    rate_locked: preview.rate_locked !== false,
+    destination_amount_estimated:
+      String(preview.amount_to_status || "").toLowerCase() === "estimated",
+    fee_status: preview.fee_status == null ? null : String(preview.fee_status),
+    notice: preview.notice ? String(preview.notice) : null,
+    stages: Array.isArray(preview.stages) ? preview.stages.map(String) : undefined,
   };
 }
 
@@ -89,7 +153,70 @@ export function ledgerResultToConversionOut(
       result.to_currency || fallback.destination_currency,
     ).toUpperCase(),
     order_id: null,
+    route: normalizeRoute(result.route) ?? fallback.route ?? null,
+    rate_locked:
+      typeof result.rate_locked === "boolean" ? result.rate_locked : fallback.rate_locked,
+    // A bridged amount stays an estimate until the job completes.
+    destination_amount_estimated:
+      String(result.status || "").toLowerCase() === "completed"
+        ? false
+        : fallback.destination_amount_estimated,
+    fee_amount: result.fee == null ? fallback.fee_amount : String(result.fee),
+    fee_status: result.fee_status == null ? fallback.fee_status : String(result.fee_status),
+    stage: result.stage == null ? null : String(result.stage),
+    stages: Array.isArray(result.stages) ? result.stages.map(String) : fallback.stages,
+    error: result.error == null ? null : String(result.error),
+    return_reason: result.return_reason == null ? null : String(result.return_reason),
   };
+}
+
+function dataRecord(err: unknown): Record<string, unknown> | null {
+  if (!(err instanceof ApiRequestError)) return null;
+  const d = err.data;
+  return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : null;
+}
+
+/**
+ * Turn a ledger-conversion failure into copy the user can act on.
+ *
+ * The backend's 422s carry structured `data` (passed through by Mboka) — the
+ * supported list, the available balance — and the docs ask for those to be
+ * rendered rather than replaced with a hard-coded guess.
+ */
+export function describeLedgerConversionError(err: unknown, fallback: string): string {
+  const data = dataRecord(err);
+  const message = err instanceof Error ? err.message.trim() : "";
+
+  if (err instanceof ApiRequestError && err.status === 503) {
+    return (
+      message ||
+      "Converting Stellar USDC isn't switched on yet. Move the balance to a Base or Polygon USDC account to convert it now."
+    );
+  }
+
+  if (data && String(data.code || "") === "insufficient_balance") {
+    const ccy = String(data.currency || "").toUpperCase();
+    const suffix = ccy ? ` ${ccy}` : "";
+    const available = data.available == null ? "" : String(data.available);
+    const required = data.required == null ? "" : String(data.required);
+    const parts = [
+      "Insufficient balance",
+      available ? ` — ${available}${suffix} available` : "",
+      required ? `, ${required}${suffix} needed including the provider fee` : "",
+      ". Try a smaller amount.",
+    ];
+    return parts.join("");
+  }
+
+  if (data && Array.isArray(data.supported)) {
+    const supported = data.supported.map((c) => String(c).toUpperCase()).filter(Boolean);
+    const ccy = String(data.currency || "").toUpperCase();
+    const lead = ccy ? `${ccy} can't be converted yet` : message || "This currency can't be converted yet";
+    if (supported.length === 0) return `${lead}.`;
+    return `${lead} — conversions are available for ${listCurrencies(supported)}.`;
+  }
+
+  return message || fallback;
 }
 
 export const ledgerConversionsApi = {
@@ -123,6 +250,14 @@ export const ledgerConversionsApi = {
         idempotency_key: key,
       },
       idempotencyHeaders(key),
+    );
+  },
+
+  /** Poll a conversion — a bridged job (`cvj_…`) settles over minutes. */
+  get(entityId: string, accountId: string, conversionId: string): Promise<LedgerConversionResult> {
+    return apiEnvelope<LedgerConversionResult>(
+      "GET",
+      `/v1/entities/${encodeURIComponent(entityId)}/accounts/${encodeURIComponent(accountId)}/conversions/${encodeURIComponent(conversionId)}`,
     );
   },
 };
