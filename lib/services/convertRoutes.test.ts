@@ -78,13 +78,12 @@ describe("route 2 — fiat <-> stablecoin goes to the ramp", () => {
   });
 
   it.each(["NGN", "CAD", "GHS", "AED"])(
-    "refuses %s against a stablecoin even though ledger FX takes it",
+    "sends %s against a stablecoin to the ledger, which prices it",
     (code) => {
-      // Mboka's resolve_pair: "conversions support only EUR/GBP/USD ↔ USDC|USDT".
+      // The ramp's resolve_pair only takes EUR/GBP/USD; the ledger conversion
+      // takes the rest, so fall through to it rather than refuse.
       const route = resolveConvertRoute(fiat(code), stable("USDC"));
-      expect(route.kind).toBe("unsupported");
-      expect(route.reason).toContain(code);
-      expect(route.reason).toContain("EUR, GBP and USD");
+      expect(route.kind).toBe("ledger_fx");
     },
   );
 });
@@ -135,7 +134,7 @@ describe("route 5 — unsupported pairs are refused before the amount", () => {
     // second, shorter list that can only be wrong by refusing valid pairs.
     expect(resolveConvertRoute(fiat("KES"), fiat("EUR")).kind).toBe("ledger_fx");
     expect(resolveConvertRoute(fiat("EUR"), fiat("TZS")).kind).toBe("ledger_fx");
-    expect(resolveConvertRoute(fiat("KES"), stable("USDT")).kind).toBe("unsupported");
+    expect(resolveConvertRoute(fiat("KES"), stable("USDT")).kind).toBe("ledger_fx");
   });
 
   it("refuses the same account on both sides", () => {
@@ -155,9 +154,8 @@ describe("route 5 — unsupported pairs are refused before the amount", () => {
 
   it("never leaves a refusal without a reason", () => {
     const pairs: [ConvertRouteLeg, ConvertRouteLeg][] = [
-      [fiat("NGN"), stable("USDC")],
-      [stable("USDC", "stellar"), fiat("EUR")],
       [stable("USDC", "polygon", "a"), stable("USDC", "base", "b")],
+      [stable("USDC", "stellar", "a"), stable("USDC", "base", "b")],
       [fiat("EUR", "same"), fiat("USD", "same")],
     ];
     for (const [from, to] of pairs) {
@@ -168,11 +166,9 @@ describe("route 5 — unsupported pairs are refused before the amount", () => {
   });
 });
 
-describe("Stellar accounts are kept off every conversion rail", () => {
-  // Their `ep_stellar:` id is unknown to Nuvion and the conversion path has no
-  // is_element_provisioned guard, so the failure is a 502 on balance refresh
-  // rather than a clean 422. Refusing here is the difference between an
-  // explanation and an unexplained error.
+describe("Stellar USDC converts through the bridged ledger route", () => {
+  // CONVERSIONS.md: a Stellar leg is bridged over CCTP via a Nuvion Base USDC
+  // account. The ramp has no bridge, so even EUR/GBP/USD pairs go to the ledger.
   it("detects a Stellar leg from the network", () => {
     expect(isStellarLeg(stable("USDC", "stellar"))).toBe(true);
     expect(isStellarLeg(stable("USDC", "STELLAR"))).toBe(true);
@@ -180,31 +176,36 @@ describe("Stellar accounts are kept off every conversion rail", () => {
     expect(isStellarLeg(fiat("EUR"))).toBe(false);
   });
 
-  it("refuses a Stellar source on ledger FX (route 4)", () => {
-    const route = resolveConvertRoute(stable("USDC", "stellar"), stable("USDT"));
+  it.each([
+    [stable("USDC", "stellar"), fiat("USD")],
+    [fiat("USD"), stable("USDC", "stellar")],
+    [stable("USDC", "stellar"), stable("USDT")],
+    [stable("USDT"), stable("USDC", "stellar")],
+    [stable("USDC", "stellar"), fiat("NGN")],
+  ])("routes %o -> %o to the ledger as bridged", (from, to) => {
+    const route = resolveConvertRoute(from, to);
+    expect(route.kind).toBe("ledger_fx");
+    expect(route.settlesVia).toContain("Bridged");
+    expect(route.summary).toContain("few minutes");
+  });
+
+  it("still refuses Stellar USDC to USDC on another chain — that is a Send", () => {
+    const route = resolveConvertRoute(
+      stable("USDC", "stellar", "a"),
+      stable("USDC", "base", "b"),
+    );
     expect(route.kind).toBe("unsupported");
-    expect(route.reason).toContain("Stellar");
+    expect(route.reason).toContain("Send");
   });
 
-  it("refuses a Stellar destination on ledger FX (route 4)", () => {
-    const route = resolveConvertRoute(stable("USDT"), stable("USDC", "stellar"));
-    expect(route.kind).toBe("unsupported");
-    expect(route.reason).toContain("Stellar");
+  it("keeps a non-Stellar EUR/GBP/USD pair on the ramp", () => {
+    expect(resolveConvertRoute(stable("USDC", "base"), fiat("USD")).kind).toBe("ramp");
   });
 
-  it("refuses a Stellar leg on the ramp too", () => {
-    expect(resolveConvertRoute(stable("USDC", "stellar"), fiat("EUR")).kind).toBe(
-      "unsupported",
-    );
-    expect(resolveConvertRoute(fiat("EUR"), stable("USDC", "stellar")).kind).toBe(
-      "unsupported",
-    );
-  });
-
-  it("still routes a non-Stellar pair that looks otherwise identical", () => {
-    expect(resolveConvertRoute(stable("USDC", "base"), stable("USDT")).kind).toBe(
-      "ledger_fx",
-    );
+  it("still routes a non-Stellar stablecoin pair as direct ledger FX", () => {
+    const route = resolveConvertRoute(stable("USDC", "base"), stable("USDT"));
+    expect(route.kind).toBe("ledger_fx");
+    expect(route.settlesVia).toBe("Ledger FX · same customer");
   });
 });
 
@@ -225,12 +226,10 @@ describe("fiat ↔ fiat is not gated by a client-side currency list", () => {
     });
   }
 
-  it("refuses a pair only for a reason that is still real", () => {
-    // The remaining fiat refusal is the *ramp* list, which is genuinely
-    // narrower: Mboka's `resolve_pair` takes EUR/GBP/USD against a stablecoin.
-    expect(resolveConvertRoute(fiat("KES"), stable("USDC")).kind).toBe(
-      "unsupported",
-    );
+  it("sends a non-ramp fiat against a stablecoin to the ledger too", () => {
+    // The ramp takes only EUR/GBP/USD against a stablecoin, but the ledger
+    // conversion prices the rest, so nothing is refused for currency alone.
+    expect(resolveConvertRoute(fiat("KES"), stable("USDC")).kind).toBe("ledger_fx");
   });
 });
 

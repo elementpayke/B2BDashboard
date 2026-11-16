@@ -217,22 +217,19 @@ describe("ConvertFlow states the derived route and refuses the rest", () => {
   });
 
   it("explains an unsupported pair and disables the quote button", () => {
-    // This used to use KES → EUR. That pair is now routable: the ledger-FX
-    // rail no longer carries a client-side currency list, so fiat ↔ fiat is
-    // always quotable and the only fiat refusal left is the *ramp* list —
-    // Mboka's `resolve_pair` takes EUR/GBP/USD against a stablecoin and
-    // nothing else. So the refusal example has to be a ramp pair.
     render(
       <ConvertFlow
         {...props({
-          route: routeFor({ id: "a", currency: "KES" }, { id: "b", currency: "USDC" }),
+          route: routeFor(
+            { id: "a", currency: "USDC", network: "polygon" },
+            { id: "b", currency: "USDC", network: "base" },
+          ),
           quote: null,
         })}
       />,
     );
     const why = screen.getByTestId("convert-unsupported").textContent || "";
-    expect(why).toContain("KES");
-    expect(why).toContain("EUR, GBP and USD");
+    expect(why).toContain("Use Send");
     expect(screen.getByRole("button", { name: /get quote/i })).toBeDisabled();
   });
 
@@ -259,14 +256,30 @@ describe("ConvertFlow states the derived route and refuses the rest", () => {
         {...props({
           route: routeFor(
             { id: "a", currency: "USDC", network: "stellar" },
-            { id: "b", currency: "USDT", network: "polygon" },
+            { id: "b", currency: "USDC", network: "polygon" },
           ),
           quote: null,
         })}
       />,
     );
     expect(screen.queryByLabelText(/^Amount/)).toBeNull();
-    expect(screen.getByTestId("convert-unsupported").textContent).toContain("Stellar");
+    expect(screen.getByTestId("convert-unsupported").textContent).toContain("isn't a conversion");
+  });
+
+  it("lets a Stellar USDC -> USD pair be quoted", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          route: routeFor(
+            { id: "src", currency: "USDC", network: "stellar" },
+            { id: "dst", currency: "USD" },
+          ),
+          quote: null,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("convert-route").textContent).toContain("few minutes");
+    expect(screen.getByRole("button", { name: /get quote/i })).toBeEnabled();
   });
 
   it("keeps the quote button live for a supported pair", () => {
@@ -279,5 +292,82 @@ describe("ConvertFlow states the derived route and refuses the rest", () => {
     expect(screen.getByTestId("convert-settles-via").textContent).toBe(
       "Ledger FX · same customer",
     );
+  });
+});
+
+describe("ConvertFlow bridged conversions", () => {
+  const bridgedQuote = (overrides: Partial<ConversionOut> = {}) =>
+    quote({
+      route: "bridged",
+      source_currency: "USDC",
+      destination_currency: "USD",
+      source_amount: "2.00",
+      destination_amount: "2.07",
+      fee_amount: null,
+      fee_status: "estimated",
+      rate_locked: false,
+      destination_amount_estimated: true,
+      notice: "This conversion moves USDC on-chain and takes a few minutes.",
+      stages: ["pending", "processing_onchain", "processing_to_fiat", "completed"],
+      ...overrides,
+    });
+
+  it("shows an estimate, the notice, and no countdown", () => {
+    render(<ConvertFlow {...props({ quote: bridgedQuote(), quoteSeconds: 0 })} />);
+    expect(screen.getByTestId("convert-receive").textContent).toContain("≈");
+    expect(screen.getByTestId("convert-notice").textContent).toContain("few minutes");
+    expect(screen.queryByRole("timer")).toBeNull();
+    // quoteSeconds 0 would expire a locked quote; an unlocked one stays acceptable.
+    expect(screen.queryByText(/Rate expired/)).toBeNull();
+    expect(screen.getByRole("button", { name: /accept & convert/i })).toBeEnabled();
+    expect(screen.getByTestId("convert-fee").textContent).toContain("Charged on top");
+  });
+
+  it("shows stage progress for an in-flight job", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          done: true,
+          quote: bridgedQuote({
+            id: "cvj_42",
+            status: "processing_onchain",
+            stage: "USDC is crossing chains.",
+          }),
+        })}
+      />,
+    );
+    const job = screen.getByTestId("convert-job");
+    expect(job.textContent).toContain("Conversion in progress");
+    expect(job.textContent).toContain("USDC is crossing chains.");
+    expect(job.textContent).toContain("cvj_42");
+    const current = job.querySelector('[data-state="current"]');
+    expect(current?.textContent).toContain("Moving USDC on-chain");
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("explains a returned job", () => {
+    render(
+      <ConvertFlow
+        {...props({
+          done: true,
+          quote: bridgedQuote({
+            id: "cvj_42",
+            status: "returned",
+            return_reason: "Nuvion rejected the FX leg.",
+          }),
+        })}
+      />,
+    );
+    expect(screen.getByTestId("convert-job").textContent).toContain("Conversion returned");
+    expect(screen.getByTestId("convert-job").textContent).toContain("Nuvion rejected the FX leg.");
+  });
+
+  it("falls through to the normal success screen once completed", () => {
+    render(
+      <ConvertFlow
+        {...props({ done: true, quote: bridgedQuote({ status: "completed" }) })}
+      />,
+    );
+    expect(screen.getByText("Conversion complete")).toBeInTheDocument();
   });
 });

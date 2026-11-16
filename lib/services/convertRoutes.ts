@@ -8,24 +8,25 @@
  * Worse, it made a whole advertised product unreachable — USDC ↔ USDT has no
  * tab, so the UI offered no route for it at all.
  *
- * So the pair is the input and the rail is the output. Four routes:
+ * So the pair is the input and the rail is the output:
  *
- *   1. same currency, different account    → book transfer   (free)
- *   2. fiat ↔ stablecoin, either direction → ramp
- *   3. fiat ↔ fiat, different currencies   → ledger FX
- *   4. stablecoin ↔ stablecoin             → ledger FX
+ *   1. same currency, different account          → book transfer (free)
+ *   2. EUR/GBP/USD ↔ USDC/USDT, no Stellar leg    → ramp
+ *   3. every other pair of different currencies  → ledger conversion
  *
- * Everything else is refused *here*, with a reason, before the user types an
- * amount — the whole point of resolving up front is that an unsupported pair
- * never reaches a backend to come back as a 422 the user has to decode.
+ * The ledger conversion endpoint picks its own sub-route — `direct` when both
+ * accounts are Nuvion ledger accounts, `bridged` (CCTP via a Nuvion Base USDC
+ * account) when either is an Element Stellar USDC account — and names it as
+ * `route` on the preview. See the aggregator's `app/docs/partner/CONVERSIONS.md`.
  *
- * Each rule below mirrors a specific server-side guard. Those citations are
- * the contract: widening a rule here without widening it there just moves the
- * failure later, which is exactly the bug this module exists to kill.
+ * Refused here, before the user types an amount, is only what the backend
+ * refuses on structure alone: the same account twice, and the same currency
+ * on two stablecoin accounts (not a conversion — that is a Send). Which
+ * currencies convert is the backend's call; a rejected one comes back as a
+ * 422 carrying `data.supported`, which the UI renders.
  */
 
 import {
-  RAMP_FIAT_CURRENCIES,
   isRampFiatCurrency,
 } from "@/lib/services/conversions";
 import { isStellarNetwork } from "@/lib/stellar/network";
@@ -86,7 +87,7 @@ export type ConvertRoute = {
   reason: string;
 };
 
-/** True for an Element-provisioned Stellar account — see `stellarRefusal`. */
+/** True for an Element-provisioned Stellar account — such a pair is `bridged`. */
 export function isStellarLeg(leg: ConvertRouteLeg | null | undefined): boolean {
   return Boolean(leg) && isStellarNetwork(leg?.network);
 }
@@ -169,48 +170,48 @@ export function resolveConvertRoute(
     );
   }
 
-  // Everything past here converts, and no conversion rail accepts an
-  // Element-provisioned Stellar account. Its `ep_stellar:` id is unknown to
-  // Nuvion, and unlike the swap path the conversion path has no
-  // `is_element_provisioned_account` guard — so it gets as far as refreshing
-  // the balance and dies with a 502 instead of a clean 422. Refusing it here
-  // is the difference between an explanation and an unexplained failure.
-  const stellar = isStellarLeg(src) ? src : isStellarLeg(dst) ? dst : null;
-  if (stellar) {
-    return unsupported(
-      `Stellar ${stellar.currency} can't be converted yet — only sent and received. ` +
-        `Move the balance to a Base or Polygon ${stellar.currency} account to convert it.`,
-    );
-  }
-
-  // ── Route 2: fiat ↔ stablecoin → ramp ────────────────────────────────────
+  // ── Route 2: EUR/GBP/USD ↔ stablecoin, no Stellar leg → ramp ────────────
   //
-  // Mboka `POST /v1/conversions/quote`. Its `resolve_pair` accepts only
-  // EUR/GBP/USD against USDC|USDT, so the fiat leg stays on the narrower
-  // ramp list even though the ledger rail below would take seven.
-  if (srcKind !== dstKind) {
+  // Mboka `POST /v1/conversions/quote`, whose `resolve_pair` accepts only
+  // EUR/GBP/USD against USDC|USDT. Anything the ramp can't price — another
+  // fiat, or an Element Stellar account (the ramp has no bridge) — falls
+  // through to the ledger conversion, which can.
+  const stellar = isStellarLeg(src) || isStellarLeg(dst);
+  if (srcKind !== dstKind && !stellar) {
     const fiat = srcKind === "fiat" ? src : dst;
     const stable = srcKind === "fiat" ? dst : src;
-    if (!isRampFiatCurrency(fiat.currency)) {
-      return unsupported(
-        `${fiat.currency} can't be converted to ${stable.currency} yet — ` +
-          `stablecoin conversions are available for ${listCurrencies(RAMP_FIAT_CURRENCIES)}.`,
-      );
+    if (isRampFiatCurrency(fiat.currency)) {
+      const onRamp = srcKind === "fiat";
+      return {
+        kind: "ramp",
+        summary: onRamp
+          ? `On-ramp — buys ${stable.currency} with your ${fiat.currency} balance.`
+          : `Off-ramp — sells ${stable.currency} into your ${fiat.currency} balance.`,
+        settlesVia: `Conversion order · ${src.currency} → ${dst.currency}`,
+        reason: "",
+      };
     }
-    const onRamp = srcKind === "fiat";
+  }
+
+  // ── Route 3: a Stellar leg → bridged ledger conversion ──────────────────
+  //
+  // An Element Stellar account isn't a Nuvion ledger account, so the
+  // aggregator bridges it over CCTP via a Nuvion Base USDC account and
+  // returns `route: "bridged"`. The destination amount is priced when the
+  // USDC lands, minutes later.
+  if (stellar) {
     return {
-      kind: "ramp",
-      summary: onRamp
-        ? `On-ramp — buys ${stable.currency} with your ${fiat.currency} balance.`
-        : `Off-ramp — sells ${stable.currency} into your ${fiat.currency} balance.`,
-      settlesVia: `Conversion order · ${src.currency} → ${dst.currency}`,
+      kind: "ledger_fx",
+      summary: `Moves USDC on-chain, then converts — ${src.currency} to ${dst.currency}. Takes a few minutes.`,
+      settlesVia: "Bridged · CCTP + ledger FX",
       reason: "",
     };
   }
 
-  // ── Routes 3 and 4: fiat ↔ fiat, and stablecoin ↔ stablecoin → ledger FX ─
+  // ── Route 3: every other pair → direct ledger conversion ───────────────
   //
-  // Both go to the aggregator's customer conversions
+  // Fiat ↔ fiat, stablecoin ↔ stablecoin, and fiat ↔ stablecoin the ramp
+  // won't price all go to the aggregator's customer conversions
   // (`/v1/entities/{entity_id}/accounts/{account_id}/conversions/preview`),
   // whose only pair rule is `from != to` once both currencies are in
   // `_ALLOWED_CURRENCIES`. That is what makes USDC ↔ USDT work — and why it

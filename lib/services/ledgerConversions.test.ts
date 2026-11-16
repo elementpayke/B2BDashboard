@@ -1,14 +1,26 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/apiClient", () => ({
-  apiEnvelope: vi.fn(),
-}));
+vi.mock("@/lib/apiClient", () => {
+  class ApiRequestError extends Error {
+    status: number;
+    data: unknown;
+    constructor(message: string, status: number, data: unknown = null) {
+      super(message);
+      this.status = status;
+      this.data = data;
+    }
+  }
+  return { apiEnvelope: vi.fn(), ApiRequestError };
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
+import { ApiRequestError } from "@/lib/apiClient";
 import {
+  describeLedgerConversionError,
+  isTerminalConversionStatus,
   ledgerPreviewToConversionOut,
   ledgerResultToConversionOut,
   ledgerConversionsApi,
@@ -74,5 +86,124 @@ describe("ledgerConversionsApi.confirm idempotency", () => {
     expect(opts.headers?.["Idempotency-Key"]).toBe(
       "ledger-fx:ep_fx_prev_tokenvalue".slice(0, 64),
     );
+  });
+});
+
+describe("bridged previews", () => {
+  const bridged = ledgerPreviewToConversionOut(
+    {
+      route: "bridged",
+      preview_token: "ep_fx_prev_bridged1",
+      from_currency: "USDC",
+      to_currency: "USD",
+      amount_from: "2.00",
+      amount_to: "2.07",
+      rate: 1.035,
+      rate_locked: false,
+      amount_to_status: "estimated",
+      fee: null,
+      fee_status: "estimated",
+      notice: "This conversion moves USDC on-chain and takes a few minutes.",
+      stages: ["pending", "processing_onchain", "processing_to_fiat", "completed"],
+    },
+    { sourceAccountId: "ep_stellar:1", destinationAccountId: "22" },
+  );
+
+  it("carries route, estimate flags, notice and stages", () => {
+    expect(bridged.route).toBe("bridged");
+    expect(bridged.rate_locked).toBe(false);
+    expect(bridged.destination_amount_estimated).toBe(true);
+    expect(bridged.fee_status).toBe("estimated");
+    expect(bridged.notice).toContain("few minutes");
+    expect(bridged.stages).toHaveLength(4);
+  });
+
+  it("treats a preview with no rate_locked field as locked", () => {
+    const old = ledgerPreviewToConversionOut(
+      { preview_token: "t", from_currency: "EUR", to_currency: "USD" },
+      { sourceAccountId: "1", destinationAccountId: "2" },
+    );
+    expect(old.rate_locked).toBe(true);
+    expect(old.destination_amount_estimated).toBe(false);
+  });
+
+  it("maps a job and drops the estimate flag once completed", () => {
+    const job = ledgerResultToConversionOut(
+      { id: "cvj_42", route: "bridged", status: "processing_onchain", stage: "USDC is crossing chains." },
+      bridged,
+    );
+    expect(job.id).toBe("cvj_42");
+    expect(job.stage).toContain("crossing");
+    expect(job.destination_amount_estimated).toBe(true);
+    expect(isTerminalConversionStatus(job.status)).toBe(false);
+
+    const done = ledgerResultToConversionOut(
+      { id: "cvj_42", status: "completed", amount_to: "2.05" },
+      job,
+    );
+    expect(done.destination_amount).toBe("2.05");
+    expect(done.destination_amount_estimated).toBe(false);
+    expect(isTerminalConversionStatus(done.status)).toBe(true);
+  });
+
+  it("polls the entity-scoped status path", async () => {
+    const { apiEnvelope } = await import("@/lib/apiClient");
+    vi.mocked(apiEnvelope).mockResolvedValue({} as never);
+    await ledgerConversionsApi.get("ent", "ep_stellar:1", "cvj_42");
+    expect(vi.mocked(apiEnvelope).mock.calls[0]?.slice(0, 2)).toEqual([
+      "GET",
+      "/v1/entities/ent/accounts/ep_stellar%3A1/conversions/cvj_42",
+    ]);
+  });
+});
+
+describe("describeLedgerConversionError", () => {
+  it("renders the backend's supported list rather than a hard-coded one", () => {
+    const err = new ApiRequestError("Source account currency is not supported for conversion", 422, {
+      field: "account_id",
+      currency: "KES",
+      supported: ["AED", "EUR", "USD", "USDC"],
+    });
+    expect(describeLedgerConversionError(err, "x")).toBe(
+      "KES can't be converted yet — conversions are available for AED, EUR, USD and USDC.",
+    );
+  });
+
+  it("shows the available balance from an insufficient_balance 422", () => {
+    const err = new ApiRequestError("Insufficient balance", 422, {
+      code: "insufficient_balance",
+      available: "10.00",
+      required: "10.05",
+      currency: "usd",
+    });
+    const msg = describeLedgerConversionError(err, "x");
+    expect(msg).toContain("10.00 USD available");
+    expect(msg).toContain("10.05 USD needed");
+  });
+
+  it("reads data Mboka nests under upstream for pass-through statuses", () => {
+    const err = new ApiRequestError("Bridge account pending", 409, {
+      upstream: { message: "Bridge account pending", data: { code: "bridge_account_pending" } },
+    });
+    expect(describeLedgerConversionError(err, "x")).toContain("Try again in a minute");
+  });
+
+  it("finds insufficient_balance under upstream too", () => {
+    const err = new ApiRequestError("Insufficient balance", 422, {
+      upstream: {
+        data: { code: "insufficient_balance", available: "1.00", currency: "USDC" },
+      },
+    });
+    expect(describeLedgerConversionError(err, "x")).toContain("1.00 USDC available");
+  });
+
+  it("explains a 503 as the bridge being switched off", () => {
+    const err = new ApiRequestError("", 503, null);
+    expect(describeLedgerConversionError(err, "x")).toContain("isn't switched on");
+  });
+
+  it("falls back to the message, then the default", () => {
+    expect(describeLedgerConversionError(new Error("boom"), "x")).toBe("boom");
+    expect(describeLedgerConversionError(null, "fallback")).toBe("fallback");
   });
 });
