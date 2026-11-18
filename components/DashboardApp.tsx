@@ -6301,9 +6301,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <span className="ep-modal__grabber-bar" />
 </div>
 
-<div className="ep-modal__header">
-<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
-<div className="ep-modal__header-actions">
+<div style={{ position: "absolute", top: "12px", right: "12px", zIndex: 1 }}>
 {isModalBulk ? (
 <button
   type="button"
@@ -6323,7 +6321,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 </button>
 ) : null}
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
-</div>
 </div>
 {isModalBulk && bulkModalExpanded ? (
   <>

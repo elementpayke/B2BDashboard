@@ -18,6 +18,7 @@ import {
   whatsappShareUrl,
   type ReceiptShareMethodId,
 } from "@/lib/documents/receiptShare";
+import { ChainIcon } from "@/components/transactions/ChainIcons";
 import {
   buildTransactionReceipt,
   isReceiptable,
@@ -69,13 +70,17 @@ function collectCurrentIndex(stage?: string | null, status?: string | null): num
   return 0;
 }
 
-/** Base deposit → bridge → Stellar credit. Settled only after the credit is confirmed. */
-function buildCollectProgressSteps(stage?: string | null, status?: string | null): ProgressStep[] {
+/** Source chain → bridge → destination chain credit. Settled only after the credit is confirmed. */
+function buildCollectProgressSteps(stage?: string | null, status?: string | null, sourceChain?: string | null, destChain?: string | null): ProgressStep[] {
   const value = (stage || "").trim().toLowerCase();
   const corridor = value === "fiat_received" || value === "bridging" || value === "credited";
+
+  const source = sourceChain ? sourceChain.trim().toUpperCase() : "SOURCE";
+  const dest = destChain ? destChain.trim().toUpperCase() : "STELLAR";
+
   const labels = corridor
-    ? ["Fiat received", "Bridging to Stellar", "Credited"]
-    : ["Received on Base", "Bridging", "Credited on Stellar"];
+    ? ["Fiat received", `Bridging to ${dest}`, "Credited"]
+    : [`Received on ${source}`, "Bridging", `Credited on ${dest}`];
   const current = collectCurrentIndex(stage, status);
   return labels.map((label, index) => ({
     key: label,
@@ -97,9 +102,9 @@ function buildCollectSwapProgressSteps(status?: string | null): ProgressStep[] {
 }
 
 /** Derive a readable status progression from the canonical transaction status. */
-function buildProgressSteps(status?: string, source?: string | null, stage?: string | null): ProgressStep[] {
+function buildProgressSteps(status?: string, source?: string | null, stage?: string | null, sourceChain?: string | null, destChain?: string | null): ProgressStep[] {
   if ((source || "").trim().toLowerCase() === "cctp_transfer") {
-    return buildCollectProgressSteps(stage, status);
+    return buildCollectProgressSteps(stage, status, sourceChain, destChain);
   }
   if ((source || "").trim().toLowerCase() === "collect_swap") {
     return buildCollectSwapProgressSteps(status);
@@ -328,13 +333,16 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
 
   const created = formatTimestamp(txDetail.created_at);
   const updated = formatTimestamp(txDetail.updated_at);
-  const steps = buildProgressSteps(txDetail.status, txDetail.source, txDetail.stage);
+  const steps = buildProgressSteps(txDetail.status, txDetail.source, txDetail.stage, txDetail.source_chain, txDetail.crypto_network);
   const showUpdated = Boolean(updated && updated !== created);
-  const paymentMethod = receiptPaymentMethod(
-    txDetail.provider,
-    txDetail.railType,
-    txDetail.networkName,
-  );
+  const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
+  const paymentMethod = collect
+    ? "Cross-Chain Bridge"
+    : receiptPaymentMethod(
+        txDetail.provider,
+        txDetail.railType,
+        txDetail.networkName,
+      );
   const paymentRef =
     typeof txDetail.psp_transaction_id === "string"
       ? txDetail.psp_transaction_id.trim()
@@ -413,21 +421,75 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     (txDetail.accountKind || "").toLowerCase() === "bank_account" ||
     (txDetail.accountKind || "").toLowerCase() === "phone";
 
-  const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
   const sourceTx =
     typeof txDetail.source_tx_hash === "string" ? txDetail.source_tx_hash.trim() : "";
   const burnTx =
     typeof txDetail.burn_tx_hash === "string" ? txDetail.burn_tx_hash.trim() : "";
   const mintTx =
     typeof txDetail.mint_tx_hash === "string" ? txDetail.mint_tx_hash.trim() : "";
+
+  // Build explorer URLs for each chain
+  const getExplorerUrl = (hash: string, chain: string): string | null => {
+    if (!hash) return null;
+    const chainLower = (chain || "").toLowerCase();
+    const explorers: Record<string, (h: string) => string> = {
+      base: (h) => `https://basescan.io/tx/${h}`,
+      stellar: (h) => `https://stellar.expert/explorer/public/tx/${h}`,
+      polygon: (h) => `https://polygonscan.com/tx/${h}`,
+      ethereum: (h) => `https://etherscan.io/tx/${h}`,
+      optimism: (h) => `https://optimistic.etherscan.io/tx/${h}`,
+      arc: (h) => `https://basescan.io/tx/${h}`, // Arc uses Base explorer
+      solana: (h) => `https://solscan.io/tx/${h}`,
+    };
+    return explorers[chainLower]?.(hash) || null;
+  };
+
+  const sourceChain = typeof txDetail.source_chain === "string" ? txDetail.source_chain.trim() : "";
+  const sourceExplorerUrl = getExplorerUrl(sourceTx, sourceChain);
+
   if (collect && sourceTx) {
-    rows.push({ label: "Base deposit", value: sourceTx, mono: true });
+    rows.push({
+      label: `${sourceChain.toUpperCase()} deposit`,
+      mono: true,
+      value: sourceExplorerUrl ? (
+        <a href={sourceExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{sourceTx.slice(0, 10)}…{sourceTx.slice(-8)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        sourceTx
+      ),
+    });
   }
   if (collect && burnTx) {
-    rows.push({ label: "Burn", value: burnTx, mono: true });
+    const burnExplorerUrl = getExplorerUrl(burnTx, sourceChain);
+    rows.push({
+      label: "Burn",
+      mono: true,
+      value: burnExplorerUrl ? (
+        <a href={burnExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{burnTx.slice(0, 10)}…{burnTx.slice(-8)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        burnTx
+      ),
+    });
   }
   if (collect && mintTx) {
-    rows.push({ label: "Stellar mint", value: mintTx, mono: true });
+    const mintExplorerUrl = getExplorerUrl(mintTx, "stellar");
+    rows.push({
+      label: "Stellar mint",
+      mono: true,
+      value: mintExplorerUrl ? (
+        <a href={mintExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{mintTx.slice(0, 10)}…{mintTx.slice(-8)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        mintTx
+      ),
+    });
   }
   const feeAmount =
     typeof txDetail.fee_amount === "string" ? txDetail.fee_amount.trim() : "";
@@ -478,6 +540,20 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     });
   }
 
+  const sourceChainStr =
+    typeof txDetail.source_chain === "string" ? txDetail.source_chain.trim() : "";
+  if (sourceChainStr && collect) {
+    rows.push({
+      label: "Source chain",
+      value: (
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <ChainIcon chain={sourceChainStr} size={18} />
+          {sourceChainStr.toUpperCase()}
+        </span>
+      ),
+    });
+  }
+
   const cryptoNetworkLabel =
     (typeof txDetail.cryptoNetworkLabel === "string" &&
       txDetail.cryptoNetworkLabel.trim()) ||
@@ -490,7 +566,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()
         ? txDetail.cryptoNetworkLabel.trim()
         : cryptoNetworkLabel;
-    rows.push({ label: "Network", value: networkDisplay });
+    rows.push({ label: collect ? "Destination chain" : "Network", value: networkDisplay });
   }
 
   const fromAddress =
@@ -555,28 +631,41 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       ) : null}
 
       <ol className="ep-txn-detail__progress" aria-label="Status progression">
-        {steps.map((step, index) => (
-          <li
-            key={step.key}
-            className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
-            aria-current={step.state === "current" ? "step" : undefined}
-          >
-            {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
-            <span className="ep-txn-detail__step-dot" aria-hidden />
-            <span className="ep-txn-detail__step-label">
-              {step.label}
-              <span className="ep-txn-detail__sr">
-                {step.state === "done"
-                  ? " — complete"
-                  : step.state === "current"
-                    ? " — current"
-                    : step.state === "failed"
-                      ? " — issue"
-                      : " — upcoming"}
+        {steps.map((step, index) => {
+          // Determine which chain icon to show for CCTP transfers
+          let chainForIcon = "";
+          if (collect) {
+            if (index === 0) {
+              chainForIcon = sourceChain; // First step: source chain
+            } else if (index === steps.length - 1) {
+              chainForIcon = "stellar"; // Last step: destination (usually Stellar)
+            }
+          }
+
+          return (
+            <li
+              key={step.key}
+              className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
+              aria-current={step.state === "current" ? "step" : undefined}
+            >
+              {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
+              <span className="ep-txn-detail__step-dot" aria-hidden />
+              <span className="ep-txn-detail__step-label">
+                {chainForIcon && <ChainIcon chain={chainForIcon} size={18} />}
+                {step.label}
+                <span className="ep-txn-detail__sr">
+                  {step.state === "done"
+                    ? " — complete"
+                    : step.state === "current"
+                      ? " — current"
+                      : step.state === "failed"
+                        ? " — issue"
+                        : " — upcoming"}
+                </span>
               </span>
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
 
       <div className="ep-txn-detail__rows">
