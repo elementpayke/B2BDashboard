@@ -72,19 +72,22 @@ export function isCollectSwap(transaction: { source?: string | null }): boolean 
   return (transaction.source || "").trim().toLowerCase() === "collect_swap";
 }
 
-/** Plain-language stage for a Base USDC deposit that has not settled on Stellar yet. */
-export function collectStagePhrase(stage?: string | null): string {
+/** Plain-language stage for a CCTP deposit that has not settled yet. */
+export function collectStagePhrase(stage?: string | null, sourceChain?: string | null, destChain?: string | null): string {
   const value = (stage || "").trim().toLowerCase();
+  const source = sourceChain ? sourceChain.trim().toUpperCase() : "SOURCE";
+  const dest = destChain ? destChain.trim().toUpperCase() : "STELLAR";
+
   // Corridor bridge lifecycle (post-settlement OnRamp → Collect).
   if (value === "fiat_received") return "Fiat received";
-  if (value === "bridging") return "Bridging to Stellar";
+  if (value === "bridging") return `Bridging to ${dest}`;
   if (value === "credited") return "Credited";
   if (value === "skipped") return "Bridge skipped";
   // Collect worker stages.
   if (value === "attesting") return "bridging";
-  if (value === "minting" || value.startsWith("mint")) return "crediting Stellar";
-  if (value === "completed") return "from Base";
-  return "received on Base";
+  if (value === "minting" || value.startsWith("mint")) return `crediting ${dest}`;
+  if (value === "completed") return `from ${source}`;
+  return `received on ${source}`;
 }
 
 function typeLabel(transaction: Transaction): string {
@@ -311,7 +314,9 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     : [dateLabel];
   if (collect) {
     metaParts.unshift(
-      transaction.status === "completed" ? "from Base" : collectStagePhrase(transaction.stage),
+      transaction.status === "completed"
+        ? `from ${(transaction.source_chain || "").trim().toUpperCase() || "BASE"}`
+        : collectStagePhrase(transaction.stage, transaction.source_chain, transaction.crypto_network),
     );
   }
   if (swap) {
