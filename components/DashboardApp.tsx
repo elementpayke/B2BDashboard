@@ -10,6 +10,7 @@ import {
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
 import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
+import { useDashboardUrlSync } from "@/lib/navigation/useDashboardUrlSync";
 import {
   dashboardApi,
   liveRateRowsFromSummary,
@@ -547,6 +548,12 @@ export default function DashboardApp(props: Props = {}) {
       ...(theme ? { theme } : {}),
     }));
   }, [setState]);
+
+  // Real URLs per top-level screen (/dashboard/transactions…): address bar
+  // follows state.screen, Back/Forward switch screens and close any modal.
+  useDashboardUrlSync(state.screen, (screen) =>
+    setState({ screen, modal: null, sidebarOpen: false, moreOpen: false }),
+  );
 
   // Portaled overlays (ChoicePicker) mount under document.body and miss the
   // dashboard root's inline theme vars — keep <html> in sync.
