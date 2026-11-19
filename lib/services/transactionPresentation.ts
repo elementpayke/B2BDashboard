@@ -255,6 +255,23 @@ export function feeMetaLabel(transaction: Transaction): string | null {
   return `${formatted} ${String(ccy || "").toUpperCase()}`.trim();
 }
 
+/**
+ * Network to use for a tx-hash explorer link. A bare 64-hex hash (no `0x`)
+ * is a Stellar transaction id — EVM hashes always carry `0x` — so it links
+ * to the Stellar explorer even when the order's `crypto_network` names the
+ * EVM chain the customer quoted on.
+ */
+export function explorerNetworkForHash(
+  txHash: string | null | undefined,
+  network: string | null | undefined,
+): string | null | undefined {
+  const hash = String(txHash ?? "").trim();
+  if (/^[0-9a-f]{64}$/i.test(hash) && !String(network ?? "").toLowerCase().includes("stellar")) {
+    return "stellar";
+  }
+  return network;
+}
+
 export function presentTransaction(transaction: Transaction): TransactionPresentation {
   const status = describeTransactionStatus(transaction.status);
   const kind = typeLabel(transaction);
@@ -279,7 +296,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
   });
   const explorerUrl = buildSendExplorerUrl({
     txHash: transaction.tx_hash,
-    network: transaction.crypto_network,
+    network: explorerNetworkForHash(transaction.tx_hash, transaction.crypto_network),
   });
   const cryptoNetworkLabel = transaction.crypto_network
     ? formatNetworkLabel(transaction.crypto_network)

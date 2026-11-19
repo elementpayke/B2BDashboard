@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectStagePhrase,
+  explorerNetworkForHash,
   fiatPaymentReference,
   formatTransactionDate,
   parseApiInstant,
@@ -484,5 +485,37 @@ describe("fee disclosure on transaction rows", () => {
       transaction({ status: "completed", fee_amount: "1.5", fee_currency: "KES" }),
     );
     expect(p.meta).not.toMatch(/fee/i);
+  });
+});
+
+describe("explorer links for order tx hashes", () => {
+  const stellarHash = "5ff5942654d9ded8b738ee9deb51c9c5f38963d47194c0b01bad32e5f0c7f347";
+  const evmHash = `0x${"ab".repeat(32)}`;
+
+  it("links an EVM payout hash on its own chain", () => {
+    const view = presentTransaction(
+      transaction({ status: "completed", crypto_network: "BASE", tx_hash: evmHash }),
+    );
+    expect(view.explorerUrl).toBe(`https://sepolia.basescan.org/tx/${evmHash}`);
+  });
+
+  it("links a bare 64-hex hash to Stellar even when the order network is EVM", () => {
+    const view = presentTransaction(
+      transaction({ status: "completed", crypto_network: "BASE", tx_hash: stellarHash }),
+    );
+    expect(view.explorerUrl).toContain("stellar.expert/explorer/");
+    expect(view.explorerUrl).toContain(stellarHash);
+  });
+
+  it("has no explorer link without a hash", () => {
+    expect(presentTransaction(transaction({ crypto_network: "BASE" })).explorerUrl).toBeNull();
+  });
+
+  it("explorerNetworkForHash only overrides bare 64-hex hashes", () => {
+    expect(explorerNetworkForHash(evmHash, "BASE")).toBe("BASE");
+    expect(explorerNetworkForHash(stellarHash, "BASE")).toBe("stellar");
+    expect(explorerNetworkForHash(stellarHash, "stellar_testnet")).toBe("stellar_testnet");
+    expect(explorerNetworkForHash(null, "BASE")).toBe("BASE");
+    expect(explorerNetworkForHash("0xabc", null)).toBeNull();
   });
 });

@@ -418,10 +418,18 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         txDetail.railType,
         txDetail.networkName,
       );
-  const paymentRef =
+  const txHash =
+    typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
+  const rawPaymentRef =
     typeof txDetail.psp_transaction_id === "string"
       ? txDetail.psp_transaction_id.trim()
       : "";
+  // Some payouts carry the on-chain hash in psp_transaction_id. It is shown
+  // once, as the linked Tx hash row, not as a "Mobile money reference".
+  const paymentRef =
+    rawPaymentRef && rawPaymentRef.toLowerCase() === txHash.toLowerCase()
+      ? ""
+      : rawPaymentRef;
   const partyName =
     typeof txDetail.partyName === "string" ? txDetail.partyName.trim() : "";
   const accountName =
@@ -594,11 +602,10 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     rows.push({ label: feeLabel, value: feeValue });
   }
 
-  const txHash =
-    typeof txDetail.tx_hash === "string" ? txDetail.tx_hash.trim() : "";
   const explorerUrl =
     typeof txDetail.explorerUrl === "string" ? txDetail.explorerUrl.trim() : "";
-  if (txHash && !isFiatRail && !collect) {
+  // Bank / mobile payouts still have an on-chain crypto leg; link it too.
+  if (txHash && !collect) {
     rows.push({
       label: "Tx hash",
       mono: true,
@@ -635,7 +642,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     (typeof txDetail.crypto_network === "string" && txDetail.crypto_network.trim()
       ? txDetail.crypto_network.trim()
       : "");
-  if (cryptoNetworkLabel && !isFiatRail) {
+  if (cryptoNetworkLabel && (!isFiatRail || Boolean(txHash))) {
     // Prefer human label when present (e.g. "Stellar" over stellar_testnet).
     const networkDisplay =
       typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()

@@ -123,6 +123,8 @@ describe("TxDetailModal payout receiver", () => {
           railType: "bank",
           crypto_network: "polygon",
           cryptoNetworkLabel: "Polygon",
+          tx_hash: null,
+          explorerUrl: null,
           hideReceipt: false,
         })}
       />,
@@ -134,8 +136,9 @@ describe("TxDetailModal payout receiver", () => {
     expect(screen.queryByText("Bank")).not.toBeInTheDocument();
     expect(screen.getByText("Bank account")).toBeInTheDocument();
     expect(screen.getByText("0123456789")).toBeInTheDocument();
-    // Fiat bank payouts must not show crypto settlement rails.
+    // Without an on-chain hash, a fiat payout shows no crypto rows.
     expect(screen.queryByText("Polygon")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tx hash")).not.toBeInTheDocument();
   });
 
   it("shows Account name when distinct from Recipient", () => {
@@ -339,5 +342,106 @@ describe("TxDetailModal branded hero + documents", () => {
       <TxDetailModal txDetail={stellarDepositDetail({ status: "failed" })} />,
     );
     expect(container.querySelector(".ep-txn-detail__hero--danger")).not.toBeNull();
+  });
+});
+
+describe("TxDetailModal on-chain link for fiat payouts", () => {
+  const EVM_HASH = `0x${"ab".repeat(32)}`;
+  const BASESCAN = `https://sepolia.basescan.org/tx/${EVM_HASH}`;
+
+  function mobilePayout(overrides: Record<string, unknown> = {}) {
+    return stellarDepositDetail({
+      type: "Payout",
+      client: "Joseph Thuku Nduta",
+      amount: "−128.90 KES",
+      currency: "KES",
+      amount_fiat: "128.90",
+      direction: "out",
+      amountColor: "var(--ink)",
+      ref: "EP-BANK-42d082b0-6a0f-4586-8108-32bf1e26520f",
+      partyName: "Joseph Thuku Nduta",
+      accountNumber: "254110919165",
+      accountKind: "phone",
+      railType: "mobile",
+      networkName: "M-PESA",
+      provider: "elementpay",
+      psp_transaction_id: "QGH12345AB",
+      tx_hash: EVM_HASH,
+      crypto_network: "BASE",
+      cryptoNetworkLabel: "Base",
+      explorerUrl: BASESCAN,
+      ...overrides,
+    });
+  }
+
+  it("links the payout's on-chain tx for a mobile money payout", () => {
+    render(<TxDetailModal txDetail={mobilePayout()} />);
+    expect(screen.getByText("Tx hash")).toBeInTheDocument();
+    expect(screen.getByText(EVM_HASH)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /view on chain/i });
+    expect(link).toHaveAttribute("href", BASESCAN);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(screen.getByText("Network")).toBeInTheDocument();
+    expect(screen.getByText("Base")).toBeInTheDocument();
+    // The real M-Pesa confirmation stays alongside.
+    expect(screen.getByText("QGH12345AB")).toBeInTheDocument();
+  });
+
+  it("links the on-chain tx for a bank payout", () => {
+    render(
+      <TxDetailModal
+        txDetail={mobilePayout({
+          accountKind: "bank_account",
+          railType: "bank",
+          networkName: "KCB Bank",
+          accountNumber: "1234567890",
+          psp_transaction_id: "BANK-REF-99",
+        })}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /view on chain/i })).toHaveAttribute(
+      "href",
+      BASESCAN,
+    );
+  });
+
+  it("shows the hash once when psp_transaction_id is the same on-chain hash", () => {
+    const stellarHash = "5ff5942654d9ded8b738ee9deb51c9c5f38963d47194c0b01bad32e5f0c7f347";
+    const stellarUrl = `https://stellar.expert/explorer/testnet/tx/${stellarHash}`;
+    render(
+      <TxDetailModal
+        txDetail={mobilePayout({
+          psp_transaction_id: stellarHash,
+          tx_hash: stellarHash,
+          explorerUrl: stellarUrl,
+          crypto_network: "STELLAR",
+          cryptoNetworkLabel: "Stellar",
+        })}
+      />,
+    );
+    expect(screen.getAllByText(stellarHash)).toHaveLength(1);
+    expect(screen.queryByText(/mobile money reference/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view on chain/i })).toHaveAttribute(
+      "href",
+      stellarUrl,
+    );
+  });
+
+  it("shows the hash without a link when no explorer URL is known", () => {
+    render(<TxDetailModal txDetail={mobilePayout({ explorerUrl: null })} />);
+    expect(screen.getByText("Tx hash")).toBeInTheDocument();
+    expect(screen.getByText(EVM_HASH)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view on chain/i })).not.toBeInTheDocument();
+  });
+
+  it("still hides From/To wallet rows on fiat payouts", () => {
+    render(
+      <TxDetailModal
+        txDetail={mobilePayout({ from_address: "GABC", to_address: "GDEF" })}
+      />,
+    );
+    expect(screen.queryByText("From")).not.toBeInTheDocument();
+    expect(screen.queryByText("To")).not.toBeInTheDocument();
   });
 });

@@ -165,6 +165,29 @@ describe("buildTransactionReceipt", () => {
     );
   });
 
+  it("prints a payout's on-chain hash once, not also as the payment reference", () => {
+    const hash = "5ff5942654d9ded8b738ee9deb51c9c5f38963d47194c0b01bad32e5f0c7f347";
+    const doc = buildTransactionReceipt({
+      ...settledPayout,
+      psp_transaction_id: hash,
+      tx_hash: hash,
+    });
+    const values = doc.sections.flatMap((s) => s.rows.map((r) => r.value));
+    expect(values.filter((v) => v === hash)).toHaveLength(1);
+    const refs = doc.sections.find((s) => s.title === "References");
+    expect(refs?.rows).toEqual(
+      expect.arrayContaining([{ label: "Tx hash", value: hash, mono: true }]),
+    );
+  });
+
+  it("keeps the M-Pesa reference next to a payout's tx hash", () => {
+    const hash = `0x${"ab".repeat(32)}`;
+    const doc = buildTransactionReceipt({ ...settledPayout, tx_hash: hash });
+    const values = doc.sections.flatMap((s) => s.rows.map((r) => r.value));
+    expect(values).toContain("QJH7K2M0X1");
+    expect(values).toContain(hash);
+  });
+
   it("omits Tx hash when the API did not return one", () => {
     const doc = buildTransactionReceipt(settledPayout);
     const refs = doc.sections.find((s) => s.title === "References");
