@@ -325,14 +325,13 @@ describe("TxDetailModal branded hero + documents", () => {
     expect(screen.getByRole("button", { name: "Share receipt" })).toBeInTheDocument();
   });
 
-  it("offers a status record (not a receipt) while pending", () => {
+  it("offers receipt download and share while pending, in the warning tone", () => {
     const { container } = render(
       <TxDetailModal txDetail={stellarDepositDetail({ status: "processing" })} />,
     );
     expect(container.querySelector(".ep-txn-detail__hero--warning")).not.toBeNull();
-    expect(screen.getByText("Transaction status")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download status" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /receipt/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download receipt" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share receipt" })).toBeInTheDocument();
   });
 
   it("uses the danger tone when failed", () => {

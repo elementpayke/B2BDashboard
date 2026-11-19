@@ -22,7 +22,6 @@ import {
 import { ChainIcon } from "@/components/transactions/ChainIcons";
 import {
   buildTransactionReceipt,
-  isReceiptable,
   receiptStatus,
   receiptAccountLabel,
   receiptFilename,
@@ -225,6 +224,36 @@ function StatusGlyph({ tone }: { tone: "success" | "warning" | "danger" | "neutr
   );
 }
 
+function ActionIcon({ kind }: { kind: "share" | "download" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {kind === "share" ? (
+        <>
+          <path d="M12 15V3.5" />
+          <path d="M7.5 8L12 3.5 16.5 8" />
+          <path d="M5 12.5v6A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-6" />
+        </>
+      ) : (
+        <>
+          <path d="M12 3.5V15" />
+          <path d="M7.5 10.5L12 15l4.5-4.5" />
+          <path d="M4.5 20.5h15" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function ReceiptActions({ txDetail }: { txDetail: any }) {
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -255,8 +284,6 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
 
   const doc = buildTransactionReceipt(txDetail);
   const filename = receiptFilename(txDetail);
-  // Settled → official receipt. Anything else → a status record, labelled as such.
-  const noun = isReceiptable(txDetail.status) ? "receipt" : "status";
   const payload = buildReceiptSharePayload(doc, filename);
 
   async function runShare(id: ReceiptShareMethodId) {
@@ -324,13 +351,15 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={menuId}
+          aria-label="Share receipt"
           onClick={() => setOpen((v) => !v)}
         >
-          Share {noun}
+          <ActionIcon kind="share" />
+          <span>Share</span>
         </button>
         {open ? (
           <div className="ep-txn-detail__share-menu" id={menuId} role="menu">
-            <div className="ep-txn-detail__share-sheet-label">Share {noun}</div>
+            <div className="ep-txn-detail__share-sheet-label">Share receipt</div>
             {methods.map((m) => (
               <button
                 key={m.id}
@@ -355,7 +384,8 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           setToast("PDF saved");
         }}
       >
-        Download {noun}
+        <ActionIcon kind="download" />
+        <span>Download receipt</span>
       </button>
       {toast ? (
         <div className="ep-txn-detail__toast" role="status" aria-live="polite">
@@ -642,7 +672,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         <div className="ep-txn-detail__brand">
           <MbokaLogo size={22} sub="Business" />
           <span className="ep-txn-detail__brand-kind">
-            {isReceiptable(txDetail.status) ? "Payment receipt" : "Transaction status"}
+            Payment receipt
           </span>
         </div>
         <span className="ep-txn-detail__status-icon" aria-hidden>

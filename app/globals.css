@@ -13645,12 +13645,13 @@ button.ep-card-face:focus-visible {
   line-height: 1.45;
 }
 
+/* One row at every width: compact Share + primary Download receipt. */
 .ep-txn-detail__actions {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto 1fr;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .ep-txn-detail__share-wrap {
@@ -13660,6 +13661,31 @@ button.ep-card-face:focus-visible {
 .ep-txn-detail__share,
 .ep-txn-detail__receipt {
   width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+}
+
+.ep-txn-detail__share {
+  padding: 12px 18px;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--ink);
+}
+
+.ep-txn-detail__share:hover,
+.ep-txn-detail__share[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
+  color: var(--indigo-text);
+}
+
+.ep-txn-detail__share:focus-visible,
+.ep-txn-detail__receipt:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring);
 }
 
 /* Opaque panel — never use translucent --surface here or detail rows bleed through. */
@@ -13756,9 +13782,6 @@ button.ep-card-face:focus-visible {
 }
 
 @media (max-width: 640px) {
-  .ep-txn-detail__actions {
-    grid-template-columns: 1fr;
-  }
 
   .ep-txn-detail__share-backdrop {
     display: block;
@@ -15709,6 +15732,8 @@ button.ep-card-face:focus-visible {
   border-bottom: 1px dashed var(--border);
   color: var(--ink);
   text-align: left;
+  /* Clear the modal's close button, which sits over the hero's top-right. */
+  padding-right: 52px;
 }
 
 .ep-txn-detail__brand-kind {

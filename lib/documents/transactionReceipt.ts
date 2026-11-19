@@ -203,8 +203,9 @@ export function receiptNumber(tx: ReceiptTransaction): string {
 
 export function receiptFilename(tx: ReceiptTransaction): string {
   const ref = receiptNumber(tx);
-  const kind = isReceiptable(tx.status) ? "receipt" : "status";
-  return `mboka-${kind}-${ref}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
+  // Unsettled receipts carry their status in the filename too.
+  const suffix = isReceiptable(tx.status) ? "" : `-${receiptStatus(tx.status).label}`;
+  return `mboka-receipt-${ref}${suffix}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
 }
 
 /**
@@ -312,14 +313,15 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
   }
 
   if (!isSettled) {
-    // Not settled: a status record, never a receipt. Different title, number
-    // label and filename so it can't be passed off as proof of payment.
+    // Not settled: still a receipt, but the status is stamped on the title,
+    // chip, subheading and filename so it can't pass as proof of a completed
+    // payment.
     const status = receiptStatus(tx.status);
     referenceRows[0] = { label: "Reference", value: number, mono: true };
     return {
-      fileTitle: `Mboka — ${kind.toLowerCase()} status`,
-      heading: `${kind} status`,
-      subheading: `This ${kind.toLowerCase()} is ${status.label.toLowerCase()}. This is a status record, not a proof of payment.`,
+      fileTitle: `Mboka — ${kind.toLowerCase()} receipt (${status.label.toLowerCase()})`,
+      heading: `${kind} receipt`,
+      subheading: `Status: ${status.label}. This ${kind.toLowerCase()} has not settled, so this receipt is not proof of a completed payment.`,
       statusBadge: status.label,
       statusTone: status.tone,
       amount: formatMoney(tx.amount_fiat, tx.currency),
@@ -329,8 +331,7 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
         { title: "Payment", rows: paymentRows },
         { title: "References", rows: referenceRows },
       ],
-      footnote: "A receipt is available once the payment settles.",
-      documentKind: "status record",
+      footnote: "Download again once the payment settles for the final receipt.",
     };
   }
 
