@@ -20,6 +20,7 @@ import {
   type ReceiptShareMethodId,
 } from "@/lib/documents/receiptShare";
 import { ChainIcon } from "@/components/transactions/ChainIcons";
+import { formatNetworkLabel } from "@/lib/services/entities";
 import {
   buildTransactionReceipt,
   receiptStatus,
@@ -71,13 +72,17 @@ function collectCurrentIndex(stage?: string | null, status?: string | null): num
   return 0;
 }
 
+function shortHash(hash: string): string {
+  return hash.length > 20 ? `${hash.slice(0, 10)}…${hash.slice(-8)}` : hash;
+}
+
 /** Source chain → bridge → destination chain credit. Settled only after the credit is confirmed. */
 function buildCollectProgressSteps(stage?: string | null, status?: string | null, sourceChain?: string | null, destChain?: string | null): ProgressStep[] {
   const value = (stage || "").trim().toLowerCase();
   const corridor = value === "fiat_received" || value === "bridging" || value === "credited";
 
-  const source = sourceChain ? sourceChain.trim().toUpperCase() : "SOURCE";
-  const dest = destChain ? destChain.trim().toUpperCase() : "STELLAR";
+  const source = sourceChain?.trim() ? formatNetworkLabel(sourceChain) : "source chain";
+  const dest = destChain?.trim() ? formatNetworkLabel(destChain) : "Stellar";
 
   const labels = corridor
     ? ["Fiat received", `Bridging to ${dest}`, "Credited"]
@@ -408,7 +413,13 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
 
   const created = formatTimestamp(txDetail.created_at);
   const updated = formatTimestamp(txDetail.updated_at);
-  const steps = buildProgressSteps(txDetail.status, txDetail.source, txDetail.stage, txDetail.source_chain, txDetail.crypto_network);
+  // Collect rows carry their source chain in `crypto_network`; the credit lands on Stellar.
+  const steps = buildProgressSteps(
+    txDetail.status,
+    txDetail.source,
+    txDetail.stage,
+    txDetail.source_chain || txDetail.crypto_network,
+  );
   const showUpdated = Boolean(updated && updated !== created);
   const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
   const paymentMethod = collect
@@ -508,7 +519,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     if (!hash) return null;
     const chainLower = (chain || "").toLowerCase();
     const explorers: Record<string, (h: string) => string> = {
-      base: (h) => `https://basescan.io/tx/${h}`,
+      base: (h) => `https://basescan.org/tx/${h}`,
       stellar: (h) => `https://stellar.expert/explorer/public/tx/${h}`,
       polygon: (h) => `https://polygonscan.com/tx/${h}`,
       ethereum: (h) => `https://etherscan.io/tx/${h}`,
@@ -519,16 +530,16 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     return explorers[chainLower]?.(hash) || null;
   };
 
-  const sourceChain = typeof txDetail.source_chain === "string" ? txDetail.source_chain.trim() : "";
+  const sourceChain = (txDetail.source_chain || txDetail.crypto_network || "").trim();
   const sourceExplorerUrl = getExplorerUrl(sourceTx, sourceChain);
 
   if (collect && sourceTx) {
     rows.push({
-      label: `${sourceChain.toUpperCase()} deposit`,
+      label: sourceChain ? `${formatNetworkLabel(sourceChain)} deposit` : "Source deposit",
       mono: true,
       value: sourceExplorerUrl ? (
         <a href={sourceExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
-          <span className="ep-txn-detail__hash">{sourceTx.slice(0, 10)}…{sourceTx.slice(-8)}</span>
+          <span className="ep-txn-detail__hash">{shortHash(sourceTx)}</span>
           <span className="ep-txn-detail__link-icon">↗</span>
         </a>
       ) : (
@@ -543,7 +554,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       mono: true,
       value: burnExplorerUrl ? (
         <a href={burnExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
-          <span className="ep-txn-detail__hash">{burnTx.slice(0, 10)}…{burnTx.slice(-8)}</span>
+          <span className="ep-txn-detail__hash">{shortHash(burnTx)}</span>
           <span className="ep-txn-detail__link-icon">↗</span>
         </a>
       ) : (
@@ -558,7 +569,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       mono: true,
       value: mintExplorerUrl ? (
         <a href={mintExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
-          <span className="ep-txn-detail__hash">{mintTx.slice(0, 10)}…{mintTx.slice(-8)}</span>
+          <span className="ep-txn-detail__hash">{shortHash(mintTx)}</span>
           <span className="ep-txn-detail__link-icon">↗</span>
         </a>
       ) : (
@@ -623,7 +634,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       value: (
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <ChainIcon chain={sourceChainStr} size={18} />
-          {sourceChainStr.toUpperCase()}
+          {formatNetworkLabel(sourceChainStr)}
         </span>
       ),
     });

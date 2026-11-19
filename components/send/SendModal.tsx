@@ -343,6 +343,15 @@ export default function SendModal(p: SendModalProps) {
 
   return (
     <>
+      {p.sendNotDone ? (
+        <h2
+          id="ep-modal-title"
+          data-slot="send-modal-title"
+          className="pr-8 font-display text-title font-semibold leading-heading tracking-title text-foreground"
+        >
+          Send money
+        </h2>
+      ) : null}
       {p.sendNotDone && !p.sendMethodChosen ? (
         <div className="ep-money-stack">
           <p className="ep-money-hint">How would you like to send?</p>
@@ -999,7 +1008,7 @@ export default function SendModal(p: SendModalProps) {
           </div>
 
           <div className="ep-send-success__hero">
-            <h4 className="ep-send-success__title">
+            <h4 id="ep-modal-title" className="ep-send-success__title">
               {p.sendSuccessDetails?.title ||
                 (p.sendLiveStatus?.isSettling ? "Payment on its way" : "Transfer complete")}
             </h4>

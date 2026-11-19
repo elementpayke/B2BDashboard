@@ -17,6 +17,7 @@
 @source "../components/ui";
 @source "../components/patterns";
 @source "../features";
+@source "../components/send";
 @source "../.storybook";
 
 /* Scoped preflight. Tailwind's global reset is off (it would restyle legacy
@@ -4539,6 +4540,7 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-modal {
+  position: relative;
   width: 100%;
   max-width: 480px;
   max-height: min(92vh, 92dvh);
@@ -10549,7 +10551,7 @@ select.ep-wallets-create__control {
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  min-height: 32px;
+  min-height: 44px;
 }
 
 .ep-money-back-link:hover {
@@ -14668,7 +14670,9 @@ button.ep-card-face:focus-visible {
 
 /* ── CCTP Modal & Transaction Detail ───────────────────────────────── */
 
-.ep-modal {
+/* Scoped to the old `.ep-modal__content` wrapper: unscoped, this turned every
+   dialog into a full-viewport flex box and floated its content mid-screen. */
+.ep-modal:has(> .ep-modal__content) {
   position: fixed;
   top: 0;
   left: 0;
