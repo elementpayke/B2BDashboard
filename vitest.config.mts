@@ -11,6 +11,8 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    // Claude Code worktrees live under .claude/ — never collect their tests.
+    exclude: ["**/node_modules/**", "**/.next/**", ".claude/**", "storybook-static/**"],
   },
   resolve: {
     alias: {
