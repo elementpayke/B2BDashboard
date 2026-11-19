@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -94,7 +95,7 @@ export default function CreateInvoiceModal({
   }, []);
 
   const brandingQuery = useQuery({
-    queryKey: ["invoice-branding"],
+    queryKey: [QK.invoiceBranding],
     queryFn: () => invoiceBrandingApi.get(),
     retry: false,
   });

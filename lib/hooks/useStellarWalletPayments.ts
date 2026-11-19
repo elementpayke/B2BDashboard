@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { StrKey } from "@stellar/stellar-sdk";
@@ -72,7 +73,7 @@ export function useStellarWalletPayments(
     });
 
   return useQuery<OnchainWalletPayment[]>({
-    queryKey: ["stellar-wallet-payments", network, address],
+    queryKey: [QK.stellarWalletPayments, network, address],
     enabled,
     retry: false,
     queryFn: () =>
@@ -117,7 +118,7 @@ export function useStellarWalletPaymentsForAccounts(
 
   const queries = useQueries({
     queries: targets.map((target) => ({
-      queryKey: ["stellar-wallet-payments", target.network, target.address],
+      queryKey: [QK.stellarWalletPayments, target.network, target.address],
       enabled: true,
       retry: false as const,
       queryFn: () =>

@@ -1,4 +1,5 @@
 "use client";
+import { QK } from "@/lib/api/queryKeys";
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "@/lib/services/dashboard";
@@ -23,7 +24,7 @@ export default function PayoutsCalculator() {
   const [selected, setSelected] = useState(0);
 
   const ratesQuery = useQuery({
-    queryKey: ["landing-exchange-rates"],
+    queryKey: [QK.landingExchangeRates],
     queryFn: dashboardApi.exchangeRates,
     staleTime: 60_000,
     refetchInterval: 60_000,

@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import type { QueryClient } from "@tanstack/react-query";
 import type { Order } from "@/lib/services/orders";
 import { isTerminalOrderStatus } from "@/lib/services/orderStatus";
@@ -9,7 +10,7 @@ const settledOrderIds = new Set<number | string>();
 
 /** Apply a polled or streamed order row to React Query caches. */
 export function applyOrderStatusToCaches(queryClient: QueryClient, order: Order): void {
-  queryClient.setQueryData(["order-status", order.id], order);
+  queryClient.setQueryData([QK.orderStatus, order.id], order);
   patchTransactionCachesFromOrder(queryClient, order);
 }
 
@@ -26,13 +27,13 @@ export function invalidateCachesOnOrderTerminal(
   if (settledOrderIds.has(order.id)) return false;
   settledOrderIds.add(order.id);
 
-  queryClient.invalidateQueries({ queryKey: ["transactions"] });
-  queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-  queryClient.invalidateQueries({ queryKey: ["transaction", order.id] });
-  queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-  queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-  queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-  queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+  queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+  queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+  queryClient.invalidateQueries({ queryKey: [QK.transaction, order.id] });
+  queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
+  queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+  queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+  queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
   onSettled?.(order);
   return true;
 }

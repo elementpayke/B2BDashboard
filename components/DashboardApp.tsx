@@ -1,4 +1,5 @@
 "use client";
+import { QK } from "@/lib/api/queryKeys";
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
@@ -582,7 +583,7 @@ export default function DashboardApp(props: Props = {}) {
     return () => setSessionLostHandler(null);
   }, [router, queryClient]);
 
-  const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
+  const meQuery = useQuery({ queryKey: [QK.authMe], queryFn: authApi.me, retry: false });
   useEffect(() => {
     if (!meQuery.isError) return;
     if (!isSessionExpiredError(meQuery.error)) return;
@@ -622,14 +623,14 @@ export default function DashboardApp(props: Props = {}) {
     kybStatus: meKybStatus,
     enabled: state.modal === "kyb",
     onSubmitted: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth-me"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
+      queryClient.invalidateQueries({ queryKey: [QK.authMe] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccountsEligibility] });
     },
   });
   // One-shot Home aggregate: identity slice, eligibility, treasury, FX, all accounts.
   const bootstrapQuery = useQuery({
-    queryKey: ["dashboard-bootstrap"],
+    queryKey: [QK.dashboardBootstrap],
     queryFn: bootstrapApi.get,
     retry: false,
     staleTime: 30_000,
@@ -641,7 +642,7 @@ export default function DashboardApp(props: Props = {}) {
   useEffect(() => {
     const patch = bootstrapQuery.data?.authMePatch;
     if (!patch?.business?.name) return;
-    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) => {
+    queryClient.setQueryData([QK.authMe], (prev: AuthMe | undefined) => {
       if (!prev) return prev;
       const prevName = prev.business?.name?.trim() || "";
       const mergedKyb = mergeKybSummaryCache(prev.kyb_summary, patch.kyb_summary);
@@ -671,14 +672,14 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [bootstrapQuery.data, queryClient]);
   const summaryQuery = useQuery({
-    queryKey: ["dashboard-summary"],
+    queryKey: [QK.dashboardSummary],
     queryFn: dashboardApi.summary,
     retry: false,
     // Bootstrap already carries treasury + FX; keep summary for money-in/out when needed.
     enabled: true,
   });
   const exchangeRatesQuery = useQuery({
-    queryKey: ["exchange-rates"],
+    queryKey: [QK.exchangeRates],
     queryFn: dashboardApi.exchangeRates,
     retry: false,
     staleTime: 60_000,
@@ -693,7 +694,7 @@ export default function DashboardApp(props: Props = {}) {
   // reorder or refetch (15s poll above) while the modal is open, and an
   // index would silently point at a different transaction.
   const txDetailQuery = useQuery({
-    queryKey: ["transaction", state.selectedTxId],
+    queryKey: [QK.transaction, state.selectedTxId],
     queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
     enabled:
       state.selectedTxId != null &&
@@ -731,7 +732,7 @@ export default function DashboardApp(props: Props = {}) {
       !depositStatusQuery.isTerminal);
   const activityPollMs = activityPoll ? (orderTrackingActive ? 5_000 : 15_000) : false;
   const transactionsQuery = useQuery({
-    queryKey: ["transactions"],
+    queryKey: [QK.transactions],
     queryFn: transactionsApi.list,
     retry: false,
     enabled: needsActivityFeed,
@@ -748,13 +749,13 @@ export default function DashboardApp(props: Props = {}) {
     refetchIntervalMs: orderTrackingActive ? 5_000 : 15_000,
   });
   const apiKeysQuery = useQuery({
-    queryKey: ["api-keys"],
+    queryKey: [QK.apiKeys],
     queryFn: () => apiKeysApi.list(),
     retry: false,
     enabled: screen === "developer" || state.modal === "apiKey",
   });
   const teamQuery = useQuery({
-    queryKey: ["team", businessId],
+    queryKey: [QK.team, businessId],
     queryFn: () => teamApi.list(businessId as number),
     retry: false,
     enabled: screen === "team" && typeof businessId === "number",
@@ -843,7 +844,7 @@ export default function DashboardApp(props: Props = {}) {
   // Prefer bootstrap accounts. Fall back to eligibility → IBAN + entities walk
   // only when bootstrap fails (older backends / outage).
   const depositEligibilityQuery = useQuery({
-    queryKey: ["deposit-accounts-eligibility"],
+    queryKey: [QK.depositAccountsEligibility],
     queryFn: depositAccountsApi.eligibility,
     retry: false,
     enabled: bootstrapFailed,
@@ -869,7 +870,7 @@ export default function DashboardApp(props: Props = {}) {
       state.modal === "receive" ||
       state.screen === "accountDetail");
   const depositAccountsQuery = useQuery({
-    queryKey: ["deposit-accounts"],
+    queryKey: [QK.depositAccounts],
     queryFn: depositAccountsApi.list,
     retry: false,
     enabled:
@@ -881,7 +882,7 @@ export default function DashboardApp(props: Props = {}) {
           depositEligibilityQuery.isFetched)),
   });
   const stablecoinAccountsQuery = useQuery({
-    queryKey: ["stablecoin-accounts"],
+    queryKey: [QK.stablecoinAccounts],
     queryFn: listStablecoinAccounts,
     retry: false,
     enabled: bootstrapFailed,
@@ -1006,7 +1007,7 @@ export default function DashboardApp(props: Props = {}) {
 
   // Card colours are cosmetic and owned by this dashboard (see app/api/card-colors).
   const cardColorsQuery = useQuery({
-    queryKey: ["card-colors"],
+    queryKey: [QK.cardColors],
     queryFn: listCardColors,
     enabled: cardsSurfaceOpen,
     staleTime: 60_000,
@@ -1184,11 +1185,11 @@ export default function DashboardApp(props: Props = {}) {
             : {}),
         });
         if (terminal) {
-          queryClient.invalidateQueries({ queryKey: ["transactions"] });
-          queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
-          queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+          queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+          queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
           return;
         }
         if (!isAfricaFundProcessing(fund.status)) return;
@@ -1272,7 +1273,7 @@ export default function DashboardApp(props: Props = {}) {
   // details so the Developer screen's webhook rows show real values.
   const apiKeyDetailQueries = useQueries({
     queries: (apiKeysQuery.data ?? []).map((k) => ({
-      queryKey: ["api-key", k.id],
+      queryKey: [QK.apiKey, k.id],
       queryFn: () => apiKeysApi.get(k.id),
       retry: false,
       enabled: screen === "developer" || state.modal === "apiKey",
@@ -1370,21 +1371,21 @@ export default function DashboardApp(props: Props = {}) {
   // Ready USDC/USDT Base/Polygon (and Stellar USDC) FinancialAccounts for the
   // Stablecoin send tab (Phase 4 `/v1/accounts/{id}/sends`). Fetched when Send opens.
   const sendableAccountsQuery = useQuery({
-    queryKey: ["sendable-stablecoin-accounts"],
+    queryKey: [QK.sendableStablecoinAccounts],
     queryFn: listSendableStablecoinAccounts,
     enabled: state.modal === "send",
     retry: false,
     staleTime: 30_000,
   });
   const collectSupportedChainsQuery = useQuery({
-    queryKey: ["collect-cctp-supported-chains"],
+    queryKey: [QK.collectCctpSupportedChains],
     queryFn: () => entitiesApi.collectSupportedChains(),
     enabled: state.modal === "send",
     retry: false,
     staleTime: 60_000,
   });
   const savedRecipientsQuery = useQuery({
-    queryKey: ["saved-recipients"],
+    queryKey: [QK.savedRecipients],
     queryFn: listSavedRecipients,
     enabled: state.modal === "send",
     retry: false,
@@ -1884,12 +1885,14 @@ export default function DashboardApp(props: Props = {}) {
    */
   const refreshMoneyViews = () => {
     for (const key of [
-      "transactions",
-      "transactions-page",
-      "dashboard-summary",
-      "deposit-accounts",
-      "stablecoin-accounts",
-      "bootstrap",
+      QK.transactions,
+      QK.transactionsPage,
+      QK.dashboardSummary,
+      QK.depositAccounts,
+      QK.stablecoinAccounts,
+      // Was the literal "bootstrap", which matched no query — balances on
+      // Home never refreshed after a money movement settled.
+      QK.dashboardBootstrap,
     ]) {
       queryClient.invalidateQueries({ queryKey: [key] });
     }
@@ -2348,7 +2351,7 @@ export default function DashboardApp(props: Props = {}) {
         provider,
         network: state.sendGroup === "crypto" ? state.sendChain : undefined,
       });
-      await queryClient.invalidateQueries({ queryKey: ["saved-recipients"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.savedRecipients] });
       setSaveRecipientMessage("Recipient saved. You can pick them next time from saved details.");
     } catch (err) {
       setSaveRecipientMessage(
@@ -2372,10 +2375,10 @@ export default function DashboardApp(props: Props = {}) {
           { preview_token: state.sendPreview.preview_token },
           idempotencyKey,
         );
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
         setState({ sendAccepting: false, sendConfirm: confirmed, sendDone: true });
       } catch (err) {
         setState({
@@ -2392,9 +2395,9 @@ export default function DashboardApp(props: Props = {}) {
     setState({ sendAccepting: true, sendAcceptError: "" });
     try {
       const accepted = await ordersApi.accept(state.sendQuote.quote_id);
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
       setState({ sendAccepting: false, sendAccept: accepted, sendDone: true });
     } catch (err) {
       if (isQuoteExpiredError(err)) {
@@ -2413,9 +2416,9 @@ export default function DashboardApp(props: Props = {}) {
         // A duplicate accept (e.g. a double-click) already produced an
         // order for this quote_id — the payout went through, so this is
         // not a failure to show the user.
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
         setState({ sendAccepting: false, sendAccept: null, sendDone: true });
         return;
       }
@@ -2459,8 +2462,8 @@ export default function DashboardApp(props: Props = {}) {
         undefined,
         state.depositQuote.quote_id,
       );
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
       const isMobile = rail.type === "mobile";
       setState({
         depositAccepting: false,
@@ -2480,8 +2483,8 @@ export default function DashboardApp(props: Props = {}) {
         return;
       }
       if (isQuoteAlreadyAcceptedError(err)) {
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
         setState({
           depositAccepting: false,
           depositAccept: null,
@@ -2866,10 +2869,10 @@ export default function DashboardApp(props: Props = {}) {
       } else {
         accepted = await conversionsApi.accept(quote.quote_id);
       }
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+      queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
 
       // A bridged confirm returns a job still in flight: keep where to poll
       // it, and the polling effect takes it from there.
@@ -2928,10 +2931,10 @@ export default function DashboardApp(props: Props = {}) {
             : { convertQuote: next };
         });
         if (terminal) {
-          queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-          queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["transactions"] });
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+          queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.transactions] });
           return;
         }
       } catch (err) {
@@ -3112,7 +3115,7 @@ export default function DashboardApp(props: Props = {}) {
         },
       });
       persistCardColor(issued.id, state.newCardColor);
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
       setState({
         newCardIssuing: false,
         newCardDone: true,
@@ -3138,10 +3141,10 @@ export default function DashboardApp(props: Props = {}) {
   };
   /** Colour is chosen once, at issue time, and saved against the new card id. */
   const persistCardColor = (cardId: string, color: CardColorKey) => {
-    queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
+    queryClient.setQueryData<CardColorMap>([QK.cardColors], (m) => ({ ...(m ?? {}), [cardId]: color }));
     // Fire and forget: a failed save leaves the card on its resolved fallback.
     void saveCardColor(cardId, color)
-      .then((map) => queryClient.setQueryData(["card-colors"], map))
+      .then((map) => queryClient.setQueryData([QK.cardColors], map))
       .catch(() => undefined);
   };
   const toggleFreezeCard = async (cardId: string = state.selectedCardId) => {
@@ -3165,11 +3168,11 @@ export default function DashboardApp(props: Props = {}) {
         ),
       };
       queryClient.setQueryData(
-        ["issued-cards", funding.entityId, funding.accountId],
+        [QK.issuedCards, funding.entityId, funding.accountId],
         patched,
       );
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
-      await queryClient.invalidateQueries({ queryKey: ["card-transactions"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
+      await queryClient.invalidateQueries({ queryKey: [QK.cardTransactions] });
       setState({
         cardFreezeBusy: false,
         cardFreezeError: "",
@@ -3215,7 +3218,7 @@ export default function DashboardApp(props: Props = {}) {
         cardSecretsError: "",
       });
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
     } catch (err) {
       if (abandoned()) return;
       setState({
@@ -3273,7 +3276,7 @@ export default function DashboardApp(props: Props = {}) {
         cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
       }));
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
     } catch (err) {
       if (abandoned()) return;
       setState((s: any) => ({
@@ -3387,7 +3390,7 @@ export default function DashboardApp(props: Props = {}) {
         role: state.inviteRole as MembershipRole,
         accept_url: defaultTeamAcceptUrl(),
       });
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       setState({ inviteOpen: false, inviteBusy: false, inviteError: "" });
     } catch (err) {
       setState({
@@ -3402,9 +3405,9 @@ export default function DashboardApp(props: Props = {}) {
     setState({ teamActionError: "" });
     try {
       await teamApi.updateRole(businessId, userId, role);
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       if (userId === myUserId) {
-        await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+        await queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       }
     } catch (err) {
       setState({
@@ -3435,7 +3438,7 @@ export default function DashboardApp(props: Props = {}) {
       } else {
         await teamApi.revokeInvite(businessId, id);
       }
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       setState({ teamConfirm: null, teamConfirmBusy: false });
     } catch (err) {
       setState({
@@ -3456,11 +3459,11 @@ export default function DashboardApp(props: Props = {}) {
   const openMfaSetup = () => setState({ modal: "mfaSetup" });
   const onMfaSetupComplete = () => {
     setState({ modal: null });
-    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+    queryClient.invalidateQueries({ queryKey: [QK.authMe] });
   };
   const dismissMfaReminder = async () => {
     // Optimistically hide now; `/me` is the source of truth on next load.
-    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) =>
+    queryClient.setQueryData([QK.authMe], (prev: AuthMe | undefined) =>
       prev?.mfa ? { ...prev, mfa: { ...prev.mfa, should_remind: false } } : prev,
     );
     try {
@@ -3489,7 +3492,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ mfaDisableBusy: true, mfaDisableError: "" });
     try {
       await mfaApi.disable(password, code);
-      await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       setState({ modal: null, mfaDisableBusy: false, mfaDisablePassword: "", mfaDisableCode: "" });
     } catch (err) {
       setState({
@@ -3507,7 +3510,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ apiKeyCreating: true, apiKeyError: "" });
     try {
       const created = await apiKeysApi.create({ name: state.apiKeyName.trim(), environment: state.apiKeyEnvironment });
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
       // Auto-reveal the new key in its own row — it's the only moment the
       // plaintext exists, so it must be visible without an extra click.
       setState((prev: any) => ({
@@ -3555,9 +3558,9 @@ export default function DashboardApp(props: Props = {}) {
         });
         const entityId = await resolvePrimaryEntityId();
         await entitiesApi.openAccount(entityId, payload);
-        queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-        queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+        queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
         setState({ createAccountSaving: false, modal: null });
       } catch (err) {
         setState({
@@ -3587,8 +3590,8 @@ export default function DashboardApp(props: Props = {}) {
         },
         supportedFiatCurrencies,
       );
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
       setState({ createAccountSaving: false, modal: null });
     } catch (err) {
       setState({
@@ -3599,10 +3602,10 @@ export default function DashboardApp(props: Props = {}) {
   };
   const refreshDepositAccount = async (accountId: string) => {
     const synced = await depositAccountsApi.sync(accountId);
-    await queryClient.cancelQueries({ queryKey: ["dashboard-bootstrap"] });
-    await queryClient.cancelQueries({ queryKey: ["deposit-accounts"] });
+    await queryClient.cancelQueries({ queryKey: [QK.dashboardBootstrap] });
+    await queryClient.cancelQueries({ queryKey: [QK.depositAccounts] });
     queryClient.setQueryData<DashboardBootstrap | undefined>(
-      ["dashboard-bootstrap"],
+      [QK.dashboardBootstrap],
       (prev) =>
         prev
           ? {
@@ -3612,7 +3615,7 @@ export default function DashboardApp(props: Props = {}) {
           : prev,
     );
     queryClient.setQueryData<DepositAccountListResult | undefined>(
-      ["deposit-accounts"],
+      [QK.depositAccounts],
       (prev) => ({
         ...(prev ?? { accounts: [] }),
         accounts: applySyncedDepositAccount(prev?.accounts, accountId, synced),
@@ -3650,11 +3653,11 @@ export default function DashboardApp(props: Props = {}) {
   ]);
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
-    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
   };
   const deleteApiKey = (id: number) => async () => {
     await apiKeysApi.remove(id);
-    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
   };
 
   const setBalanceView = (v) => () => setState({ balanceView: v });
@@ -5758,10 +5761,10 @@ export default function DashboardApp(props: Props = {}) {
   }
   accountsErrorMessage={depositAccountsErrorMessage}
   onRetryAccounts={() => {
-    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+    queryClient.invalidateQueries({ queryKey: [QK.depositAccountsEligibility] });
+    queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+    queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
   }}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}
@@ -6842,15 +6845,15 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
         selectedStablecoinAccount.entityId,
         selectedStablecoinAccount.id,
       );
-      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
     } else if (selectedDepositAccount?.entity_id && selectedDepositAccount?.id) {
       await entitiesApi.deleteAccount(
         selectedDepositAccount.entity_id,
         selectedDepositAccount.id,
       );
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
     }
-    await queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+    await queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
     backToWallets();
   }}
 />

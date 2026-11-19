@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useId, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -171,8 +172,8 @@ export default function LoginForm() {
       }
       // Seed shell identity/KYB from login so Home doesn't wait on /me alone,
       // then invalidate so the real `/me` replaces the placeholder promptly.
-      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
-      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      queryClient.setQueryData([QK.authMe], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       proceedToNext();
     } catch (err) {
       setError(loginErrorMessage(err));
@@ -190,8 +191,8 @@ export default function LoginForm() {
     setMfaSubmitting(true);
     try {
       const login = await mfaApi.verify(trimmed);
-      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
-      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      queryClient.setQueryData([QK.authMe], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       proceedToNext();
     } catch (err) {
       setMfaError(mfaErrorMessage(err));
