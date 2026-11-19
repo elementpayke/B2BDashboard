@@ -157,7 +157,7 @@ export const THEME_LIGHT: Record<string, string> = {
   "--sheen": "rgba(255,255,255,0.5)",
   "--ink": "#131126",
   "--muted": "#4C4A66",
-  "--muted2": "#8B89A6",
+  "--muted2": "#6E6C8A",
   "--muted3": "#8B89A6",
   "--indigo": "#3B2ED3",
   "--indigo-bright": "#3B2ED3",
@@ -175,15 +175,15 @@ export const THEME_LIGHT: Record<string, string> = {
   "--info-tint": "#EEEDFB",
   "--positive": "#0E7A5A",
   "--ink-panel": "#131126",
-  "--ink-panel-text": "#C4C2DC",
+  "--ink-panel-text": "#8B89A6",
   "--input-bg": "#FFFFFF",
   "--input-border": "rgba(19,17,38,0.11)",
   "--modal-bg": "#FFFFFF",
   "--overlay-bg": "rgba(19,17,38,0.58)",
   "--overlay-doc-bg": "rgba(19,17,38,0.62)",
   "--panel": "#FFFFFF",
-  "--success": "#1A8A4A",
-  "--success-tint": "rgba(26,138,74,0.12)"
+  "--success": "#3B2ED3",
+  "--success-tint": "#EEEDFB"
 };
 export const THEME_DARK: Record<string, string> = {
   "--bg": "#000000",
@@ -195,7 +195,7 @@ export const THEME_DARK: Record<string, string> = {
   "--sheen": "rgba(255,255,255,0.16)",
   "--ink": "#F2F0FA",
   "--muted": "#B4B1D0",
-  "--muted2": "#807D9E",
+  "--muted2": "#8E8BAB",
   "--muted3": "#807D9E",
   "--indigo": "#7C6FFF",
   "--indigo-bright": "#7C6FFF",
@@ -213,14 +213,14 @@ export const THEME_DARK: Record<string, string> = {
   "--info-tint": "#221E4A",
   "--positive": "#5ED6B4",
   "--ink-panel": "#0B0A14",
-  "--ink-panel-text": "#C4C2DC",
+  "--ink-panel-text": "#8B89A6",
   "--input-bg": "#1C1B24",
   "--input-border": "rgba(255,255,255,0.14)",
   "--modal-bg": "#121116",
   "--overlay-bg": "rgba(0,0,0,0.74)",
   "--panel": "#121116",
-  "--success": "#4ADE80",
-  "--success-tint": "rgba(74,222,128,0.16)"
+  "--success": "#7C6FFF",
+  "--success-tint": "#221E4A"
 };
 /** Layered over THEME_DARK when boosted contrast is on. */
 export const THEME_DARK_HIGH_CONTRAST: Record<string, string> = {

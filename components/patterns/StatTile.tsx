@@ -17,7 +17,7 @@ export type StatTileProps = {
 export function StatTile({ label, value, meta, loading, className }: StatTileProps) {
   return (
     <Card className={cn("flex flex-col gap-2 rounded-xl p-4", className)} aria-busy={loading || undefined}>
-      <p className="text-label font-bold uppercase tracking-label text-muted-foreground">{label}</p>
+      <p className="text-label font-bold uppercase tracking-label text-subtle-foreground">{label}</p>
       {loading ? <Skeleton className="h-7 w-32" /> : <div>{value}</div>}
       {meta ? <p className="text-caption text-subtle-foreground">{meta}</p> : null}
     </Card>

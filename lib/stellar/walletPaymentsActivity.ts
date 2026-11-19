@@ -101,7 +101,7 @@ export function presentOnchainWalletPayment(
     }),
     type,
     amount,
-    amountColor: payment.direction === "in" ? "var(--success)" : "var(--ink)",
+    amountColor: payment.direction === "in" ? "var(--positive)" : "var(--ink)",
     ref: payment.txHash,
     meta: `${dateLabel} · Tx ${shortHash(payment.txHash)}`,
     dateLabel,

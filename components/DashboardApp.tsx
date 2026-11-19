@@ -4502,7 +4502,7 @@ export default function DashboardApp(props: Props = {}) {
       statusColor: settled ? "var(--indigo-text)" : row.statusColor,
       statusSoft: settled ? "var(--indigo-tint)" : row.statusSoft,
       amount: formatCardSpendAmount(row),
-      amountColor: row.direction === "in" ? "var(--success)" : "var(--ink)",
+      amountColor: row.direction === "in" ? "var(--positive)" : "var(--ink)",
       openDetail: row.openDetail,
     };
   });

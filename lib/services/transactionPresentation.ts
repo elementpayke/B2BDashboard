@@ -339,7 +339,7 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     client,
     type: kind,
     amount: `${sign}${formattedAmount} ${currency}`,
-    amountColor: sign === "+" ? "var(--success)" : "var(--ink)",
+    amountColor: sign === "+" ? "var(--positive)" : "var(--ink)",
     ref,
     meta,
     feeLabel,

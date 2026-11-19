@@ -43,7 +43,7 @@ export function Field({ label, hint, error, id, className, children }: FieldProp
     <div data-slot="field" className={cn("flex flex-col gap-1.5", className)}>
       <label
         htmlFor={controlId}
-        className="text-label font-bold uppercase tracking-label text-muted-foreground"
+        className="text-label font-bold uppercase tracking-label text-subtle-foreground"
       >
         {label}
       </label>

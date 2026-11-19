@@ -6,7 +6,7 @@ export type AmountProps = {
   value: number | string | null | undefined;
   /** ISO code or asset code (KES, USD, USDC…). Rendered after the number. */
   currency: string;
-  /** "in" → `+` in success colour, "out" → `−`. Omit for balances. */
+  /** "in" → `+` in the positive colour, "out" → `−`. Omit for balances. */
   direction?: "in" | "out";
   /** Fraction digits. Defaults to 2. */
   decimals?: number;
@@ -57,7 +57,7 @@ export function Amount({
       className={cn(
         "font-mono font-medium tabular-nums whitespace-nowrap",
         SIZES[size],
-        direction === "in" ? "text-success" : "text-foreground",
+        direction === "in" ? "text-positive" : "text-foreground",
         className,
       )}
     >
