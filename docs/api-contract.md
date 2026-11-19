@@ -21,6 +21,31 @@ flows during e2e testing — see `lib/server/mbokaProxy.ts` and its test for
 the exact failure mode). See
 `lib/server/mbokaProxy.ts`.
 
+## Typed client & spec snapshot
+
+New integrations use the typed client in `lib/api/mboka.ts`:
+`mboka.get("/v1/transactions/{transaction_id}", { path: { transaction_id } })`.
+Paths, params, request bodies and the unwrapped envelope `data` type come from
+`lib/api/generated/mboka.ts`, generated (`npm run api:gen`, openapi-typescript)
+from `lib/api/openapi.json` — a snapshot of Mboka's FastAPI spec trimmed to the
+proxy allowlist (`v1`, `api-keys`, `businesses`; never `webhooks`) by
+`npm run api:spec`. Transport is the existing `apiEnvelope`, so the BFF proxy,
+cookie auth, refresh-on-401 and error semantics are unchanged. CI fails if the
+generated types don't match the committed snapshot.
+
+Refresh the snapshot when the backend changes:
+`npm run api:spec` (Mboka on :8000) or, without a server,
+`(cd ../Mboka-Backend && myenv/bin/python -c "import json; from app.main import app; print(json.dumps(app.openapi()))") > /tmp/mboka-openapi.json && npm run api:spec -- --file /tmp/mboka-openapi.json`,
+then `npm run api:gen`.
+
+Snapshot taken from Mboka-Backend `7e89460`: 141 dashboard-reachable paths.
+About 40% of all backend operations declare no `response_model`; those return
+`unknown` here and must be normalized (fail closed) in `lib/services`. Adding
+response models upstream is the highest-leverage way to improve type coverage.
+
+TanStack Query keys are built from `QK` (`lib/api/queryKeys.ts`); ESLint
+rejects string-literal keys.
+
 ## Wired (real backend calls)
 
 | Area | Endpoints | Notes |
