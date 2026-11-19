@@ -8,6 +8,7 @@ paths:
 ---
 # Backend integration rules
 
+- Look up backend behaviour before coding (never guess fields/statuses): `../Mboka-Backend` → this repo's docs + `lib/api/openapi.json` → GitHub `elementpayHQ/Mboka-Backend` via `gh` (see "Backend reference" in AGENTS.md).
 - Browser code calls Mboka only through `mboka.*` (lib/api/mboka.ts) or the older `mbokaApi`/`apiEnvelope` (lib/apiClient.ts). Both go via the same-origin `/api/mboka/[...path]` proxy. Never fetch the backend URL directly and never touch tokens client-side.
 - New endpoints: use the typed client. Paths/params/bodies come from `lib/api/generated/mboka.ts`; if an endpoint is missing, refresh the spec (`npm run api:spec` → `npm run api:gen`) rather than hand-writing types. Use `MbokaSchema<"Name">` for schema types.
 - A new top-level backend prefix must be added to `MBOKA_PROXY_ALLOWED_PREFIXES` (lib/server/mbokaProxyAllowlist.ts) AND `ALLOWED_PREFIXES` in scripts/fetch-openapi.mjs — a test checks they agree. `webhooks` stays blocked.

@@ -10,7 +10,18 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Mboka B2B Dashboard
 
-Business banking dashboard for **Mboka** (a product of ElementPay). Next.js 16 App Router + TanStack Query; all data comes from the Mboka FastAPI backend (`../Mboka-Backend`) through our own BFF routes.
+Business banking dashboard for **Mboka** (a product of ElementPay). Next.js 16 App Router + TanStack Query; all data comes from the Mboka FastAPI backend through our own BFF routes.
+
+## Backend reference (Mboka-Backend)
+Never guess a field, status or route — look it up, in this order:
+1. **Local checkout** `../Mboka-Backend` (sibling folder) if it exists: routes in `app/`, Pydantic schemas, `app/docs/`, `docs/`.
+2. **Docs in this repo**: `docs/api-contract.md` (wiring + semantics), `lib/api/openapi.json` / `lib/api/generated/mboka.ts` (spec snapshot), other `docs/*-contract.md`.
+3. **GitHub** (private, use the authenticated `gh` CLI — plain web fetches won't work): https://github.com/elementpayHQ/Mboka-Backend (branch `main`)
+   - one file: `gh api "repos/elementpayHQ/Mboka-Backend/contents/<path>?ref=main" --jq .content | base64 -d`
+   - search: `gh search code --repo elementpayHQ/Mboka-Backend "<term>"`
+   - broad reading: `gh repo clone elementpayHQ/Mboka-Backend <tmp-dir> -- --depth 1` into a temp/scratch dir (never inside this repo), then grep it.
+
+Say which source you used. If the local checkout and GitHub `main` disagree, the local one may be on a feature branch — mention the difference rather than picking silently.
 
 ## Commands
 - Everything CI runs: `npm run check` (tokens:check → typecheck → lint → test)
