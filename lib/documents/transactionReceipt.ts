@@ -278,7 +278,10 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
   // settled receipt has no later moment to point the reader at.
   const feeRow = receiptFeeValue(tx);
   if (feeRow) paymentRows.push({ label: "Fee", value: feeRow });
-  if (tx.psp_transaction_id?.trim()) {
+  const pspRef = tx.psp_transaction_id?.trim() || "";
+  // Skip the payment reference when it is just the on-chain hash (printed
+  // once below as "Tx hash").
+  if (pspRef && pspRef.toLowerCase() !== (tx.tx_hash?.trim() || "").toLowerCase()) {
     paymentRows.push({
       label: receiptPaymentRefLabel(tx.provider, rail, tx.networkName),
       value: tx.psp_transaction_id.trim(),
