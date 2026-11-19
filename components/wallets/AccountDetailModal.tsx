@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import { MBOKA_LETTERHEAD } from "@/lib/documents/letterhead";
 
@@ -273,7 +273,10 @@ export default function AccountDetailModal({
         : sec,
     )
     .filter((sec) => sec.rows.length > 0);
-  const railIndices = useMemo(() => findRailSectionIndices(bankRows), [bankRows]);
+  // Plain call, not useMemo: this runs after the `!acctDetail` early return,
+  // so a hook here broke the rules of hooks, and bankRows is a new array each
+  // render anyway (the memo never hit).
+  const railIndices = findRailSectionIndices(bankRows);
   const hasRailTabs = railIndices.domestic !== -1 && railIndices.international !== -1;
   // Bank name/address apply to every rail equally — fold them into whichever
   // rail tab is active instead of giving them their own header, so switching
