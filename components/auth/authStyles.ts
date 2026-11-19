@@ -32,7 +32,7 @@ export const authCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "16px",
-  boxShadow: SHADOW.card,
+  boxShadow: SHADOW.auth,
 };
 
 /* The brand lockup lives in components/brand/AuthBrand.tsx — the old

@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils";
 export const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
-    "font-display font-bold text-sm rounded-md cursor-pointer select-none",
-    "transition-[background-color,opacity,box-shadow] duration-150",
+    "font-display font-bold text-body-lg rounded-lg cursor-pointer select-none",
+    "transition-[background-color,opacity,box-shadow] duration-150 ease-standard",
+    "outline-none focus-visible:shadow-focus",
     "disabled:cursor-not-allowed disabled:opacity-60 aria-busy:cursor-wait",
     "[&_svg]:size-4 [&_svg]:shrink-0",
   ],
@@ -26,10 +27,11 @@ export const buttonVariants = cva(
         link: "bg-transparent text-link px-1 hover:underline underline-offset-4",
       },
       size: {
-        sm: "h-9 px-3 text-xs",
-        /** 44px — the minimum touch target. Default. */
-        md: "h-11 px-4",
-        lg: "h-12 px-5 text-base",
+        /** Pill button (filters, row actions): 12.5px, 36px tall — pad the hit area to 44px in dense rows. */
+        sm: "h-9 rounded-pill px-3.5 text-body",
+        /** 48px, radius 14 — the standard CTA (matches .ep-btn-primary). Default. */
+        md: "h-12 px-4",
+        lg: "h-14 px-6 text-lead",
         icon: "size-11 p-0",
       },
       block: { true: "w-full" },

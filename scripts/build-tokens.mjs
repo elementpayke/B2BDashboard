@@ -37,27 +37,64 @@ function resolve(value, seen = []) {
   return resolve(node.$value, [...seen, path]);
 }
 
-/** Flatten a token group to { key: resolvedValue }, skipping $-metadata. */
-function group(node) {
+/** `{theme.<t>.<key>}` inside a composite (shadow colour) → `var(--key)`, so it follows the active theme. */
+const THEME_REF = /^\{theme\.[^.}]+\.([^}]+)\}$/;
+const themeRefs = [];
+function colorRef(value) {
+  const m = typeof value === "string" ? THEME_REF.exec(value) : null;
+  if (m) {
+    themeRefs.push(m[1]);
+    return `var(--${m[1]})`;
+  }
+  return resolve(value);
+}
+
+/** DTCG value → CSS string, by $type. */
+function toCss(type, raw) {
+  if (type === "shadow" && typeof raw !== "string") {
+    const layers = Array.isArray(raw) ? raw : [raw];
+    return layers
+      .map((l) => `${l.inset ? "inset " : ""}${l.offsetX} ${l.offsetY} ${l.blur} ${l.spread} ${colorRef(l.color)}`)
+      .join(", ");
+  }
+  const v = resolve(raw);
+  if (type === "fontFamily" && Array.isArray(v)) return v.map((f) => (/\s/.test(f) ? `'${f}'` : f)).join(", ");
+  if (type === "cubicBezier" && Array.isArray(v)) return `cubic-bezier(${v.join(", ")})`;
+  if (typeof v === "object") throw new Error(`Unsupported composite token value: ${JSON.stringify(v)}`);
+  return v;
+}
+
+/** Flatten a token group to { key: cssValue }, skipping $-metadata. Nested groups are prefixed (`sequential.1` → `seq-1` via `rename`). */
+function group(node, inheritedType, prefix = "", rename = (k) => k) {
   const out = {};
+  const type = node.$type ?? inheritedType;
   for (const [key, child] of Object.entries(node)) {
-    if (key.startsWith("$")) continue;
-    if (child && typeof child === "object" && "$value" in child) out[key] = resolve(child.$value);
+    if (key.startsWith("$") || !child || typeof child !== "object") continue;
+    if ("$value" in child) out[prefix + key] = toCss(child.$type ?? type, child.$value);
+    else Object.assign(out, group(child, type, prefix + rename(key) + "-", rename));
   }
   return out;
 }
 
-const cssVars = (obj) => Object.fromEntries(Object.entries(obj).map(([k, v]) => [`--${k}`, v]));
+const cssVars = (obj, prefix = "") => Object.fromEntries(Object.entries(obj).map(([k, v]) => [`--${prefix}${k}`, v]));
 const camel = (s) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 const camelKeys = (obj) => Object.fromEntries(Object.entries(obj).map(([k, v]) => [camel(k), v]));
 
-const brand = group(tokens.color.brand);
-const feedback = group(tokens.color.feedback);
+const brand = group(tokens.color.brand, tokens.color.$type);
+const feedback = group(tokens.color.feedback, tokens.color.$type);
+// categorical.N → N, sequential.N → seq-N, flat keys stay.
+const chart = group(tokens.chart, undefined, "", (k) => (k === "categorical" ? "" : k === "sequential" ? "seq" : k));
+for (const k of Object.keys(chart)) if (k.startsWith("-")) { chart[k.slice(1)] = chart[k]; delete chart[k]; }
 const fontFamily = group(tokens.font.family);
 const fontSize = group(tokens.font.size);
+const lineHeight = group(tokens["line-height"]);
+const letterSpacing = group(tokens["letter-spacing"]);
+const space = group(tokens.space);
 const radius = group(tokens.radius);
 const shadow = group(tokens.shadow);
 const duration = group(tokens.duration);
+const easing = group(tokens.easing);
+const breakpoint = group(tokens.breakpoint);
 const themes = {
   light: group(tokens.theme.light),
   dark: group(tokens.theme.dark),
@@ -65,6 +102,9 @@ const themes = {
   landingLight: group(tokens.theme["landing-light"]),
   landingDark: group(tokens.theme["landing-dark"]),
 };
+for (const key of themeRefs) {
+  if (!(key in themes.light)) throw new Error(`Shadow colour {theme.*.${key}} → unknown theme key "${key}"`);
+}
 
 // Every Tailwind alias must point at a light-theme key, or utilities break silently.
 const twColors = Object.fromEntries(
@@ -91,11 +131,19 @@ export const BRAND = ${json(camelKeys(brand))} as const;
 /** Fixed light-canvas feedback colours (auth pages). */
 export const FEEDBACK = ${json(camelKeys(feedback))} as const;
 
+/** Fixed data-viz palette: "1"…"8" categorical, "seq-1"…"seq-6" sequential, positive/negative/neutral. */
+export const CHART = ${json(chart)} as const;
+
 export const FONT_FAMILY = ${json(fontFamily)} as const;
 export const FONT_SIZE = ${json(fontSize)} as const;
+export const LINE_HEIGHT = ${json(lineHeight)} as const;
+export const LETTER_SPACING = ${json(letterSpacing)} as const;
+export const SPACE = ${json(space)} as const;
 export const RADIUS = ${json(radius)} as const;
 export const SHADOW = ${json(shadow)} as const;
 export const DURATION = ${json(duration)} as const;
+export const EASING = ${json(easing)} as const;
+export const BREAKPOINT = ${json(breakpoint)} as const;
 
 /** Semantic theme CSS variables (\`--bg\`, \`--ink\`, …) per theme. */
 export const THEME_LIGHT: Record<string, string> = ${json(cssVars(themes.light))};
@@ -117,7 +165,10 @@ const css = `/* GENERATED by scripts/build-tokens.mjs from design/tokens.json �
    <html> via lib/theme/applyThemeVars, which wins over these. */
 ${block(":root", {
   ...cssVars(themes.light),
-  ...Object.fromEntries(Object.entries(brand).map(([k, v]) => [`--brand-${k}`, v])),
+  ...cssVars(brand, "brand-"),
+  ...cssVars(chart, "chart-"),
+  ...cssVars(duration, "duration-"),
+  ...cssVars(easing, "ease-"),
 })}
 /* Lets Storybook / static pages switch theme with data-theme alone. */
 ${block(':root[data-theme="dark"]', cssVars(themes.dark), "  color-scheme: dark;\n")}
@@ -131,6 +182,7 @@ ${Object.entries(twColors).map(([a, k]) => `  --color-${a}: var(--${k});`).join(
   --color-transparent: transparent;
   --color-current: currentColor;
 ${Object.keys(brand).map((k) => `  --color-brand-${k}: var(--brand-${k});`).join("\n")}
+${Object.keys(chart).map((k) => `  --color-chart-${k}: var(--chart-${k});`).join("\n")}
 
   --font-*: initial;
 ${Object.entries(fontFamily).map(([k, v]) => `  --font-${k}: ${v};`).join("\n")}
@@ -143,6 +195,21 @@ ${Object.entries(radius).map(([k, v]) => `  --radius-${k}: ${v};`).join("\n")}
 
   --shadow-*: initial;
 ${Object.entries(shadow).map(([k, v]) => `  --shadow-${k}: ${v};`).join("\n")}
+
+  --leading-*: initial;
+${Object.entries(lineHeight).map(([k, v]) => `  --leading-${k}: ${v};`).join("\n")}
+
+  --tracking-*: initial;
+${Object.entries(letterSpacing).map(([k, v]) => `  --tracking-${k}: ${v};`).join("\n")}
+
+  --ease-*: initial;
+${Object.entries(easing).map(([k, v]) => `  --ease-${k}: ${v};`).join("\n")}
+
+  /* One breakpoint: below it is the mobile layout (drawer, bottom nav, sheets). */
+  --breakpoint-*: initial;
+  --breakpoint-desktop: ${breakpoint.desktop};
+  --container-table: ${breakpoint["table-min"]};
+  --container-content: ${breakpoint["content-max"]};
 }
 `;
 

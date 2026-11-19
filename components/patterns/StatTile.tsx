@@ -13,13 +13,13 @@ export type StatTileProps = {
   className?: string;
 };
 
-/** KPI tile for Home / Reports rows. Lay out with `grid gap-3 sm:grid-cols-3`. */
+/** KPI tile for Home / Reports rows. Lay out with `grid gap-3 desktop:grid-cols-3`. */
 export function StatTile({ label, value, meta, loading, className }: StatTileProps) {
   return (
-    <Card className={cn("flex flex-col gap-2 p-5", className)} aria-busy={loading || undefined}>
-      <p className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <Card className={cn("flex flex-col gap-2 rounded-xl p-4", className)} aria-busy={loading || undefined}>
+      <p className="text-label font-bold uppercase tracking-label text-muted-foreground">{label}</p>
       {loading ? <Skeleton className="h-7 w-32" /> : <div>{value}</div>}
-      {meta ? <p className="text-xs text-subtle-foreground">{meta}</p> : null}
+      {meta ? <p className="text-caption text-subtle-foreground">{meta}</p> : null}
     </Card>
   );
 }

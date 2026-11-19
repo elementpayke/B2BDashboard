@@ -43,7 +43,7 @@ export function Field({ label, hint, error, id, className, children }: FieldProp
     <div data-slot="field" className={cn("flex flex-col gap-1.5", className)}>
       <label
         htmlFor={controlId}
-        className="text-2xs font-bold uppercase tracking-wider text-muted-foreground"
+        className="text-label font-bold uppercase tracking-label text-muted-foreground"
       >
         {label}
       </label>
@@ -51,11 +51,11 @@ export function Field({ label, hint, error, id, className, children }: FieldProp
         ? children(controlProps)
         : React.cloneElement(children, controlProps)}
       {error ? (
-        <p id={errorId} role="alert" className="text-xs font-semibold text-destructive">
+        <p id={errorId} role="alert" className="text-caption font-semibold text-destructive-text">
           {error}
         </p>
       ) : hint ? (
-        <p id={hintId} className="text-xs text-subtle-foreground">
+        <p id={hintId} className="text-caption text-subtle-foreground">
           {hint}
         </p>
       ) : null}

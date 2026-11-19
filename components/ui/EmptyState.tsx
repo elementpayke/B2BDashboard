@@ -27,15 +27,15 @@ export function EmptyState({ title, description, icon, action, tone = "empty", c
         <div
           aria-hidden
           className={cn(
-            "mb-1 flex size-12 items-center justify-center rounded-full [&_svg]:size-6",
+            "mb-1 flex size-12 items-center justify-center rounded-pill [&_svg]:size-6",
             tone === "error" ? "bg-destructive-tint text-destructive" : "bg-accent text-accent-foreground",
           )}
         >
           {icon}
         </div>
       ) : null}
-      <p className="font-display text-base font-bold text-foreground">{title}</p>
-      {description ? <p className="max-w-sm text-sm text-muted-foreground">{description}</p> : null}
+      <p className="font-display text-title font-bold text-foreground">{title}</p>
+      {description ? <p className="max-w-sm text-body-lg leading-body text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </div>
   );

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Accessible modal: focus trap, Esc to close, scroll lock, aria wiring and
- * focus return come from Radix. Centered on ≥640px, bottom sheet on mobile.
+ * focus return come from Radix. Centered from the `desktop` breakpoint (900px), bottom sheet below it.
  * Use this instead of hand-rolled `position: fixed` overlays (legacy code has
  * ~13 of those — don't copy them).
  *
@@ -30,7 +30,7 @@ export type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Con
   hideClose?: boolean;
 };
 
-const SIZES = { sm: "sm:max-w-sm", md: "sm:max-w-lg", lg: "sm:max-w-2xl" } as const;
+const SIZES = { sm: "desktop:max-w-sm", md: "desktop:max-w-lg", lg: "desktop:max-w-2xl" } as const;
 
 export function DialogContent({
   title,
@@ -52,11 +52,11 @@ export function DialogContent({
         // without breaking the auto-link when one is given.
         {...(description ? {} : { "aria-describedby": undefined })}
         className={cn(
-          "fixed z-50 flex max-h-[92dvh] w-full flex-col bg-popover text-popover-foreground shadow-overlay outline-none",
+          "fixed z-50 flex max-h-[92dvh] w-full flex-col bg-popover text-popover-foreground shadow-modal outline-none",
           // mobile: bottom sheet
-          "inset-x-0 bottom-0 rounded-t-2xl pb-[env(safe-area-inset-bottom)]",
-          // ≥640: centered dialog
-          "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:pb-0",
+          "inset-x-0 bottom-0 rounded-t-3xl pb-[env(safe-area-inset-bottom)]",
+          // ≥900: centered dialog
+          "desktop:inset-auto desktop:top-1/2 desktop:left-1/2 desktop:-translate-x-1/2 desktop:-translate-y-1/2 desktop:rounded-3xl desktop:pb-0",
           SIZES[size],
           className,
         )}
@@ -64,12 +64,12 @@ export function DialogContent({
       >
         <header className="flex items-start justify-between gap-3 px-6 pt-6">
           <div className="min-w-0">
-            <DialogPrimitive.Title className="font-display text-xl font-bold tracking-tight">
+            <DialogPrimitive.Title className="font-display text-headline desktop:text-title font-bold tracking-title">
               {title}
             </DialogPrimitive.Title>
             {description ? (
               <DialogPrimitive.Description
-                className={cn("mt-1 text-sm text-muted-foreground", hideDescription && "sr-only")}
+                className={cn("mt-1 text-body-lg text-muted-foreground", hideDescription && "sr-only")}
               >
                 {description}
               </DialogPrimitive.Description>
@@ -78,7 +78,7 @@ export function DialogContent({
           {hideClose ? null : (
             <DialogPrimitive.Close
               aria-label="Close"
-              className="-mt-2 -mr-2 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+              className="-mt-2 -mr-2 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-pill bg-muted text-muted-foreground hover:text-foreground focus-visible:shadow-focus outline-none"
             >
               <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
@@ -88,7 +88,7 @@ export function DialogContent({
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer ? (
-          <footer className="flex flex-col-reverse gap-2 border-t border-border px-6 py-4 sm:flex-row sm:justify-end">
+          <footer className="flex flex-col-reverse gap-2 border-t border-border px-6 py-4 desktop:flex-row desktop:justify-end">
             {footer}
           </footer>
         ) : null}

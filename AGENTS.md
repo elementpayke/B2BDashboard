@@ -42,7 +42,7 @@ Say which source you used. If the local checkout and GitHub `main` disagree, the
 - `app/api/` — BFF route handlers (auth cookies, `/api/mboka/[...path]` proxy). Tokens never reach the browser.
 
 ## Conventions
-- New UI: Tailwind utilities from our token theme (`bg-primary`, `text-muted-foreground`, `rounded-xl`, `text-sm`). Tailwind's default palette is removed on purpose. No hex/rgba, no static `style={{}}`, no arbitrary `[...]` colours/px — ESLint errors on these in new folders.
+- New UI: Tailwind utilities from our token theme (`bg-primary`, `text-muted-foreground`, `rounded-2xl`, `text-body`, `desktop:`). Tailwind's default palette, type/radius/tracking scales and breakpoints are removed on purpose — names are listed in `.claude/rules/ui.md`. No hex/rgba, no static `style={{}}`, no arbitrary `[...]` colours/px — ESLint errors on these in new folders.
 - Money is always `<Amount>`; status is always `<Badge>` (dot + label, never colour alone); forms always `<Field>`; modals always `<Dialog>`.
 - Touch targets ≥ 44px. Every async view has loading (Skeleton), empty and error (EmptyState) states.
 - Data: TanStack Query with keys from `QK` (lib/api/queryKeys.ts) — never string literals. Mutations that move money send an `Idempotency-Key`.

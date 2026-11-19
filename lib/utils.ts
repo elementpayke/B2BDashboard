@@ -9,10 +9,14 @@ import { extendTailwindMerge } from "tailwind-merge";
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
-      text: ["2xs", "xs", "sm", "base", "lg", "xl", "2xl", "3xl"],
-      radius: ["sm", "md", "lg", "xl", "2xl", "full"],
-      shadow: ["card", "overlay"],
+      text: ["overline-sm", "label", "caption", "dense", "body", "body-lg", "lead", "title", "headline", "page-sm", "stat", "amount", "page", "hero"],
+      radius: ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "pill"],
+      shadow: ["hairline", "float", "card", "modal", "selection", "focus", "nav-active", "auth"],
       font: ["display", "body", "mono"],
+      leading: ["tight", "heading", "snug", "body", "relaxed"],
+      tracking: ["display", "heading", "title", "normal", "label", "overline"],
+      ease: ["standard", "spring", "move", "linear", "sheet"],
+      breakpoint: ["desktop"],
     },
   },
 });

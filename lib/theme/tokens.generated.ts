@@ -7,11 +7,18 @@ export const BRAND = {
   "indigoLift": "#7C6FFF",
   "ink": "#131126",
   "bone": "#F6F4EF",
-  "amber": "#FFB224",
-  "violet": "#7C6FFF",
+  "white": "#FFFFFF",
+  "marigold": "#FFB224",
   "mint": "#5ED6B4",
   "coral": "#FF6A55",
+  "lavender": "#9590E6",
+  "cobalt": "#2457E6",
+  "orchid": "#A94BD9",
+  "sky": "#63B3FF",
+  "plum": "#4A1D6E",
   "positive": "#0E7A5A",
+  "amber": "#FFB224",
+  "violet": "#7C6FFF",
   "positiveOnDark": "#0E9A70"
 } as const;
 
@@ -27,36 +34,116 @@ export const FEEDBACK = {
   "successBorder": "rgba(27,122,61,0.16)"
 } as const;
 
+/** Fixed data-viz palette: "1"…"8" categorical, "seq-1"…"seq-6" sequential, positive/negative/neutral. */
+export const CHART = {
+  "1": "#3B2ED3",
+  "2": "#FFB224",
+  "3": "#5ED6B4",
+  "4": "#FF6A55",
+  "5": "#9590E6",
+  "6": "#2457E6",
+  "7": "#A94BD9",
+  "8": "#63B3FF",
+  "seq-1": "#EEEDFB",
+  "seq-2": "#C9C4F4",
+  "seq-3": "#9590E6",
+  "seq-4": "#6457E0",
+  "seq-5": "#3B2ED3",
+  "seq-6": "#231A8C",
+  "positive": "#0E7A5A",
+  "negative": "#C42A2F",
+  "neutral": "#8B89A6"
+} as const;
+
 export const FONT_FAMILY = {
   "display": "'Space Grotesk', system-ui, sans-serif",
   "body": "'DM Sans', system-ui, sans-serif",
-  "mono": "'DM Mono', ui-monospace, monospace"
+  "mono": "'DM Mono', ui-monospace, SFMono-Regular, monospace"
 } as const;
 export const FONT_SIZE = {
-  "2xs": "11px",
-  "xs": "12.5px",
-  "sm": "14px",
-  "base": "15px",
-  "lg": "17px",
-  "xl": "20px",
-  "2xl": "24px",
-  "3xl": "32px"
+  "overline-sm": "10.5px",
+  "label": "11px",
+  "caption": "11.5px",
+  "dense": "12px",
+  "body": "12.5px",
+  "body-lg": "13px",
+  "lead": "14px",
+  "title": "16px",
+  "headline": "19px",
+  "page-sm": "20px",
+  "stat": "22px",
+  "amount": "24px",
+  "page": "26px",
+  "hero": "32px"
+} as const;
+export const LINE_HEIGHT = {
+  "tight": 1.05,
+  "heading": 1.2,
+  "snug": 1.35,
+  "body": 1.55,
+  "relaxed": 1.6
+} as const;
+export const LETTER_SPACING = {
+  "display": "-0.04em",
+  "heading": "-0.02em",
+  "title": "-0.01em",
+  "normal": "0em",
+  "label": "0.06em",
+  "overline": "0.12em"
+} as const;
+export const SPACE = {
+  "4": "4px",
+  "6": "6px",
+  "8": "8px",
+  "10": "10px",
+  "12": "12px",
+  "14": "14px",
+  "16": "16px",
+  "20": "20px",
+  "24": "24px",
+  "32": "32px"
 } as const;
 export const RADIUS = {
+  "xs": "6px",
   "sm": "8px",
   "md": "12px",
-  "lg": "16px",
-  "xl": "22px",
-  "2xl": "28px",
-  "full": "999px"
+  "lg": "14px",
+  "xl": "16px",
+  "2xl": "22px",
+  "3xl": "28px",
+  "pill": "999px"
 } as const;
 export const SHADOW = {
-  "card": "0 12px 40px rgba(19,17,38,0.06)",
-  "overlay": "0 24px 64px rgba(19,17,38,0.18)"
+  "hairline": "0px 0px 0px 1px rgba(0,0,0,0.08)",
+  "float": "0px 14px 30px -16px rgba(19,17,38,0.4)",
+  "card": "0px 26px 46px -24px rgba(10,8,40,0.55)",
+  "modal": "0px 34px 90px -22px rgba(19,17,38,0.5)",
+  "selection": "0px 0px 0px 3px var(--panel), 0px 0px 0px 5px var(--indigo-tint)",
+  "focus": "0px 0px 0px 2px var(--bg), 0px 0px 0px 4px var(--focus-ring)",
+  "nav-active": "0px 8px 18px -8px rgba(59,46,211,0.5)",
+  "auth": "0 12px 40px rgba(19,17,38,0.06)"
 } as const;
 export const DURATION = {
-  "fast": "120ms",
-  "base": "200ms"
+  "instant": "150ms",
+  "fast": "160ms",
+  "base": "200ms",
+  "spring": "250ms",
+  "sheet": "280ms",
+  "theme": "350ms",
+  "enter": "600ms",
+  "countdown": "1000ms"
+} as const;
+export const EASING = {
+  "standard": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  "spring": "cubic-bezier(0.2, 0.9, 0.3, 1.2)",
+  "move": "cubic-bezier(0.4, 0.2, 0.2, 1)",
+  "linear": "cubic-bezier(0, 0, 1, 1)",
+  "sheet": "cubic-bezier(0.32, 0.72, 0, 1)"
+} as const;
+export const BREAKPOINT = {
+  "desktop": "900px",
+  "table-min": "820px",
+  "content-max": "1200px"
 } as const;
 
 /** Semantic theme CSS variables (`--bg`, `--ink`, …) per theme. */
@@ -77,16 +164,23 @@ export const THEME_LIGHT: Record<string, string> = {
   "--indigo-on": "#fff",
   "--indigo-text": "#3B2ED3",
   "--indigo-tint": "#EEEDFB",
+  "--focus-ring": "#3B2ED3",
   "--red": "#E5484D",
+  "--red-text": "#C42A2F",
   "--red-tint": "#FCEBEC",
   "--amber": "#B47700",
+  "--amber-text": "#8A5B00",
   "--amber-tint": "#FBF2DE",
+  "--info": "#3B2ED3",
+  "--info-tint": "#EEEDFB",
+  "--positive": "#0E7A5A",
   "--ink-panel": "#131126",
   "--ink-panel-text": "#C4C2DC",
   "--input-bg": "#FFFFFF",
   "--input-border": "rgba(19,17,38,0.11)",
   "--modal-bg": "#FFFFFF",
   "--overlay-bg": "rgba(19,17,38,0.58)",
+  "--overlay-doc-bg": "rgba(19,17,38,0.62)",
   "--panel": "#FFFFFF",
   "--success": "#1A8A4A",
   "--success-tint": "rgba(26,138,74,0.12)"
@@ -108,10 +202,16 @@ export const THEME_DARK: Record<string, string> = {
   "--indigo-on": "#0E0D1C",
   "--indigo-text": "#A79EFF",
   "--indigo-tint": "#221E4A",
+  "--focus-ring": "#A79EFF",
   "--red": "#FF6B70",
+  "--red-text": "#FF8F93",
   "--red-tint": "#3A1B22",
   "--amber": "#F5B84B",
+  "--amber-text": "#F7C76B",
   "--amber-tint": "#332A14",
+  "--info": "#A79EFF",
+  "--info-tint": "#221E4A",
+  "--positive": "#5ED6B4",
   "--ink-panel": "#0B0A14",
   "--ink-panel-text": "#C4C2DC",
   "--input-bg": "#1C1B24",

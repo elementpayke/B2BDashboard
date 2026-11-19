@@ -22,7 +22,7 @@ export const ScreenTop: Story = {
           </>
         }
       />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 desktop:grid-cols-3">
         <StatTile label="Volume (30d)" value={<Amount value="1284000" currency="USD" size="lg" />} meta="+12% vs last month" />
         <StatTile label="Payouts" value={<Amount value="402" currency="txns" decimals={0} size="lg" />} />
         <StatTile label="Pending" value={null} loading />

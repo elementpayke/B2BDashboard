@@ -17,10 +17,12 @@ export type AmountProps = {
 };
 
 const SIZES = {
-  sm: "text-xs",
-  md: "text-sm",
-  lg: "text-xl",
-  hero: "text-3xl tracking-tight",
+  /** Table cells, rows. */
+  sm: "text-body",
+  md: "text-lead",
+  /** Stat tiles. */
+  lg: "text-stat tracking-title",
+  hero: "text-hero leading-tight tracking-display",
 } as const;
 
 /** Format a decimal for display: grouping, fixed decimals, no currency. */

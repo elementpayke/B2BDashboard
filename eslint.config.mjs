@@ -45,7 +45,7 @@ const HARDCODED_STYLE = [
   {
     selector:
       "Literal[value=/\\b(bg|text|border|ring|outline|fill|stroke|shadow|rounded|from|via|to)-\\[(#|rgb|hsl|\\d+(\\.\\d+)?px)/]",
-    message: "Arbitrary Tailwind value bypasses the design tokens. Use a scale step (text-sm, rounded-xl…) or add a token.",
+    message: "Arbitrary Tailwind value bypasses the design tokens. Use a scale step (text-body, rounded-2xl…) or add a token.",
   },
 ];
 
