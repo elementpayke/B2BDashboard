@@ -34,7 +34,7 @@ UI code never uses brand colours for states. It uses semantic utilities, which s
 | focus-ring | `ring` / `shadow-focus` | `--focus-ring` | |
 | danger / danger-text / -tint | `destructive` / `text-destructive-text` / `bg-destructive-tint` | `--red` `--red-text` `--red-tint` | `destructive` is for fills and icons; text uses `-text` |
 | warning / warning-text / -tint | `warning` / `text-warning-text` / `bg-warning-tint` | `--amber` `--amber-text` `--amber-tint` | same rule |
-| success / -tint | `success` / `bg-success-tint` | `--success` `--success-tint` | see "Awaiting sign-off" |
+| success / -text / -tint | `success` / `text-success-text` / `bg-success-tint` | `--success` `--indigo-text` `--success-tint` | indigo: settled, paid, approved. Not used for money in |
 | info / -tint | `info` / `bg-info-tint` | `--info` `--info-tint` | PROPOSED |
 | positive | `text-positive` | `--positive` | incoming amounts (`<Amount direction="in">`) |
 | overlay / overlay-doc | `bg-overlay` / `bg-overlay-doc` | `--overlay-bg` `--overlay-doc-bg` | doc = behind invoices and receipts |
@@ -154,14 +154,10 @@ Mobile-money marks are in `public/brand/mobile/`. Don't recolour, stretch or rec
 ## Mobile parity (resolved)
 The designer's spec keeps indigo `#3B2ED3` on bone with Space Grotesk / DM Sans / DM Mono as DECIDED. The mobile app's palette (`#4f2ce0` → `#83007c`, Geist) proposed in `docs/ux-parity-mobile.md` is **not** adopted for the dashboard.
 
-## Awaiting sign-off
-The designer's spec changes these live values. They're not applied yet because each one changes shipped screens. The token keeps the current value until approved.
-
-| Token (CSS var) | Current | Designer | Notes |
-|---|---|---|---|
-| `muted2` light / dark | `#8B89A6` / `#807D9E` | `#6E6C8A` / `#8E8BAB` | Labels go from 3.07:1 to 4.58:1 on bone (AA). The old value moves to `muted3` (placeholder) |
-| `success` (+ `-tint`) light / dark | green `#1A8A4A` / `#4ADE80` | indigo `#3B2ED3` / `#7C6FFF` | "Settled/Paid use indigo, not green". Incoming amounts move to `positive` at the same time |
-| `ink-panel-text` | `#C4C2DC` | `#8B89A6` | Secondary text on ink panels |
-| `input-bg` light / dark / HC | `#FFFFFF` / `#1C1B24` / `#232029` | `rgba(255,255,255,0.6)` / `rgba(255,255,255,0.05)` / `rgba(255,255,255,0.09)` | Translucent inputs |
-| `modal-bg` light / dark / HC | opaque `#FFFFFF` / `#121116` / `#17161d` | `rgba(251,250,247,0.85)` / `rgba(14,13,22,0.82)` / `rgba(10,9,17,0.97)` | Glass dialogs. Reverses a deliberate fix ("opaque, so background UI never bleeds through") |
-| `overlay-bg` light / dark | `0.58` / `0.74` | `0.32` / `0.6` | Lighter scrim. Reverses a deliberate fix (heavier scrim to stop the page showing through) |
+## Decisions on the designer's spec (2026-11-19)
+- **Applied:**
+  - Labels and meta (`muted2`) moved to `#6E6C8A` / `#8E8BAB` to meet AA. The old value is `muted3`, for placeholders.
+  - `success` is indigo: "Settled/Paid use indigo, not green".
+  - Incoming amounts use `positive`.
+  - `ink-panel-text` is `#8B89A6`.
+- **Not adopted:** translucent inputs, glass modals (`modal-bg` 85%) and the lighter scrim (overlay 0.32). The shipped opaque modals and heavier scrim stay. They were a deliberate fix so background UI never bleeds through a dialog. The `.ep-modal` override at the end of `app/globals.css` enforces this for legacy modals, and `<Dialog>` uses the same tokens.
