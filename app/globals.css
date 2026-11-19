@@ -4540,6 +4540,7 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-modal {
+  position: relative;
   width: 100%;
   max-width: 480px;
   max-height: min(92vh, 92dvh);

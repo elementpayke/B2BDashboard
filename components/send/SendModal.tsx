@@ -1008,7 +1008,7 @@ export default function SendModal(p: SendModalProps) {
           </div>
 
           <div className="ep-send-success__hero">
-            <h4 className="ep-send-success__title">
+            <h4 id="ep-modal-title" className="ep-send-success__title">
               {p.sendSuccessDetails?.title ||
                 (p.sendLiveStatus?.isSettling ? "Payment on its way" : "Transfer complete")}
             </h4>
