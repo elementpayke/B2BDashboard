@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { nextPollIntervalMs } from "@/lib/orderStatusPolling";
@@ -78,7 +79,7 @@ export function useCardTransactionsLive(
         const transaction = normalizeCardTransaction(payload);
         if (!transaction) return;
         queryClient.setQueryData<CardTransactionList | undefined>(
-          ["card-transactions", entityId, accountId],
+          [QK.cardTransactions, entityId, accountId],
           (current) => mergeCardTransactionList(current, transaction),
         );
       });
@@ -89,7 +90,7 @@ export function useCardTransactionsLive(
         if (!cardId) return;
         noteIssuedCardLivePatch(cardId);
         queryClient.setQueryData<IssuedCardsList | undefined>(
-          ["issued-cards", entityId, accountId],
+          [QK.issuedCards, entityId, accountId],
           (current) => {
             if (!current) return current;
             return {

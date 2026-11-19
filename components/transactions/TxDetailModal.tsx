@@ -1,4 +1,5 @@
 "use client";
+import MbokaLogo from "@/components/brand/MbokaLogo";
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useEffect, useId, useRef, useState } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -21,7 +22,7 @@ import {
 import { ChainIcon } from "@/components/transactions/ChainIcons";
 import {
   buildTransactionReceipt,
-  isReceiptable,
+  receiptStatus,
   receiptAccountLabel,
   receiptFilename,
   receiptInstitutionLabel,
@@ -182,6 +183,77 @@ function DetailRow({
   );
 }
 
+/** Hero disc icon: tick when settled, clock while pending, cross on failure. */
+function StatusGlyph({ tone }: { tone: "success" | "warning" | "danger" | "neutral" }) {
+  const common = {
+    viewBox: "0 0 24 24",
+    width: 22,
+    height: 22,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  if (tone === "success") {
+    return (
+      <svg {...common}>
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    );
+  }
+  if (tone === "danger") {
+    return (
+      <svg {...common}>
+        <path d="M7 7l10 10M17 7L7 17" />
+      </svg>
+    );
+  }
+  if (tone === "warning") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4.5l3 1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M7 12h10" />
+    </svg>
+  );
+}
+
+function ActionIcon({ kind }: { kind: "share" | "download" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {kind === "share" ? (
+        <>
+          <path d="M12 15V3.5" />
+          <path d="M7.5 8L12 3.5 16.5 8" />
+          <path d="M5 12.5v6A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-6" />
+        </>
+      ) : (
+        <>
+          <path d="M12 3.5V15" />
+          <path d="M7.5 10.5L12 15l4.5-4.5" />
+          <path d="M4.5 20.5h15" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function ReceiptActions({ txDetail }: { txDetail: any }) {
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -279,9 +351,11 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={menuId}
+          aria-label="Share receipt"
           onClick={() => setOpen((v) => !v)}
         >
-          Share receipt
+          <ActionIcon kind="share" />
+          <span>Share</span>
         </button>
         {open ? (
           <div className="ep-txn-detail__share-menu" id={menuId} role="menu">
@@ -310,7 +384,8 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           setToast("PDF saved");
         }}
       >
-        Download PDF
+        <ActionIcon kind="download" />
+        <span>Download receipt</span>
       </button>
       {toast ? (
         <div className="ep-txn-detail__toast" role="status" aria-live="polite">
@@ -589,11 +664,22 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   if (created) rows.push({ label: "Time", value: created, mono: true });
   if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
+  const status = receiptStatus(txDetail.status);
+
   return (
     <div className="ep-txn-detail">
-      <header className="ep-txn-detail__hero">
+      <header className={`ep-txn-detail__hero ep-txn-detail__hero--${status.tone}`}>
+        <div className="ep-txn-detail__brand">
+          <MbokaLogo size={22} sub="Business" />
+          <span className="ep-txn-detail__brand-kind">
+            Payment receipt
+          </span>
+        </div>
+        <span className="ep-txn-detail__status-icon" aria-hidden>
+          <StatusGlyph tone={status.tone} />
+        </span>
         <div
-          className="ep-txn-detail__amount ep-mono"
+          className={`ep-txn-detail__amount ep-mono${txDetail.direction === "in" ? " ep-txn-detail__amount--in" : ""}`}
           style={{ color: txDetail.amountColor || "var(--ink)" }}
         >
           {txDetail.amount}
@@ -681,7 +767,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         ))}
       </div>
 
-      {isReceiptable(txDetail.status) && !txDetail.hideReceipt ? (
+      {!txDetail.hideReceipt ? (
         <ReceiptActions txDetail={txDetail} />
       ) : null}
     </div>

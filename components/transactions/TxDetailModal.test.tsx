@@ -315,3 +315,29 @@ describe("TxDetailModal receipt share sheet", () => {
     expect(screen.queryByRole("menuitem", { name: /copy details/i })).not.toBeInTheDocument();
   });
 });
+
+describe("TxDetailModal branded hero + documents", () => {
+  it("shows the Mboka brand, a settled tone and receipt actions when settled", () => {
+    const { container } = render(<TxDetailModal txDetail={stellarDepositDetail()} />);
+    expect(container.querySelector(".ep-txn-detail__hero--success")).not.toBeNull();
+    expect(screen.getByText("Payment receipt")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download receipt" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share receipt" })).toBeInTheDocument();
+  });
+
+  it("offers receipt download and share while pending, in the warning tone", () => {
+    const { container } = render(
+      <TxDetailModal txDetail={stellarDepositDetail({ status: "processing" })} />,
+    );
+    expect(container.querySelector(".ep-txn-detail__hero--warning")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Download receipt" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share receipt" })).toBeInTheDocument();
+  });
+
+  it("uses the danger tone when failed", () => {
+    const { container } = render(
+      <TxDetailModal txDetail={stellarDepositDetail({ status: "failed" })} />,
+    );
+    expect(container.querySelector(".ep-txn-detail__hero--danger")).not.toBeNull();
+  });
+});

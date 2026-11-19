@@ -7,6 +7,7 @@
  * "Credited" when a credit/transaction row confirms the hash.
  */
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -159,7 +160,7 @@ export function useStellarCreditWatch(
   }, [hash]);
 
   const query = useQuery({
-    queryKey: ["stellar-credit-watch", hash],
+    queryKey: [QK.stellarCreditWatch, hash],
     queryFn: async () => {
       const matched = await fetchCreditMatch(hash as string);
       attemptRef.current += 1;
@@ -196,10 +197,10 @@ export function useStellarCreditWatch(
     if (!matched || phase !== "credited") return;
     if (matchedIdRef.current === matched.id) return;
     matchedIdRef.current = matched.id;
-    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-    queryClient.invalidateQueries({ queryKey: ["transactions"] });
-    queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
+    queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+    queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+    queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+    queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
   }, [matched, phase, queryClient]);
 
   return {

@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import CreateInvoiceModal from "./CreateInvoiceModal";
@@ -326,7 +327,7 @@ export default function InvoicesScreen() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ["invoices", statusFilter],
+    queryKey: [QK.invoices, statusFilter],
     queryFn: () =>
       invoicesApi.list({
         status: statusFilter || undefined,
@@ -336,28 +337,28 @@ export default function InvoicesScreen() {
   });
 
   const draftsQuery = useQuery({
-    queryKey: ["invoice-drafts"],
+    queryKey: [QK.invoiceDrafts],
     queryFn: () => invoicesApi.listDrafts(),
   });
 
   const summaryQuery = useQuery({
-    queryKey: ["invoices-summary"],
+    queryKey: [QK.invoicesSummary],
     queryFn: fetchInvoiceSummary,
   });
 
   const customersQuery = useQuery({
-    queryKey: ["invoice-customers"],
+    queryKey: [QK.invoiceCustomers],
     queryFn: fetchInvoiceCustomers,
   });
 
   const detailQuery = useQuery({
-    queryKey: ["invoice", selectedId],
+    queryKey: [QK.invoice, selectedId],
     queryFn: () => invoicesApi.get(selectedId!),
     enabled: selectedId != null,
   });
 
   const paymentsQuery = useQuery({
-    queryKey: ["invoice-payments", selectedId],
+    queryKey: [QK.invoicePayments, selectedId],
     queryFn: () => fetchInvoicePayments(selectedId!),
     enabled: selectedId != null,
   });
@@ -385,12 +386,12 @@ export default function InvoicesScreen() {
   const summaryCurrency = normalizeInvoiceDisplayCurrency(summary?.currency);
 
   async function refreshAll() {
-    await qc.invalidateQueries({ queryKey: ["invoices"] });
-    await qc.invalidateQueries({ queryKey: ["invoices-summary"] });
-    await qc.invalidateQueries({ queryKey: ["invoice-drafts"] });
+    await qc.invalidateQueries({ queryKey: [QK.invoices] });
+    await qc.invalidateQueries({ queryKey: [QK.invoicesSummary] });
+    await qc.invalidateQueries({ queryKey: [QK.invoiceDrafts] });
     if (selectedId != null) {
-      await qc.invalidateQueries({ queryKey: ["invoice", selectedId] });
-      await qc.invalidateQueries({ queryKey: ["invoice-payments", selectedId] });
+      await qc.invalidateQueries({ queryKey: [QK.invoice, selectedId] });
+      await qc.invalidateQueries({ queryKey: [QK.invoicePayments, selectedId] });
     }
   }
 

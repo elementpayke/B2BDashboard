@@ -1,0 +1,12 @@
+/* Intentionally NOT imported anywhere.
+
+   components.json points the shadcn CLI here so `shadcn add` (CLI or MCP)
+   can write its default theme variables without touching our real theme.
+   Our Tailwind colour names already follow shadcn conventions (primary,
+   muted-foreground, border, ring…) and map to Mboka tokens in
+   design/tokens.json, so added components render on-brand as-is.
+
+   After `shadcn add`: if the component uses a colour name we don't define
+   (e.g. `sidebar-*`, `chart-*`), add it to the `tailwind.color` map in
+   design/tokens.json and run `npm run tokens` — don't import this file.
+   Rename new files to PascalCase to match components/ui. */

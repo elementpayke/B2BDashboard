@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Design tokens are generated from design/tokens.json
+        run: npm run tokens:check
+
+      - name: API types match the committed Mboka spec snapshot
+        run: npm run api:check
+
+      - name: Typecheck (root + strict new code)
+        run: npm run typecheck
+
+      - name: Lint (0 errors; warnings are tracked legacy debt)
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Storybook builds
+        run: npm run build-storybook -- --quiet

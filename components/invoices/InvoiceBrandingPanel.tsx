@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoiceBrandingApi, readLogoFile } from "@/lib/services/invoiceBranding";
@@ -13,7 +14,7 @@ export default function InvoiceBrandingPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const brandingQuery = useQuery({
-    queryKey: ["invoice-branding"],
+    queryKey: [QK.invoiceBranding],
     queryFn: () => invoiceBrandingApi.get(),
     retry: false,
   });
@@ -42,7 +43,7 @@ export default function InvoiceBrandingPanel() {
     },
     onSuccess: () => {
       setError(null);
-      void qc.invalidateQueries({ queryKey: ["invoice-branding"] });
+      void qc.invalidateQueries({ queryKey: [QK.invoiceBranding] });
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Could not save branding"),
   });

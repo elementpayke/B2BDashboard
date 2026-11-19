@@ -10,6 +10,7 @@
 // reading the original unpaginated endpoint unchanged; this hook only
 // backs the Transactions screen's filter chips + Prev/Next controls.
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { transactionsApi, type TransactionStatus } from "@/lib/services/transactions";
@@ -32,7 +33,7 @@ export function useTransactionsPage(
   }, [status]);
 
   const query = useQuery({
-    queryKey: ["transactions-page", status, offset],
+    queryKey: [QK.transactionsPage, status, offset],
     queryFn: () => transactionsApi.listPage({ status, limit: TRANSACTIONS_PAGE_SIZE, offset }),
     placeholderData: keepPreviousData,
     enabled,

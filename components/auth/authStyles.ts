@@ -1,21 +1,22 @@
 import type { CSSProperties } from "react";
+import { BRAND, FEEDBACK, SHADOW, THEME_LIGHT } from "@/lib/theme/tokens.generated";
 
 // Light-theme palette for auth pages (outside dashboard theme toggle).
 // Touch-friendly sizing for mobile keyboards and 44px+ targets.
 // Brand aligned to the v2 design handoff (#3B2ED3).
 
-export const AUTH_INDIGO = "#3B2ED3";
-export const AUTH_INK = "#131126";
-export const AUTH_MUTED = "#4C4A66";
+export const AUTH_INDIGO = BRAND.indigo;
+export const AUTH_INK = BRAND.ink;
+export const AUTH_MUTED = THEME_LIGHT["--muted"];
 /** Soft secondary text — darkened for ≥4.5:1 on the auth canvas `#F6F4EF`. */
-export const AUTH_MUTED_SOFT = "#6B6980";
+export const AUTH_MUTED_SOFT = FEEDBACK.mutedSoft;
 
 export const authPageStyle: CSSProperties = {
   minHeight: "100dvh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "#F6F4EF",
+  background: BRAND.bone,
   fontFamily: "'DM Sans',sans-serif",
   padding: "16px",
   paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -24,14 +25,14 @@ export const authPageStyle: CSSProperties = {
 export const authCardStyle: CSSProperties = {
   width: "100%",
   maxWidth: "420px",
-  background: "#FFFFFF",
-  border: "1px solid rgba(19,17,38,0.08)",
+  background: THEME_LIGHT["--panel"],
+  border: `1px solid ${THEME_LIGHT["--border"]}`,
   borderRadius: "24px",
   padding: "28px 24px",
   display: "flex",
   flexDirection: "column",
   gap: "16px",
-  boxShadow: "0 12px 40px rgba(19,17,38,0.06)",
+  boxShadow: SHADOW.auth,
 };
 
 /* The brand lockup lives in components/brand/AuthBrand.tsx — the old
@@ -78,8 +79,8 @@ export const authInputStyle: CSSProperties = {
   // authInputErrorStyle's borderColor otherwise warns on rerender.
   borderWidth: "1.5px",
   borderStyle: "solid",
-  borderColor: "rgba(19,17,38,0.11)",
-  background: "#FFFFFF",
+  borderColor: THEME_LIGHT["--input-border"],
+  background: THEME_LIGHT["--input-bg"],
   outline: "none",
   fontSize: "16px",
   color: AUTH_INK,
@@ -90,8 +91,8 @@ export const authInputStyle: CSSProperties = {
 /** Error-border variant — pair with aria-invalid on the field. */
 export const authInputErrorStyle: CSSProperties = {
   ...authInputStyle,
-  borderColor: "rgba(229,72,77,0.55)",
-  background: "#FFF8F8",
+  borderColor: FEEDBACK.errorFieldBorder,
+  background: FEEDBACK.errorFieldBg,
 };
 
 /** Alias used by login/forgot forms. */
@@ -103,7 +104,7 @@ export const authButtonStyle: CSSProperties = {
   borderRadius: "14px",
   border: "none",
   background: AUTH_INDIGO,
-  color: "#fff",
+  color: THEME_LIGHT["--indigo-on"],
   fontFamily: "'Space Grotesk',sans-serif",
   fontSize: "14px",
   fontWeight: 700,
@@ -128,23 +129,23 @@ export function authButtonStateStyle(disabled: boolean): CSSProperties {
 export const authErrorStyle: CSSProperties = {
   padding: "12px 14px",
   borderRadius: "12px",
-  background: "#FCEBEC",
-  color: "#C81E24",
+  background: THEME_LIGHT["--red-tint"],
+  color: FEEDBACK.errorText,
   fontSize: "13px",
   fontWeight: 600,
   lineHeight: 1.45,
-  border: "1px solid rgba(229,72,77,0.18)",
+  border: `1px solid ${FEEDBACK.errorBannerBorder}`,
 };
 
 export const authSuccessStyle: CSSProperties = {
   padding: "12px 14px",
   borderRadius: "12px",
-  background: "#E8F7EE",
-  color: "#1B7A3D",
+  background: FEEDBACK.successBg,
+  color: FEEDBACK.successText,
   fontSize: "13px",
   fontWeight: 600,
   lineHeight: 1.45,
-  border: "1px solid rgba(27,122,61,0.16)",
+  border: `1px solid ${FEEDBACK.successBorder}`,
 };
 
 export const authFooterStyle: CSSProperties = {
