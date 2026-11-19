@@ -75,8 +75,8 @@ export function isCollectSwap(transaction: { source?: string | null }): boolean 
 /** Plain-language stage for a CCTP deposit that has not settled yet. */
 export function collectStagePhrase(stage?: string | null, sourceChain?: string | null, destChain?: string | null): string {
   const value = (stage || "").trim().toLowerCase();
-  const source = sourceChain ? sourceChain.trim().toUpperCase() : "SOURCE";
-  const dest = destChain ? destChain.trim().toUpperCase() : "STELLAR";
+  const source = sourceChain?.trim() ? formatNetworkLabel(sourceChain) : "source chain";
+  const dest = destChain?.trim() ? formatNetworkLabel(destChain) : "Stellar";
 
   // Corridor bridge lifecycle (post-settlement OnRamp → Collect).
   if (value === "fiat_received") return "Fiat received";
@@ -313,10 +313,12 @@ export function presentTransaction(transaction: Transaction): TransactionPresent
     ? [workflowLabel, networkName, accountNumber, dateLabel]
     : [dateLabel];
   if (collect) {
+    // Collect rows carry their source chain in `crypto_network`; the credit lands on Stellar.
+    const collectSource = transaction.source_chain || transaction.crypto_network;
     metaParts.unshift(
       transaction.status === "completed"
-        ? `from ${(transaction.source_chain || "").trim().toUpperCase() || "BASE"}`
-        : collectStagePhrase(transaction.stage, transaction.source_chain, transaction.crypto_network),
+        ? `from ${collectSource?.trim() ? formatNetworkLabel(collectSource) : "Base"}`
+        : collectStagePhrase(transaction.stage, collectSource),
     );
   }
   if (swap) {
