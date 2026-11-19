@@ -96,6 +96,8 @@ export type RequestOptions = {
    * `lib/server/mbokaProxy.ts` only strips auth/hop-by-hop headers, so a
    * custom header set here rides through to the backend untouched. */
   headers?: Record<string, string>;
+  /** Browser HTTP cache mode for this request (default: the browser's). */
+  cache?: RequestCache;
 };
 
 async function envelopeFromResponse<T>(res: Response): Promise<T> {
@@ -140,6 +142,7 @@ export async function apiEnvelope<T>(
     method,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     headers: options?.headers,
+    ...(options?.cache ? { cache: options.cache } : {}),
   });
   return envelopeFromResponse<T>(res);
 }
