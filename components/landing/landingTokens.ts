@@ -1,58 +1,31 @@
-/**
- * Exact design tokens for the Mboka marketing landing page — lifted verbatim
- * from the approved design handoff (`landing.html`'s `:root` / `[data-theme]`
- * rules). Deliberately separate from the dashboard's shared LIGHT/DARK tokens
- * in components/mockData.ts: a couple of values (muted2/muted3, the dedicated
- * --landing-bg vs --bg split for the dark "soft panel on black" effect) only
- * exist on this page, and keeping them local avoids any risk of this page's
- * styling drifting the rest of the app if either set is edited later.
- */
-export const LANDING_LIGHT: Record<string, string> = {
-  "--landing-bg": "#F6F4EF",
-  "--bg": "#F6F4EF",
-  "--surface": "rgba(255,255,255,0.55)",
-  "--surface2": "rgba(19,17,38,0.045)",
-  "--border": "rgba(19,17,38,0.08)",
-  "--glass-border": "rgba(19,17,38,0.08)",
-  "--ink": "#131126",
-  "--muted": "#4C4A66",
-  "--muted2": "#6E6C8A",
-  "--muted3": "#8B89A6",
-  "--indigo": "#3B2ED3",
-  "--indigo-on": "#fff",
-  "--indigo-text": "#3B2ED3",
-  "--indigo-tint": "#EEEDFB",
-  "--panel": "#FFFFFF",
-};
+import {
+  BRAND,
+  THEME_LANDING_DARK,
+  THEME_LANDING_LIGHT,
+} from "@/lib/theme/tokens.generated";
 
-export const LANDING_DARK: Record<string, string> = {
-  "--landing-bg": "rgba(255,255,255,0.045)",
-  "--bg": "#000",
-  "--surface": "rgba(255,255,255,0.045)",
-  "--surface2": "rgba(255,255,255,0.055)",
-  "--border": "rgba(255,255,255,0.1)",
-  "--glass-border": "rgba(255,255,255,0.1)",
-  "--ink": "#F2F0FA",
-  "--muted": "#B4B1D0",
-  "--muted2": "#8E8BAB",
-  "--muted3": "#807D9E",
-  "--indigo": "#7C6FFF",
-  "--indigo-on": "#0E0D1C",
-  "--indigo-text": "#A79EFF",
-  "--indigo-tint": "#221E4A",
-  "--panel": "#121116",
-};
+/**
+ * Design tokens for the Mboka marketing landing page, from the approved
+ * landing handoff. The values live in design/tokens.json under
+ * `theme.landing-light` / `theme.landing-dark` — deliberately separate from
+ * the dashboard themes: a couple of values (muted2/muted3, the dedicated
+ * --landing-bg vs --bg split for the dark "soft panel on black" effect) only
+ * exist on this page, so landing tweaks can't drift the rest of the app.
+ */
+export const LANDING_LIGHT: Record<string, string> = THEME_LANDING_LIGHT;
+
+export const LANDING_DARK: Record<string, string> = THEME_LANDING_DARK;
 
 /** Brand palette used on capability cards (not theme-dependent). */
 export const LANDING_BRAND = {
-  indigo: "#3B2ED3",
-  amber: "#FFB224",
-  violet: "#7C6FFF",
-  ink: "#131126",
-  mint: "#5ED6B4",
-  coral: "#FF6A55",
-  positive: "#0E7A5A",
-  positiveOnDark: "#0E9A70",
+  indigo: BRAND.indigo,
+  amber: BRAND.amber,
+  violet: BRAND.violet,
+  ink: BRAND.ink,
+  mint: BRAND.mint,
+  coral: BRAND.coral,
+  positive: BRAND.positive,
+  positiveOnDark: BRAND.positiveOnDark,
 } as const;
 
 /** Rotating hero headline words, synced 1:1 with the hero visual scenes. */

@@ -2,6 +2,49 @@
    Breakpoints: mobile <640 | tablet 640–1023 | desktop ≥1024 | large ≥1440
 */
 
+/* ── Design system wiring ───────────────────────────────────────────
+   Tokens come from design/tokens.json → app/tokens.generated.css
+   (`npm run tokens`). Tailwind v4 is loaded WITHOUT preflight so the
+   legacy .ep-* styles below render exactly as before, and utilities are
+   only generated for the folders listed in @source — new, token-based
+   code. Legacy .ep-* rules are unlayered, so they still win over any
+   utility. When a screen is migrated off .ep-*, add its folder here. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./tokens.generated.css";
+
+@source "../components/ui";
+@source "../components/patterns";
+@source "../features";
+@source "../.storybook";
+
+/* Scoped preflight. Tailwind's global reset is off (it would restyle legacy
+   screens that rely on browser defaults), so design-system components reset
+   themselves: every element marked data-slot — all components/ui and
+   components/patterns roots, and new feature screen roots — plus its
+   descendants. Lowest priority (base layer + :where), so utilities win. */
+@layer base {
+  :where([data-slot], [data-slot] *) {
+    margin: 0;
+  }
+  :where(button[data-slot], [data-slot] button) {
+    border: 0 solid;
+    background-color: transparent;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+  }
+  :where(input[data-slot], [data-slot] input, [data-slot] textarea, [data-slot] select) {
+    font: inherit;
+    color: inherit;
+  }
+  :where([data-slot] ul, [data-slot] ol) {
+    list-style: none;
+    padding: 0;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -10,30 +53,6 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-}
-
-/* Light-theme defaults so brand tokens resolve outside the dashboard root
-   (auth pages, printed documents). DashboardApp / Landing also sync the
-   active palette onto document.documentElement so portaled overlays
-   (ChoicePicker sheets) inherit dark mode. Values mirror LIGHT in
-   components/mockData.ts and the brand kit's four colour tokens:
-   indigo #3B2ED3 · indigo lift #7C6FFF (dark only) · ink #131126 ·
-   bone #F6F4EF (never pure white). */
-:root {
-  --bg: #f6f4ef;
-  --surface2: rgba(19, 17, 38, 0.045);
-  --surface3: rgba(19, 17, 38, 0.09);
-  --border: rgba(19, 17, 38, 0.08);
-  --panel: #ffffff;
-  --ink: #131126;
-  --muted: #4c4a66;
-  --muted2: #8b89a6;
-  --indigo: #3b2ed3;
-  --indigo-on: #fff;
-  --indigo-text: #3b2ed3;
-  --indigo-tint: #eeedfb;
-  --ink-panel: #131126;
-  --ink-panel-text: #c4c2dc;
 }
 
 body {
