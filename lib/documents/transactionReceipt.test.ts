@@ -251,3 +251,38 @@ describe("renderBrandedDocument", () => {
     expect(html).toContain('fill-opacity="0.45"');
   });
 });
+
+describe("status record for unsettled transactions", () => {
+  it("builds a labelled status record — never a receipt — while pending", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "processing" });
+    expect(doc.heading).toBe("Payout status");
+    expect(doc.heading).not.toMatch(/receipt/i);
+    expect(doc.statusBadge).toBe("Pending");
+    expect(doc.statusTone).toBe("warning");
+    expect(doc.subheading).toMatch(/not a proof of payment/);
+    const refs = doc.sections.find((s) => s.title === "References")!.rows.map((r) => r.label);
+    expect(refs).not.toContain("Receipt number");
+    expect(refs).not.toContain("Date settled");
+    expect(receiptFilename({ ...settledPayout, status: "processing" })).toBe("mboka-status-inv-2026-014");
+  });
+
+  it("marks failed transactions with the danger tone", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "failed" });
+    expect(doc.statusBadge).toBe("Failed");
+    expect(doc.statusTone).toBe("danger");
+    expect(renderBrandedDocument(doc)).toContain('class="badge badge--danger"');
+  });
+
+  it("keeps the official receipt for settled transactions", () => {
+    const doc = buildTransactionReceipt(settledPayout);
+    expect(doc.statusBadge).toBe("Settled");
+    expect(doc.statusTone).toBe("success");
+    expect(receiptFilename(settledPayout)).toBe("mboka-receipt-inv-2026-014");
+  });
+
+  it("treats an unknown status as pending, never settled", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "weird" });
+    expect(doc.statusBadge).toBe("Pending");
+    expect(doc.heading).toBe("Payout status");
+  });
+});

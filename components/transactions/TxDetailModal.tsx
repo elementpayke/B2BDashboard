@@ -1,4 +1,5 @@
 "use client";
+import MbokaLogo from "@/components/brand/MbokaLogo";
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useEffect, useId, useRef, useState } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -22,6 +23,7 @@ import { ChainIcon } from "@/components/transactions/ChainIcons";
 import {
   buildTransactionReceipt,
   isReceiptable,
+  receiptStatus,
   receiptAccountLabel,
   receiptFilename,
   receiptInstitutionLabel,
@@ -182,6 +184,47 @@ function DetailRow({
   );
 }
 
+/** Hero disc icon: tick when settled, clock while pending, cross on failure. */
+function StatusGlyph({ tone }: { tone: "success" | "warning" | "danger" | "neutral" }) {
+  const common = {
+    viewBox: "0 0 24 24",
+    width: 22,
+    height: 22,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  if (tone === "success") {
+    return (
+      <svg {...common}>
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    );
+  }
+  if (tone === "danger") {
+    return (
+      <svg {...common}>
+        <path d="M7 7l10 10M17 7L7 17" />
+      </svg>
+    );
+  }
+  if (tone === "warning") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4.5l3 1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M7 12h10" />
+    </svg>
+  );
+}
+
 function ReceiptActions({ txDetail }: { txDetail: any }) {
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -212,6 +255,8 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
 
   const doc = buildTransactionReceipt(txDetail);
   const filename = receiptFilename(txDetail);
+  // Settled → official receipt. Anything else → a status record, labelled as such.
+  const noun = isReceiptable(txDetail.status) ? "receipt" : "status";
   const payload = buildReceiptSharePayload(doc, filename);
 
   async function runShare(id: ReceiptShareMethodId) {
@@ -281,11 +326,11 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           aria-controls={menuId}
           onClick={() => setOpen((v) => !v)}
         >
-          Share receipt
+          Share {noun}
         </button>
         {open ? (
           <div className="ep-txn-detail__share-menu" id={menuId} role="menu">
-            <div className="ep-txn-detail__share-sheet-label">Share receipt</div>
+            <div className="ep-txn-detail__share-sheet-label">Share {noun}</div>
             {methods.map((m) => (
               <button
                 key={m.id}
@@ -310,7 +355,7 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           setToast("PDF saved");
         }}
       >
-        Download PDF
+        Download {noun}
       </button>
       {toast ? (
         <div className="ep-txn-detail__toast" role="status" aria-live="polite">
@@ -589,11 +634,22 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   if (created) rows.push({ label: "Time", value: created, mono: true });
   if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
+  const status = receiptStatus(txDetail.status);
+
   return (
     <div className="ep-txn-detail">
-      <header className="ep-txn-detail__hero">
+      <header className={`ep-txn-detail__hero ep-txn-detail__hero--${status.tone}`}>
+        <div className="ep-txn-detail__brand">
+          <MbokaLogo size={22} sub="Business" />
+          <span className="ep-txn-detail__brand-kind">
+            {isReceiptable(txDetail.status) ? "Payment receipt" : "Transaction status"}
+          </span>
+        </div>
+        <span className="ep-txn-detail__status-icon" aria-hidden>
+          <StatusGlyph tone={status.tone} />
+        </span>
         <div
-          className="ep-txn-detail__amount ep-mono"
+          className={`ep-txn-detail__amount ep-mono${txDetail.direction === "in" ? " ep-txn-detail__amount--in" : ""}`}
           style={{ color: txDetail.amountColor || "var(--ink)" }}
         >
           {txDetail.amount}
@@ -681,7 +737,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         ))}
       </div>
 
-      {isReceiptable(txDetail.status) && !txDetail.hideReceipt ? (
+      {!txDetail.hideReceipt ? (
         <ReceiptActions txDetail={txDetail} />
       ) : null}
     </div>

@@ -5,7 +5,7 @@ import {
   type RailKind,
 } from "@/lib/services/channelLabels";
 import type { TransactionStatus } from "@/lib/services/transactions";
-import { TRANSACTION_STATUS } from "@/lib/services/transactionStatus";
+import { TRANSACTION_STATUS, type TransactionStatusTone } from "@/lib/services/transactionStatus";
 
 /**
  * Customer-facing payment receipt for a settled transaction.
@@ -55,6 +55,18 @@ export type ReceiptTransaction = {
 export function isReceiptable(status: string | null | undefined): boolean {
   const normalized = (status || "").toLowerCase() as TransactionStatus;
   return TRANSACTION_STATUS[normalized]?.receiptEligible ?? false;
+}
+
+/**
+ * Label + tone for any status. Unknown statuses read as "Pending" — never as
+ * settled — so a document can't overstate where the money is.
+ */
+export function receiptStatus(status: string | null | undefined): {
+  label: string;
+  tone: TransactionStatusTone;
+} {
+  const d = TRANSACTION_STATUS[(status || "").toLowerCase() as TransactionStatus];
+  return d ? { label: d.label, tone: d.tone } : { label: "Pending", tone: "warning" };
 }
 
 function formatTimestamp(iso?: string | null): string | null {
@@ -191,7 +203,8 @@ export function receiptNumber(tx: ReceiptTransaction): string {
 
 export function receiptFilename(tx: ReceiptTransaction): string {
   const ref = receiptNumber(tx);
-  return `mboka-receipt-${ref}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
+  const kind = isReceiptable(tx.status) ? "receipt" : "status";
+  return `mboka-${kind}-${ref}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
 }
 
 /**
@@ -293,8 +306,32 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
     });
   }
   if (created) referenceRows.push({ label: "Date initiated", value: created });
+  const isSettled = isReceiptable(tx.status);
   if (settled && settled !== created) {
-    referenceRows.push({ label: "Date settled", value: settled });
+    referenceRows.push({ label: isSettled ? "Date settled" : "Last updated", value: settled });
+  }
+
+  if (!isSettled) {
+    // Not settled: a status record, never a receipt. Different title, number
+    // label and filename so it can't be passed off as proof of payment.
+    const status = receiptStatus(tx.status);
+    referenceRows[0] = { label: "Reference", value: number, mono: true };
+    return {
+      fileTitle: `Mboka — ${kind.toLowerCase()} status`,
+      heading: `${kind} status`,
+      subheading: `This ${kind.toLowerCase()} is ${status.label.toLowerCase()}. This is a status record, not a proof of payment.`,
+      statusBadge: status.label,
+      statusTone: status.tone,
+      amount: formatMoney(tx.amount_fiat, tx.currency),
+      amountCaption: "Amount",
+      party,
+      sections: [
+        { title: "Payment", rows: paymentRows },
+        { title: "References", rows: referenceRows },
+      ],
+      footnote: "A receipt is available once the payment settles.",
+      documentKind: "status record",
+    };
   }
 
   return {
@@ -303,6 +340,7 @@ export function buildTransactionReceipt(tx: ReceiptTransaction): BrandedDocument
     subheading:
       "Official confirmation of a settled payment on your Mboka business account.",
     statusBadge: "Settled",
+    statusTone: "success",
     amount: formatMoney(tx.amount_fiat, tx.currency),
     amountCaption: isOut ? "Amount sent" : "Amount received",
     party,

@@ -37,6 +37,8 @@ export type BrandedDocument = {
   subheading?: string;
   /** Optional status chip under the heading (e.g. Settled). */
   statusBadge?: string;
+  /** Colour of the status chip. Defaults to success. */
+  statusTone?: "success" | "warning" | "danger" | "neutral";
   /** Hero figure — the amount on a receipt. Omitted on letters. */
   amount?: string;
   amountCaption?: string;
@@ -281,8 +283,13 @@ export function renderBrandedDocument(
     --muted:#4C4A66;
     --muted2:#8B89A6;
     --line:rgba(19,17,38,0.10);
-    --success:#0F7A4A;
-    --success-tint:#E6F6EE;
+    /* Settled / paid = indigo (design/BRAND.md). */
+    --success:#3B2ED3;
+    --success-tint:#EEEDFB;
+    --warning:#8A5B00;
+    --warning-tint:#FBF2DE;
+    --danger:#C42A2F;
+    --danger-tint:#FCEBEC;
   }
   * { box-sizing:border-box; }
   body {
@@ -370,6 +377,9 @@ export function renderBrandedDocument(
     padding:5px 11px; border-radius:999px; font-size:12px; font-weight:700;
     background:var(--success-tint); color:var(--success);
   }
+  .badge--warning { background:var(--warning-tint); color:var(--warning); }
+  .badge--danger { background:var(--danger-tint); color:var(--danger); }
+  .badge--neutral { background:rgba(19,17,38,0.06); color:var(--muted); }
   .badge::before {
     content:""; width:7px; height:7px; border-radius:50%; background:currentColor;
   }
@@ -472,7 +482,7 @@ export function renderBrandedDocument(
       <h1>${esc(doc.heading)}</h1>
       ${doc.subheading ? `<p class="sub">${esc(doc.subheading)}</p>` : ""}
       ${doc.intro ? `<p class="sub letter-intro">${esc(doc.intro)}</p>` : ""}
-      ${doc.statusBadge ? `<span class="badge">${esc(doc.statusBadge)}</span>` : ""}
+      ${doc.statusBadge ? `<span class="badge${doc.statusTone && doc.statusTone !== "success" ? ` badge--${doc.statusTone}` : ""}">${esc(doc.statusBadge)}</span>` : ""}
     </header>
     ${
       doc.amount

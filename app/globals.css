@@ -15677,11 +15677,72 @@ button.ep-card-face:focus-visible {
   color: var(--ink);
 }
 
+/* Hero: Mboka letterhead + status-tinted panel. Tone comes from
+   lib/services/transactionStatus.ts (success = indigo, warning = amber,
+   danger = red, neutral = grey) — the same mapping as badges and PDFs. */
 .ep-txn-detail__hero {
-  padding: 24px 20px;
-  background: linear-gradient(135deg, var(--surface2) 0%, var(--surface3) 100%);
-  border-bottom: 1px solid var(--border);
+  --hero-tone: var(--muted);
+  --hero-tint: var(--surface2);
+  position: relative;
+  padding: 16px 20px 22px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--hero-tint) 0%, transparent 70%),
+    var(--panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--hero-tone);
+  border-radius: 22px;
   margin: 0;
+}
+
+.ep-txn-detail__hero--success { --hero-tone: var(--success); --hero-tint: var(--success-tint); --hero-text: var(--indigo-text); }
+.ep-txn-detail__hero--warning { --hero-tone: var(--amber); --hero-tint: var(--amber-tint); --hero-text: var(--amber-text); }
+.ep-txn-detail__hero--danger  { --hero-tone: var(--red); --hero-tint: var(--red-tint); --hero-text: var(--red-text); }
+.ep-txn-detail__hero--neutral { --hero-tone: var(--muted2); --hero-tint: var(--surface2); --hero-text: var(--muted); }
+
+.ep-txn-detail__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px dashed var(--border);
+  color: var(--ink);
+  text-align: left;
+}
+
+.ep-txn-detail__brand-kind {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-txn-detail__status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  color: var(--hero-tone);
+  background: var(--hero-tint);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--hero-tint) 55%, transparent);
+}
+
+.ep-txn-detail__hero--success .ep-txn-detail__status-icon {
+  color: var(--indigo-on);
+  background: var(--success);
+}
+
+.ep-txn-detail__hero--warning .ep-txn-detail__status-icon svg {
+  animation: ep-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-txn-detail__hero--warning .ep-txn-detail__status-icon svg { animation: none; }
 }
 
 .ep-txn-detail__amount {
@@ -15690,6 +15751,15 @@ button.ep-card-face:focus-visible {
   color: var(--ink) !important;
   margin-bottom: 8px;
   letter-spacing: -0.01em;
+}
+
+/* Green only once incoming money has actually settled. */
+.ep-txn-detail__hero--success .ep-txn-detail__amount--in {
+  color: var(--positive) !important;
+}
+
+.ep-txn-detail__hero--danger .ep-txn-detail__amount {
+  color: var(--muted) !important;
 }
 
 .ep-txn-detail__party {
@@ -15910,11 +15980,12 @@ button.ep-card-face:focus-visible {
   color: var(--ink);
 }
 
-/* Better badge styling inside modal */
+/* Badge inside the detail hero follows the status tone (was hard-coded amber
+   for every status). Text uses the AA-safe -text shades. */
 .ep-txn-detail .ep-activity__badge {
-  background: color-mix(in srgb, var(--amber) 12%, var(--panel)) !important;
-  color: var(--amber) !important;
-  border: 1px solid color-mix(in srgb, var(--amber) 20%, var(--border));
+  background: var(--hero-tint, var(--surface2)) !important;
+  color: var(--hero-text, var(--muted)) !important;
+  border: 1px solid color-mix(in srgb, var(--hero-tone, var(--muted)) 22%, var(--border));
   padding: 6px 10px;
   border-radius: 20px;
 }

@@ -11,6 +11,13 @@ const INDIGO: [number, number, number] = [59, 46, 211];
 const INK: [number, number, number] = [19, 17, 38];
 const MUTED: [number, number, number] = [76, 74, 102];
 const TINT: [number, number, number] = [238, 237, 251];
+/** Status chip colours — text-safe shades from design/tokens.json (settled = indigo). */
+const STATUS_RGB: Record<string, [number, number, number]> = {
+  success: INDIGO,
+  warning: [138, 91, 0],
+  danger: [196, 42, 47],
+  neutral: MUTED,
+};
 
 /** `public/brand/mboka-mark.svg`'s two overlapping quads, pre-blended for
  * the 45%-opacity back shape so it renders identically without relying on
@@ -120,7 +127,7 @@ export function buildReceiptPdfBlob(
   if (receipt.statusBadge) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 122, 74);
+    doc.setTextColor(...(STATUS_RGB[receipt.statusTone ?? "success"] ?? INDIGO));
     doc.text(receipt.statusBadge.toUpperCase(), margin, y);
     y += 18;
   }
