@@ -223,8 +223,24 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
     picked.provider || (p.sendIsCrypto ? chains.length === 1 : providers.length <= 1);
 
   const isPhone = /phone|mobile/i.test(p.sendRecipientLabel || "");
+  const extraFields = p.sendExtraFields || [];
+  const renderExtraField = (f: (typeof extraFields)[number]) => (
+    <Field key={f.key} label={f.label} error={f.error || undefined}>
+      <Input
+        className="h-14"
+        value={f.value}
+        onChange={(e) => p.setSendExtraField?.(f.key, e.target.value)}
+        placeholder={f.placeholder}
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </Field>
+  );
   const accountReady =
-    Boolean(p.sendRecipient.trim()) && (p.sendIsCrypto || Boolean(p.sendRecipientName.trim()));
+    Boolean(p.sendRecipient.trim()) &&
+    (p.sendIsCrypto || Boolean(p.sendRecipientName.trim())) &&
+    !p.sendRecipientError &&
+    extraFields.every((f) => Boolean(f.value.trim()) && !f.error);
   const amountReady =
     accountReady &&
     Boolean(p.sendAmount.trim()) &&
@@ -742,12 +758,22 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
       </>
     );
   } else if (step === "provider") {
-    const noun = p.sendIsMobileRail ? "provider" : "bank";
+    const noun = p.sendIsMobileRail ? "provider" : p.sendProviderIsRail ? "transfer type" : "bank";
     body = (
       <>
         <StepHeading
-          title={p.sendIsMobileRail ? "Which provider?" : "Which bank?"}
-          sub={`Pick the recipient’s ${p.sendIsMobileRail ? "mobile money provider" : "bank"} in ${p.sendCountryName}.`}
+          title={
+            p.sendIsMobileRail
+              ? "Which provider?"
+              : p.sendProviderIsRail
+                ? "How should it be sent?"
+                : "Which bank?"
+          }
+          sub={
+            p.sendProviderIsRail
+              ? `Pick the transfer type for this ${p.sendCountryName} payment. It is paid from your balance.`
+              : `Pick the recipient’s ${p.sendIsMobileRail ? "mobile money provider" : "bank"} in ${p.sendCountryName}.`
+          }
           onBack={() => go("place")}
           chips={chips}
         />
@@ -786,8 +812,14 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
         ) : (
           <ChoicePicker
             id="send-provider"
-            label={p.sendIsMobileRail ? "Provider" : "Bank"}
-            title={p.sendIsMobileRail ? "Choose a provider" : "Choose a bank"}
+            label={p.sendIsMobileRail ? "Provider" : p.sendProviderIsRail ? "Transfer type" : "Bank"}
+            title={
+              p.sendIsMobileRail
+                ? "Choose a provider"
+                : p.sendProviderIsRail
+                  ? "Choose a transfer type"
+                  : "Choose a bank"
+            }
             placeholder={`Select a ${noun}`}
             searchable={providers.length > 5}
             value={providerPicked ? String(p.sendProviderIdx) : ""}
@@ -846,8 +878,10 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
           onBack={() => go("provider")}
           chips={chips}
         />
+        {extraFields.filter((f) => f.lead).map(renderExtraField)}
         <Field
           label={p.sendIsCrypto ? "Wallet address" : p.sendRecipientLabel || "Account number"}
+          error={p.sendRecipientError || undefined}
           hint={
             p.sendIsCrypto
               ? `Check it accepts ${p.sendAssetCode} on ${p.sendChainLabel}.`
@@ -890,6 +924,7 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
             autoComplete="off"
           />
         </Field>
+        {extraFields.filter((f) => !f.lead).map(renderExtraField)}
         {p.sendMemoApplies ? (
           <Field
             label="Memo (optional)"
@@ -1020,18 +1055,18 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
             <ChoicePicker
               id="send-refund-wallet"
               label="Pay from"
-              title="Choose wallet"
+              title="Choose account"
               value={p.sendRefundWalletId || ""}
               options={p.sendRefundWalletOptions || []}
               onChange={p.selectSendRefundWallet}
               loading={p.sendRefundWalletsLoading}
-              loadingLabel="Loading wallets…"
-              placeholder="Select a ready stablecoin wallet"
+              loadingLabel="Loading accounts…"
+              placeholder="Select an account to pay from"
             />
           ) : (
             <Notice tone="warning" role="note">
-              No ready stablecoin wallet to pay from yet. Open a USDT account on Polygon under Accounts
-              and wait until it is active.
+              You have no account to pay from yet. Open one under Accounts and wait until it is
+              active.
             </Notice>
           )
         ) : null}

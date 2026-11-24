@@ -742,3 +742,38 @@ describe("SendFlow — after sending", () => {
     expect(screen.getByText("Stablecoin")).toBeInTheDocument();
   });
 });
+
+describe("payout rails", () => {
+  it("names the choices as transfer types and collects the rail's extra fields", () => {
+    const setExtra = vi.fn();
+    render(
+      <SendFlow
+        {...baseProps({
+          sendProviderIsRail: true,
+          sendProviderOptions: ["ACH", "Wire transfer"],
+          sendRecipient: "1234567890",
+          sendRecipientName: "Jane Mukami",
+          sendExtraFields: [
+            { key: "routing_number", label: "Routing number", placeholder: "9 digits", value: "" },
+            { key: "bank_name", label: "Bank name", value: "Chase" },
+          ],
+          setSendExtraField: setExtra,
+        })}
+      />,
+    );
+    click(/Bank account/);
+    choose(/^Country:/, /Kenya/);
+    click("Continue");
+    expect(heading("How should it be sent?")).toBeInTheDocument();
+    choose(/^Transfer type:/, "ACH");
+    click("Continue");
+
+    expect(heading("Who gets it?")).toBeInTheDocument();
+    const routing = screen.getByPlaceholderText("9 digits");
+    fireEvent.change(routing, { target: { value: "021000021" } });
+    expect(setExtra).toHaveBeenCalledWith("routing_number", "021000021");
+    // An empty rail field keeps the step from continuing.
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+  });
+});
+

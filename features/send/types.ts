@@ -121,6 +121,23 @@ export type SendFlowProps = {
   sendRecipientName: string;
   setSendRecipientName: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendRecipientLabel: string;
+  /** True when the choices are transfer types (ACH, wire, SWIFT) paid from a
+   * held balance, not banks. */
+  sendProviderIsRail?: boolean;
+  /** Extra recipient inputs the chosen rail needs (routing number, bank name …). */
+  sendExtraFields?: {
+    key: string;
+    label: string;
+    placeholder?: string;
+    value: string;
+    /** Shown before the account number (routing number, SWIFT/BIC). */
+    lead?: boolean;
+    /** Why the typed value cannot be right (bad routing number, BIC …). */
+    error?: string | null;
+  }[];
+  /** Why the account box cannot be right (an IBAN that fails its checksum). */
+  sendRecipientError?: string | null;
+  setSendExtraField?: (key: string, value: string) => void;
   sendRecipient: string;
   setSendRecipient: (e: React.ChangeEvent<HTMLInputElement>) => void;
   /** When mobile money — rewrite local 07… to +254… (E.164) on blur. */

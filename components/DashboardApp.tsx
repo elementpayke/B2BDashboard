@@ -154,7 +154,20 @@ import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
 import {
   failureMessage as unifiedFailureMessage,
   feeText as unifiedFeeText,
+  accountBoxError,
+  defaultSendSource,
+  eligibleSendSources,
+  extraFieldError,
   findPayoutDestination,
+  invalidExtraField,
+  isUsdLike,
+  missingExtraField,
+  payableCorridors,
+  payoutRailDestinations,
+  payoutSource,
+  recipientDetails,
+  recipientExtraFields,
+  sendSourceLabel,
   findWalletDestination,
   isQuoteExpired as isUnifiedQuoteExpired,
   moneyText as unifiedMoneyText,
@@ -434,7 +447,7 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendUnifiedQuote: null as any, sendUnified: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
@@ -814,8 +827,12 @@ export default function DashboardApp(props: Props = {}) {
 
   // Settled once the first catalog fetch finishes (success or error).
   const sendCatalogSettled = sendCatalogQuery.isFetched;
+  // With unified sends the country list also depends on the send options, so
+  // it is not ready until they have loaded (otherwise it would reshuffle).
   const sendCatalogLoading =
-    !sendCatalogSettled || (sendCatalogQuery.isFetching && !sendCatalogQuery.data);
+    !sendCatalogSettled ||
+    (sendCatalogQuery.isFetching && !sendCatalogQuery.data) ||
+    (unifiedSendsEnabled() && state.modal === "send" && sendOptionsQuery.isLoading);
   const sendCatalogError =
     sendCatalogQuery.isError && !sendCatalogQuery.data
       ? sendCatalogQuery.error instanceof Error
@@ -826,13 +843,45 @@ export default function DashboardApp(props: Props = {}) {
     void sendCatalogQuery.refetch();
   };
   // Live corridors only — never the hardcoded mock COUNTRIES list.
-  const sendCountries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+  // Unified sends: a bare currency (CAD, EUR …) is listed only when one of the
+  // business's balances has a live rail for it. Its catalog "providers" are
+  // conversion routes, not banks, so there is nothing to pick otherwise.
+  const sendCountriesFromCatalog = (catalog: typeof sendCatalogQuery.data) => {
+    const all = offRampCountriesFromCatalog(catalog);
+    if (!unifiedSendsEnabled()) return all;
+    const countryIsos = Object.entries(catalog?.offramp?.countries ?? {})
+      .filter(([, country]) => country?.enabled)
+      .map(([iso]) => iso);
+    return payableCorridors(all, countryIsos, sendOptionsQuery.data);
+  };
+  const sendCountries = sendCountriesFromCatalog(sendCatalogQuery.data);
   const depositCountries = onRampCountriesFromCatalog(sendCatalogQuery.data);
+  // Unified sends: a currency the business holds a balance in (USD …) is paid
+  // by rail (ACH, wire, SWIFT) straight from that balance, not by converting
+  // from a stablecoin wallet. Real off-ramp countries keep the catalog's bank
+  // list. Null means "use the catalog".
+  const sendPayoutContext = (countryIdx: number, railIdx: number, providerIdx: number) => {
+    if (!unifiedSendsEnabled()) return null;
+    const country = sendCountries[countryIdx];
+    if (!country) return null;
+    const rail = country.rails[railIdx] || country.rails[0];
+    if (!rail || rail.type !== "bank") return null;
+    if (sendCatalogQuery.data?.offramp?.countries?.[country.iso.toUpperCase()]?.enabled) return null;
+    const rails = payoutRailDestinations(sendOptionsQuery.data, country.code);
+    if (rails.length === 0) return null;
+    const destination = rails[Math.min(Math.max(providerIdx, 0), rails.length - 1)];
+    return {
+      rails,
+      destination,
+      source: payoutSource(sendOptionsQuery.data, destination),
+      fields: recipientExtraFields(destination),
+    };
+  };
 
   // When the catalog (or corridor) changes the provider list, clamp the
   // selection so sendProviderIdx never points past the active options.
   useEffect(() => {
-    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    const countries = sendCountriesFromCatalog(sendCatalogQuery.data);
     const country = countries[state.sendCountryIdx];
     if (!country) return;
     const rail = country.rails[state.sendRailIdx] || country.rails[0];
@@ -843,20 +892,27 @@ export default function DashboardApp(props: Props = {}) {
       rail.type,
       country.code,
     );
-    const options = providerNamesFromCatalog(catalogProviders);
+    const payoutCtx = sendPayoutContext(state.sendCountryIdx, state.sendRailIdx, 0);
+    const options = payoutCtx
+      ? payoutCtx.rails.map((d) => d.name)
+      : providerNamesFromCatalog(catalogProviders);
     if (!options.length) return;
     setState((s: any) => {
       if (s.sendProviderIdx < options.length) return {};
       return { sendProviderIdx: options.length - 1 };
     });
-  }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
+    // sendPayoutContext reads the two queries listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendCatalogQuery.data, sendOptionsQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
 
   useEffect(() => {
-    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    const countries = sendCountriesFromCatalog(sendCatalogQuery.data);
     if (!countries.length) return;
     if (state.sendCountryIdx < countries.length) return;
     setState({ sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0 });
-  }, [sendCatalogQuery.data, state.sendCountryIdx, setState]);
+    // sendCountriesFromCatalog also reads the send options listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendCatalogQuery.data, sendOptionsQuery.data, state.sendCountryIdx, setState]);
 
   useEffect(() => {
     const countries = onRampCountriesFromCatalog(sendCatalogQuery.data);
@@ -1344,7 +1400,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendUnifiedQuote: null, sendUnified: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
@@ -1454,6 +1510,44 @@ export default function DashboardApp(props: Props = {}) {
         return null;
       }
       const rail = country.rails[state.sendRailIdx] || country.rails[0];
+      const payoutCtx = sendPayoutContext(
+        state.sendCountryIdx,
+        state.sendRailIdx,
+        state.sendProviderIdx,
+      );
+      if (payoutCtx) {
+        // Paid from the held balance: no provider id and no stablecoin wallet.
+        const patch = {
+          sendStep: 2,
+          sendQuoteError: payoutCtx.source
+            ? ""
+            : `You need a ${country.code} balance to send by ${payoutCtx.destination.name}.`,
+          sendAccountId: payoutCtx.source?.account_id || "",
+          sendPreview: null,
+          sendAcceptError: "",
+        };
+        setState(patch);
+        return patch;
+      }
+      if (unifiedSendsEnabled()) {
+        // Any account can pay; the amount step lets the user choose which.
+        const chosen = defaultSendSource(
+          eligibleSendSources(sendOptionsQuery.data, null),
+          state.sendAccountId,
+        );
+        const patch = {
+          sendStep: 2,
+          sendQuoteError:
+            chosen || sendOptionsQuery.isLoading
+              ? ""
+              : "You have no account to pay from yet. Open one under Accounts.",
+          sendAccountId: chosen?.account_id || "",
+          sendPreview: null,
+          sendAcceptError: "",
+        };
+        setState(patch);
+        return patch;
+      }
       const providers = offRampProvidersForRail(
         sendCatalogQuery.data,
         country.iso,
@@ -1569,6 +1663,140 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
+        const payoutCtx = sendPayoutContext(
+          state.sendCountryIdx,
+          state.sendRailIdx,
+          state.sendProviderIdx,
+        );
+        if (payoutCtx) {
+          const payCcy = payoutCtx.destination.currency.toUpperCase();
+          if (!payoutCtx.source) {
+            throw new Error(`You need a ${payCcy} balance to send by ${payoutCtx.destination.name}.`);
+          }
+          const missing = missingExtraField(payoutCtx.fields, state.sendRecipientDetails);
+          if (missing) {
+            throw new Error(`Enter the ${missing.label.toLowerCase()} to continue.`);
+          }
+          const invalid = invalidExtraField(payoutCtx.fields, state.sendRecipientDetails);
+          const accountError = accountBoxError(payoutCtx.fields, state.sendRecipient);
+          if (invalid || accountError) {
+            throw new Error(invalid?.message || accountError || "Check the bank details.");
+          }
+          // A rail pays out the currency it is funded in, so the amount is
+          // that currency as typed — never a converted figure.
+          const typedCcy = amountRate ? state.sendAmountCurrency : "USD";
+          const payoutAmount =
+            payCcy === "USD" ? usdAmount : typedCcy === payCcy ? state.sendAmount.trim() : null;
+          if (!payoutAmount) {
+            throw new Error(`Enter the amount in ${payCcy}.`);
+          }
+          if (payoutCtx.source.available != null) {
+            assertSufficientBalance({
+              amount: payoutAmount,
+              balance: { available: payoutCtx.source.available, currency: payCcy },
+              currency: payCcy,
+            });
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: payoutCtx.destination.id,
+            source_account_id: payoutCtx.source.account_id,
+            amount: payoutAmount,
+            amount_currency: payCcy,
+            recipient: {
+              name: state.sendRecipientName.trim(),
+              account: state.sendRecipient.trim(),
+              details: recipientDetails(payoutCtx.fields, state.sendRecipientDetails),
+            },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: payoutCtx.source.account_id,
+            sendStep: 3,
+          });
+          return;
+        }
+        if (unifiedSendsEnabled()) {
+          // One contract for every method: the user picks the account, the
+          // backend picks the route and returns a single combined price.
+          const country = sendCountries[state.sendCountryIdx];
+          if (!country) {
+            throw new Error("Supported corridors are still loading. Try again in a moment.");
+          }
+          const rail = country.rails[state.sendRailIdx] || country.rails[0];
+          const names = providerNamesFromCatalog(
+            offRampProvidersForRail(sendCatalogQuery.data, country.iso, rail.type, country.code),
+          );
+          const providerName =
+            names[Math.min(state.sendProviderIdx, Math.max(0, names.length - 1))] || "";
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findPayoutDestination(sendOptions, {
+            countryIso: country.iso,
+            railType: rail.type,
+            providerName,
+          });
+          if (!destination) {
+            throw new Error(
+              `${providerName || "That provider"} is not available right now. Pick another provider or try again shortly.`,
+            );
+          }
+          const source = defaultSendSource(
+            eligibleSendSources(sendOptions, destination),
+            state.sendAccountId,
+          );
+          if (!source) {
+            throw new Error("Choose an account to pay from, then try again.");
+          }
+          const srcCcy = source.currency.toUpperCase();
+          const dstCcy = destination.currency.toUpperCase();
+          const typedCcy = (amountRate ? state.sendAmountCurrency : "USD").toUpperCase();
+          // Typed in the destination currency: that is what the recipient
+          // gets. Typed in USD: that is what leaves a dollar-pegged account.
+          let quoteAmount: string;
+          let quoteCurrency: string;
+          if (typedCcy === dstCcy) {
+            quoteAmount = state.sendAmount.trim();
+            quoteCurrency = dstCcy;
+          } else if (isUsdLike(srcCcy)) {
+            quoteAmount = usdAmount;
+            quoteCurrency = srcCcy;
+          } else {
+            throw new Error(
+              `Enter the amount in ${dstCcy} when paying from your ${srcCcy} balance.`,
+            );
+          }
+          if (quoteCurrency === srcCcy && source.available != null) {
+            assertSufficientBalance({
+              amount: quoteAmount,
+              balance: { available: source.available, currency: srcCcy },
+              currency: srcCcy,
+            });
+          }
+          const typedAccount = state.sendRecipient.trim();
+          const quoteAccount =
+            rail.type === "mobile" ? toE164(typedAccount, country.dialCode) : typedAccount;
+          if (quoteAccount !== typedAccount) setState({ sendRecipient: quoteAccount });
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: source.account_id,
+            amount: quoteAmount,
+            amount_currency: quoteCurrency,
+            recipient: { name: state.sendRecipientName.trim(), account: quoteAccount },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: source.account_id,
+            sendStep: 3,
+          });
+          return;
+        }
         // Prefer the selected chain's ready USDC account so the quote can
         // tag asset/network; fall back to summary or any ready USDC wallet
         // so a 500 from /dashboard/summary is not reported as unprovisioned.
@@ -1863,7 +2091,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote: null,
           sendUnifiedQuote: null,
           sendRecipient: "",
-          sendRecipientName: "",
+          sendRecipientName: "", sendRecipientDetails: {},
           sendMemo: "",
           sendAmount: "",
         };
@@ -2366,7 +2594,7 @@ export default function DashboardApp(props: Props = {}) {
       sendStep: 1,
       sendDone: false,
       sendRecipient: "",
-      sendRecipientName: "",
+      sendRecipientName: "", sendRecipientDetails: {},
       sendMemo: "",
       sendAmount: "",
       sendQuote: null,
@@ -2482,7 +2710,14 @@ export default function DashboardApp(props: Props = {}) {
       countryRail.type,
       country.code,
     );
-    const providerOptions = providerNamesFromCatalog(catalogProviders);
+    const savePayoutCtx = sendPayoutContext(
+      state.sendCountryIdx,
+      state.sendRailIdx,
+      state.sendProviderIdx,
+    );
+    const providerOptions = savePayoutCtx
+      ? savePayoutCtx.rails.map((d) => d.name)
+      : providerNamesFromCatalog(catalogProviders);
     const provider =
       state.sendGroup === "country"
         ? providerOptions[Math.min(state.sendProviderIdx, Math.max(0, providerOptions.length - 1))] ||
@@ -3908,7 +4143,7 @@ export default function DashboardApp(props: Props = {}) {
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
-      sendRecipientName: "",
+      sendRecipientName: "", sendRecipientDetails: {},
       sendMemo: "",
       sendAmount: "",
       sendAmountCurrency: "USD",
@@ -3996,7 +4231,10 @@ export default function DashboardApp(props: Props = {}) {
       sendRail.type,
       sendCountry.code,
     );
-    const sendProviderOptions = providerNamesFromCatalog(sendCatalogProviders);
+    const sendPayoutRails = sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx);
+    const sendProviderOptions = sendPayoutRails
+      ? sendPayoutRails.rails.map((d) => d.name)
+      : providerNamesFromCatalog(sendCatalogProviders);
     const sendProviderIdx =
       sendProviderOptions.length === 0
         ? 0
@@ -5231,11 +5469,14 @@ export default function DashboardApp(props: Props = {}) {
   const sendIndicativeRateLine = sendIsCountry
     ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
     : null;
-  const sendBlockedNoNetworkId = sendRailBlockedByMissingNetworkId({
-    sendGroup: s.sendGroup,
-    networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
-    catalogSettled: sendCatalogSettled,
-  });
+  // A payout rail is paid from a held balance and needs no provider id.
+  const sendBlockedNoNetworkId =
+    !sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx) &&
+    sendRailBlockedByMissingNetworkId({
+      sendGroup: s.sendGroup,
+      networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
+      catalogSettled: sendCatalogSettled,
+    });
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
@@ -5384,10 +5625,42 @@ export default function DashboardApp(props: Props = {}) {
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
   // Same wallet the submit handler settles from — resolved here too so the
   // balance check below reflects what Next would actually reject.
-  const sendRefundWallet = sendIsCountry
-    ? fundableRefundWallets.find((a) => a.id === s.sendAccountId) ||
-      preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+  // Unified payout rails are paid from the held balance, so that balance is
+  // the source for the checks below; otherwise it is the stablecoin wallet.
+  const sendPayoutCtx = sendIsCountry
+    ? sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx)
     : null;
+  // Unified sends: the user chooses which account pays, from every account
+  // the business holds (a rail paid from a balance narrows it to that one).
+  const sendUnifiedCountry = unifiedSendsEnabled() && sendIsCountry;
+  const sendEligibleSources = sendUnifiedCountry
+    ? eligibleSendSources(sendOptionsQuery.data, sendPayoutCtx?.destination ?? null)
+    : [];
+  const sendUnifiedSource = sendUnifiedCountry
+    ? defaultSendSource(sendEligibleSources, s.sendAccountId)
+    : null;
+  const sendUnifiedSourceWallet = sendUnifiedSource
+    ? ({
+        id: sendUnifiedSource.account_id,
+        currency: sendUnifiedSource.currency,
+        network: sendUnifiedSource.network ?? "",
+        // The checks below compare a USD figure with this balance, so only a
+        // dollar-pegged balance is comparable; others are left to the quote.
+        balance:
+          sendUnifiedSource.available != null && isUsdLike(sendUnifiedSource.currency)
+            ? {
+                available: sendUnifiedSource.available,
+                currency: sendUnifiedSource.currency,
+              }
+            : undefined,
+      } as unknown as (typeof fundableRefundWallets)[number])
+    : null;
+  const sendRefundWallet = sendUnifiedCountry
+    ? sendUnifiedSourceWallet
+    : sendIsCountry
+      ? fundableRefundWallets.find((a) => a.id === s.sendAccountId) ||
+        preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+      : null;
   // USD figure the payload would carry, converted the same way submitSend
   // does — so the balance check lines up with whatever currency is typed.
   const sendUsdAmountForChecks = sendIsCountry
@@ -5397,7 +5670,8 @@ export default function DashboardApp(props: Props = {}) {
   // before any recipient is entered. Debounced so typing does not spam it.
   const sendEstimateDestination =
     unifiedSendsEnabled() && sendIsCountry
-      ? findPayoutDestination(sendOptionsQuery.data, {
+      ? sendPayoutCtx?.destination ??
+        findPayoutDestination(sendOptionsQuery.data, {
           countryIso: sendCountry.iso,
           railType: sendRail.type,
           providerName: sendProvider,
@@ -5407,6 +5681,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendEstimateReady =
     !!sendEstimateDestination &&
     !!sendRefundWallet &&
+    isUsdLike(sendRefundWallet.currency) &&
     !s.sendUnifiedQuote &&
     !s.sendDone &&
     Number(sendEstimateAmount) > 0;
@@ -6601,7 +6876,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onSaveRecipientDetails={saveCurrentRecipientDetails}
   saveRecipientBusy={saveRecipientBusy}
   saveRecipientMessage={saveRecipientMessage}
-  sendRefundWalletOptions={fundableRefundWallets.map((a) => {
+  sendRefundWalletOptions={sendUnifiedCountry
+    ? sendEligibleSources.map((source) => ({
+        value: source.account_id,
+        label: sendSourceLabel(source),
+      }))
+    : fundableRefundWallets.map((a) => {
     const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
     const balPart =
       bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
@@ -6612,8 +6892,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       }`,
     };
   })}
-  sendRefundWalletId={s.sendAccountId || ""}
+  sendRefundWalletId={sendUnifiedCountry ? sendUnifiedSource?.account_id || "" : s.sendAccountId || ""}
   selectSendRefundWallet={(accountId) => {
+    if (sendUnifiedCountry) {
+      setState({ sendAccountId: accountId, sendQuoteError: "", sendPreview: null });
+      return;
+    }
     const account = fundableRefundWallets.find((row) => row.id === accountId);
     if (!account) return;
     setState({
@@ -6625,10 +6909,25 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     });
   }}
   sendRefundWalletsLoading={
-    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
+    (sendUnifiedCountry
+      ? sendOptionsQuery.isLoading
+      : bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading))
   }
   sendRecipientName={sendRecipientName}
   setSendRecipientName={setSendRecipientName}
+  sendProviderIsRail={!!sendPayoutCtx}
+  sendExtraFields={(sendPayoutCtx?.fields ?? []).map((f) => ({
+    ...f,
+    value: String(s.sendRecipientDetails?.[f.key] ?? ""),
+    error: extraFieldError(f.key, s.sendRecipientDetails?.[f.key], f.country),
+  }))}
+  sendRecipientError={accountBoxError(sendPayoutCtx?.fields ?? [], s.sendRecipient)}
+  setSendExtraField={(key, value) =>
+    setState((prev: any) => ({
+      sendRecipientDetails: { ...(prev.sendRecipientDetails || {}), [key]: value },
+      sendQuoteError: "",
+    }))
+  }
   sendRecipientLabel={sendRecipientLabel}
   sendRecipient={sendRecipient}
   setSendRecipient={setSendRecipient}

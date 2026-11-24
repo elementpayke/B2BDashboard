@@ -1,5 +1,6 @@
 import { ApiRequestError } from "@/lib/apiClient";
 import { mboka, type MbokaSchema } from "@/lib/api/mboka";
+import { isValidBic, isValidIban, isValidRoutingNumber, looksLikeIban } from "@/lib/bankChecks";
 
 /**
  * Unified sends — one contract for bank, mobile money and stablecoin sends.
@@ -241,4 +242,251 @@ export function sendErrorMessage(err: unknown, fallback: string): string {
 
 export function isQuoteExpired(err: unknown): boolean {
   return sendApiError(err)?.code === "quote_expired";
+}
+
+// ---------------------------------------------------------------------------
+// Payout rails (ACH, wire, SWIFT …) paid straight from a held balance
+// ---------------------------------------------------------------------------
+
+/**
+ * Live rails one of the caller's own balances pays directly, for a currency.
+ * These are the destinations that carry `source_account_ids`; a bank reached
+ * by converting from a stablecoin wallet does not.
+ */
+export function payoutRailDestinations(
+  options: SendOptions | null | undefined,
+  currency: string | null | undefined,
+): SendDestination[] {
+  const wanted = String(currency ?? "").trim().toUpperCase();
+  if (!options || !wanted) return [];
+  return options.destinations.filter(
+    (d) =>
+      d.method === "bank" &&
+      d.status === "live" &&
+      (d.source_account_ids?.length ?? 0) > 0 &&
+      d.currency.toUpperCase() === wanted,
+  );
+}
+
+/** The balance that pays a rail, with its available amount when known. */
+export function payoutSource(
+  options: SendOptions | null | undefined,
+  destination: SendDestination | null | undefined,
+): MbokaSchema<"SourceOut"> | null {
+  const ids = destination?.source_account_ids ?? [];
+  if (!options || ids.length === 0) return null;
+  return options.sources.find((s) => ids.includes(s.account_id)) ?? null;
+}
+
+export type SendExtraField = {
+  /** Key sent in `recipient.details`. */
+  key: string;
+  label: string;
+  placeholder?: string;
+  /** Asked before the account number: it identifies the bank being paid. */
+  lead?: boolean;
+  /** The rail's country, when it pins one (US for ACH and wire). */
+  country?: string | null;
+};
+
+/** Identifiers that say which bank is being paid; asked first. */
+const LEAD_FIELDS = new Set(["routing_number", "swift_bic"]);
+
+const EXTRA_FIELD_LABELS: Record<string, { label: string; placeholder?: string }> = {
+  routing_number: { label: "Routing number", placeholder: "9 digits" },
+  bank_name: { label: "Bank name", placeholder: "e.g. Chase" },
+  swift_bic: { label: "SWIFT / BIC", placeholder: "e.g. CHASUS33" },
+  iban: { label: "IBAN" },
+  account_type: { label: "Account type", placeholder: "checking or savings" },
+  country: { label: "Bank country (2-letter code)", placeholder: "e.g. US" },
+  bank_code: { label: "Bank code" },
+  bank_institution_number: { label: "Institution number", placeholder: "3 digits" },
+  transit_number: { label: "Transit number", placeholder: "5 digits" },
+  beneficiary_email: { label: "Recipient email", placeholder: "name@example.com" },
+  beneficiary_address_line_1: { label: "Recipient street address" },
+  beneficiary_city: { label: "Recipient city" },
+  beneficiary_postal_code: { label: "Recipient postal code" },
+};
+
+/**
+ * Extra inputs a rail needs beyond the account number and the account name,
+ * which the recipient step already collects. The country is skipped when the
+ * rail pins it, and an "IBAN or account number" pair is covered by the account
+ * input.
+ */
+export function recipientExtraFields(
+  destination: SendDestination | null | undefined,
+): SendExtraField[] {
+  const out: SendExtraField[] = [];
+  // A SWIFT/BIC carries its country, so the backend fills it in.
+  const bicGivesCountry = (destination?.required_fields ?? []).includes("swift_bic");
+  for (const raw of destination?.required_fields ?? []) {
+    const names = raw.split("|");
+    if (names.includes("account_number") || names.includes("account_holder_name")) continue;
+    const key = names[0];
+    if (key === "country" && (destination?.country || bicGivesCountry)) continue;
+    const copy = EXTRA_FIELD_LABELS[key];
+    out.push({
+      key,
+      label: copy?.label ?? key.replace(/_/g, " "),
+      placeholder: copy?.placeholder,
+      lead: LEAD_FIELDS.has(key),
+      country: destination?.country ?? null,
+    });
+  }
+  // Bank identifier first, then the rest in the order the rail lists them.
+  return [...out.filter((f) => f.lead), ...out.filter((f) => !f.lead)];
+}
+
+/** The first extra field still empty, or null when the form is complete. */
+export function missingExtraField(
+  fields: SendExtraField[],
+  values: Record<string, string> | null | undefined,
+): SendExtraField | null {
+  return fields.find((f) => !String(values?.[f.key] ?? "").trim()) ?? null;
+}
+
+/** `recipient.details` for the quote: only this rail's fields, trimmed. */
+export function recipientDetails(
+  fields: SendExtraField[],
+  values: Record<string, string> | null | undefined,
+): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const field of fields) {
+    const value = String(values?.[field.key] ?? "").trim();
+    if (value) out[field.key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Why a typed bank identifier cannot be right, or null. Empty values are not
+ * errors here: `missingExtraField` covers "not filled in yet".
+ */
+export function extraFieldError(
+  key: string,
+  value: string | null | undefined,
+  country?: string | null,
+): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (key === "beneficiary_email" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(text)) {
+    return "Enter a full email address, like name@example.com.";
+  }
+  if (
+    key === "beneficiary_postal_code" &&
+    (country ?? "").toUpperCase() === "US" &&
+    !/^[0-9]{5}(-?[0-9]{4})?$/.test(text)
+  ) {
+    return "Enter a 5-digit US ZIP code.";
+  }
+  if (key === "routing_number" && !isValidRoutingNumber(text)) {
+    return "That routing number is not valid. Check the nine digits.";
+  }
+  if (key === "swift_bic" && !isValidBic(text)) {
+    return "That SWIFT/BIC is not valid. It is 8 or 11 characters, like CHASUS33.";
+  }
+  if (key === "iban" && !isValidIban(text)) {
+    return "That IBAN is not valid. Check it against the recipient’s details.";
+  }
+  return null;
+}
+
+/** The first extra field holding a malformed identifier, with the reason. */
+export function invalidExtraField(
+  fields: SendExtraField[],
+  values: Record<string, string> | null | undefined,
+): { field: SendExtraField; message: string } | null {
+  for (const field of fields) {
+    const message = extraFieldError(field.key, values?.[field.key], field.country);
+    if (message) return { field, message };
+  }
+  return null;
+}
+
+/**
+ * A SWIFT payment takes an IBAN or an account number in the one account box.
+ * When what was typed is meant as an IBAN, it has to be a valid one.
+ */
+export function accountBoxError(
+  fields: SendExtraField[],
+  account: string | null | undefined,
+): string | null {
+  if (!fields.some((f) => f.key === "swift_bic")) return null;
+  const text = String(account ?? "").trim();
+  if (!text || !looksLikeIban(text)) return null;
+  return isValidIban(text) ? null : "That IBAN is not valid. Check it against the recipient’s details.";
+}
+
+/**
+ * The places a bank or mobile-money payment can actually go.
+ *
+ * The catalog lists two kinds of corridor: real countries (Kenya, Nigeria …)
+ * with banks to pick from, and bare currencies (USD, CAD, EUR …) whose
+ * "providers" are conversion routes, not banks. A bare currency is only worth
+ * offering when one of the caller's balances has a live rail for it (ACH or
+ * wire from a USD balance); otherwise there is nothing to choose.
+ */
+export function payableCorridors<T extends { iso: string; code: string }>(
+  corridors: T[],
+  countryCorridorIsos: Iterable<string>,
+  options: SendOptions | null | undefined,
+): T[] {
+  const countries = new Set([...countryCorridorIsos].map((iso) => iso.toUpperCase()));
+  return corridors.filter(
+    (c) => countries.has(c.iso.toUpperCase()) || payoutRailDestinations(options, c.code).length > 0,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Where the money comes from
+// ---------------------------------------------------------------------------
+
+export type SendSource = MbokaSchema<"SourceOut">;
+
+/**
+ * Accounts that can pay a destination. A rail paid from a held balance names
+ * its accounts; anything else can be tried from any account, and the backend
+ * says so plainly when it has no route.
+ */
+export function eligibleSendSources(
+  options: SendOptions | null | undefined,
+  destination: SendDestination | null | undefined,
+): SendSource[] {
+  const sources = options?.sources ?? [];
+  const ids = destination?.source_account_ids ?? [];
+  return ids.length > 0 ? sources.filter((s) => ids.includes(s.account_id)) : sources;
+}
+
+/**
+ * The account to pay from: the one already chosen, else a funded stablecoin
+ * wallet (it pays a bank or mobile wallet in one step, with no conversion
+ * first), else any funded account, else the first. Null when there are none.
+ */
+export function defaultSendSource(
+  sources: SendSource[],
+  preferredId: string | null | undefined,
+): SendSource | null {
+  const funded = sources.filter((s) => Number(s.available) > 0);
+  return (
+    sources.find((s) => s.account_id === preferredId) ??
+    funded.find((s) => Boolean(s.network)) ??
+    funded[0] ??
+    sources[0] ??
+    null
+  );
+}
+
+/** "USDC · Base · Available 5.28 USDC" for the pay-from picker. */
+export function sendSourceLabel(source: SendSource): string {
+  const balance =
+    source.available != null && String(source.available).trim()
+      ? `Available ${source.available} ${source.currency}`
+      : "Balance not available";
+  return `${source.label} · ${balance}`;
+}
+
+/** Dollar-pegged balances, where a typed USD figure is the amount itself. */
+export function isUsdLike(currency: string | null | undefined): boolean {
+  return ["USD", "USDC", "USDT"].includes(String(currency ?? "").trim().toUpperCase());
 }

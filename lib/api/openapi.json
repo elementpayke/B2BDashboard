@@ -17694,6 +17694,36 @@
               "unavailable"
             ],
             "title": "Status"
+          },
+          "source_account_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Ids",
+            "description": "Accounts that can pay this destination directly (ACH, wire … from a held balance). Null when any routable account can be the source."
+          },
+          "required_fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Fields",
+            "description": "Recipient fields this rail needs, sent in `recipient.details` (`routing_number`, `bank_name` …). `a|b` means either one. Null for destinations that only need a name and an account."
           }
         },
         "type": "object",

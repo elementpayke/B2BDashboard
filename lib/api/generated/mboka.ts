@@ -4672,6 +4672,16 @@ export interface components {
              * @enum {string}
              */
             status: "live" | "coming_soon" | "unavailable";
+            /**
+             * Source Account Ids
+             * @description Accounts that can pay this destination directly (ACH, wire … from a held balance). Null when any routable account can be the source.
+             */
+            source_account_ids?: string[] | null;
+            /**
+             * Required Fields
+             * @description Recipient fields this rail needs, sent in `recipient.details` (`routing_number`, `bank_name` …). `a|b` means either one. Null for destinations that only need a name and an account.
+             */
+            required_fields?: string[] | null;
         };
         /** DocumentUploadIn */
         DocumentUploadIn: {
