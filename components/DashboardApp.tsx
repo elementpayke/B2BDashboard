@@ -149,7 +149,23 @@ import {
   networkOptionsForAssetFromRails,
 } from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
+import {
+  failureMessage as unifiedFailureMessage,
+  feeText as unifiedFeeText,
+  findPayoutDestination,
+  findWalletDestination,
+  isQuoteExpired as isUnifiedQuoteExpired,
+  moneyText as unifiedMoneyText,
+  refundText as unifiedRefundText,
+  sendErrorMessage as unifiedSendErrorMessage,
+  sendPollIntervalMs,
+  toOrderQuoteShape,
+  toSendPreviewShape,
+  unifiedSendsApi,
+  unifiedSendsEnabled,
+} from "@/lib/services/unifiedSends";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
 import { useRevealGuard } from "@/lib/hooks/useRevealGuard";
@@ -308,7 +324,7 @@ const InvoicesScreen = dynamic(() => import("@/components/invoices/InvoicesScree
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
-import SendModal from "@/components/send/SendModal";
+import SendFlow from "@/features/send/SendFlow";
 import MbokaMark from "@/components/brand/MbokaMark";
 import NetworkMark, { partnerNetworkForMark } from "@/components/brand/NetworkMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
@@ -419,7 +435,7 @@ export default function DashboardApp(props: Props = {}) {
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
     sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
-    sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
+    sendQuote: null as any, sendUnifiedQuote: null as any, sendUnified: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -718,6 +734,22 @@ export default function DashboardApp(props: Props = {}) {
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
+  });
+  // Unified sends (/v1/sends): one status read for every method. Polls until
+  // the send is final; a failed send with a pending refund is re-read slowly.
+  const sendOptionsQuery = useQuery({
+    queryKey: [QK.sendOptions],
+    queryFn: unifiedSendsApi.options,
+    enabled: unifiedSendsEnabled() && state.modal === "send",
+    staleTime: 5 * 60 * 1000,
+  });
+  const unifiedSendId: string | null = state.sendUnified?.send_id ?? null;
+  const unifiedSendQuery = useQuery({
+    queryKey: [QK.unifiedSend, unifiedSendId],
+    queryFn: () => unifiedSendsApi.get(unifiedSendId as string),
+    enabled: state.modal === "send" && state.sendDone && !!unifiedSendId,
+    refetchInterval: (query) =>
+      sendPollIntervalMs(query.state.data, query.state.dataUpdateCount),
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
     enabled:
@@ -1313,7 +1345,7 @@ export default function DashboardApp(props: Props = {}) {
 
   const moneyFlowReset = {
     sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
-    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    sendQuote: null, sendUnifiedQuote: null, sendUnified: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
@@ -1399,10 +1431,16 @@ export default function DashboardApp(props: Props = {}) {
     staleTime: 30_000,
   });
 
-  const sendNext = async () => {
+  // Takes the send state explicitly so the one-page composer can run the
+  // destination checks and the quote back to back (see sendReview). Step 1
+  // returns the patch it applied, or null when it stopped on an error.
+  type SendStateSnapshot = typeof state;
+  const sendNextWith = async (
+    state: SendStateSnapshot,
+  ): Promise<Partial<SendStateSnapshot> | null> => {
     // Country tab step 1: wait for catalog so provider chips / networkId match.
     if (state.sendStep === 1 && state.sendGroup === "country" && !sendCatalogSettled) {
-      return;
+      return null;
     }
     // A bank rail with no catalog-backed provider has no `networkId`, and the
     // backend rejects that payload outright. Stop here rather than collect a
@@ -1413,7 +1451,7 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteError: friendlySendQuoteError("network_id is required"),
         });
-        return;
+        return null;
       }
       const rail = country.rails[state.sendRailIdx] || country.rails[0];
       const providers = offRampProvidersForRail(
@@ -1434,7 +1472,7 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteError: friendlySendQuoteError("network_id is required"),
         });
-        return;
+        return null;
       }
       // OffRamp quotes need a refund wallet — prefer Polygon USDT (funded
       // treasury rail) over Base USDC leftovers.
@@ -1442,7 +1480,7 @@ export default function DashboardApp(props: Props = {}) {
         fundableRefundWallets,
         state.sendAccountId,
       );
-      setState({
+      const patch = {
         sendStep: 2,
         sendQuoteError: preferred
           ? ""
@@ -1454,8 +1492,9 @@ export default function DashboardApp(props: Props = {}) {
           : state.sendAsset,
         sendPreview: null,
         sendAcceptError: "",
-      });
-      return;
+      };
+      setState(patch);
+      return patch;
     }
     // Stablecoin tab step 1 → 2: require a ready account for the chosen
     // asset + network before collecting the recipient (Phase 4).
@@ -1485,9 +1524,9 @@ export default function DashboardApp(props: Props = {}) {
               ? `No ready Stellar USDC account to send from. Open a USDC account on Stellar first.`
               : `No ready ${selection.asset.toUpperCase()} account on ${selection.chainLabel}. Open a ${selection.asset.toUpperCase()} account on this network first.`,
         });
-        return;
+        return null;
       }
-      setState({
+      const patch = {
         sendStep: 2,
         sendAsset: selection.asset,
         sendChain: selection.chain,
@@ -1495,8 +1534,9 @@ export default function DashboardApp(props: Props = {}) {
         sendQuoteError: "",
         sendPreview: null,
         sendAcceptError: "",
-      });
-      return;
+      };
+      setState(patch);
+      return patch;
     }
     // Step 2 -> 3: OffRamp quote (by country) or account-send preview (stablecoin).
     if (state.sendStep === 2 && state.sendGroup === "country") {
@@ -1624,13 +1664,54 @@ export default function DashboardApp(props: Props = {}) {
           networkId,
           networkName: providerName?.trim() || undefined,
         });
+        if (unifiedSendsEnabled()) {
+          // One contract for every method: the backend picks the route and
+          // returns a single combined price.
+          if (!refundWallet) {
+            throw new Error("Choose a wallet to pay from, then try again.");
+          }
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findPayoutDestination(sendOptions, {
+            countryIso: country.iso,
+            railType: rail.type,
+            providerName,
+          });
+          if (!destination) {
+            throw new Error(
+              `${providerName} is not available right now. Pick another provider or try again shortly.`,
+            );
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: refundWallet.id,
+            amount: usdAmount,
+            amount_currency: (refundWallet.currency || "USDT").toUpperCase(),
+            recipient: {
+              name: state.sendRecipientName.trim(),
+              account: recipientAccountNumber,
+            },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: refundWallet.id,
+            sendStep: 3,
+          });
+          return;
+        }
         const quote = await ordersApi.quote(payload);
         setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError:
-            err instanceof ApiRequestError
+          sendQuoteError: unifiedSendsEnabled()
+            ? unifiedSendErrorMessage(err, "Couldn't get a quote. Try again.")
+            : err instanceof ApiRequestError
               ? friendlySendQuoteError(
                   err.message,
                   err.data && typeof err.data === "object"
@@ -1680,6 +1761,39 @@ export default function DashboardApp(props: Props = {}) {
           currency: account.currency || assetCode,
           memo: state.sendMemo,
         });
+        if (unifiedSendsEnabled()) {
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findWalletDestination(sendOptions, {
+            asset: assetCode,
+            network: state.sendChain,
+          });
+          if (!destination) {
+            throw new Error(`${assetCode} on this network is not available right now.`);
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: account.id,
+            amount: state.sendAmount.trim(),
+            amount_currency: (account.currency || assetCode).toUpperCase(),
+            recipient: {
+              name: state.sendRecipientName.trim() || "Wallet",
+              account: state.sendRecipient.trim(),
+            },
+            reference: state.sendMemo?.trim() || null,
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendPreview: toSendPreviewShape(unifiedQuote),
+            sendAccountId: account.id,
+            sendStep: 3,
+          });
+          return;
+        }
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({
           sendQuoteLoading: false,
@@ -1690,8 +1804,9 @@ export default function DashboardApp(props: Props = {}) {
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError:
-            err instanceof ApiRequestError
+          sendQuoteError: unifiedSendsEnabled()
+            ? unifiedSendErrorMessage(err, "Couldn't preview this send. Try again.")
+            : err instanceof ApiRequestError
               ? friendlySendQuoteError(
                   explainAccountSendError(err.message, state.sendChain),
                   err.data && typeof err.data === "object"
@@ -1707,7 +1822,33 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
     setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
+    return null;
   };
+  const sendNext = () => sendNextWith(state);
+  // One-page composer: re-run the destination checks (country, rail and
+  // provider may have changed since the last attempt), then go straight to
+  // the quote / preview with the same inputs.
+  const sendReview = async () => {
+    if (state.sendQuoteLoading) return;
+    const patch = await sendNextWith({ ...state, sendStep: 1 });
+    if (!patch || patch.sendStep !== 2 || patch.sendQuoteError) return;
+    await sendNextWith({ ...state, ...patch });
+  };
+  // After a failed payout: drop the dead order and quote but keep what the
+  // user typed, so they can correct the recipient and send again.
+  const sendRetry = () =>
+    setState({
+      sendDone: false,
+      sendStep: 1,
+      sendAccept: null,
+      sendConfirm: null,
+      sendQuote: null,
+      sendUnifiedQuote: null,
+      sendUnified: null,
+      sendPreview: null,
+      sendQuoteError: "",
+      sendAcceptError: "",
+    });
   const sendBack = () =>
     setState((s: any) => {
       // Step 1 (destination) is the first step after the method chooser, so
@@ -1720,6 +1861,7 @@ export default function DashboardApp(props: Props = {}) {
           sendAcceptError: "",
           sendPreview: null,
           sendQuote: null,
+          sendUnifiedQuote: null,
           sendRecipient: "",
           sendRecipientName: "",
           sendMemo: "",
@@ -1732,6 +1874,7 @@ export default function DashboardApp(props: Props = {}) {
         sendAcceptError: "",
         sendPreview: null,
         sendQuote: null,
+        sendUnifiedQuote: null,
       };
     });
   const depositNext = async () => {
@@ -2369,6 +2512,43 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const submitSend = async () => {
+    if (unifiedSendsEnabled() && state.sendUnifiedQuote) {
+      if (state.sendAccepting) return;
+      setState({ sendAccepting: true, sendAcceptError: "" });
+      try {
+        // One key per confirm attempt. The backend also returns the same send
+        // if this quote is confirmed twice, so a double click cannot pay twice.
+        const confirmed = await unifiedSendsApi.confirm(
+          state.sendUnifiedQuote.quote_id,
+          newIdempotencyKey(),
+        );
+        queryClient.setQueryData([QK.unifiedSend, confirmed.send_id], confirmed);
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendOptions] });
+        setState({ sendAccepting: false, sendUnified: confirmed, sendDone: true });
+      } catch (err) {
+        if (isUnifiedQuoteExpired(err)) {
+          setState({
+            sendAccepting: false,
+            sendQuote: null,
+            sendPreview: null,
+            sendUnifiedQuote: null,
+            sendStep: 2,
+            sendAcceptError: "",
+            sendQuoteError: "That quote expired. Press Review to get a fresh price, then try again.",
+          });
+          return;
+        }
+        setState({
+          sendAccepting: false,
+          sendAcceptError: unifiedSendErrorMessage(err, "Couldn't send the payment. Try again."),
+        });
+      }
+      return;
+    }
     if (state.sendGroup === "crypto") {
       if (!state.sendPreview?.preview_token || !state.sendAccountId) return;
       setState({ sendAccepting: true, sendAcceptError: "" });
@@ -3769,7 +3949,7 @@ export default function DashboardApp(props: Props = {}) {
       verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
-      send: ["Send money", "Pick a method, recipient, and amount"],
+      send: ["Send money", "Pay a bank account, mobile money wallet or stablecoin wallet"],
       deposit: [
         s.fundAfricanTargetCurrency
           ? `Fund ${s.fundAfricanTargetCurrency}`
@@ -4251,10 +4431,10 @@ export default function DashboardApp(props: Props = {}) {
     (account) => isReadyStatus(account.status) && toPartnerNetwork(account.network) === "Stellar",
   );
   const quickActionTiles = [
-        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Open local accounts and share your details.", open: guardScreenNav("wallets"), iconBg: "var(--amber)", iconColor: "#fff" },
-        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Send money", icon: "↗", desc: "Pay anyone by bank, mobile money or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
+        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "Pay many recipients at once from one file." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Get paid", icon: "↙", desc: "Share account details to receive local currency or USDC.", open: guardScreenNav("wallets"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Add money", icon: "＋", desc: "Top up by bank, mobile money or stablecoin.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const liveRates = liveRateRowsFromSummary(homeFxRates);
   // Money in/out: FX-convert completed Mboka txs (last 30d). Do not use raw
@@ -4880,7 +5060,9 @@ export default function DashboardApp(props: Props = {}) {
         network: s.sendConfirm.network || s.sendChain,
       })
     : null;
-  const sendExplorerUrl = s.sendConfirm
+  const sendExplorerUrl = s.sendUnified
+    ? (unifiedSendQuery.data ?? s.sendUnified).explorer_url ?? null
+    : s.sendConfirm
     ? buildSendExplorerUrl({
         network: s.sendConfirm.network || s.sendChain,
         txHash: s.sendConfirm.tx_hash,
@@ -4897,6 +5079,40 @@ export default function DashboardApp(props: Props = {}) {
   const sendLiveStatus = sendLiveDescriptor
     ? { label: sendLiveDescriptor.label, color: sendLiveDescriptor.color, soft: sendLiveDescriptor.soft, isSettling: !sendStatusQuery.isTerminal }
     : null;
+  // One outcome for the status panel. Country sends follow the polled order;
+  // stablecoin sends follow the confirm response. Anything not clearly
+  // delivered or failed stays "processing" — never a guessed success.
+  const sendConfirmStatusKey = String(s.sendConfirm?.status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  // Unified sends report one status for every method. "sending" (confirmed,
+  // not yet with the provider) shows as processing on the status panel.
+  const unifiedSend = s.sendUnified ? unifiedSendQuery.data ?? s.sendUnified : null;
+  const sendOutcome: "processing" | "delivered" | "failed" | "refunded" = unifiedSend
+    ? unifiedSend.status === "delivered" || unifiedSend.status === "failed" || unifiedSend.status === "refunded"
+      ? unifiedSend.status
+      : "processing"
+    : s.sendConfirm
+    ? ["completed", "settled", "success", "succeeded"].includes(sendConfirmStatusKey)
+      ? "delivered"
+      : ["failed", "canceled", "cancelled", "rejected"].includes(sendConfirmStatusKey)
+        ? "failed"
+        : "processing"
+    : sendLiveOrderStatus === "completed"
+      ? "delivered"
+      : sendLiveOrderStatus === "refunded"
+        ? "refunded"
+        : sendLiveOrderStatus === "failed" || sendLiveOrderStatus === "canceled"
+          ? "failed"
+          : "processing";
+  const sendOrderId = unifiedSend
+    ? unifiedSend.send_id
+    : s.sendConfirm
+    ? String(s.sendConfirm.id || "").trim() || null
+    : s.sendAccept?.merchant_order_id != null
+      ? String(s.sendAccept.merchant_order_id)
+      : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder =
     s.sendGroup === "crypto"
@@ -5140,7 +5356,9 @@ export default function DashboardApp(props: Props = {}) {
   const sendFeeCurrency = sendPreview?.currency || sendAssetCode;
   // A preview fee of "0" is real information, so it reads "No fee" rather
   // than disappearing; an absent one says when it lands.
-  const sendFeeText = s.sendGroup === "crypto"
+  const sendFeeText = s.sendUnifiedQuote
+    ? unifiedFeeText(s.sendUnifiedQuote.fee) ?? "Shown on review"
+    : s.sendGroup === "crypto"
     ? feeDisclosureText({
         raw: sendPreview?.fee_amount,
         formatted: `${sendPreview?.fee_amount} ${sendFeeCurrency}`,
@@ -5156,8 +5374,9 @@ export default function DashboardApp(props: Props = {}) {
   // The crypto rail charges its fee ON TOP of the amount — the recipient gets
   // the full `amount` — so what actually leaves the account is a third figure.
   // Taken verbatim from the aggregator's `total_debit`; never summed here.
-  const sendTotalDebitText =
-    s.sendGroup === "crypto" &&
+  const sendTotalDebitText = s.sendUnifiedQuote
+    ? unifiedMoneyText(s.sendUnifiedQuote.total_debit)
+    : s.sendGroup === "crypto" &&
     sendPreview?.total_debit != null &&
     String(sendPreview.total_debit).trim()
       ? `${String(sendPreview.total_debit).trim()} ${sendFeeCurrency}`
@@ -5174,6 +5393,42 @@ export default function DashboardApp(props: Props = {}) {
   const sendUsdAmountForChecks = sendIsCountry
     ? toPayloadUsdAmount(s.sendAmount, { currency: sendAmountCurrency, rate: sendIndicativeRate })
     : null;
+  // Unified sends: an indicative fee and total while the amount is typed,
+  // before any recipient is entered. Debounced so typing does not spam it.
+  const sendEstimateDestination =
+    unifiedSendsEnabled() && sendIsCountry
+      ? findPayoutDestination(sendOptionsQuery.data, {
+          countryIso: sendCountry.iso,
+          railType: sendRail.type,
+          providerName: sendProvider,
+        })
+      : null;
+  const sendEstimateAmount = useDebouncedValue(sendUsdAmountForChecks ?? "", 500);
+  const sendEstimateReady =
+    !!sendEstimateDestination &&
+    !!sendRefundWallet &&
+    !s.sendUnifiedQuote &&
+    !s.sendDone &&
+    Number(sendEstimateAmount) > 0;
+  const sendEstimateQuery = useQuery({
+    queryKey: [
+      QK.sendEstimate,
+      sendEstimateDestination?.id ?? null,
+      sendRefundWallet?.id ?? null,
+      sendEstimateAmount,
+    ],
+    queryFn: () =>
+      unifiedSendsApi.estimate({
+        destination_id: sendEstimateDestination!.id,
+        source_account_id: sendRefundWallet!.id,
+        amount: sendEstimateAmount,
+        amount_currency: (sendRefundWallet!.currency || "USDT").toUpperCase(),
+      }),
+    enabled: sendEstimateReady,
+    staleTime: 20 * 1000,
+    retry: false,
+  });
+  const sendEstimate = sendEstimateReady ? sendEstimateQuery.data ?? null : null;
   const sendLimitError = sendIsCountry
     ? limitViolationAcrossCurrencies(s.sendAmount, sendAmountCurrency, sendLimits, sendIndicativeRate) ??
       (sendRefundWallet && sendUsdAmountForChecks
@@ -5719,7 +5974,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 ) : null}
 
-<SectionHeader title="Recent Activity" actionLabel="See All" onAction={goTransactions} />
+<SectionHeader title="Recent activity" actionLabel="See all" onAction={goTransactions} />
 <ActivityList title="Recent activity" items={homeRecent} showHeader={false} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
 
 </div>
@@ -6279,7 +6534,148 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 />
 ) : null}
 
-{modalOpen ? (<>
+{isSendFlow ? (
+<SendFlow
+  sendNotDone={sendNotDone}
+  sendDone={sendDone}
+  sendMethodChosen={sendMethodChosen}
+  sendMethodOptions={sendMethodOptions}
+  resetSendMethod={resetSendMethod}
+  sendStepDots={sendStepDots}
+  sendStepIs1={sendStepIs1}
+  sendStepIs2={sendStepIs2}
+  sendStepIs3={sendStepIs3}
+  sendIsCountry={sendIsCountry}
+  sendIsCrypto={sendIsCrypto}
+  sendCountryChips={sendCountryChips}
+  sendRailHasChoice={sendRailHasChoice}
+  sendRailChips={sendRailChips}
+  sendProviderHasChoice={sendProviderHasChoice}
+  sendProviderChips={sendProviderChips}
+  sendCatalogLoading={sendCatalogLoading}
+  sendCatalogError={sendCatalogError}
+  onRetrySendCatalog={retrySendCatalog}
+  sendAssets={sendAssets}
+  sendChains={sendChains}
+  sendAssetCode={sendAssetCode}
+  sendChainLabel={sendChainLabel}
+  sendNext={sendNext}
+  sendReview={sendReview}
+  sendMethodKey={s.sendMethod}
+  sendBack={sendBack}
+  sendDestinationSummary={sendDestinationSummary}
+  sendCountryName={sendCountry.name}
+  sendCountryFlagUrl={flagUrl(sendCountry.iso)}
+  sendCurrencyCode={sendCountry.code}
+  sendCurrencyName={currencyLabel(sendCountry.code)}
+  sendCountryIdx={s.sendCountryIdx}
+  selectSendCountry={(i) => selectSendCountry(i)()}
+  sendProviderLabel={sendProviderPickerLabel}
+  sendProviderOptions={sendProviderOptions}
+  selectSendProvider={pickSendProvider}
+  sendProviderIdx={sendProviderIdx}
+  sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
+  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
+  sendProvidersAreFallback={sendProvidersAreFallback}
+  sendBlockedNoNetworkId={sendBlockedNoNetworkId}
+  sendAmountCurrency={sendAmountCurrency}
+  sendYouPayText={sendYouPayText}
+  sendLocalCurrency={sendLocalCurrency}
+  sendCanEnterLocal={sendCanEnterLocal}
+  setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
+  sendAmountEquivalent={sendAmountEquivalent}
+  sendIndicativeRateLine={sendIndicativeRateLine}
+  sendQuotedRateLine={sendQuotedRateLine}
+  sendLimitError={sendLimitError}
+  sendMaxAmount={sendMaxAmount}
+  onMaxSendAmount={
+    sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
+  setSendAmountToMax={
+    !sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
+  sendBalanceError={sendBalanceError}
+  savedRecipients={savedRecipientsQuery.data ?? []}
+  savedRecipientsLoading={savedRecipientsQuery.isLoading}
+  onSelectSavedRecipient={applySavedRecipient}
+  onSaveRecipientDetails={saveCurrentRecipientDetails}
+  saveRecipientBusy={saveRecipientBusy}
+  saveRecipientMessage={saveRecipientMessage}
+  sendRefundWalletOptions={fundableRefundWallets.map((a) => {
+    const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
+    const balPart =
+      bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
+    return {
+      value: a.id,
+      label: `${a.currency} · ${formatNetworkLabel(a.network)}${balPart}${
+        a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
+      }`,
+    };
+  })}
+  sendRefundWalletId={s.sendAccountId || ""}
+  selectSendRefundWallet={(accountId) => {
+    const account = fundableRefundWallets.find((row) => row.id === accountId);
+    if (!account) return;
+    setState({
+      sendAccountId: account.id,
+      sendChain: toUiNetworkKey(account.network) || s.sendChain,
+      sendAsset: account.currency.trim().toLowerCase() || s.sendAsset,
+      sendQuoteError: "",
+      sendPreview: null,
+    });
+  }}
+  sendRefundWalletsLoading={
+    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
+  }
+  sendRecipientName={sendRecipientName}
+  setSendRecipientName={setSendRecipientName}
+  sendRecipientLabel={sendRecipientLabel}
+  sendRecipient={sendRecipient}
+  setSendRecipient={setSendRecipient}
+  normalizeSendRecipientPhone={normalizeSendRecipientPhone}
+  sendRecipientPlaceholder={sendRecipientPlaceholder}
+  sendMemo={s.sendMemo}
+  setSendMemo={setSendMemo}
+  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
+  sendAmount={sendAmount}
+  setSendAmount={setSendAmount}
+  sendQuoteError={sendQuoteError}
+  sendQuoteLoading={sendQuoteLoading}
+  sendQuoteRateText={sendQuoteRateText}
+  sendFeeText={
+    sendEstimate && !s.sendUnifiedQuote
+      ? `${unifiedFeeText(sendEstimate.fee)} (estimate)`
+      : sendFeeText
+  }
+  sendTotalDebitText={
+    sendEstimate && !s.sendUnifiedQuote
+      ? unifiedMoneyText(sendEstimate.total_debit)
+      : sendTotalDebitText
+  }
+  sendArrivalText={sendArrivalText}
+  sendQuoteExpiresAt={(s.sendGroup === "crypto" ? sendPreview?.expires_at : sendQuote?.expires_at) ?? null}
+  sendAcceptError={sendAcceptError}
+  sendAccepting={sendAccepting}
+  submitSend={submitSend}
+  sendResultText={sendResultText}
+  sendSuccessDetails={sendSuccessDetails}
+  sendExplorerUrl={sendExplorerUrl}
+  sendLiveStatus={sendLiveStatus}
+  closeModal={closeModal}
+  onContactSupport={() => openHelp({ category: "payout" })}
+  sendOutcome={sendOutcome}
+  sendOrderId={sendOrderId}
+  sendUpdatedAt={unifiedSend ? unifiedSend.updated_at : sendStatusQuery.data?.updated_at ?? null}
+  sendFailureMessage={unifiedFailureMessage(unifiedSend)}
+  sendRefundText={unifiedRefundText(unifiedSend)}
+  sendRetry={sendRetry}
+  onViewTransactions={() => {
+    closeModal();
+    goTransactions();
+  }}
+  containerRef={modalRef}
+/>
+) : modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div
   ref={modalRef}
@@ -6367,131 +6763,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   </>
 ) : null}
 
-{(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
-<SendModal
-  sendNotDone={sendNotDone}
-  sendDone={sendDone}
-  sendMethodChosen={sendMethodChosen}
-  sendMethodOptions={sendMethodOptions}
-  resetSendMethod={resetSendMethod}
-  sendStepDots={sendStepDots}
-  sendStepIs1={sendStepIs1}
-  sendStepIs2={sendStepIs2}
-  sendStepIs3={sendStepIs3}
-  sendIsCountry={sendIsCountry}
-  sendIsCrypto={sendIsCrypto}
-  sendCountryChips={sendCountryChips}
-  sendRailHasChoice={sendRailHasChoice}
-  sendRailChips={sendRailChips}
-  sendProviderHasChoice={sendProviderHasChoice}
-  sendProviderChips={sendProviderChips}
-  sendCatalogLoading={sendCatalogLoading}
-  sendCatalogError={sendCatalogError}
-  onRetrySendCatalog={retrySendCatalog}
-  sendAssets={sendAssets}
-  sendChains={sendChains}
-  sendAssetCode={sendAssetCode}
-  sendChainLabel={sendChainLabel}
-  sendNext={sendNext}
-  sendBack={sendBack}
-  sendDestinationSummary={sendDestinationSummary}
-  sendCountryName={sendCountry.name}
-  sendCountryFlagUrl={flagUrl(sendCountry.iso)}
-  sendCurrencyCode={sendCountry.code}
-  sendCurrencyName={currencyLabel(sendCountry.code)}
-  sendCountryIdx={s.sendCountryIdx}
-  selectSendCountry={(i) => selectSendCountry(i)()}
-  sendProviderLabel={sendProviderPickerLabel}
-  sendProviderOptions={sendProviderOptions}
-  selectSendProvider={pickSendProvider}
-  sendProviderIdx={sendProviderIdx}
-  sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
-  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
-  sendProvidersAreFallback={sendProvidersAreFallback}
-  sendBlockedNoNetworkId={sendBlockedNoNetworkId}
-  sendAmountCurrency={sendAmountCurrency}
-  sendYouPayText={sendYouPayText}
-  sendLocalCurrency={sendLocalCurrency}
-  sendCanEnterLocal={sendCanEnterLocal}
-  setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
-  sendAmountEquivalent={sendAmountEquivalent}
-  sendIndicativeRateLine={sendIndicativeRateLine}
-  sendQuotedRateLine={sendQuotedRateLine}
-  sendLimitError={sendLimitError}
-  sendMaxAmount={sendMaxAmount}
-  onMaxSendAmount={
-    sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
-  }
-  setSendAmountToMax={
-    !sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
-  }
-  sendBalanceError={sendBalanceError}
-  savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
-    if (sendIsCrypto) return r.railType === "crypto";
-    if (s.sendMethod === "mobile") return r.railType === "mobile";
-    if (s.sendMethod === "bank") return r.railType === "bank";
-    return r.railType !== "crypto";
-  })}
-  savedRecipientsLoading={savedRecipientsQuery.isLoading}
-  onSelectSavedRecipient={applySavedRecipient}
-  onSaveRecipientDetails={saveCurrentRecipientDetails}
-  saveRecipientBusy={saveRecipientBusy}
-  saveRecipientMessage={saveRecipientMessage}
-  sendRefundWalletOptions={fundableRefundWallets.map((a) => {
-    const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
-    const balPart =
-      bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
-    return {
-      value: a.id,
-      label: `${a.currency} · ${formatNetworkLabel(a.network)}${balPart}${
-        a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
-      }`,
-    };
-  })}
-  sendRefundWalletId={s.sendAccountId || ""}
-  selectSendRefundWallet={(accountId) => {
-    const account = fundableRefundWallets.find((row) => row.id === accountId);
-    if (!account) return;
-    setState({
-      sendAccountId: account.id,
-      sendChain: toUiNetworkKey(account.network) || s.sendChain,
-      sendAsset: account.currency.trim().toLowerCase() || s.sendAsset,
-      sendQuoteError: "",
-      sendPreview: null,
-    });
-  }}
-  sendRefundWalletsLoading={
-    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
-  }
-  sendRecipientName={sendRecipientName}
-  setSendRecipientName={setSendRecipientName}
-  sendRecipientLabel={sendRecipientLabel}
-  sendRecipient={sendRecipient}
-  setSendRecipient={setSendRecipient}
-  normalizeSendRecipientPhone={normalizeSendRecipientPhone}
-  sendRecipientPlaceholder={sendRecipientPlaceholder}
-  sendMemo={s.sendMemo}
-  setSendMemo={setSendMemo}
-  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
-  sendAmount={sendAmount}
-  setSendAmount={setSendAmount}
-  sendQuoteError={sendQuoteError}
-  sendQuoteLoading={sendQuoteLoading}
-  sendQuoteRateText={sendQuoteRateText}
-  sendFeeText={sendFeeText}
-  sendTotalDebitText={sendTotalDebitText}
-  sendArrivalText={sendArrivalText}
-  sendAcceptError={sendAcceptError}
-  sendAccepting={sendAccepting}
-  submitSend={submitSend}
-  sendResultText={sendResultText}
-  sendSuccessDetails={sendSuccessDetails}
-  sendExplorerUrl={sendExplorerUrl}
-  sendLiveStatus={sendLiveStatus}
-  closeModal={closeModal}
-  onContactSupport={() => openHelp({ category: "payout" })}
-/>
-</section>) : null}
 
 {(isDepositFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Top up">
 <DepositModal
