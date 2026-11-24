@@ -2618,6 +2618,190 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recipients
+         * @description Saved recipients with their routes, most-sent first.
+         */
+        get: operations["list_recipients_api_v1_recipients_get"];
+        put?: never;
+        /**
+         * Create Recipient
+         * @description Save a recipient, or add another route to one that exists.
+         */
+        post: operations["create_recipient_api_v1_recipients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/recipients/{recipient_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Recipient
+         * @description Remove a saved recipient.
+         */
+        delete: operations["delete_recipient_api_v1_recipients__recipient_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Send
+         * @description Confirm a quote. Responds at once with the send in `sending`; legs run in the background.
+         */
+        post: operations["confirm_send_api_v1_sends_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/{send_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Send
+         * @description One status shape for every send: status, failure, refund and timeline.
+         */
+        get: operations["get_send_api_v1_sends__send_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/{send_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Send
+         * @description Live status updates so the client does not have to poll.
+         */
+        get: operations["stream_send_api_v1_sends__send_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate Send
+         * @description Fee, rate, total and receive amount before any recipient is entered. Not binding.
+         */
+        post: operations["estimate_send_api_v1_sends_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Options
+         * @description Methods, destinations and payable balances in one cacheable call.
+         */
+        get: operations["get_options_api_v1_sends_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote Send
+         * @description Binding price for a recipient, with an expiry the client can count down.
+         */
+        post: operations["quote_send_api_v1_sends_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sends/quote/{quote_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Quote
+         * @description Re-price a quote. Returns a new `quote_id` and exactly what changed.
+         */
+        post: operations["refresh_quote_api_v1_sends_quote__quote_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/statements": {
         parameters: {
             query?: never;
@@ -2967,6 +3151,18 @@ export interface components {
              */
             observed_at: string;
         };
+        /** AccountFieldOut */
+        AccountFieldOut: {
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+            /**
+             * Pattern
+             * @description Validation regex when known; null until a source exists.
+             */
+            pattern?: string | null;
+        };
         /** AccountOpenIn */
         AccountOpenIn: {
             /**
@@ -3291,6 +3487,14 @@ export interface components {
             message: string;
             data?: components["schemas"]["EnsureStablecoinRailsOut"] | null;
         };
+        /** ApiResponse[EstimateOut] */
+        ApiResponse_EstimateOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["EstimateOut"] | null;
+        };
         /** ApiResponse[ExchangeRatesOut] */
         ApiResponse_ExchangeRatesOut_: {
             /** Status */
@@ -3573,6 +3777,62 @@ export interface components {
             message: string;
             data?: components["schemas"]["PublicLinkOut"] | null;
         };
+        /** ApiResponse[QuoteOut] */
+        ApiResponse_QuoteOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["QuoteOut"] | null;
+        };
+        /** ApiResponse[QuoteRefreshOut] */
+        ApiResponse_QuoteRefreshOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["QuoteRefreshOut"] | null;
+        };
+        /** ApiResponse[RecipientDeletedOut] */
+        ApiResponse_RecipientDeletedOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["RecipientDeletedOut"] | null;
+        };
+        /** ApiResponse[RecipientListOut] */
+        ApiResponse_RecipientListOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["RecipientListOut"] | null;
+        };
+        /** ApiResponse[RecipientOut] */
+        ApiResponse_RecipientOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["RecipientOut"] | null;
+        };
+        /** ApiResponse[SendErrorOut] */
+        ApiResponse_SendErrorOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["SendErrorOut"] | null;
+        };
+        /** ApiResponse[SendOptionsOut] */
+        ApiResponse_SendOptionsOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["SendOptionsOut"] | null;
+        };
         /** ApiResponse[SendOut] */
         ApiResponse_SendOut_: {
             /** Status */
@@ -3580,6 +3840,14 @@ export interface components {
             /** Message */
             message: string;
             data?: components["schemas"]["SendOut"] | null;
+        };
+        /** ApiResponse[SendStatusOut] */
+        ApiResponse_SendStatusOut_: {
+            /** Status */
+            status: string;
+            /** Message */
+            message: string;
+            data?: components["schemas"]["SendStatusOut"] | null;
         };
         /** ApiResponse[StellarSwapOut] */
         ApiResponse_StellarSwapOut_: {
@@ -4061,6 +4329,11 @@ export interface components {
             /** Hosted Session Id */
             hosted_session_id?: string | null;
         };
+        /** ConfirmIn */
+        ConfirmIn: {
+            /** Quote Id */
+            quote_id: string;
+        };
         /**
          * ConversionAcceptIn
          * @description Optional accept body; partner accept is idempotent on quote id.
@@ -4370,6 +4643,36 @@ export interface components {
              */
             domestic_deposit_only?: boolean | null;
         };
+        /** DestinationOut */
+        DestinationOut: {
+            /**
+             * Id
+             * @description Stable destination id.
+             */
+            id: string;
+            /** Method */
+            method: string;
+            /** Country */
+            country?: string | null;
+            /** Currency */
+            currency: string;
+            /**
+             * Network
+             * @description Chain for stablecoin destinations.
+             */
+            network?: string | null;
+            /** Name */
+            name: string;
+            /** Logo Url */
+            logo_url?: string | null;
+            account_field: components["schemas"]["AccountFieldOut"];
+            limits?: components["schemas"]["LimitsOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "coming_soon" | "unavailable";
+        };
         /** DocumentUploadIn */
         DocumentUploadIn: {
             /** Key */
@@ -4472,6 +4775,53 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** EstimateIn */
+        EstimateIn: {
+            /** Destination Id */
+            destination_id: string;
+            /** Source Account Id */
+            source_account_id: string;
+            /**
+             * Amount
+             * @description Decimal string.
+             */
+            amount: string;
+            /**
+             * Amount Currency
+             * @description Currency `amount` is typed in: the source account's currency (amount to debit) or the destination currency (amount to deliver).
+             */
+            amount_currency: string;
+            /**
+             * Destination Account Id
+             * @description Target account when `destination_id` is `dst_internal`.
+             */
+            destination_account_id?: string | null;
+        };
+        /** EstimateOut */
+        EstimateOut: {
+            send_amount: components["schemas"]["Money"];
+            fee: components["schemas"]["Money"];
+            total_debit: components["schemas"]["Money"];
+            receive_amount: components["schemas"]["Money"];
+            rate?: components["schemas"]["Rate"] | null;
+            /** Fee Breakdown */
+            fee_breakdown?: components["schemas"]["FeeLine"][];
+            /** Route Summary */
+            route_summary: string;
+            /** @description Most the source account can send right now. */
+            max_sendable?: components["schemas"]["Money"] | null;
+            /**
+             * Notes
+             * @description User-facing caveats, e.g. a fee that is only known at the quote step.
+             */
+            notes?: string[];
+            /**
+             * Binding
+             * @default false
+             * @constant
+             */
+            binding: false;
+        };
         /**
          * ExchangeRatesOut
          * @description FX-rate snapshot.
@@ -4491,6 +4841,32 @@ export interface components {
             rates: {
                 [key: string]: number;
             };
+        };
+        /** FailureOut */
+        FailureOut: {
+            /**
+             * Code
+             * @description `account_not_found`, `name_mismatch`, `recipient_limit`, `provider_unavailable`, `insufficient_funds`, `quote_expired`, `compliance_hold` or `unknown`.
+             */
+            code: string;
+            /** Message */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+            /**
+             * Fix
+             * @enum {string}
+             */
+            fix: "edit_recipient" | "retry" | "contact_support";
+        };
+        /** FeeLine */
+        FeeLine: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+            /** Currency */
+            currency: string;
         };
         /**
          * FeeStructureOut
@@ -5652,6 +6028,12 @@ export interface components {
             /** @description KYB profile, or null if the business has not yet submitted one. */
             profile: components["schemas"]["KybProfileOut"] | null;
         };
+        /** LastSentOut */
+        LastSentOut: {
+            amount: components["schemas"]["Money"];
+            /** At */
+            at: string;
+        };
         /**
          * LedgerConversionConfirmIn
          * @description Confirm a prior ledger conversion preview token.
@@ -5675,6 +6057,15 @@ export interface components {
             amount: string;
         } & {
             [key: string]: unknown;
+        };
+        /** LimitsOut */
+        LimitsOut: {
+            /** Min */
+            min?: string | null;
+            /** Max */
+            max?: string | null;
+            /** Currency */
+            currency: string;
         };
         /** ManualPaymentIn */
         ManualPaymentIn: {
@@ -5735,6 +6126,28 @@ export interface components {
          * @enum {string}
          */
         MembershipRole: "admin" | "developer" | "finance" | "operator" | "viewer";
+        /** MethodOut */
+        MethodOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "coming_soon" | "unavailable";
+        };
+        /** Money */
+        Money: {
+            /**
+             * Value
+             * @description Decimal string, never a float.
+             */
+            value: string;
+            /** Currency */
+            currency: string;
+        };
         /**
          * MonthlyMaintenanceFeeOut
          * @description Monthly account fee, forwarded verbatim from the aggregator.
@@ -5918,6 +6331,29 @@ export interface components {
             } | null;
         };
         /**
+         * OrderFailureOut
+         * @description Why an order failed and what the client should offer next.
+         */
+        OrderFailureOut: {
+            /**
+             * Code
+             * @description Stable failure code, e.g. `account_not_found`.
+             */
+            code: string;
+            /**
+             * Message
+             * @description User-facing explanation the client can show as-is.
+             */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+            /**
+             * Fix
+             * @description `edit_recipient`, `retry` or `contact_support`.
+             */
+            fix: string;
+        };
+        /**
          * OrderListOut
          * @description Paginated list response for orders.
          */
@@ -6061,6 +6497,8 @@ export interface components {
              * @description UTC last-update timestamp.
              */
             updated_at?: string | null;
+            /** @description Present when `status` is `failed`, `refunded` or `canceled`: `{code, message, retryable, fix}`. `code` is one of `account_not_found`, `name_mismatch`, `recipient_limit`, `provider_unavailable`, `insufficient_funds`, `quote_expired`, `compliance_hold`, `unknown`. */
+            readonly failure: components["schemas"]["OrderFailureOut"] | null;
         };
         /**
          * OrderQuoteIn
@@ -6543,6 +6981,44 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** QuoteChanged */
+        QuoteChanged: {
+            /** Rate */
+            rate: boolean;
+            /** Fee */
+            fee: boolean;
+            /** Receive Amount */
+            receive_amount: boolean;
+        };
+        /** QuoteIn */
+        QuoteIn: {
+            /** Destination Id */
+            destination_id: string;
+            /** Source Account Id */
+            source_account_id: string;
+            /**
+             * Amount
+             * @description Decimal string.
+             */
+            amount: string;
+            /**
+             * Amount Currency
+             * @description Currency `amount` is typed in: the source account's currency (amount to debit) or the destination currency (amount to deliver).
+             */
+            amount_currency: string;
+            /**
+             * Destination Account Id
+             * @description Target account when `destination_id` is `dst_internal`.
+             */
+            destination_account_id?: string | null;
+            recipient?: components["schemas"]["RecipientIn"] | null;
+            /** Recipient Id */
+            recipient_id?: string | null;
+            /** Route Id */
+            route_id?: string | null;
+            /** Reference */
+            reference?: string | null;
+        };
         /** QuoteInstructions */
         QuoteInstructions: {
             /**
@@ -6575,6 +7051,165 @@ export interface components {
             /** Wallet Address */
             wallet_address: string;
         };
+        /** QuoteOut */
+        QuoteOut: {
+            send_amount: components["schemas"]["Money"];
+            fee: components["schemas"]["Money"];
+            total_debit: components["schemas"]["Money"];
+            receive_amount: components["schemas"]["Money"];
+            rate?: components["schemas"]["Rate"] | null;
+            /** Fee Breakdown */
+            fee_breakdown?: components["schemas"]["FeeLine"][];
+            /** Route Summary */
+            route_summary: string;
+            /** Quote Id */
+            quote_id: string;
+            /**
+             * Expires At
+             * @description ISO 8601 UTC.
+             */
+            expires_at: string;
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /**
+             * Reference Delivered
+             * @description Whether `reference` reaches the recipient's bank or wallet message.
+             */
+            reference_delivered: boolean;
+            /** Notes */
+            notes?: string[];
+            /**
+             * Binding
+             * @default true
+             * @constant
+             */
+            binding: true;
+        };
+        /** QuoteRefreshOut */
+        QuoteRefreshOut: {
+            send_amount: components["schemas"]["Money"];
+            fee: components["schemas"]["Money"];
+            total_debit: components["schemas"]["Money"];
+            receive_amount: components["schemas"]["Money"];
+            rate?: components["schemas"]["Rate"] | null;
+            /** Fee Breakdown */
+            fee_breakdown?: components["schemas"]["FeeLine"][];
+            /** Route Summary */
+            route_summary: string;
+            /** Quote Id */
+            quote_id: string;
+            /**
+             * Expires At
+             * @description ISO 8601 UTC.
+             */
+            expires_at: string;
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /**
+             * Reference Delivered
+             * @description Whether `reference` reaches the recipient's bank or wallet message.
+             */
+            reference_delivered: boolean;
+            /** Notes */
+            notes?: string[];
+            /**
+             * Binding
+             * @default true
+             * @constant
+             */
+            binding: true;
+            changed: components["schemas"]["QuoteChanged"];
+        };
+        /** Rate */
+        Rate: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /**
+             * Value
+             * @description Units of `to` received per unit of `from` sent, after fees.
+             */
+            value: string;
+        };
+        /** RecipientCreateIn */
+        RecipientCreateIn: {
+            /** Name */
+            name: string;
+            /** Destination Id */
+            destination_id: string;
+            /** Account */
+            account: string;
+            /**
+             * Recipient Id
+             * @description Add this route to an existing recipient instead of creating a new one.
+             */
+            recipient_id?: string | null;
+        };
+        /** RecipientDeletedOut */
+        RecipientDeletedOut: {
+            /** Id */
+            id: string;
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
+        };
+        /** RecipientIn */
+        RecipientIn: {
+            /** Name */
+            name: string;
+            /**
+             * Account
+             * @description Account number, mobile number, wallet address or own account id.
+             */
+            account: string;
+            /**
+             * Details
+             * @description Extra rail fields some payout methods need (routing number, bank code …).
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** RecipientListOut */
+        RecipientListOut: {
+            /** Recipients */
+            recipients: components["schemas"]["RecipientOut"][];
+        };
+        /** RecipientOut */
+        RecipientOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Routes */
+            routes: components["schemas"]["RecipientRouteOut"][];
+            /** Send Count */
+            send_count: number;
+        };
+        /** RecipientRouteOut */
+        RecipientRouteOut: {
+            /** Route Id */
+            route_id: string;
+            /** Destination Id */
+            destination_id: string;
+            /** Account Masked */
+            account_masked: string;
+            last_sent?: components["schemas"]["LastSentOut"] | null;
+        };
+        /** RefundOut */
+        RefundOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "completed";
+            amount?: components["schemas"]["Money"] | null;
+            /** Completed At */
+            completed_at?: string | null;
+        };
         /**
          * SendConfirmIn
          * @description Partner confirm body: ``preview_token`` (+ Idempotency-Key header).
@@ -6582,6 +7217,52 @@ export interface components {
         SendConfirmIn: {
             /** Preview Token */
             preview_token: string;
+        };
+        /** SendErrorDetail */
+        SendErrorDetail: {
+            /** Code */
+            code: string;
+            /**
+             * Message
+             * @description User-facing copy the client can display directly.
+             */
+            message: string;
+            /**
+             * Field
+             * @description Request field to mark, when one applies.
+             */
+            field?: string | null;
+            limit?: components["schemas"]["Money"] | null;
+        };
+        /**
+         * SendErrorOut
+         * @description `data` on every 4xx from `/v1/sends/*` and `/v1/recipients`.
+         */
+        SendErrorOut: {
+            error: components["schemas"]["SendErrorDetail"];
+        };
+        /**
+         * SendFailureOut
+         * @description Why a send failed and what the client should offer next.
+         */
+        SendFailureOut: {
+            /**
+             * Code
+             * @description Stable failure code, e.g. `account_not_found`.
+             */
+            code: string;
+            /**
+             * Message
+             * @description User-facing explanation the client can show as-is.
+             */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+            /**
+             * Fix
+             * @description `edit_recipient`, `retry` or `contact_support`.
+             */
+            fix: string;
         };
         /**
          * SendInvoiceIn
@@ -6599,6 +7280,15 @@ export interface components {
              * @default false
              */
             reminder: boolean;
+        };
+        /** SendOptionsOut */
+        SendOptionsOut: {
+            /** Methods */
+            methods: components["schemas"]["MethodOut"][];
+            /** Destinations */
+            destinations: components["schemas"]["DestinationOut"][];
+            /** Sources */
+            sources: components["schemas"]["SourceOut"][];
         };
         /** SendOut */
         SendOut: {
@@ -6632,6 +7322,7 @@ export interface components {
             ledger_journal_reference?: string | null;
             /** Expires At */
             expires_at?: string | null;
+            failure?: components["schemas"]["SendFailureOut"] | null;
         };
         /**
          * SendPreviewIn
@@ -6649,6 +7340,68 @@ export interface components {
              * @description Optional Stellar MEMO_TEXT (≤28 bytes). Ignored on EVM rails.
              */
             memo?: string | null;
+        };
+        /** SendStatusOut */
+        SendStatusOut: {
+            send_amount: components["schemas"]["Money"];
+            fee: components["schemas"]["Money"];
+            total_debit: components["schemas"]["Money"];
+            receive_amount: components["schemas"]["Money"];
+            rate?: components["schemas"]["Rate"] | null;
+            /** Fee Breakdown */
+            fee_breakdown?: components["schemas"]["FeeLine"][];
+            /** Route Summary */
+            route_summary: string;
+            /** Send Id */
+            send_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "sending" | "processing" | "delivered" | "failed" | "refunded";
+            failure?: components["schemas"]["FailureOut"] | null;
+            refund?: components["schemas"]["RefundOut"] | null;
+            /** Timeline */
+            timeline: components["schemas"]["TimelineStep"][];
+            /** Provider Reference */
+            provider_reference?: string | null;
+            /** Explorer Url */
+            explorer_url?: string | null;
+            /** Reference */
+            reference?: string | null;
+            /**
+             * Reference Delivered
+             * @default false
+             */
+            reference_delivered: boolean;
+            /** Destination Id */
+            destination_id?: string | null;
+            /** Destination Name */
+            destination_name?: string | null;
+            /** Recipient Name */
+            recipient_name?: string | null;
+            /** Recipient Account Masked */
+            recipient_account_masked?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SourceOut */
+        SourceOut: {
+            /** Account Id */
+            account_id: string;
+            /** Label */
+            label: string;
+            /** Currency */
+            currency: string;
+            /** Network */
+            network?: string | null;
+            /**
+             * Available
+             * @description Available balance as a decimal string; null when unknown.
+             */
+            available?: string | null;
         };
         /** StellarDisbursementConfirmIn */
         StellarDisbursementConfirmIn: {
@@ -6843,6 +7596,13 @@ export interface components {
             /** Invites */
             invites: components["schemas"]["InviteOut"][];
         };
+        /** TimelineStep */
+        TimelineStep: {
+            /** Step */
+            step: string;
+            /** At */
+            at: string;
+        };
         /**
          * TransactionListOut
          * @description Paginated list response for transactions.
@@ -6915,7 +7675,7 @@ export interface components {
             payment?: components["schemas"]["TransactionPaymentOut"] | null;
             /**
              * Tx Hash
-             * @description On-chain tx hash for a projected Stellar USDC credit; null for orders.
+             * @description On-chain tx hash: the Stellar payment for a projected USDC credit, or for partner orders the customer funding tx (OffRamp) / crypto delivery tx (OnRamp) reported by the aggregator. Null when unknown. Pair with `crypto_network` to build a block-explorer link.
              */
             tx_hash?: string | null;
             /**
@@ -12659,6 +13419,548 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_recipients_api_v1_recipients_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipientListOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_recipient_api_v1_recipients_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipientOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    delete_recipient_api_v1_recipients__recipient_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path: {
+                recipient_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RecipientDeletedOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    confirm_send_api_v1_sends_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendStatusOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Quote expired. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Sending is switched off. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    get_send_api_v1_sends__send_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path: {
+                send_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendStatusOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    stream_send_api_v1_sends__send_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path: {
+                send_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-sent events. Each `send` event carries the same body as `GET /v1/sends/{send_id}`. The stream ends after a final status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    estimate_send_api_v1_sends_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstimateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_EstimateOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    get_options_api_v1_sends_options_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string | null;
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendOptionsOut_"];
+                };
+            };
+            /** @description Not modified. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_send_api_v1_sends_quote_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_QuoteOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+        };
+    };
+    refresh_quote_api_v1_sends_quote__quote_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-API-Key"?: string | null;
+            };
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_QuoteRefreshOut_"];
+                };
+            };
+            /** @description Request cannot be fulfilled. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
+                };
+            };
+            /** @description Invalid request body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendErrorOut_"];
                 };
             };
         };

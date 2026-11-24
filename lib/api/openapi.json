@@ -11381,6 +11381,884 @@
         }
       }
     },
+    "/v1/recipients": {
+      "get": {
+        "tags": [
+          "recipients"
+        ],
+        "summary": "List Recipients",
+        "description": "Saved recipients with their routes, most-sent first.",
+        "operationId": "list_recipients_api_v1_recipients_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RecipientListOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "recipients"
+        ],
+        "summary": "Create Recipient",
+        "description": "Save a recipient, or add another route to one that exists.",
+        "operationId": "create_recipient_api_v1_recipients_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipientCreateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RecipientOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipients/{recipient_id}": {
+      "delete": {
+        "tags": [
+          "recipients"
+        ],
+        "summary": "Delete Recipient",
+        "description": "Remove a saved recipient.",
+        "operationId": "delete_recipient_api_v1_recipients__recipient_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recipient_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recipient Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RecipientDeletedOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends": {
+      "post": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Confirm Send",
+        "description": "Confirm a quote. Responds at once with the send in `sending`; legs run in the background.",
+        "operationId": "confirm_send_api_v1_sends_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendStatusOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Quote expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sending is switched off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/{send_id}": {
+      "get": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Get Send",
+        "description": "One status shape for every send: status, failure, refund and timeline.",
+        "operationId": "get_send_api_v1_sends__send_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "send_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Send Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendStatusOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/{send_id}/events": {
+      "get": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Stream Send",
+        "description": "Live status updates so the client does not have to poll.",
+        "operationId": "stream_send_api_v1_sends__send_id__events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "send_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Send Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-sent events. Each `send` event carries the same body as `GET /v1/sends/{send_id}`. The stream ends after a final status.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {}
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/estimate": {
+      "post": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Estimate Send",
+        "description": "Fee, rate, total and receive amount before any recipient is entered. Not binding.",
+        "operationId": "estimate_send_api_v1_sends_estimate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_EstimateOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/options": {
+      "get": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Get Options",
+        "description": "Methods, destinations and payable balances in one cacheable call.",
+        "operationId": "get_options_api_v1_sends_options_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendOptionsOut_"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/quote": {
+      "post": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Quote Send",
+        "description": "Binding price for a recipient, with an expiry the client can count down.",
+        "operationId": "quote_send_api_v1_sends_quote_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuoteOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sends/quote/{quote_id}/refresh": {
+      "post": {
+        "tags": [
+          "sends"
+        ],
+        "summary": "Refresh Quote",
+        "description": "Re-price a quote. Returns a new `quote_id` and exactly what changed.",
+        "operationId": "refresh_quote_api_v1_sends_quote__quote_id__refresh_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "quote_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Quote Id"
+            }
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuoteRefreshOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request cannot be fulfilled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendErrorOut_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/statements": {
       "get": {
         "tags": [
@@ -12312,6 +13190,36 @@
         ],
         "title": "AccountCreditOut",
         "description": "One inbound Stellar USDC credit observed by the account-credit watcher."
+      },
+      "AccountFieldOut": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern",
+            "description": "Validation regex when known; null until a source exists."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "label"
+        ],
+        "title": "AccountFieldOut"
       },
       "AccountOpenIn": {
         "properties": {
@@ -13347,6 +14255,34 @@
         ],
         "title": "ApiResponse[EnsureStablecoinRailsOut]"
       },
+      "ApiResponse_EstimateOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[EstimateOut]"
+      },
       "ApiResponse_ExchangeRatesOut_": {
         "properties": {
           "status": {
@@ -14325,6 +15261,202 @@
         ],
         "title": "ApiResponse[PublicLinkOut]"
       },
+      "ApiResponse_QuoteOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[QuoteOut]"
+      },
+      "ApiResponse_QuoteRefreshOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteRefreshOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[QuoteRefreshOut]"
+      },
+      "ApiResponse_RecipientDeletedOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientDeletedOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[RecipientDeletedOut]"
+      },
+      "ApiResponse_RecipientListOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientListOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[RecipientListOut]"
+      },
+      "ApiResponse_RecipientOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[RecipientOut]"
+      },
+      "ApiResponse_SendErrorOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendErrorOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[SendErrorOut]"
+      },
+      "ApiResponse_SendOptionsOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendOptionsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[SendOptionsOut]"
+      },
       "ApiResponse_SendOut_": {
         "properties": {
           "status": {
@@ -14352,6 +15484,34 @@
           "message"
         ],
         "title": "ApiResponse[SendOut]"
+      },
+      "ApiResponse_SendStatusOut_": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiResponse[SendStatusOut]"
       },
       "ApiResponse_StellarSwapOut_": {
         "properties": {
@@ -15621,6 +16781,21 @@
         "title": "CardIssuingRequest",
         "description": "Opaque provider references for a future hosted card-issuing flow."
       },
+      "ConfirmIn": {
+        "properties": {
+          "quote_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Quote Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quote_id"
+        ],
+        "title": "ConfirmIn"
+      },
       "ConversionAcceptIn": {
         "properties": {
           "payment_method": {
@@ -16445,6 +17620,93 @@
         "title": "DepositAccountOut",
         "description": "White-label bank deposit coordinates for display."
       },
+      "DestinationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable destination id."
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network",
+            "description": "Chain for stablecoin destinations."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "account_field": {
+            "$ref": "#/components/schemas/AccountFieldOut"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LimitsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "coming_soon",
+              "unavailable"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "method",
+          "currency",
+          "name",
+          "account_field",
+          "status"
+        ],
+        "title": "DestinationOut"
+      },
       "DocumentUploadIn": {
         "properties": {
           "key": {
@@ -16749,6 +18011,126 @@
         "type": "object",
         "title": "EntitySubmitIn"
       },
+      "EstimateIn": {
+        "properties": {
+          "destination_id": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Destination Id"
+          },
+          "source_account_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Account Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Decimal string."
+          },
+          "amount_currency": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 3,
+            "title": "Amount Currency",
+            "description": "Currency `amount` is typed in: the source account's currency (amount to debit) or the destination currency (amount to deliver)."
+          },
+          "destination_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Account Id",
+            "description": "Target account when `destination_id` is `dst_internal`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "destination_id",
+          "source_account_id",
+          "amount",
+          "amount_currency"
+        ],
+        "title": "EstimateIn"
+      },
+      "EstimateOut": {
+        "properties": {
+          "send_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_debit": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "receive_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fee_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/FeeLine"
+            },
+            "type": "array",
+            "title": "Fee Breakdown"
+          },
+          "route_summary": {
+            "type": "string",
+            "title": "Route Summary"
+          },
+          "max_sendable": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Most the source account can send right now."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "User-facing caveats, e.g. a fee that is only known at the quote step."
+          },
+          "binding": {
+            "type": "boolean",
+            "const": false,
+            "title": "Binding",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "send_amount",
+          "fee",
+          "total_debit",
+          "receive_amount",
+          "route_summary"
+        ],
+        "title": "EstimateOut"
+      },
       "ExchangeRatesOut": {
         "properties": {
           "base": {
@@ -16772,6 +18154,63 @@
         ],
         "title": "ExchangeRatesOut",
         "description": "FX-rate snapshot.\n\nEach rate is expressed as: 1 unit of ``base`` = ``rates[code]`` units of ``code``."
+      },
+      "FailureOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "`account_not_found`, `name_mismatch`, `recipient_limit`, `provider_unavailable`, `insufficient_funds`, `quote_expired`, `compliance_hold` or `unknown`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          },
+          "fix": {
+            "type": "string",
+            "enum": [
+              "edit_recipient",
+              "retry",
+              "contact_support"
+            ],
+            "title": "Fix"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "fix"
+        ],
+        "title": "FailureOut"
+      },
+      "FeeLine": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value",
+          "currency"
+        ],
+        "title": "FeeLine"
       },
       "FeeStructureOut": {
         "properties": {
@@ -19572,6 +21011,23 @@
         "title": "KybSummaryOut",
         "description": "Aggregated KYB data for a business."
       },
+      "LastSentOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount",
+          "at"
+        ],
+        "title": "LastSentOut"
+      },
       "LedgerConversionConfirmIn": {
         "properties": {
           "preview_token": {
@@ -19625,6 +21081,41 @@
         ],
         "title": "LedgerConversionPreviewIn",
         "description": "Cross-currency conversion preview (Aggregator customer conversions)."
+      },
+      "LimitsOut": {
+        "properties": {
+          "min": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency"
+        ],
+        "title": "LimitsOut"
       },
       "ManualPaymentIn": {
         "properties": {
@@ -19802,6 +21293,53 @@
           "viewer"
         ],
         "title": "MembershipRole"
+      },
+      "MethodOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "coming_soon",
+              "unavailable"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "status"
+        ],
+        "title": "MethodOut"
+      },
+      "Money": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Decimal string, never a float."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "currency"
+        ],
+        "title": "Money"
       },
       "MonthlyMaintenanceFeeOut": {
         "properties": {
@@ -20156,6 +21694,38 @@
         "title": "OrderAcceptOut",
         "description": "Response payload for ``POST /v1/orders/{quote_id}/accept``."
       },
+      "OrderFailureOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable failure code, e.g. `account_not_found`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User-facing explanation the client can show as-is."
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          },
+          "fix": {
+            "type": "string",
+            "title": "Fix",
+            "description": "`edit_recipient`, `retry` or `contact_support`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "fix"
+        ],
+        "title": "OrderFailureOut",
+        "description": "Why an order failed and what the client should offer next."
+      },
       "OrderListOut": {
         "properties": {
           "items": {
@@ -20417,6 +21987,18 @@
             ],
             "title": "Updated At",
             "description": "UTC last-update timestamp."
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderFailureOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present when `status` is `failed`, `refunded` or `canceled`: `{code, message, retryable, fix}`. `code` is one of `account_not_found`, `name_mismatch`, `recipient_limit`, `provider_unavailable`, `insufficient_funds`, `quote_expired`, `compliance_hold`, `unknown`.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -20425,7 +22007,8 @@
           "status",
           "amount_fiat",
           "currency_code",
-          "created_at"
+          "created_at",
+          "failure"
         ],
         "title": "OrderOut",
         "description": "Response schema for a single order — served from local merchant_orders table.\n\nstatus uses Mboka order statuses: processing, completed, failed,\nrefunded, canceled, or frozen."
@@ -21636,6 +23219,124 @@
         ],
         "title": "QuoteAmounts"
       },
+      "QuoteChanged": {
+        "properties": {
+          "rate": {
+            "type": "boolean",
+            "title": "Rate"
+          },
+          "fee": {
+            "type": "boolean",
+            "title": "Fee"
+          },
+          "receive_amount": {
+            "type": "boolean",
+            "title": "Receive Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rate",
+          "fee",
+          "receive_amount"
+        ],
+        "title": "QuoteChanged"
+      },
+      "QuoteIn": {
+        "properties": {
+          "destination_id": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Destination Id"
+          },
+          "source_account_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Account Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Decimal string."
+          },
+          "amount_currency": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 3,
+            "title": "Amount Currency",
+            "description": "Currency `amount` is typed in: the source account's currency (amount to debit) or the destination currency (amount to deliver)."
+          },
+          "destination_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Account Id",
+            "description": "Target account when `destination_id` is `dst_internal`."
+          },
+          "recipient": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recipient_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Id"
+          },
+          "route_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Id"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 140
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "destination_id",
+          "source_account_id",
+          "amount",
+          "amount_currency"
+        ],
+        "title": "QuoteIn"
+      },
       "QuoteInstructions": {
         "properties": {
           "available_after_accept": {
@@ -21707,6 +23408,410 @@
         "title": "QuoteOrderIn",
         "description": "DEPRECATED — stateless pricing preview (replaced by stateful OrderQuoteIn)."
       },
+      "QuoteOut": {
+        "properties": {
+          "send_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_debit": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "receive_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fee_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/FeeLine"
+            },
+            "type": "array",
+            "title": "Fee Breakdown"
+          },
+          "route_summary": {
+            "type": "string",
+            "title": "Route Summary"
+          },
+          "quote_id": {
+            "type": "string",
+            "title": "Quote Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At",
+            "description": "ISO 8601 UTC."
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds"
+          },
+          "reference_delivered": {
+            "type": "boolean",
+            "title": "Reference Delivered",
+            "description": "Whether `reference` reaches the recipient's bank or wallet message."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "binding": {
+            "type": "boolean",
+            "const": true,
+            "title": "Binding",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "send_amount",
+          "fee",
+          "total_debit",
+          "receive_amount",
+          "route_summary",
+          "quote_id",
+          "expires_at",
+          "expires_in_seconds",
+          "reference_delivered"
+        ],
+        "title": "QuoteOut"
+      },
+      "QuoteRefreshOut": {
+        "properties": {
+          "send_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_debit": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "receive_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fee_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/FeeLine"
+            },
+            "type": "array",
+            "title": "Fee Breakdown"
+          },
+          "route_summary": {
+            "type": "string",
+            "title": "Route Summary"
+          },
+          "quote_id": {
+            "type": "string",
+            "title": "Quote Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At",
+            "description": "ISO 8601 UTC."
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds"
+          },
+          "reference_delivered": {
+            "type": "boolean",
+            "title": "Reference Delivered",
+            "description": "Whether `reference` reaches the recipient's bank or wallet message."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "binding": {
+            "type": "boolean",
+            "const": true,
+            "title": "Binding",
+            "default": true
+          },
+          "changed": {
+            "$ref": "#/components/schemas/QuoteChanged"
+          }
+        },
+        "type": "object",
+        "required": [
+          "send_amount",
+          "fee",
+          "total_debit",
+          "receive_amount",
+          "route_summary",
+          "quote_id",
+          "expires_at",
+          "expires_in_seconds",
+          "reference_delivered",
+          "changed"
+        ],
+        "title": "QuoteRefreshOut"
+      },
+      "Rate": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "Units of `to` received per unit of `from` sent, after fees."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "value"
+        ],
+        "title": "Rate"
+      },
+      "RecipientCreateIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "destination_id": {
+            "type": "string",
+            "maxLength": 191,
+            "minLength": 1,
+            "title": "Destination Id"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Account"
+          },
+          "recipient_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Id",
+            "description": "Add this route to an existing recipient instead of creating a new one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "destination_id",
+          "account"
+        ],
+        "title": "RecipientCreateIn"
+      },
+      "RecipientDeletedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "RecipientDeletedOut"
+      },
+      "RecipientIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Account",
+            "description": "Account number, mobile number, wallet address or own account id."
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Extra rail fields some payout methods need (routing number, bank code …)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "account"
+        ],
+        "title": "RecipientIn"
+      },
+      "RecipientListOut": {
+        "properties": {
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientOut"
+            },
+            "type": "array",
+            "title": "Recipients"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipients"
+        ],
+        "title": "RecipientListOut"
+      },
+      "RecipientOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientRouteOut"
+            },
+            "type": "array",
+            "title": "Routes"
+          },
+          "send_count": {
+            "type": "integer",
+            "title": "Send Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "routes",
+          "send_count"
+        ],
+        "title": "RecipientOut"
+      },
+      "RecipientRouteOut": {
+        "properties": {
+          "route_id": {
+            "type": "string",
+            "title": "Route Id"
+          },
+          "destination_id": {
+            "type": "string",
+            "title": "Destination Id"
+          },
+          "account_masked": {
+            "type": "string",
+            "title": "Account Masked"
+          },
+          "last_sent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastSentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "route_id",
+          "destination_id",
+          "account_masked"
+        ],
+        "title": "RecipientRouteOut"
+      },
+      "RefundOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "title": "Status"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RefundOut"
+      },
       "SendConfirmIn": {
         "properties": {
           "preview_token": {
@@ -21722,6 +23827,92 @@
         ],
         "title": "SendConfirmIn",
         "description": "Partner confirm body: ``preview_token`` (+ Idempotency-Key header)."
+      },
+      "SendErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User-facing copy the client can display directly."
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "Request field to mark, when one applies."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SendErrorDetail"
+      },
+      "SendErrorOut": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/SendErrorDetail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "SendErrorOut",
+        "description": "`data` on every 4xx from `/v1/sends/*` and `/v1/recipients`."
+      },
+      "SendFailureOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable failure code, e.g. `account_not_found`."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User-facing explanation the client can show as-is."
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          },
+          "fix": {
+            "type": "string",
+            "title": "Fix",
+            "description": "`edit_recipient`, `retry` or `contact_support`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "fix"
+        ],
+        "title": "SendFailureOut",
+        "description": "Why a send failed and what the client should offer next."
       },
       "SendInvoiceIn": {
         "properties": {
@@ -21773,6 +23964,38 @@
         "type": "object",
         "title": "SendInvoiceIn",
         "description": "Optional overrides; defaults from invoice payload client_* fields."
+      },
+      "SendOptionsOut": {
+        "properties": {
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/MethodOut"
+            },
+            "type": "array",
+            "title": "Methods"
+          },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/DestinationOut"
+            },
+            "type": "array",
+            "title": "Destinations"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "methods",
+          "destinations",
+          "sources"
+        ],
+        "title": "SendOptionsOut"
       },
       "SendOut": {
         "properties": {
@@ -21891,6 +24114,16 @@
               }
             ],
             "title": "Expires At"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendFailureOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -21959,6 +24192,235 @@
         ],
         "title": "SendPreviewIn",
         "description": "Partner preview body: ``to_address``, ``amount``, optional ``network`` / ``memo``."
+      },
+      "SendStatusOut": {
+        "properties": {
+          "send_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "total_debit": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "receive_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fee_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/FeeLine"
+            },
+            "type": "array",
+            "title": "Fee Breakdown"
+          },
+          "route_summary": {
+            "type": "string",
+            "title": "Route Summary"
+          },
+          "send_id": {
+            "type": "string",
+            "title": "Send Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sending",
+              "processing",
+              "delivered",
+              "failed",
+              "refunded"
+            ],
+            "title": "Status"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refund": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RefundOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineStep"
+            },
+            "type": "array",
+            "title": "Timeline"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "explorer_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explorer Url"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "reference_delivered": {
+            "type": "boolean",
+            "title": "Reference Delivered",
+            "default": false
+          },
+          "destination_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Id"
+          },
+          "destination_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Name"
+          },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Name"
+          },
+          "recipient_account_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Account Masked"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "send_amount",
+          "fee",
+          "total_debit",
+          "receive_amount",
+          "route_summary",
+          "send_id",
+          "status",
+          "timeline",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SendStatusOut"
+      },
+      "SourceOut": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available",
+            "description": "Available balance as a decimal string; null when unknown."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "label",
+          "currency"
+        ],
+        "title": "SourceOut"
       },
       "StellarDisbursementConfirmIn": {
         "properties": {
@@ -22583,6 +25045,24 @@
         ],
         "title": "TeamListOut"
       },
+      "TimelineStep": {
+        "properties": {
+          "step": {
+            "type": "string",
+            "title": "Step"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step",
+          "at"
+        ],
+        "title": "TimelineStep"
+      },
       "TransactionListOut": {
         "properties": {
           "items": {
@@ -22731,7 +25211,7 @@
               }
             ],
             "title": "Tx Hash",
-            "description": "On-chain tx hash for a projected Stellar USDC credit; null for orders."
+            "description": "On-chain tx hash: the Stellar payment for a projected USDC credit, or for partner orders the customer funding tx (OffRamp) / crypto delivery tx (OnRamp) reported by the aggregator. Null when unknown. Pair with `crypto_network` to build a block-explorer link."
           },
           "memo": {
             "anyOf": [

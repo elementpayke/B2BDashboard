@@ -27,6 +27,8 @@ export const QK = {
   landingExchangeRates: "landing-exchange-rates",
   orderStatus: "order-status",
   savedRecipients: "saved-recipients",
+  sendEstimate: "send-estimate",
+  sendOptions: "send-options",
   sendableStablecoinAccounts: "sendable-stablecoin-accounts",
   stablecoinAccounts: "stablecoin-accounts",
   stellarCreditWatch: "stellar-credit-watch",
@@ -34,6 +36,7 @@ export const QK = {
   supportedCatalog: "supported-catalog",
   team: "team",
   transaction: "transaction",
+  unifiedSend: "unified-send",
   transactions: "transactions",
   transactionsPage: "transactions-page",
 } as const;
