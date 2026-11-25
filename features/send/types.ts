@@ -157,7 +157,10 @@ export type SendFlowProps = {
   sendRecipientError?: string | null;
   setSendExtraField?: (key: string, value: string) => void;
   sendRecipient: string;
-  setSendRecipient: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** The account exactly as the user entered it (sendRecipient may have been
+   * rewritten to +254… for the API). Shown on the status screen and receipt. */
+  sendRecipientTyped?: string;
+  setSendRecipient:(e: React.ChangeEvent<HTMLInputElement>) => void;
   /** When mobile money — rewrite local 07… to +254… (E.164) on blur. */
   normalizeSendRecipientPhone?: (e?: React.FocusEvent<HTMLInputElement>) => void;
   sendRecipientPlaceholder: string;

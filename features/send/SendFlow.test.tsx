@@ -7,12 +7,14 @@ import { baseProps, cryptoProps } from "./SendFlow.fixtures";
 import type { SavedRecipient } from "./types";
 
 const pdf = vi.hoisted(() => ({
-  build: vi.fn(() => ({ blob: new Blob(["pdf"]), filename: "mboka-receipt.pdf" })),
+  build: vi.fn(async () => ({ blob: new Blob(["pdf"]), filename: "mboka-receipt.pdf" })),
   download: vi.fn(),
 }));
 vi.mock("@/lib/documents/receiptPdf", () => ({
-  buildReceiptPdfBlob: pdf.build,
   downloadPdfBlob: pdf.download,
+}));
+vi.mock("@/lib/documents/sendReceiptPdf", () => ({
+  buildSendReceiptPdf: pdf.build,
 }));
 
 afterEach(() => {
@@ -669,10 +671,12 @@ describe("SendFlow — after sending", () => {
     expect(screen.getByText("Receipt no.")).toBeInTheDocument();
     expect(screen.getAllByText("4821").length).toBe(2);
     expect(screen.getByText("KCB Bank, Kenya")).toBeInTheDocument();
-    expect(screen.getByText("1234567890")).toBeInTheDocument();
+    expect(screen.getAllByText("1234567890").length).toBe(2);
+    expect(screen.getByText("Channel")).toBeInTheDocument();
     expect(screen.getByText("500 USD")).toBeInTheDocument();
     expect(screen.getByText("Bank transfer")).toBeInTheDocument();
     expect(screen.getByText("Amount received by beneficiary")).toBeInTheDocument();
+    expect(screen.getByText("Authorised signatory")).toBeInTheDocument();
 
     click("Copy details");
     expect(await screen.findByText("Details copied")).toBeInTheDocument();
@@ -681,12 +685,42 @@ describe("SendFlow — after sending", () => {
     expect(text).toContain("64600.00 KES to Jane Mukami");
     expect(text).toContain("Total debited: 503.00 USDT");
 
+    expect(text).toContain("Channel: KCB Bank");
+    expect(text).toContain("Account: 1234567890");
+
     click("Download PDF");
-    expect(pdf.build).toHaveBeenCalledWith(expect.objectContaining({ statusBadge: "Paid" }), "mboka-receipt-4821");
+    expect(await screen.findByText("PDF saved")).toBeInTheDocument();
+    // The PDF is drawn from the same model as the screen.
+    expect(pdf.build).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusText: "Completed",
+        rows: expect.arrayContaining([
+          { label: "Channel", value: "KCB Bank" },
+          { label: "Account", value: "1234567890" },
+        ]),
+      }),
+      "mboka-receipt-4821",
+    );
     expect(pdf.download).toHaveBeenCalledTimes(1);
 
     click("Close receipt");
     expect(heading("Jane Mukami received it on KCB Bank")).toBeInTheDocument();
+  });
+
+  it("shows the account exactly as typed, not the rewritten +254 form", () => {
+    render(
+      <SendFlow
+        {...baseProps({
+          ...done,
+          sendOutcome: "delivered",
+          sendRecipient: "+254712345678",
+          sendRecipientTyped: "0712345678",
+        })}
+      />,
+    );
+    click("View receipt");
+    expect(screen.getAllByText("0712345678").length).toBe(2);
+    expect(screen.queryByText("+254712345678")).toBeNull();
   });
 
   it("says so when the details can't be copied", async () => {
