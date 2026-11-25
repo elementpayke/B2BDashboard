@@ -490,3 +490,109 @@ export function sendSourceLabel(source: SendSource): string {
 export function isUsdLike(currency: string | null | undefined): boolean {
   return ["USD", "USDC", "USDT"].includes(String(currency ?? "").trim().toUpperCase());
 }
+
+// ---------------------------------------------------------------------------
+// Live breakdown on the amount step
+// ---------------------------------------------------------------------------
+
+export type SendBreakdownRow = {
+  key: "rate" | "fee" | "converted" | "receive" | "total";
+  label: string;
+  value: string;
+  /** The line that matters most in its group. */
+  strong?: boolean;
+  /** Starts the totals group: drawn with a rule above it. */
+  divider?: boolean;
+};
+
+export type SendBreakdownHeadline = {
+  /** "They receive" when the amount was typed as money leaving; else "You send". */
+  label: string;
+  value: string;
+};
+
+/** "0.0849 USDC", "12,958.00 KES": two to four decimals, grouped thousands. */
+function shortMoney(money: SendMoney | null | undefined): string | null {
+  if (!money || !String(money.value ?? "").trim()) return null;
+  const value = Number(money.value);
+  if (!Number.isFinite(value)) return moneyText(money);
+  const shown = value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+  return `${shown} ${money.currency}`;
+}
+
+/** A rate without a long tail: "1 USDC = 128.9 KES". */
+function shortRateLine(estimate: Pick<SendEstimate, "rate">): string | null {
+  const rate = estimate.rate;
+  if (!rate || rate.from === rate.to) return null;
+  const value = Number(rate.value);
+  const shown = Number.isFinite(value)
+    ? value.toLocaleString("en-US", { maximumFractionDigits: value < 1 ? 6 : 2 })
+    : rate.value;
+  return `1 ${rate.from} = ${shown} ${rate.to}`;
+}
+
+/**
+ * What the typed amount turns into, from a non-binding estimate: the exchange
+ * rate, the fee, what is converted, what the recipient gets, then the total
+ * taken from the account. Every figure is the backend's; nothing is recomputed
+ * here. A fee the provider only reveals with a recipient is shown as pending,
+ * never as free.
+ */
+export function estimateBreakdown(
+  estimate: SendEstimate,
+  opts: { recipient?: string | null } = {},
+): SendBreakdownRow[] {
+  const rows: SendBreakdownRow[] = [];
+  const rate = shortRateLine(estimate);
+  if (rate) rows.push({ key: "rate", label: "Exchange rate", value: rate });
+  const feeValue = Number(estimate.fee.value);
+  const fee = estimate.fee_known === false
+    ? feeValue > 0
+      ? `${shortMoney(estimate.fee)} + provider fee`
+      : "Shown on the next step"
+    : feeValue === 0
+      ? "No fee"
+      : shortMoney(estimate.fee);
+  if (fee) rows.push({ key: "fee", label: "Fee", value: fee });
+  // Only worth a line when a fee was taken out before converting.
+  const converted = shortMoney(estimate.send_amount);
+  if (rate && feeValue > 0 && converted) {
+    rows.push({ key: "converted", label: "Amount converted", value: converted });
+  }
+  const receive = shortMoney(estimate.receive_amount);
+  if (receive) {
+    rows.push({
+      key: "receive",
+      label: `${opts.recipient?.trim() || "Recipient"} receives`,
+      value: `≈ ${receive}`,
+      strong: true,
+    });
+  }
+  const total = shortMoney(estimate.total_debit);
+  if (total) {
+    rows.push({ key: "total", label: "Total deducted", value: total, strong: true, divider: true });
+  }
+  return rows;
+}
+
+/**
+ * The other side of what was typed, shown large under the amount box: what
+ * the recipient receives for money typed as leaving, or what leaves for an
+ * amount typed as received.
+ */
+export function estimateHeadline(
+  estimate: SendEstimate,
+  opts: { typedIsReceive: boolean; recipient?: string | null },
+): SendBreakdownHeadline | null {
+  if (opts.typedIsReceive) {
+    const total = shortMoney(estimate.total_debit);
+    return total ? { label: "You send", value: total } : null;
+  }
+  const receive = shortMoney(estimate.receive_amount);
+  return receive
+    ? { label: `${opts.recipient?.trim() || "They"} receive${opts.recipient?.trim() ? "s" : ""}`, value: receive }
+    : null;
+}

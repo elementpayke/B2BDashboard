@@ -157,6 +157,8 @@ import {
   accountBoxError,
   defaultSendSource,
   eligibleSendSources,
+  estimateBreakdown,
+  estimateHeadline,
   extraFieldError,
   findPayoutDestination,
   invalidExtraField,
@@ -447,7 +449,7 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendUnifiedQuote: null as any, sendUnified: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
@@ -1400,7 +1402,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendUnifiedQuote: null, sendUnified: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
@@ -1707,6 +1709,7 @@ export default function DashboardApp(props: Props = {}) {
               account: state.sendRecipient.trim(),
               details: recipientDetails(payoutCtx.fields, state.sendRecipientDetails),
             },
+            reference: state.sendReference?.trim() || undefined,
           });
           setState({
             sendQuoteLoading: false,
@@ -1787,6 +1790,7 @@ export default function DashboardApp(props: Props = {}) {
             amount: quoteAmount,
             amount_currency: quoteCurrency,
             recipient: { name: state.sendRecipientName.trim(), account: quoteAccount },
+            reference: state.sendReference?.trim() || undefined,
           });
           setState({
             sendQuoteLoading: false,
@@ -2091,7 +2095,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote: null,
           sendUnifiedQuote: null,
           sendRecipient: "",
-          sendRecipientName: "", sendRecipientDetails: {},
+          sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
           sendMemo: "",
           sendAmount: "",
         };
@@ -2594,7 +2598,7 @@ export default function DashboardApp(props: Props = {}) {
       sendStep: 1,
       sendDone: false,
       sendRecipient: "",
-      sendRecipientName: "", sendRecipientDetails: {},
+      sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
       sendMemo: "",
       sendAmount: "",
       sendQuote: null,
@@ -4143,7 +4147,7 @@ export default function DashboardApp(props: Props = {}) {
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
-      sendRecipientName: "", sendRecipientDetails: {},
+      sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
       sendMemo: "",
       sendAmount: "",
       sendAmountCurrency: "USD",
@@ -5677,11 +5681,24 @@ export default function DashboardApp(props: Props = {}) {
           providerName: sendProvider,
         })
       : null;
-  const sendEstimateAmount = useDebouncedValue(sendUsdAmountForChecks ?? "", 500);
+  // Typed in the destination currency: estimate from what the recipient
+  // should get. Typed in USD: estimate from what leaves a dollar-pegged account.
+  const sendEstimateDstCcy = sendEstimateDestination?.currency?.toUpperCase() ?? "";
+  const sendEstimateFromReceive =
+    !!sendEstimateDstCcy &&
+    sendEstimateDstCcy !== "USD" &&
+    sendAmountCurrency.toUpperCase() === sendEstimateDstCcy;
+  const sendEstimateRawAmount = sendEstimateFromReceive
+    ? s.sendAmount.trim()
+    : sendUsdAmountForChecks ?? "";
+  const sendEstimateCurrency = sendEstimateFromReceive
+    ? sendEstimateDstCcy
+    : (sendRefundWallet?.currency || "USDT").toUpperCase();
+  const sendEstimateAmount = useDebouncedValue(sendEstimateRawAmount, 500);
   const sendEstimateReady =
     !!sendEstimateDestination &&
     !!sendRefundWallet &&
-    isUsdLike(sendRefundWallet.currency) &&
+    (sendEstimateFromReceive || isUsdLike(sendRefundWallet.currency)) &&
     !s.sendUnifiedQuote &&
     !s.sendDone &&
     Number(sendEstimateAmount) > 0;
@@ -5691,19 +5708,52 @@ export default function DashboardApp(props: Props = {}) {
       sendEstimateDestination?.id ?? null,
       sendRefundWallet?.id ?? null,
       sendEstimateAmount,
+      sendEstimateCurrency,
     ],
     queryFn: () =>
       unifiedSendsApi.estimate({
         destination_id: sendEstimateDestination!.id,
         source_account_id: sendRefundWallet!.id,
         amount: sendEstimateAmount,
-        amount_currency: (sendRefundWallet!.currency || "USDT").toUpperCase(),
+        amount_currency: sendEstimateCurrency,
       }),
     enabled: sendEstimateReady,
     staleTime: 20 * 1000,
     retry: false,
   });
   const sendEstimate = sendEstimateReady ? sendEstimateQuery.data ?? null : null;
+  // Live fee, rate and totals under the amount box. While a new figure is on
+  // its way the previous rows stay, dimmed, so the card does not jump.
+  const sendBreakdown =
+    unifiedSendsEnabled() &&
+    sendIsCountry &&
+    !!sendEstimateDestination &&
+    !!sendRefundWallet &&
+    (sendEstimateFromReceive || isUsdLike(sendRefundWallet.currency)) &&
+    !s.sendUnifiedQuote &&
+    Number(sendEstimateRawAmount) > 0
+      ? {
+          rows: sendEstimate
+            ? estimateBreakdown(sendEstimate, {
+                recipient: s.sendRecipientName.trim().split(/\s+/)[0] || null,
+              })
+            : [],
+          headline: sendEstimate
+            ? estimateHeadline(sendEstimate, {
+                typedIsReceive: sendEstimateFromReceive,
+                recipient: s.sendRecipientName.trim().split(/\s+/)[0] || null,
+              })
+            : null,
+          pending: sendEstimateRawAmount !== sendEstimateAmount || sendEstimateQuery.isFetching,
+          error:
+            sendEstimateReady && sendEstimateQuery.isError && !sendEstimateQuery.isFetching
+              ? unifiedSendErrorMessage(
+                  sendEstimateQuery.error,
+                  "We couldn’t work out the price just now. You can still continue.",
+                )
+              : null,
+        }
+      : null;
   const sendLimitError = sendIsCountry
     ? limitViolationAcrossCurrencies(s.sendAmount, sendAmountCurrency, sendLimits, sendIndicativeRate) ??
       (sendRefundWallet && sendUsdAmountForChecks
@@ -6859,6 +6909,13 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendCanEnterLocal={sendCanEnterLocal}
   setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
   sendAmountEquivalent={sendAmountEquivalent}
+  sendBreakdown={sendBreakdown}
+  sendReference={s.sendReference || ""}
+  setSendReference={
+    unifiedSendsEnabled() && sendIsCountry
+      ? (e) => setState({ sendReference: e.target.value, sendQuoteError: "" })
+      : undefined
+  }
   sendIndicativeRateLine={sendIndicativeRateLine}
   sendQuotedRateLine={sendQuotedRateLine}
   sendLimitError={sendLimitError}

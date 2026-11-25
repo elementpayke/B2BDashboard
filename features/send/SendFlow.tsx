@@ -434,6 +434,11 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
                 <span className="font-mono">{p.sendQuotedRateLine}</span>
               </DetailRow>
             ) : null}
+            {p.sendReference?.trim() ? (
+              <DetailRow label="Reference">
+                <span className="break-all">{p.sendReference.trim()}</span>
+              </DetailRow>
+            ) : null}
             {p.sendIsCrypto ? (
               <DetailRow label="Total debit" strong>
                 {p.sendTotalDebitText ? (
@@ -1011,7 +1016,8 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
           <Field
             className="w-full items-center"
             label={`Amount (${unit})`}
-            error={p.sendLimitError || p.sendBalanceError || undefined}
+            // With the breakdown card the reason is shown as a panel under it.
+            error={p.sendBreakdown ? undefined : p.sendLimitError || p.sendBalanceError || undefined}
           >
             <Input
               className={cn(
@@ -1025,17 +1031,6 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
               autoComplete="off"
             />
           </Field>
-          {p.sendAmountEquivalent ? (
-            <p className="inline-flex flex-wrap items-center justify-center gap-x-2 rounded-pill border border-border bg-card px-3.5 py-2 text-body-lg">
-              <span className="text-muted-foreground">
-                {p.sendAmountCurrency.toUpperCase() === "USD" ? `${recipientShort || "Recipient"} gets` : "You send"}
-              </span>
-              <strong className="font-mono font-medium">{p.sendAmountEquivalent}</strong>
-              {p.sendIndicativeRateLine ? (
-                <span className="text-dense text-muted-foreground">· {p.sendIndicativeRateLine}</span>
-              ) : null}
-            </p>
-          ) : null}
           {p.sendMaxAmount && maxAction ? (
             <Button
               variant="link"
@@ -1046,6 +1041,29 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
               <span className="font-mono">{p.sendMaxAmount}</span>
               {amountInvalid ? " instead" : ""}
             </Button>
+          ) : null}
+          {p.sendBreakdown?.headline && !p.sendBreakdown.error ? (
+            <div
+              className={cn(
+                "flex flex-col items-center gap-2 transition-opacity",
+                p.sendBreakdown.pending && "opacity-60",
+              )}
+            >
+              <span className="rounded-pill bg-secondary px-2.5 py-1 font-display text-caption font-bold uppercase tracking-overline text-secondary-foreground">
+                {p.sendBreakdown.headline.label} <span aria-hidden>↘</span>
+              </span>
+              <MoneyText text={p.sendBreakdown.headline.value} size="lg" className="text-link" />
+            </div>
+          ) : !p.sendBreakdown && p.sendAmountEquivalent ? (
+            <p className="inline-flex flex-wrap items-center justify-center gap-x-2 rounded-pill border border-border bg-card px-3.5 py-2 text-body-lg">
+              <span className="text-muted-foreground">
+                {p.sendAmountCurrency.toUpperCase() === "USD" ? `${recipientShort || "Recipient"} gets` : "You send"}
+              </span>
+              <strong className="font-mono font-medium">{p.sendAmountEquivalent}</strong>
+              {p.sendIndicativeRateLine ? (
+                <span className="text-dense text-muted-foreground">· {p.sendIndicativeRateLine}</span>
+              ) : null}
+            </p>
           ) : null}
         </div>
 
@@ -1071,6 +1089,61 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
           )
         ) : null}
 
+        {p.sendBreakdown ? (
+          <section
+            aria-label="Price breakdown"
+            aria-live="polite"
+            aria-busy={p.sendBreakdown.pending}
+            className={cn(
+              "w-full rounded-3xl border border-border bg-card px-5 py-2 transition-opacity",
+              p.sendBreakdown.pending && p.sendBreakdown.rows.length > 0 && "opacity-60",
+            )}
+          >
+            {p.sendBreakdown.error ? (
+              <p className="py-3 text-body text-destructive-text">{p.sendBreakdown.error}</p>
+            ) : p.sendBreakdown.rows.length === 0 ? (
+              <p className="py-3 text-center text-body text-muted-foreground">
+                Working out the fee and rate…
+              </p>
+            ) : (
+              <dl>
+                {p.sendBreakdown.rows.map((row) => (
+                  <div key={row.key} className={cn(row.divider && "mt-1 border-t border-border pt-1")}>
+                    <DetailRow label={row.label} strong={row.strong}>
+                      <span className="font-mono">{row.value}</span>
+                    </DetailRow>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {p.sendBreakdown.rows.length > 0 && !p.sendBreakdown.error ? (
+              <p className="pb-2 text-right text-dense text-muted-foreground">
+                Estimate · locked on the next step
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {p.sendBreakdown && (p.sendLimitError || p.sendBalanceError) ? (
+          <Notice tone="danger">{p.sendLimitError || p.sendBalanceError}</Notice>
+        ) : null}
+
+        {p.setSendReference ? (
+          <Field
+            label="Reference (optional)"
+            hint="A short note for the payment, like an invoice number. Shown to the recipient where their bank or provider supports it."
+          >
+            <Input
+              className="h-14"
+              value={p.sendReference || ""}
+              onChange={p.setSendReference}
+              placeholder="e.g. INV-0042"
+              autoComplete="off"
+              maxLength={140}
+            />
+          </Field>
+        ) : null}
+
         {p.sendBlockedNoNetworkId ? (
           <Notice tone="danger">
             We can’t price this route right now. Our provider list is unavailable. Please try again
@@ -1088,7 +1161,9 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
         ) : null}
 
         <p className="text-center text-body text-muted-foreground">
-          The fee and final rate are shown on the next step, before anything is sent.
+          {p.sendBreakdown
+            ? "Nothing is sent yet. You confirm the locked rate and fee on the next step."
+            : "The fee and final rate are shown on the next step, before anything is sent."}
         </p>
 
         <div className="flex justify-center gap-2.5">

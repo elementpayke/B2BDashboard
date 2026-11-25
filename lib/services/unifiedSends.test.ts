@@ -8,6 +8,8 @@ import {
   isFinalSend,
   accountBoxError,
   defaultSendSource,
+  estimateBreakdown,
+  estimateHeadline,
   eligibleSendSources,
   extraFieldError,
   invalidExtraField,
@@ -328,6 +330,64 @@ describe("pay-from account", () => {
     expect(sendSourceLabel(cad)).toBe("CAD Balance · Balance not available");
     expect(isUsdLike("usdc")).toBe(true);
     expect(isUsdLike("CAD")).toBe(false);
+  });
+});
+
+describe("live breakdown", () => {
+  const estimate = {
+    send_amount: { value: "4.915110", currency: "USDC" },
+    fee: { value: "0.084890", currency: "USDC" },
+    total_debit: { value: "5.00", currency: "USDC" },
+    receive_amount: { value: "636.90", currency: "KES" },
+    rate: { from: "USDC", to: "KES", value: "129.580009" },
+    fee_breakdown: [],
+    route_summary: "USDC → KES",
+    max_sendable: null,
+    notes: [],
+    binding: false as const,
+    fee_known: true,
+  };
+
+  it("lays out rate, fee, what is converted, what arrives and the total", () => {
+    expect(estimateBreakdown(estimate, { recipient: "Joseph" })).toEqual([
+      { key: "rate", label: "Exchange rate", value: "1 USDC = 129.58 KES" },
+      { key: "fee", label: "Fee", value: "0.0849 USDC" },
+      { key: "converted", label: "Amount converted", value: "4.9151 USDC" },
+      { key: "receive", label: "Joseph receives", value: "≈ 636.90 KES", strong: true },
+      { key: "total", label: "Total deducted", value: "5.00 USDC", strong: true, divider: true },
+    ]);
+  });
+
+  it("never shows an unknown fee as free, and skips a same-currency rate", () => {
+    const rail = {
+      ...estimate,
+      fee: { value: "0.00", currency: "USD" },
+      rate: null,
+      fee_known: false,
+      receive_amount: { value: "5.00", currency: "USD" },
+      total_debit: { value: "5.00", currency: "USD" },
+    };
+    const rows = estimateBreakdown(rail);
+    expect(rows.find((r) => r.key === "fee")?.value).toBe("Shown on the next step");
+    expect(rows.some((r) => r.key === "rate" || r.key === "converted")).toBe(false);
+    expect(rows.find((r) => r.key === "receive")?.label).toBe("Recipient receives");
+    // A known zero fee is real information.
+    expect(estimateBreakdown({ ...rail, fee_known: true }).find((r) => r.key === "fee")?.value).toBe("No fee");
+  });
+
+  it("gives the other side of the typed amount as a headline", () => {
+    expect(estimateHeadline(estimate, { typedIsReceive: false, recipient: "Joseph" })).toEqual({
+      label: "Joseph receives",
+      value: "636.90 KES",
+    });
+    expect(estimateHeadline(estimate, { typedIsReceive: false })).toEqual({
+      label: "They receive",
+      value: "636.90 KES",
+    });
+    expect(estimateHeadline(estimate, { typedIsReceive: true })).toEqual({
+      label: "You send",
+      value: "5.00 USDC",
+    });
   });
 });
 
