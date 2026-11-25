@@ -761,7 +761,16 @@ export default function DashboardApp(props: Props = {}) {
     queryFn: unifiedSendsApi.options,
     enabled: unifiedSendsEnabled() && state.modal === "send",
     staleTime: 5 * 60 * 1000,
+    // A backend without the unified routes answers 404; asking again won't help.
+    retry: (count, err) =>
+      !(err instanceof ApiRequestError && err.status === 404) && count < 1,
   });
+  // The new flow only runs when its account list loaded. If the backend does
+  // not have `/v1/sends` yet (or it failed), the composer falls back to the
+  // existing order / account-send flow and its own wallet picker, so the
+  // user can still choose where the money comes from.
+  const sendOptionsUnavailable = sendOptionsQuery.isError && !sendOptionsQuery.data;
+  const unifiedSendsLive = () => unifiedSendsEnabled() && !sendOptionsUnavailable;
   const unifiedSendId: string | null = state.sendUnified?.send_id ?? null;
   const unifiedSendQuery = useQuery({
     queryKey: [QK.unifiedSend, unifiedSendId],
@@ -838,7 +847,7 @@ export default function DashboardApp(props: Props = {}) {
   const sendCatalogLoading =
     !sendCatalogSettled ||
     (sendCatalogQuery.isFetching && !sendCatalogQuery.data) ||
-    (unifiedSendsEnabled() && state.modal === "send" && sendOptionsQuery.isLoading);
+    (unifiedSendsLive() && state.modal === "send" && sendOptionsQuery.isLoading);
   const sendCatalogError =
     sendCatalogQuery.isError && !sendCatalogQuery.data
       ? sendCatalogQuery.error instanceof Error
@@ -854,7 +863,7 @@ export default function DashboardApp(props: Props = {}) {
   // conversion routes, not banks, so there is nothing to pick otherwise.
   const sendCountriesFromCatalog = (catalog: typeof sendCatalogQuery.data) => {
     const all = offRampCountriesFromCatalog(catalog);
-    if (!unifiedSendsEnabled()) return all;
+    if (!unifiedSendsLive()) return all;
     const countryIsos = Object.entries(catalog?.offramp?.countries ?? {})
       .filter(([, country]) => country?.enabled)
       .map(([iso]) => iso);
@@ -867,7 +876,7 @@ export default function DashboardApp(props: Props = {}) {
   // from a stablecoin wallet. Real off-ramp countries keep the catalog's bank
   // list. Null means "use the catalog".
   const sendPayoutContext = (countryIdx: number, railIdx: number, providerIdx: number) => {
-    if (!unifiedSendsEnabled()) return null;
+    if (!unifiedSendsLive()) return null;
     const country = sendCountries[countryIdx];
     if (!country) return null;
     const rail = country.rails[railIdx] || country.rails[0];
@@ -1535,7 +1544,7 @@ export default function DashboardApp(props: Props = {}) {
         setState(patch);
         return patch;
       }
-      if (unifiedSendsEnabled()) {
+      if (unifiedSendsLive()) {
         // Any account can pay; the amount step lets the user choose which.
         const chosen = defaultSendSource(
           eligibleSendSources(sendOptionsQuery.data, null),
@@ -1726,7 +1735,7 @@ export default function DashboardApp(props: Props = {}) {
           });
           return;
         }
-        if (unifiedSendsEnabled()) {
+        if (unifiedSendsLive()) {
           // One contract for every method: the user picks the account, the
           // backend picks the route and returns a single combined price.
           const country = sendCountries[state.sendCountryIdx];
@@ -1902,7 +1911,7 @@ export default function DashboardApp(props: Props = {}) {
           networkId,
           networkName: providerName?.trim() || undefined,
         });
-        if (unifiedSendsEnabled()) {
+        if (unifiedSendsLive()) {
           // One contract for every method: the backend picks the route and
           // returns a single combined price.
           if (!refundWallet) {
@@ -1947,7 +1956,7 @@ export default function DashboardApp(props: Props = {}) {
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError: unifiedSendsEnabled()
+          sendQuoteError: unifiedSendsLive()
             ? unifiedSendErrorMessage(err, "Couldn't get a quote. Try again.")
             : err instanceof ApiRequestError
               ? friendlySendQuoteError(
@@ -1999,7 +2008,7 @@ export default function DashboardApp(props: Props = {}) {
           currency: account.currency || assetCode,
           memo: state.sendMemo,
         });
-        if (unifiedSendsEnabled()) {
+        if (unifiedSendsLive()) {
           const sendOptions = await queryClient.fetchQuery({
             queryKey: [QK.sendOptions],
             queryFn: unifiedSendsApi.options,
@@ -2042,7 +2051,7 @@ export default function DashboardApp(props: Props = {}) {
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError: unifiedSendsEnabled()
+          sendQuoteError: unifiedSendsLive()
             ? unifiedSendErrorMessage(err, "Couldn't preview this send. Try again.")
             : err instanceof ApiRequestError
               ? friendlySendQuoteError(
@@ -2757,7 +2766,7 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const submitSend = async () => {
-    if (unifiedSendsEnabled() && state.sendUnifiedQuote) {
+    if (unifiedSendsLive() && state.sendUnifiedQuote) {
       if (state.sendAccepting) return;
       setState({ sendAccepting: true, sendAcceptError: "" });
       try {
@@ -5642,7 +5651,7 @@ export default function DashboardApp(props: Props = {}) {
     : null;
   // Unified sends: the user chooses which account pays, from every account
   // the business holds (a rail paid from a balance narrows it to that one).
-  const sendUnifiedCountry = unifiedSendsEnabled() && sendIsCountry;
+  const sendUnifiedCountry = unifiedSendsLive() && sendIsCountry;
   const sendEligibleSources = sendUnifiedCountry
     ? eligibleSendSources(sendOptionsQuery.data, sendPayoutCtx?.destination ?? null)
     : [];
@@ -5679,7 +5688,7 @@ export default function DashboardApp(props: Props = {}) {
   // Unified sends: an indicative fee and total while the amount is typed,
   // before any recipient is entered. Debounced so typing does not spam it.
   const sendEstimateDestination =
-    unifiedSendsEnabled() && sendIsCountry
+    unifiedSendsLive() && sendIsCountry
       ? sendPayoutCtx?.destination ??
         findPayoutDestination(sendOptionsQuery.data, {
           countryIso: sendCountry.iso,
@@ -5731,7 +5740,7 @@ export default function DashboardApp(props: Props = {}) {
   // Live fee, rate and totals under the amount box. While a new figure is on
   // its way the previous rows stay, dimmed, so the card does not jump.
   const sendBreakdown =
-    unifiedSendsEnabled() &&
+    unifiedSendsLive() &&
     sendIsCountry &&
     !!sendEstimateDestination &&
     !!sendRefundWallet &&
@@ -6918,7 +6927,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   sendBreakdown={sendBreakdown}
   sendReference={s.sendReference || ""}
   setSendReference={
-    unifiedSendsEnabled() && sendIsCountry
+    unifiedSendsLive() && sendIsCountry
       ? (e) => setState({ sendReference: e.target.value, sendQuoteError: "" })
       : undefined
   }
