@@ -62,3 +62,20 @@ export const Failed: Story = {
 export const Refunded: Story = {
   render: () => <SendFlow {...baseProps({ ...done, sendOutcome: "refunded", onContactSupport: () => {} })} />,
 };
+
+/** A mobile-money payout on its way: the number as typed and the M-Pesa mark on its step. */
+export const OnItsWayMobileMoney: Story = {
+  render: () => (
+    <SendFlow
+      {...baseProps({
+        ...done,
+        sendIsMobileRail: true,
+        sendProviderOptions: ["M-Pesa"],
+        sendRecipient: "0712 345 412",
+        sendRecipientName: "Joe Mwangi",
+        sendQuoteRateText: "128.90 KES",
+        sendTotalDebitText: "1.00 USDT",
+      })}
+    />
+  ),
+};
