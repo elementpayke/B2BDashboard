@@ -34,8 +34,9 @@ const receipt: SendReceiptDoc = {
     { label: "Payment method", value: "Mobile money" },
     { label: "Transaction ID", value: "92", mono: true },
   ],
-  footnote: "This receipt was generated electronically and is valid without a signature.",
+  footnote: "This receipt was generated electronically by Mboka.",
   credit: "Mboka is a product of ElementPay",
+  signatory: { title: "Authorised signatory", org: "Mboka Payments · ElementPay" },
 };
 
 const fontDir = path.join(process.cwd(), "public/fonts/receipt");
@@ -70,5 +71,6 @@ describe("buildSendReceiptPdf", () => {
     expect(raw).toContain("Helvetica");
     expect(raw).toContain("(Channel)");
     expect(raw).toContain("(0110919165)");
+    expect(raw).toContain("(Authorised signatory)");
   });
 });

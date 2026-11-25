@@ -73,8 +73,9 @@ function buildDoc(p: SendReceiptProps): SendReceiptDoc {
     ],
     footnote: pending
       ? "This payment is still processing. This receipt confirms the payment instruction and does not confirm delivery to the beneficiary."
-      : "This receipt was generated electronically and is valid without a signature.",
+      : "This receipt was generated electronically by Mboka.",
     credit: "Mboka is a product of ElementPay",
+    signatory: { title: "Authorised signatory", org: "Mboka Payments · ElementPay" },
   };
 }
 
@@ -196,14 +197,25 @@ export default function SendReceipt(p: SendReceiptProps) {
           </dl>
         </div>
 
-        <dl className="border-b border-border py-3.5">
-          {d.meta.map((row) => (
-            <div key={row.label} className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-4 py-1 text-body-lg">
-              <dt className="text-muted-foreground">{row.label}</dt>
-              <dd className={cn("break-words", row.mono && "font-mono")}>{row.value}</dd>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-5 border-b border-border py-3.5">
+          <dl className="min-w-0 flex-1">
+            {d.meta.map((row) => (
+              <div key={row.label} className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-4 py-1 text-body-lg">
+                <dt className="text-muted-foreground">{row.label}</dt>
+                <dd className={cn("break-words", row.mono && "font-mono")}>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div data-slot="receipt-signatory" className="w-52 shrink-0">
+            <div className="flex">
+              <MbokaLogo size={20} />
             </div>
-          ))}
-        </dl>
+            <div className="mt-2 border-t border-foreground pt-1.5">
+              <p className="text-body-lg font-bold">{d.signatory.title}</p>
+              <p className="text-caption text-muted-foreground">{d.signatory.org}</p>
+            </div>
+          </div>
+        </div>
 
         <footer className="pt-4 text-caption leading-relaxed text-muted-foreground">
           <p>{d.footnote}</p>
