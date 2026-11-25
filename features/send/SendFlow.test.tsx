@@ -676,6 +676,7 @@ describe("SendFlow — after sending", () => {
     expect(screen.getByText("500 USD")).toBeInTheDocument();
     expect(screen.getByText("Bank transfer")).toBeInTheDocument();
     expect(screen.getByText("Amount received by beneficiary")).toBeInTheDocument();
+    expect(screen.getByText("Authorised signatory")).toBeInTheDocument();
 
     click("Copy details");
     expect(await screen.findByText("Details copied")).toBeInTheDocument();

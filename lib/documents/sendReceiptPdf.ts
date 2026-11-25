@@ -32,6 +32,8 @@ export type SendReceiptDoc = {
   meta: SendReceiptRow[];
   footnote: string;
   credit: string;
+  /** Signature block under the details, right-aligned. */
+  signatory: { title: string; org: string };
 };
 
 type RGB = [number, number, number];
@@ -318,19 +320,47 @@ export async function buildSendReceiptPdf(
   doc.text(receipt.getsLabel, X + 16, baseline);
   y += bandH;
 
-  /* Payment method, transaction ID — 9.5rem label column. */
-  y += 14;
-  for (const m of receipt.meta) {
+  /* Payment method + transaction ID (9.5rem label column) on the left, the
+   * signatory on the right, bottom-aligned — one band, like the screen. */
+  const sigW = 208;
+  const sigX = R - sigW;
+  const metaW = W - sigW - 24;
+  const metaRows = receipt.meta.map((m) => {
     style(m.mono ? "mono" : "body", SIZE.bodyLg, C.ink);
-    const lines = wrap(m.value, W - 152 - 16);
-    y = ensure(y, lines.length * lh(SIZE.bodyLg) + 8);
+    return { ...m, lines: wrap(m.value, metaW - 152 - 16) };
+  });
+  const metaH = metaRows.reduce((h, m) => h + 8 + m.lines.length * lh(SIZE.bodyLg), 0);
+  const sigMark = 20;
+  const sigH = sigMark + 8 + 1 + 6 + lh(SIZE.bodyLg) + lh(SIZE.caption);
+  const bandH2 = Math.max(metaH, sigH);
+  y = ensure(y, bandH2 + 29);
+  y += 14;
+
+  let my = y + bandH2 - metaH;
+  for (const m of metaRows) {
     style("body", SIZE.bodyLg, C.muted);
-    put(m.label, X, y + 4);
+    put(m.label, X, my + 4);
     style(m.mono ? "mono" : "body", SIZE.bodyLg, C.ink);
-    lines.forEach((l, i) => put(l, X + 152 + 16, y + 4 + i * lh(SIZE.bodyLg)));
-    y += 8 + lines.length * lh(SIZE.bodyLg);
+    m.lines.forEach((l, i) => put(l, X + 152 + 16, my + 4 + i * lh(SIZE.bodyLg)));
+    my += 8 + m.lines.length * lh(SIZE.bodyLg);
   }
-  y += 14;
+
+  let sy = y + bandH2 - sigH;
+  drawMark(doc, sigX, sy, sigMark);
+  const sigWord = sigMark * 0.45;
+  style("displaySemi", sigWord, C.ink, 0.04);
+  put(word, sigX + sigMark + sigMark * 0.31, sy + (sigMark - lh(sigWord)) / 2);
+  sy += sigMark + 8;
+  doc.setFillColor(...C.ink);
+  doc.rect(sigX, sy, sigW, 1, "F");
+  sy += 1 + 6;
+  style("bodyBold", SIZE.bodyLg, C.ink);
+  put(receipt.signatory.title, sigX, sy);
+  sy += lh(SIZE.bodyLg);
+  style("body", SIZE.caption, C.muted);
+  put(receipt.signatory.org, sigX, sy);
+
+  y += bandH2 + 14;
   hline(y, 1, C.border);
   y += 1;
 
