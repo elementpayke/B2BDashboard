@@ -188,6 +188,20 @@ function upstreamUnavailableResponse(err: unknown): NextResponse {
   );
 }
 
+function proxySigningUnavailable(): NextResponse | null {
+  const required = process.env.MBOKA_PROXY_SIGNATURE_REQUIRED === "true";
+  const secret = process.env.MBOKA_PROXY_SHARED_SECRET || "";
+  if (!required || secret) return null;
+  return NextResponse.json(
+    {
+      status: "error",
+      message: "Mboka proxy signing is not configured.",
+      data: null,
+    },
+    { status: 503 },
+  );
+}
+
 /**
  * Proxies a request using an explicit bearer token rather than the normal
  * session cookies — for BFF routes authenticated by a purpose-scoped token
@@ -199,6 +213,8 @@ export async function proxyWithBearerToken(
   backendPathWithQuery: string,
   token: string,
 ): Promise<NextResponse> {
+  const blocked = proxySigningUnavailable();
+  if (blocked) return blocked;
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const bodyBuffer = hasBody ? await request.arrayBuffer() : null;
   try {
@@ -213,6 +229,8 @@ export async function proxyRequest(
   request: NextRequest,
   backendPathWithQuery: string,
 ): Promise<NextResponse> {
+  const blocked = proxySigningUnavailable();
+  if (blocked) return blocked;
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value ?? null;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value ?? null;
 

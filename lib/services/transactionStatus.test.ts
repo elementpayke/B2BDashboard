@@ -13,6 +13,7 @@ const ALL_STATUSES: TransactionStatus[] = [
   "refunded",
   "canceled",
   "frozen",
+  "declined",
 ];
 
 describe("transaction status contract", () => {
@@ -33,6 +34,7 @@ describe("transaction status contract", () => {
       "failed",
       "refunded",
       "canceled",
+      "declined",
     ]);
   });
 

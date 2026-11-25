@@ -90,8 +90,13 @@ function catalogPath(params?: CatalogFilterParams): string {
 }
 
 export const catalogApi = {
+  // Mboka sends `Cache-Control: public, max-age=3600`; without no-store the
+  // browser keeps serving a pre-fix catalog after Mboka's cache is purged.
+  // TanStack Query (`useSendCatalog`) is the client-side cache instead.
   get: (params?: CatalogFilterParams) =>
-    apiEnvelope<SupportedCatalogData>("GET", catalogPath(params)),
+    apiEnvelope<SupportedCatalogData>("GET", catalogPath(params), undefined, {
+      cache: "no-store",
+    }),
 };
 
 /**

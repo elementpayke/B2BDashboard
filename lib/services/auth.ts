@@ -119,11 +119,19 @@ export const authApi = {
   login: (email: string, password: string, turnstileToken?: string) =>
     authEnvelope<LoginResult>("POST", "/api/auth/login", { email, password, turnstileToken }),
 
-  signup: (business_name: string, email: string, password: string, country?: string) =>
+  // Unlisted route — public signup is still launch-gated at /api/auth/signup
+  // (403). Paired with app/nipishe/mpya/page.tsx; keep names in sync.
+  signup: (
+    business_name: string,
+    email: string,
+    password: string,
+    country?: string,
+    turnstileToken?: string,
+  ) =>
     authEnvelope<{ business_id: number; owner_user_id: number; verification_required: boolean }>(
       "POST",
-      "/api/auth/signup",
-      { business_name, email, password, country },
+      "/api/auth/nipishe/mpya",
+      { business_name, email, password, country, turnstileToken },
     ),
 
   me: () => authEnvelope<AuthMe>("GET", "/api/auth/me"),
@@ -136,8 +144,8 @@ export const authApi = {
   resendVerification: (email: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/resend-verification", { email }),
 
-  forgotPassword: (email: string) =>
-    authEnvelope<{ ok: boolean }>("POST", "/api/auth/forgot-password", { email }),
+  forgotPassword: (email: string, turnstileToken?: string) =>
+    authEnvelope<{ ok: boolean }>("POST", "/api/auth/forgot-password", { email, turnstileToken }),
 
   resetPassword: (email: string, token: string, new_password: string) =>
     authEnvelope<{ ok: boolean }>("POST", "/api/auth/reset-password", { email, token, new_password }),

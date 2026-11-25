@@ -1,3 +1,4 @@
+import { QK } from "@/lib/api/queryKeys";
 import type { QueryClient } from "@tanstack/react-query";
 import { apiEnvelope } from "@/lib/apiClient";
 import { ordersApi, type Order, type OrderStatus } from "./orders";
@@ -180,10 +181,10 @@ export function mergeTransactionPreferPayment(
 /** Push a polled order row into React Query caches so lists/detail update without waiting for a refetch. */
 export function patchTransactionCachesFromOrder(queryClient: QueryClient, order: Order): void {
   const tx = mapOrderToTransaction(order);
-  queryClient.setQueryData<Transaction | null>(["transaction", order.id], (prev) =>
+  queryClient.setQueryData<Transaction | null>([QK.transaction, order.id], (prev) =>
     prev ? mergeTransactionPreferPayment(prev, { ...prev, ...tx }) : tx,
   );
-  queryClient.setQueryData<TransactionList>(["transactions"], (prev) => {
+  queryClient.setQueryData<TransactionList>([QK.transactions], (prev) => {
     if (!prev?.items?.length) return prev;
     const idx = prev.items.findIndex((row) => row.id === order.id);
     if (idx < 0) return prev;
@@ -191,7 +192,7 @@ export function patchTransactionCachesFromOrder(queryClient: QueryClient, order:
     items[idx] = mergeTransactionPreferPayment(items[idx], { ...items[idx], ...tx });
     return { ...prev, items };
   });
-  queryClient.setQueriesData<TransactionPage>({ queryKey: ["transactions-page"] }, (prev) => {
+  queryClient.setQueriesData<TransactionPage>({ queryKey: [QK.transactionsPage] }, (prev) => {
     if (!prev?.items?.length) return prev;
     const idx = prev.items.findIndex((row) => row.id === order.id);
     if (idx < 0) return prev;

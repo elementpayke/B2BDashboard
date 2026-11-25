@@ -32,6 +32,16 @@ describe("apiClient", () => {
     expect(data).toEqual({ id: 1 });
   });
 
+  it("uses the browser's default cache mode unless one is requested", async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse(200, { status: "success", message: "ok", data: {} }),
+    );
+    await apiEnvelope("GET", "/v1/transactions");
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("cache");
+    await apiEnvelope("GET", "/v1/supported/catalog", undefined, { cache: "no-store" });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ cache: "no-store" });
+  });
+
   it("calls the proxy prefix, not the backend directly", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: "success", message: "ok", data: {} }));
     await apiEnvelope("GET", "/v1/transactions");

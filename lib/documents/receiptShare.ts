@@ -10,6 +10,7 @@ export type ReceiptShareDoc = {
   fileTitle: string;
   heading: string;
   statusBadge?: string;
+  statusTone?: "success" | "warning" | "danger" | "neutral";
   amount?: string;
   amountCaption?: string;
   party?: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import { QK } from "@/lib/api/queryKeys";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import TotpEnrollment from "@/components/auth/TotpEnrollment";
@@ -22,7 +23,7 @@ export default function MfaSetupPage() {
     // enroll/confirm already set real session cookies server-side (the
     // setup token completed the deferred login). Drop any stale auth-me
     // cache and let the dashboard shell fetch fresh.
-    queryClient.removeQueries({ queryKey: ["auth-me"] });
+    queryClient.removeQueries({ queryKey: [QK.authMe] });
     router.push("/dashboard");
     router.refresh();
   }

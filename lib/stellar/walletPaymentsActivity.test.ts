@@ -36,7 +36,7 @@ function elementActivity(
     client: "Deposit · USDC",
     type: "Stellar deposit",
     amount: "+25.50 USDC",
-    amountColor: "var(--success)",
+    amountColor: "var(--positive)",
     statusLabel: "Settled",
     statusIcon: "✓",
     statusColor: "var(--success)",

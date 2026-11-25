@@ -41,7 +41,7 @@ Audits (2026-08-08): Shell+Home · Money flows · Auth+secondary.
 5. **T3 Header identity + rates strip** — Avatar/business/KYB chip + RatesMarquee from summary FX.
 
 ### Wave 2 — Money flows
-6. **M1 Send wizard UX** — `components/send/**`; keep catalog + quote/accountSends.
+6. **M1 Send wizard UX** — `features/send/**`; keep catalog + quote/accountSends.
 7. **M2 Deposit + transit** — `DepositModal` + transit from `payment_instructions`.
 8. **M3 Receive** — Method chooser + QR; fiat IBAN list stays real.
 9. **M4 Accounts visual** — `components/wallets/**`; no mock balances.

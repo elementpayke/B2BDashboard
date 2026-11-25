@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
+  catalogApi,
   offRampCountriesFromCatalog,
   offRampProvidersForRail,
   onRampCountriesFromCatalog,
@@ -272,5 +273,108 @@ describe("offRampCountriesFromCatalog / onRampCountriesFromCatalog", () => {
   it("returns empty when catalog is missing", () => {
     expect(offRampCountriesFromCatalog(null)).toEqual([]);
     expect(onRampCountriesFromCatalog(undefined)).toEqual([]);
+  });
+});
+
+describe("catalogApi.get", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("bypasses the browser HTTP cache so a purged backend catalog shows up", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "success", message: "ok", data: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await catalogApi.get({ country: "KE" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/mboka/v1/supported/catalog?country=KE");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "GET", cache: "no-store" });
+  });
+});
+
+describe("offramp corridors merged with SWIFT rails", () => {
+  // Shape the aggregator returns once a country has both a local corridor and
+  // a SWIFT rail: local currency + payment methods, plus `rails`.
+  const merged = {
+    offramp: {
+      countries: {
+        KE: {
+          country_code: "KE",
+          country_name: "Kenya",
+          currency: "KES",
+          enabled: true,
+          payment_methods: {
+            mobile_money: {
+              enabled: true,
+              label: "Mobile Money",
+              quote_type: "mobile_money",
+              providers: [{ code: "MPESA", name: "M-Pesa", enabled: true, id: "mpesa-id" }],
+            },
+            bank: {
+              enabled: true,
+              label: "Bank Transfer",
+              quote_type: "bank",
+              providers: [{ code: "EQUITY", name: "Equity Bank", enabled: true, id: "eq-id" }],
+            },
+          },
+          rails: [{ type: "BankSwift", label: "SWIFT Transfer", enabled: true, providers: [] }],
+        },
+        TZ: {
+          country_code: "TZ",
+          country_name: "Tanzania",
+          currency: "TZS",
+          enabled: true,
+          payment_methods: {
+            mobile_money: {
+              enabled: true,
+              label: "Mobile Money",
+              quote_type: "mobile_money",
+              providers: [
+                { code: "VODACOM - M PESA", name: "M PESA", enabled: true, id: "tz-mpesa" },
+                { code: "TIGO", name: "TIGO", enabled: true, id: "tz-tigo" },
+              ],
+            },
+            bank: { enabled: false, label: "Bank Transfer", quote_type: "bank", providers: [] },
+          },
+          rails: [{ type: "BankSwift", label: "SWIFT Transfer", enabled: true, providers: [] }],
+        },
+        US: {
+          country_code: "US",
+          country_name: "United States",
+          currency: "USD",
+          enabled: true,
+          payment_methods: {
+            mobile_money: { enabled: false, label: "Mobile Money", quote_type: "mobile_money", providers: [] },
+            bank: { enabled: false, label: "Bank Transfer", quote_type: "bank", providers: [] },
+          },
+          rails: [{ type: "BankSwift", label: "SWIFT Transfer", enabled: true, providers: [] }],
+        },
+      },
+    },
+  } as unknown as SupportedCatalogData;
+
+  it("lists Kenya and Tanzania as mobile-money destinations in local currency", () => {
+    const countries = offRampCountriesFromCatalog(merged);
+    const mobile = countries.filter((c) => c.rails.some((r) => r.type === "mobile"));
+    expect(mobile.map((c) => [c.iso, c.code])).toEqual([
+      ["ke", "KES"],
+      ["tz", "TZS"],
+    ]);
+    expect(countries.find((c) => c.iso === "ke")!.rails.map((r) => r.type)).toEqual(["mobile", "bank"]);
+  });
+
+  it("resolves the real provider ids for Kenya and Tanzania mobile money", () => {
+    expect(offRampProvidersForRail(merged, "KE", "mobile", "KES")!.map((p) => p.id)).toEqual(["mpesa-id"]);
+    expect(offRampProvidersForRail(merged, "TZ", "mobile", "TZS")!.map((p) => p.id)).toEqual([
+      "tz-mpesa",
+      "tz-tigo",
+    ]);
+  });
+
+  it("does not list SWIFT-only countries until SWIFT rails are supported", () => {
+    expect(offRampCountriesFromCatalog(merged).map((c) => c.iso)).not.toContain("us");
   });
 });

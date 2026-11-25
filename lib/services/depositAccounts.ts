@@ -273,6 +273,12 @@ export type DepositAccount = {
    * API today (only a boolean opt-out flag exists there) — this is Mboka's
    * own fee-schedule config once it ships. */
   monthly_maintenance_fee?: { amount: string; currency: string } | null;
+  deposit_reference_required?: boolean | null;
+  deposit_disclaimer?: string | null;
+  domestic?: Record<string, unknown> | null;
+  international?: Record<string, unknown> | null;
+  /** Partner flag: no international wire coordinates (e.g. local-rail-only deposit). */
+  domestic_deposit_only?: boolean | null;
 };
 
 function nonEmpty(value: unknown): string | null {
@@ -337,10 +343,56 @@ export function mergeDepositAccount(
   (Object.keys(overlay) as (keyof DepositAccount)[]).forEach((key) => {
     const next = overlay[key];
     if (next == null) return;
+    if (typeof next === "boolean") {
+      (merged as Record<string, unknown>)[key as string] = next;
+      return;
+    }
+    if (typeof next === "object" && !Array.isArray(next)) {
+      (merged as Record<string, unknown>)[key as string] = next;
+      return;
+    }
     if (typeof next === "string" && !next.trim()) return;
     (merged as Record<string, unknown>)[key as string] = next;
   });
   return merged;
+}
+
+/** Apply ``POST …/sync`` result onto cached account rows (Refresh must not drop enrich fields). */
+const SYNC_OVERLAY_NULLABLE: (keyof DepositAccount)[] = [
+  "reference",
+  "deposit_disclaimer",
+  "deposit_reference_required",
+  "domestic",
+  "international",
+  "domestic_deposit_only",
+  "instructions",
+];
+
+function mergeSyncDepositAccount(stub: DepositAccount, synced: DepositAccount): DepositAccount {
+  const merged = mergeDepositAccount(stub, synced) ?? synced;
+  for (const key of SYNC_OVERLAY_NULLABLE) {
+    if (Object.prototype.hasOwnProperty.call(synced, key) && synced[key] === null) {
+      (merged as Record<string, unknown>)[key as string] = null;
+    }
+  }
+  return merged;
+}
+
+export function applySyncedDepositAccount(
+  accounts: DepositAccount[] | undefined,
+  accountId: string,
+  synced: DepositAccount,
+): DepositAccount[] {
+  const id = String(accountId).trim();
+  if (!id) return accounts ?? [];
+  if (!accounts?.length) return [synced];
+  let found = false;
+  const next = accounts.map((row) => {
+    if (String(row.id ?? "").trim() !== id) return row;
+    found = true;
+    return mergeSyncDepositAccount(row, synced);
+  });
+  return found ? next : [...next, synced];
 }
 
 export type DepositAccountListResult = {
@@ -510,7 +562,8 @@ export function buildDepositAccountDetailRows(account: DepositAccount): DepositA
   if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
   if (holder) rows.push({ label: "Account name", value: holder, copyValue: holder });
   if (reference) {
-    rows.push({ label: "Reference", value: reference, copyValue: reference });
+    // White-label: never surface the underlying partner's name to merchants.
+    rows.push({ label: "Mboka number", value: reference, copyValue: reference });
   }
   const monthlyFee = formatMonthlyFee(account.monthly_maintenance_fee);
   if (monthlyFee) {
@@ -545,6 +598,150 @@ export type DepositAccountDetailSection = {
   rows: DepositAccountDetailRow[];
 };
 
+/**
+ * `skipBankIdentity` leaves Bank/Bank address out of the rail-specific rows —
+ * used whenever a caller is about to show them once in their own shared
+ * section instead of repeating the same bank name/address inside every rail.
+ */
+function depositRowsFromRailGroup(
+  group: Record<string, unknown>,
+  currency: string,
+  opts: { skipBankIdentity?: boolean } = {},
+): DepositAccountDetailRow[] {
+  const rows: DepositAccountDetailRow[] = [];
+  const accountNumber = nonEmpty(group.account_number as string | undefined);
+  const routingNumber = nonEmpty(group.routing_number as string | undefined);
+  const sortCode = nonEmpty(group.sort_code as string | undefined);
+  const bankCode = nonEmpty(group.bank_code as string | undefined);
+  const swiftBic =
+    nonEmpty(group.swift_bic as string | undefined) || nonEmpty(group.bic as string | undefined);
+  if (accountNumber) {
+    rows.push({ label: "Account number", value: accountNumber, copyValue: accountNumber });
+  }
+  if (routingNumber) {
+    rows.push({ label: "Routing number", value: routingNumber, copyValue: routingNumber });
+  }
+  if (sortCode) rows.push({ label: "Sort code", value: sortCode, copyValue: sortCode });
+  if (bankCode) {
+    const label = currency.trim().toUpperCase() === "ZAR" ? "Branch code" : "Bank code";
+    rows.push({ label, value: bankCode, copyValue: bankCode });
+  }
+  if (swiftBic) rows.push({ label: "SWIFT/BIC", value: swiftBic, copyValue: swiftBic });
+  if (!opts.skipBankIdentity) {
+    const bankName = nonEmpty(group.bank_name as string | undefined);
+    const bankAddress = formatBankAddress(group.bank_address as Record<string, unknown> | null);
+    if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
+    if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+  }
+  return rows;
+}
+
+/** Pushes a single shared "Bank details" section when the bank identity was
+ * left out of per-rail rows (via `skipBankIdentity`) — shown once instead of
+ * once per rail, since it's the same bank either way. */
+function pushBankIdentitySection(
+  sections: DepositAccountDetailSection[],
+  bankName: string | null,
+  bankAddress: string | null,
+): void {
+  if (!bankName && !bankAddress) return;
+  const rows: DepositAccountDetailRow[] = [];
+  if (bankName) rows.push({ label: "Bank", value: bankName, copyValue: bankName });
+  if (bankAddress) rows.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+  sections.push({ title: "Bank details", rows });
+}
+
+function isDomesticDepositOnly(
+  account: Pick<DepositAccount, "domestic_deposit_only">,
+): boolean {
+  return account.domestic_deposit_only === true;
+}
+
+export function formatDepositReferenceDisclaimer(
+  reference: string,
+  currency?: string | null,
+): string {
+  const ref = reference.trim();
+  const cur = (currency || "").trim().toUpperCase();
+  const tail = cur
+    ? `Transfers without this reference may not credit your ${cur} balance.`
+    : "Transfers without this reference may not credit your balance.";
+  return `Include ${ref} in the payment reference when sending funds. ${tail}`;
+}
+
+/** Flat domestic coords when the partner set ``domestic_deposit_only`` without rail groups. */
+function buildFlatDomesticRailSections(
+  account: DepositAccount,
+  otherRows: DepositAccountDetailRow[],
+): DepositAccountDetailSection[] | null {
+  if (account.domestic_deposit_only !== true) return null;
+  const currency = (account.currency || "").trim();
+  const accountNumber = nonEmpty(account.account_number) || nonEmpty(account.iban);
+  if (!accountNumber) return null;
+
+  const bankCode = nonEmpty(account.bank_code);
+  const bankName = nonEmpty(account.bank_name);
+  const domesticFields: Record<string, unknown> = {
+    account_number: accountNumber,
+    bank_name: bankName,
+  };
+  if (bankCode) domesticFields.bank_code = bankCode;
+
+  const sections: DepositAccountDetailSection[] = [
+    {
+      title: "Domestic transfer",
+      rows: depositRowsFromRailGroup(domesticFields, currency),
+    },
+  ];
+  pushMbokaTransferSection(sections, otherRows);
+  return sections;
+}
+
+/** One live sync when opening account detail — bootstrap no longer blocks on enrich (#338). */
+export function needsDepositInstructionsSync(
+  account: Pick<
+    DepositAccount,
+    | "id"
+    | "status"
+    | "reference"
+    | "account_number"
+    | "iban"
+    | "deposit_disclaimer"
+    | "deposit_reference_required"
+  >,
+): boolean {
+  const id = String(account.id ?? "").trim();
+  if (!id) return false;
+  if ((account.status || "").trim().toLowerCase() !== "active") return false;
+  const hasCoords = Boolean(nonEmpty(account.account_number) || nonEmpty(account.iban));
+  if (!hasCoords) return false;
+  const reference = nonEmpty(account.reference);
+  const disclaimer = nonEmpty(account.deposit_disclaimer);
+  if (reference && disclaimer) return false;
+  if (reference && account.deposit_reference_required !== true) return false;
+  if (!reference) return true;
+  if (account.deposit_reference_required === true && !disclaimer) return true;
+  return false;
+}
+
+/** Partner disclaimer, or fallback when ``deposit_reference_required`` is set without disclaimer text. */
+export function resolveDepositDisclaimer(
+  account: Pick<
+    DepositAccount,
+    "currency" | "reference" | "deposit_disclaimer" | "deposit_reference_required"
+  >,
+): string | null {
+  const fromApi = nonEmpty(account.deposit_disclaimer);
+  if (fromApi) return fromApi;
+  if (account.deposit_reference_required !== true) return null;
+  const reference = nonEmpty(account.reference);
+  if (reference) return formatDepositReferenceDisclaimer(reference, account.currency);
+  return (
+    "Include your account payment reference when sending funds. " +
+    "Use Refresh account if the reference is not shown below."
+  );
+}
+
 const BANK_ROW_LABEL_RE =
   /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
 
@@ -561,6 +758,25 @@ const BANK_ROW_LABEL_RE =
  * keeps a single "Bank details" grouping — its one identifier already fully
  * describes the account on its own.
  */
+/**
+ * Pulls the account's partner reference out of `otherRows` (anything that
+ * isn't a bank-coordinate field) and shows it as "Mboka number" in its own
+ * "Mboka transfer" section (white-labeled; the underlying partner is
+ * Nuvion, app.nuvion.co, whose own account-details view this structure
+ * matches). Everything else in `otherRows` (balance, fees, settlement
+ * wallet/asset, …) is intentionally dropped here — this is the
+ * account-details modal, which is for sending/receiving to this account,
+ * not a balance or settlement view; those live on the account screen
+ * behind the modal.
+ */
+function pushMbokaTransferSection(
+  sections: DepositAccountDetailSection[],
+  otherRows: DepositAccountDetailRow[],
+): void {
+  const mbokaRows = otherRows.filter((r) => /^mboka/i.test(r.label));
+  if (mbokaRows.length) sections.push({ title: "Mboka transfer", rows: mbokaRows });
+}
+
 export function buildDepositAccountDetailSections(
   account: DepositAccount,
 ): DepositAccountDetailSection[] {
@@ -569,20 +785,66 @@ export function buildDepositAccountDetailSections(
   const otherRows = rows.filter((r) => !BANK_ROW_LABEL_RE.test(r.label));
   const sections: DepositAccountDetailSection[] = [];
 
+  const domesticGroup =
+    account.domestic && typeof account.domestic === "object" ? account.domestic : null;
+  const internationalGroup =
+    account.international && typeof account.international === "object"
+      ? account.international
+      : null;
+  if (domesticGroup && internationalGroup) {
+    const currency = account.currency || "";
+    const includeInternational = !isDomesticDepositOnly(account);
+    sections.push({
+      title: "Domestic transfer",
+      rows: depositRowsFromRailGroup(domesticGroup, currency, {
+        skipBankIdentity: includeInternational,
+      }),
+    });
+    if (includeInternational) {
+      sections.push({
+        title: "International wire",
+        rows: depositRowsFromRailGroup(internationalGroup, currency, { skipBankIdentity: true }),
+      });
+      const bankName =
+        nonEmpty((domesticGroup as Record<string, unknown>).bank_name as string | undefined) ||
+        nonEmpty((internationalGroup as Record<string, unknown>).bank_name as string | undefined);
+      const bankAddress =
+        formatBankAddress((domesticGroup as Record<string, unknown>).bank_address as Record<string, unknown> | null) ||
+        formatBankAddress((internationalGroup as Record<string, unknown>).bank_address as Record<string, unknown> | null);
+      pushBankIdentitySection(sections, bankName, bankAddress);
+    }
+    pushMbokaTransferSection(sections, otherRows);
+    return sections;
+  }
+
+  const flatDomestic = buildFlatDomesticRailSections(account, otherRows);
+  if (flatDomestic) return flatDomestic;
+
   const iban = nonEmpty(account.iban);
   const bic = nonEmpty(account.bic);
   const routingNumber = nonEmpty(account.routing_number);
   const bankName = nonEmpty(account.bank_name);
   const bankAddress = formatBankAddress(account.bank_address);
+  // Non-USD/EUR rails (GBP, SEK, …) arrive with the identifier under
+  // `account_number` rather than `iban` — the backend only aliases
+  // `account_number` into `iban` for the two legacy USD/EUR rails. Without
+  // this, every other IBAN-shaped currency fell straight through to the flat
+  // "Bank details" fallback below and never got a Domestic/International
+  // split at all.
+  const localIdentifier = iban || nonEmpty(account.account_number);
 
   if (iban && routingNumber) {
     const domestic: DepositAccountDetailRow[] = [
       { label: "Account number", value: iban, copyValue: iban },
       { label: "Routing number", value: routingNumber, copyValue: routingNumber },
     ];
-    if (bankName) domestic.push({ label: "Bank", value: bankName, copyValue: bankName });
-    if (bankAddress) {
-      domestic.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+    if (!bic) {
+      // No international rail to dedupe against — keep the bank identity
+      // inline on the one section that exists.
+      if (bankName) domestic.push({ label: "Bank", value: bankName, copyValue: bankName });
+      if (bankAddress) {
+        domestic.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
+      }
     }
     sections.push({ title: "Domestic transfer (ACH/wire)", rows: domestic });
     if (bic) {
@@ -590,17 +852,41 @@ export function buildDepositAccountDetailSections(
         { label: "Account number", value: iban, copyValue: iban },
         { label: "SWIFT/BIC", value: bic, copyValue: bic },
       ];
-      if (bankName) international.push({ label: "Bank", value: bankName, copyValue: bankName });
-      if (bankAddress) {
-        international.push({ label: "Bank address", value: bankAddress, copyValue: bankAddress });
-      }
       sections.push({ title: "International wire", rows: international });
+      pushBankIdentitySection(sections, bankName, bankAddress);
     }
+  } else if (localIdentifier && bic) {
+    // IBAN-rail account with no US-style routing number (EUR, GBP, SEK, …) —
+    // the same identifier doubles as both the domestic account number and
+    // (alongside the BIC) the international wire identifier, matching
+    // Nuvion's own domestic/international split for these accounts. Bank
+    // name/address are identical either way, so they get their own section
+    // instead of appearing twice.
+    const domestic: DepositAccountDetailRow[] = [
+      { label: "Account number", value: localIdentifier, copyValue: localIdentifier },
+    ];
+    sections.push({ title: "Domestic transfer", rows: domestic });
+
+    // Only show a distinct "IBAN" row when the identifier is actually
+    // IBAN-shaped — otherwise it would just repeat "Account number" above
+    // under a label the value was never in the format of.
+    const international: DepositAccountDetailRow[] = [{ label: "SWIFT/BIC", value: bic, copyValue: bic }];
+    if (isIbanFormat(localIdentifier)) {
+      international.push({ label: "IBAN", value: localIdentifier, copyValue: localIdentifier });
+    } else {
+      international.push({
+        label: "Account number",
+        value: localIdentifier,
+        copyValue: localIdentifier,
+      });
+    }
+    sections.push({ title: "International wire", rows: international });
+    pushBankIdentitySection(sections, bankName, bankAddress);
   } else if (bankRows.length) {
     sections.push({ title: "Bank details", rows: bankRows });
   }
 
-  if (otherRows.length) sections.push({ title: "Settlement", rows: otherRows });
+  pushMbokaTransferSection(sections, otherRows);
   return sections;
 }
 
@@ -613,6 +899,11 @@ export function isCloseableDepositAccount(
   account: Pick<DepositAccount, "id" | "entity_id" | "status">,
 ): boolean {
   return Boolean(account.id && account.entity_id) && !isClosedDepositStatus(account.status);
+}
+
+/** Active fiat deposit accounts for wallets list / fund flows. */
+export function listedDepositAccounts(accounts: readonly DepositAccount[]): DepositAccount[] {
+  return accounts.filter((account) => !isClosedDepositStatus(account.status));
 }
 
 export type CreateBankAccountInput = {

@@ -203,10 +203,85 @@ describe("renderBrandedDocument", () => {
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   });
 
+  it("prints the fee the backend charged", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "450.00" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "KES 450.00" }]),
+    );
+    expect(renderBrandedDocument(doc)).toContain("KES 450.00");
+  });
+
+  it("uses the fee's own currency when it differs from the transaction's", () => {
+    const doc = buildTransactionReceipt({
+      ...settledPayout,
+      fee_amount: "1.20",
+      fee_currency: "USD",
+    });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "USD 1.20" }]),
+    );
+  });
+
+  it("documents a free transfer as No fee rather than leaving it blank", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "0.00" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows).toEqual(
+      expect.arrayContaining([{ label: "Fee", value: "No fee" }]),
+    );
+  });
+
+  it("omits the fee row when the backend sent no figure — a receipt has no 'later'", () => {
+    const doc = buildTransactionReceipt(settledPayout);
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows.some((row) => row.label === "Fee")).toBe(false);
+  });
+
+  it("never reads an unparseable fee as free", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, fee_amount: "n/a" });
+    const payment = doc.sections.find((s) => s.title === "Payment");
+    expect(payment?.rows.some((row) => row.label === "Fee")).toBe(false);
+  });
+
   it("embeds the wordmark inline rather than linking an asset", () => {
     const html = renderBrandedDocument(buildTransactionReceipt(settledPayout));
     expect(html).toContain('viewBox="0 0 166 44"');
     expect(html).toContain("#3B2ED3");
     expect(html).toContain('fill-opacity="0.45"');
+  });
+});
+
+describe("receipts for unsettled transactions", () => {
+  it("stamps the pending status on an unsettled receipt", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "processing" });
+    expect(doc.heading).toBe("Payout receipt");
+    expect(doc.statusBadge).toBe("Pending");
+    expect(doc.statusTone).toBe("warning");
+    expect(doc.subheading).toMatch(/not proof of a completed payment/);
+    const refs = doc.sections.find((s) => s.title === "References")!.rows.map((r) => r.label);
+    expect(refs).not.toContain("Receipt number");
+    expect(refs).not.toContain("Date settled");
+    expect(receiptFilename({ ...settledPayout, status: "processing" })).toBe("mboka-receipt-inv-2026-014-pending");
+  });
+
+  it("marks failed transactions with the danger tone", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "failed" });
+    expect(doc.statusBadge).toBe("Failed");
+    expect(doc.statusTone).toBe("danger");
+    expect(renderBrandedDocument(doc)).toContain('class="badge badge--danger"');
+  });
+
+  it("keeps the official receipt for settled transactions", () => {
+    const doc = buildTransactionReceipt(settledPayout);
+    expect(doc.statusBadge).toBe("Settled");
+    expect(doc.statusTone).toBe("success");
+    expect(receiptFilename(settledPayout)).toBe("mboka-receipt-inv-2026-014");
+  });
+
+  it("treats an unknown status as pending, never settled", () => {
+    const doc = buildTransactionReceipt({ ...settledPayout, status: "weird" });
+    expect(doc.statusBadge).toBe("Pending");
+    expect(doc.statusTone).toBe("warning");
   });
 });

@@ -24,8 +24,11 @@ function parseFiatAmount(value: string): number | null {
 
 /**
  * Sum completed in/out orders from the last 30 days into USD using real FX.
- * Returns `0` when nothing settled in-window; `null` when any in-window
- * completed row cannot be converted (fail closed — never invent rates).
+ * Rows whose amount or currency can't be converted are skipped rather than
+ * blanking the whole card — one exotic-currency transaction (e.g. a fiat
+ * code the aggregator's indicative-rates snapshot doesn't cover yet)
+ * shouldn't hide every other transaction's total. Never invents a rate for
+ * the skipped row; it's just left out of the sum.
  */
 export function moneyFlowFromTransactions(
   transactions: Transaction[],
@@ -42,14 +45,10 @@ export function moneyFlowFromTransactions(
     if (!Number.isFinite(created) || created < cutoff) continue;
 
     const amount = parseFiatAmount(tx.amount_fiat);
-    if (amount == null) {
-      return { moneyInUsd: null, moneyOutUsd: null };
-    }
+    if (amount == null) continue;
 
     const usd = convertAmountWithRates(amount, tx.currency, "USD", fx);
-    if (usd == null) {
-      return { moneyInUsd: null, moneyOutUsd: null };
-    }
+    if (usd == null) continue;
     if (tx.direction === "in") moneyIn += usd;
     else if (tx.direction === "out") moneyOut += usd;
   }
@@ -61,8 +60,8 @@ export function moneyFlowFromTransactions(
  * Sum processing-status transactions (any direction, all time) into USD using
  * real FX. Mirrors the Transactions screen's "Pending" filter
  * (`status === "processing"`, no date window) so the Home card and its
- * click-through agree. Returns `0` when nothing is pending; `null` when any
- * pending row can't be converted (fail closed — never invent rates).
+ * click-through agree. Rows that can't be converted are skipped rather than
+ * blanking the whole card — see moneyFlowFromTransactions above.
  */
 export function pendingAmountFromTransactions(
   transactions: Transaction[],
@@ -74,10 +73,10 @@ export function pendingAmountFromTransactions(
     if (tx.status !== "processing") continue;
 
     const amount = parseFiatAmount(tx.amount_fiat);
-    if (amount == null) return null;
+    if (amount == null) continue;
 
     const usd = convertAmountWithRates(amount, tx.currency, "USD", fx);
-    if (usd == null) return null;
+    if (usd == null) continue;
     pending += Math.abs(usd);
   }
 

@@ -48,9 +48,18 @@ function encryptionKey(): Buffer | null {
   return createHash("sha256").update(raw).digest();
 }
 
+function encryptionRequired(): boolean {
+  return process.env.VERCEL_ENV === "production";
+}
+
 function encryptAccountNumber(plain: string): string {
   const key = encryptionKey();
-  if (!key) return plain;
+  if (!key) {
+    if (encryptionRequired()) {
+      throw new Error("Saved recipient encryption is not configured.");
+    }
+    return plain;
+  }
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
@@ -174,8 +183,15 @@ export async function listSavedRecipients(
 export async function createSavedRecipient(
   businessId: number,
   input: SavedRecipientCreate,
-): Promise<{ ok: true; recipient: SavedRecipient } | { ok: false; status: 400; message: string }> {
+): Promise<{ ok: true; recipient: SavedRecipient } | { ok: false; status: 400 | 503; message: string }> {
   const now = new Date().toISOString();
+  if (encryptionRequired() && !encryptionKey()) {
+    return {
+      ok: false,
+      status: 503,
+      message: "Recipient storage is not configured.",
+    };
+  }
   const recipient: SavedRecipient = {
     id: randomUUID(),
     businessId,

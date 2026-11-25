@@ -9,6 +9,7 @@
 // This hook keeps a tiered HTTP poll as fallback when the stream is down or
 // the modal-scoped order is not yet registered for background watch.
 
+import { QK } from "@/lib/api/queryKeys";
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { ordersApi, type Order } from "@/lib/services/orders";
@@ -67,7 +68,7 @@ export function useOrderStatus(
   const lastPatchedStatusRef = useRef<string | null>(null);
 
   const query = useQuery({
-    queryKey: ["order-status", merchantOrderId],
+    queryKey: [QK.orderStatus, merchantOrderId],
     queryFn: () => ordersApi.get(merchantOrderId as number | string),
     enabled: merchantOrderId != null && enabled,
     retry: false,

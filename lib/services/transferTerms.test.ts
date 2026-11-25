@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   bankInstructionsText,
+  feeOnTopUsd,
   formatCountdown,
   formatLimitsLine,
   limitViolation,
   limitViolationAcrossCurrencies,
   maxSendableAmount,
   providerLimits,
+  totalWithFee,
 } from "./transferTerms";
 import { insufficientBalanceMessage } from "@/lib/services/balances";
 
@@ -115,6 +117,31 @@ describe("limitViolationAcrossCurrencies", () => {
   });
 });
 
+describe("feeOnTopUsd", () => {
+  it("parses a quoted fee, commas and all", () => {
+    expect(feeOnTopUsd("17.50")).toBe(17.5);
+    expect(feeOnTopUsd("1,250.00")).toBe(1250);
+    expect(feeOnTopUsd(17.5)).toBe(17.5);
+  });
+
+  it("falls back to zero rather than blocking on a fee nobody quoted", () => {
+    expect(feeOnTopUsd(null)).toBe(0);
+    expect(feeOnTopUsd(undefined)).toBe(0);
+    expect(feeOnTopUsd("")).toBe(0);
+    expect(feeOnTopUsd("n/a")).toBe(0);
+    expect(feeOnTopUsd("0.00")).toBe(0);
+    expect(feeOnTopUsd(-5)).toBe(0);
+  });
+});
+
+describe("totalWithFee", () => {
+  it("sums without accumulating binary noise", () => {
+    expect(totalWithFee(0.1, 0.2)).toBe(0.3);
+    expect(totalWithFee(7000, 17.5)).toBe(7017.5);
+    expect(totalWithFee(7000, 0)).toBe(7000);
+  });
+});
+
 describe("maxSendableAmount", () => {
   it("picks the smaller of the known USD candidates", () => {
     expect(maxSendableAmount([703.7, 500], "USD", null)).toBe("500.00");
@@ -159,6 +186,37 @@ describe("maxSendableAmount", () => {
     expect(filled).toBe("0.97");
     const backToUsd = (Number(filled) / rate).toFixed(2);
     expect(Number(backToUsd)).toBeLessThanOrEqual(usdBalance);
+  });
+
+  // The fee rides on top of the amount, so Max must leave room to pay it.
+  it("leaves room for the fee", () => {
+    expect(maxSendableAmount([7017.5], "USD", null, "17.50")).toBe("7000.00");
+    expect(maxSendableAmount([7017.5], "USD", null)).toBe("7017.50");
+  });
+
+  it("never fills a figure that fails the fee-aware balance check", () => {
+    const trueBalance = 7017.5;
+    const fee = "17.50";
+    const filled = maxSendableAmount([trueBalance], "USD", null, fee);
+    expect(
+      insufficientBalanceMessage({
+        amount: filled!,
+        balance: { available: String(trueBalance), currency: "USDT" },
+        currency: "USDT",
+        fee,
+      }),
+    ).toBeNull();
+  });
+
+  it("offers no Max at all when the fee would eat the whole balance", () => {
+    expect(maxSendableAmount([17.5], "USD", null, "17.50")).toBeNull();
+    expect(maxSendableAmount([10], "USD", null, "17.50")).toBeNull();
+  });
+
+  it("ignores a fee it has not been quoted", () => {
+    expect(maxSendableAmount([500], "USD", null, null)).toBe("500.00");
+    expect(maxSendableAmount([500], "USD", null, "")).toBe("500.00");
+    expect(maxSendableAmount([500], "USD", null, "0")).toBe("500.00");
   });
 });
 

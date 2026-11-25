@@ -1,7 +1,11 @@
 import type { TransactionStatus } from "./transactions";
 
+/** Semantic tone — drives colour in badges, the detail hero and documents. */
+export type TransactionStatusTone = "success" | "warning" | "danger" | "neutral";
+
 export type TransactionStatusDescriptor = {
   label: string;
+  tone: TransactionStatusTone;
   icon: string;
   color: string;
   soft: string;
@@ -11,38 +15,43 @@ export type TransactionStatusDescriptor = {
 
 export const TRANSACTION_STATUS: Record<TransactionStatus, TransactionStatusDescriptor> = {
   processing: {
+    tone: "warning",
     label: "Pending",
     icon: "●",
-    color: "var(--amber)",
+    color: "var(--amber-text)",
     soft: "var(--amber-tint)",
     terminal: false,
     receiptEligible: false,
   },
   completed: {
+    tone: "success",
     label: "Settled",
     icon: "✓",
     color: "var(--success)",
-    soft: "color-mix(in srgb, var(--success) 10%, transparent)",
+    soft: "var(--success-tint)",
     terminal: true,
     receiptEligible: true,
   },
   failed: {
+    tone: "danger",
     label: "Failed",
     icon: "!",
-    color: "var(--red)",
+    color: "var(--red-text)",
     soft: "var(--red-tint)",
     terminal: true,
     receiptEligible: false,
   },
   refunded: {
+    tone: "warning",
     label: "Refunded",
     icon: "↩",
-    color: "var(--amber)",
+    color: "var(--amber-text)",
     soft: "var(--amber-tint)",
     terminal: true,
     receiptEligible: false,
   },
   canceled: {
+    tone: "neutral",
     label: "Canceled",
     icon: "×",
     color: "var(--muted)",
@@ -51,17 +60,19 @@ export const TRANSACTION_STATUS: Record<TransactionStatus, TransactionStatusDesc
     receiptEligible: false,
   },
   frozen: {
+    tone: "danger",
     label: "Frozen",
     icon: "‖",
-    color: "var(--red)",
+    color: "var(--red-text)",
     soft: "var(--red-tint)",
     terminal: false,
     receiptEligible: false,
   },
   declined: {
+    tone: "danger",
     label: "Declined",
     icon: "!",
-    color: "var(--red)",
+    color: "var(--red-text)",
     soft: "var(--red-tint)",
     terminal: true,
     receiptEligible: false,

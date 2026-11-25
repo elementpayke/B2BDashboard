@@ -1,7 +1,9 @@
 "use client";
+import MbokaLogo from "@/components/brand/MbokaLogo";
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useEffect, useId, useRef, useState } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { NO_FEE_TEXT, feeState } from "@/components/money/FeeDisclosure";
 import {
   buildReceiptPdfBlob,
   downloadPdfBlob,
@@ -17,9 +19,11 @@ import {
   whatsappShareUrl,
   type ReceiptShareMethodId,
 } from "@/lib/documents/receiptShare";
+import { ChainIcon } from "@/components/transactions/ChainIcons";
+import { formatNetworkLabel } from "@/lib/services/entities";
 import {
   buildTransactionReceipt,
-  isReceiptable,
+  receiptStatus,
   receiptAccountLabel,
   receiptFilename,
   receiptInstitutionLabel,
@@ -68,13 +72,21 @@ function collectCurrentIndex(stage?: string | null, status?: string | null): num
   return 0;
 }
 
-/** Base deposit → bridge → Stellar credit. Settled only after the credit is confirmed. */
-function buildCollectProgressSteps(stage?: string | null, status?: string | null): ProgressStep[] {
+function shortHash(hash: string): string {
+  return hash.length > 20 ? `${hash.slice(0, 10)}…${hash.slice(-8)}` : hash;
+}
+
+/** Source chain → bridge → destination chain credit. Settled only after the credit is confirmed. */
+function buildCollectProgressSteps(stage?: string | null, status?: string | null, sourceChain?: string | null, destChain?: string | null): ProgressStep[] {
   const value = (stage || "").trim().toLowerCase();
   const corridor = value === "fiat_received" || value === "bridging" || value === "credited";
+
+  const source = sourceChain?.trim() ? formatNetworkLabel(sourceChain) : "source chain";
+  const dest = destChain?.trim() ? formatNetworkLabel(destChain) : "Stellar";
+
   const labels = corridor
-    ? ["Fiat received", "Bridging to Stellar", "Credited"]
-    : ["Received on Base", "Bridging", "Credited on Stellar"];
+    ? ["Fiat received", `Bridging to ${dest}`, "Credited"]
+    : [`Received on ${source}`, "Bridging", `Credited on ${dest}`];
   const current = collectCurrentIndex(stage, status);
   return labels.map((label, index) => ({
     key: label,
@@ -96,9 +108,9 @@ function buildCollectSwapProgressSteps(status?: string | null): ProgressStep[] {
 }
 
 /** Derive a readable status progression from the canonical transaction status. */
-function buildProgressSteps(status?: string, source?: string | null, stage?: string | null): ProgressStep[] {
+function buildProgressSteps(status?: string, source?: string | null, stage?: string | null, sourceChain?: string | null, destChain?: string | null): ProgressStep[] {
   if ((source || "").trim().toLowerCase() === "cctp_transfer") {
-    return buildCollectProgressSteps(stage, status);
+    return buildCollectProgressSteps(stage, status, sourceChain, destChain);
   }
   if ((source || "").trim().toLowerCase() === "collect_swap") {
     return buildCollectSwapProgressSteps(status);
@@ -173,6 +185,77 @@ function DetailRow({
       <span className="ep-txn-detail__label">{label}</span>
       <span className={`ep-txn-detail__value${mono ? " ep-mono" : ""}`}>{content}</span>
     </div>
+  );
+}
+
+/** Hero disc icon: tick when settled, clock while pending, cross on failure. */
+function StatusGlyph({ tone }: { tone: "success" | "warning" | "danger" | "neutral" }) {
+  const common = {
+    viewBox: "0 0 24 24",
+    width: 22,
+    height: 22,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  if (tone === "success") {
+    return (
+      <svg {...common}>
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    );
+  }
+  if (tone === "danger") {
+    return (
+      <svg {...common}>
+        <path d="M7 7l10 10M17 7L7 17" />
+      </svg>
+    );
+  }
+  if (tone === "warning") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4.5l3 1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M7 12h10" />
+    </svg>
+  );
+}
+
+function ActionIcon({ kind }: { kind: "share" | "download" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {kind === "share" ? (
+        <>
+          <path d="M12 15V3.5" />
+          <path d="M7.5 8L12 3.5 16.5 8" />
+          <path d="M5 12.5v6A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-6" />
+        </>
+      ) : (
+        <>
+          <path d="M12 3.5V15" />
+          <path d="M7.5 10.5L12 15l4.5-4.5" />
+          <path d="M4.5 20.5h15" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -273,9 +356,11 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           aria-haspopup="menu"
           aria-expanded={open}
           aria-controls={menuId}
+          aria-label="Share receipt"
           onClick={() => setOpen((v) => !v)}
         >
-          Share receipt
+          <ActionIcon kind="share" />
+          <span>Share</span>
         </button>
         {open ? (
           <div className="ep-txn-detail__share-menu" id={menuId} role="menu">
@@ -304,7 +389,8 @@ function ReceiptActions({ txDetail }: { txDetail: any }) {
           setToast("PDF saved");
         }}
       >
-        Download PDF
+        <ActionIcon kind="download" />
+        <span>Download receipt</span>
       </button>
       {toast ? (
         <div className="ep-txn-detail__toast" role="status" aria-live="polite">
@@ -327,13 +413,22 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
 
   const created = formatTimestamp(txDetail.created_at);
   const updated = formatTimestamp(txDetail.updated_at);
-  const steps = buildProgressSteps(txDetail.status, txDetail.source, txDetail.stage);
-  const showUpdated = Boolean(updated && updated !== created);
-  const paymentMethod = receiptPaymentMethod(
-    txDetail.provider,
-    txDetail.railType,
-    txDetail.networkName,
+  // Collect rows carry their source chain in `crypto_network`; the credit lands on Stellar.
+  const steps = buildProgressSteps(
+    txDetail.status,
+    txDetail.source,
+    txDetail.stage,
+    txDetail.source_chain || txDetail.crypto_network,
   );
+  const showUpdated = Boolean(updated && updated !== created);
+  const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
+  const paymentMethod = collect
+    ? "Cross-Chain Bridge"
+    : receiptPaymentMethod(
+        txDetail.provider,
+        txDetail.railType,
+        txDetail.networkName,
+      );
   const paymentRef =
     typeof txDetail.psp_transaction_id === "string"
       ? txDetail.psp_transaction_id.trim()
@@ -412,21 +507,75 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     (txDetail.accountKind || "").toLowerCase() === "bank_account" ||
     (txDetail.accountKind || "").toLowerCase() === "phone";
 
-  const collect = String(txDetail.source || "").trim().toLowerCase() === "cctp_transfer";
   const sourceTx =
     typeof txDetail.source_tx_hash === "string" ? txDetail.source_tx_hash.trim() : "";
   const burnTx =
     typeof txDetail.burn_tx_hash === "string" ? txDetail.burn_tx_hash.trim() : "";
   const mintTx =
     typeof txDetail.mint_tx_hash === "string" ? txDetail.mint_tx_hash.trim() : "";
+
+  // Build explorer URLs for each chain
+  const getExplorerUrl = (hash: string, chain: string): string | null => {
+    if (!hash) return null;
+    const chainLower = (chain || "").toLowerCase();
+    const explorers: Record<string, (h: string) => string> = {
+      base: (h) => `https://basescan.org/tx/${h}`,
+      stellar: (h) => `https://stellar.expert/explorer/public/tx/${h}`,
+      polygon: (h) => `https://polygonscan.com/tx/${h}`,
+      ethereum: (h) => `https://etherscan.io/tx/${h}`,
+      optimism: (h) => `https://optimistic.etherscan.io/tx/${h}`,
+      arc: (h) => `https://basescan.io/tx/${h}`, // Arc uses Base explorer
+      solana: (h) => `https://solscan.io/tx/${h}`,
+    };
+    return explorers[chainLower]?.(hash) || null;
+  };
+
+  const sourceChain = (txDetail.source_chain || txDetail.crypto_network || "").trim();
+  const sourceExplorerUrl = getExplorerUrl(sourceTx, sourceChain);
+
   if (collect && sourceTx) {
-    rows.push({ label: "Base deposit", value: sourceTx, mono: true });
+    rows.push({
+      label: sourceChain ? `${formatNetworkLabel(sourceChain)} deposit` : "Source deposit",
+      mono: true,
+      value: sourceExplorerUrl ? (
+        <a href={sourceExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{shortHash(sourceTx)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        sourceTx
+      ),
+    });
   }
   if (collect && burnTx) {
-    rows.push({ label: "Burn", value: burnTx, mono: true });
+    const burnExplorerUrl = getExplorerUrl(burnTx, sourceChain);
+    rows.push({
+      label: "Burn",
+      mono: true,
+      value: burnExplorerUrl ? (
+        <a href={burnExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{shortHash(burnTx)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        burnTx
+      ),
+    });
   }
   if (collect && mintTx) {
-    rows.push({ label: "Stellar mint", value: mintTx, mono: true });
+    const mintExplorerUrl = getExplorerUrl(mintTx, "stellar");
+    rows.push({
+      label: "Stellar mint",
+      mono: true,
+      value: mintExplorerUrl ? (
+        <a href={mintExplorerUrl} target="_blank" rel="noopener noreferrer" className="ep-txn-detail__hash-link">
+          <span className="ep-txn-detail__hash">{shortHash(mintTx)}</span>
+          <span className="ep-txn-detail__link-icon">↗</span>
+        </a>
+      ) : (
+        mintTx
+      ),
+    });
   }
   const feeAmount =
     typeof txDetail.fee_amount === "string" ? txDetail.fee_amount.trim() : "";
@@ -436,13 +585,23 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       : "";
   const feeStatus =
     typeof txDetail.fee_status === "string" ? txDetail.fee_status.trim() : "";
-  if (feeAmount) {
+  // The fee row is unconditional. It used to render only for a non-zero
+  // amount, so a free transfer and one whose fee we simply never received
+  // looked identical — both blank. A settled transaction that cost nothing
+  // should say so.
+  {
     const feeLabel = collect ? "Circle fee" : "Fee";
     const feeBase = feeCurrency ? `${feeAmount} ${feeCurrency}` : feeAmount;
     const feeValue =
-      feeStatus && feeStatus.toLowerCase() !== "final"
-        ? `${feeBase} · ${feeStatus.replace(/_/g, " ")}`
-        : feeBase;
+      feeState(feeAmount) === "none"
+        ? NO_FEE_TEXT
+        : feeAmount
+          ? feeStatus && feeStatus.toLowerCase() !== "final"
+            ? `${feeBase} · ${feeStatus.replace(/_/g, " ")}`
+            : feeBase
+          : // Settled and still no figure: there is no later moment to point
+            // the reader at, so say what we know rather than promise one.
+            "Not reported";
     rows.push({ label: feeLabel, value: feeValue });
   }
 
@@ -467,6 +626,20 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
     });
   }
 
+  const sourceChainStr =
+    typeof txDetail.source_chain === "string" ? txDetail.source_chain.trim() : "";
+  if (sourceChainStr && collect) {
+    rows.push({
+      label: "Source chain",
+      value: (
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <ChainIcon chain={sourceChainStr} size={18} />
+          {formatNetworkLabel(sourceChainStr)}
+        </span>
+      ),
+    });
+  }
+
   const cryptoNetworkLabel =
     (typeof txDetail.cryptoNetworkLabel === "string" &&
       txDetail.cryptoNetworkLabel.trim()) ||
@@ -479,7 +652,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       typeof txDetail.cryptoNetworkLabel === "string" && txDetail.cryptoNetworkLabel.trim()
         ? txDetail.cryptoNetworkLabel.trim()
         : cryptoNetworkLabel;
-    rows.push({ label: "Network", value: networkDisplay });
+    rows.push({ label: collect ? "Destination chain" : "Network", value: networkDisplay });
   }
 
   const fromAddress =
@@ -502,11 +675,22 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
   if (created) rows.push({ label: "Time", value: created, mono: true });
   if (showUpdated && updated) rows.push({ label: "Last updated", value: updated, mono: true });
 
+  const status = receiptStatus(txDetail.status);
+
   return (
     <div className="ep-txn-detail">
-      <header className="ep-txn-detail__hero">
+      <header className={`ep-txn-detail__hero ep-txn-detail__hero--${status.tone}`}>
+        <div className="ep-txn-detail__brand">
+          <MbokaLogo size={22} sub="Business" />
+          <span className="ep-txn-detail__brand-kind">
+            Payment receipt
+          </span>
+        </div>
+        <span className="ep-txn-detail__status-icon" aria-hidden>
+          <StatusGlyph tone={status.tone} />
+        </span>
         <div
-          className="ep-txn-detail__amount ep-mono"
+          className={`ep-txn-detail__amount ep-mono${txDetail.direction === "in" ? " ep-txn-detail__amount--in" : ""}`}
           style={{ color: txDetail.amountColor || "var(--ink)" }}
         >
           {txDetail.amount}
@@ -544,28 +728,41 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
       ) : null}
 
       <ol className="ep-txn-detail__progress" aria-label="Status progression">
-        {steps.map((step, index) => (
-          <li
-            key={step.key}
-            className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
-            aria-current={step.state === "current" ? "step" : undefined}
-          >
-            {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
-            <span className="ep-txn-detail__step-dot" aria-hidden />
-            <span className="ep-txn-detail__step-label">
-              {step.label}
-              <span className="ep-txn-detail__sr">
-                {step.state === "done"
-                  ? " — complete"
-                  : step.state === "current"
-                    ? " — current"
-                    : step.state === "failed"
-                      ? " — issue"
-                      : " — upcoming"}
+        {steps.map((step, index) => {
+          // Determine which chain icon to show for CCTP transfers
+          let chainForIcon = "";
+          if (collect) {
+            if (index === 0) {
+              chainForIcon = sourceChain; // First step: source chain
+            } else if (index === steps.length - 1) {
+              chainForIcon = "stellar"; // Last step: destination (usually Stellar)
+            }
+          }
+
+          return (
+            <li
+              key={step.key}
+              className={`ep-txn-detail__step ep-txn-detail__step--${step.state}`}
+              aria-current={step.state === "current" ? "step" : undefined}
+            >
+              {index > 0 ? <span className="ep-txn-detail__step-line" aria-hidden /> : null}
+              <span className="ep-txn-detail__step-dot" aria-hidden />
+              <span className="ep-txn-detail__step-label">
+                {chainForIcon && <ChainIcon chain={chainForIcon} size={18} />}
+                {step.label}
+                <span className="ep-txn-detail__sr">
+                  {step.state === "done"
+                    ? " — complete"
+                    : step.state === "current"
+                      ? " — current"
+                      : step.state === "failed"
+                        ? " — issue"
+                        : " — upcoming"}
+                </span>
               </span>
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
 
       <div className="ep-txn-detail__rows">
@@ -581,7 +778,7 @@ export default function TxDetailModal({ txDetail, isLoading, liveStatus }: TxDet
         ))}
       </div>
 
-      {isReceiptable(txDetail.status) && !txDetail.hideReceipt ? (
+      {!txDetail.hideReceipt ? (
         <ReceiptActions txDetail={txDetail} />
       ) : null}
     </div>

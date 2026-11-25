@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { openBrandedDocument } from "@/lib/documents/brandedDocument";
 import { MBOKA_LETTERHEAD } from "@/lib/documents/letterhead";
-import AccountActivityList from "./AccountActivityList";
 
 export type AccountDetailRow = {
   label: string;
@@ -30,6 +29,8 @@ export type AccountDetailModalProps = {
     showConvert?: boolean;
     /** Client-side bank letter download (fiat coordinates). */
     showDownloadLetter?: boolean;
+    deposit_reference_required?: boolean;
+    deposit_disclaimer?: string | null;
     /** Deposit-account id — set only for fiat/bank accounts. Drives the
      * Activity section; omitted entirely for stablecoin accounts, which
      * have no `/v1/iban/accounts/{id}/activity` equivalent. */
@@ -71,17 +72,21 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
   if (!rows.length) return [];
   const bankKeys =
     /^(iban|bic|swift|bank|account name|account number|routing number|sort code|institution number|transit number|bank code|clabe)/i;
+  const mbokaKeys = /^mboka/i;
   const settleKeys = /^(settles|settlement|reference|asset|network|account id|status)/i;
   const bank: AccountDetailRow[] = [];
+  const mboka: AccountDetailRow[] = [];
   const settle: AccountDetailRow[] = [];
   const other: AccountDetailRow[] = [];
   for (const row of rows) {
     if (bankKeys.test(row.label)) bank.push(row);
+    else if (mbokaKeys.test(row.label)) mboka.push(row);
     else if (settleKeys.test(row.label)) settle.push(row);
     else other.push(row);
   }
   const sections: AccountDetailSection[] = [];
   if (bank.length) sections.push({ title: "Bank details", rows: bank });
+  if (mboka.length) sections.push({ title: "Mboka transfer", rows: mboka });
   if (settle.length) sections.push({ title: "Settlement", rows: settle });
   if (other.length) sections.push({ title: "Details", rows: other });
   return sections.length ? sections : [{ title: "Details", rows }];
@@ -95,6 +100,7 @@ function defaultSections(rows: AccountDetailRow[]): AccountDetailSection[] {
  */
 const LETTER_SECTION_TITLES: Record<string, string> = {
   "domestic transfer (ach/wire)": "Instructions For Domestic Transfer",
+  "domestic transfer": "Instructions For Domestic Transfer",
   "international wire": "Instructions For International Transfer",
 };
 
@@ -107,11 +113,16 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
   const beneficiaryName = beneficiary || acctDetail.name;
   const dateLine = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(new Date());
 
-  // Mirror modal bank-rail sections only — Settlement (Available balance) stays on the modal.
+  // Mirror modal bank-rail sections only — Mboka transfer (the internal
+  // reference number) stays on the modal. "settlement" is kept here as
+  // defense-in-depth for the defaultSections() fallback path (raw rows
+  // without sections, e.g. a caller that hasn't adopted
+  // buildDepositAccountDetailSections, which no longer emits it at all).
+  const EXCLUDED_LETTER_SECTIONS = new Set(["settlement", "mboka transfer"]);
   const coordinateSections = (
     acctDetail.sections?.length ? acctDetail.sections : defaultSections(acctDetail.rows)
   )
-    .filter((sec) => sec.title.trim().toLowerCase() !== "settlement")
+    .filter((sec) => !EXCLUDED_LETTER_SECTIONS.has(sec.title.trim().toLowerCase()))
     .map((sec) => {
       // Account name already duplicates the beneficiary named in the intro — drop it here.
       const rows = sec.rows.filter(
@@ -148,6 +159,31 @@ function downloadBankLetter(acctDetail: NonNullable<AccountDetailModalProps["acc
     },
     `mboka-${acctDetail.currency.toLowerCase()}-bank-letter`,
   );
+}
+
+const DOMESTIC_SECTION_RE = /^domestic transfer/i;
+const INTERNATIONAL_SECTION_RE = /^international wire/i;
+const BANK_DETAILS_SECTION_RE = /^bank details$/i;
+
+/**
+ * Same account's domestic and international coordinates were being stacked
+ * one after another — the modal needed 2-3 screens of scroll for an account
+ * that has both rails, while a sender only ever needs one rail's
+ * instructions at a time. Mercury/Wise/Revolut Business solve this the same
+ * way: a small local/SWIFT toggle, not two full coordinate blocks stacked.
+ * `showDownloadLetter` output is unaffected — the letter still mirrors every
+ * section regardless of which rail tab is active on screen.
+ */
+function findRailSectionIndices(sections: AccountDetailSection[]): {
+  domestic: number;
+  international: number;
+  bankDetails: number;
+} {
+  return {
+    domestic: sections.findIndex((sec) => DOMESTIC_SECTION_RE.test(sec.title)),
+    international: sections.findIndex((sec) => INTERNATIONAL_SECTION_RE.test(sec.title)),
+    bankDetails: sections.findIndex((sec) => BANK_DETAILS_SECTION_RE.test(sec.title)),
+  };
 }
 
 function DetailField({
@@ -204,6 +240,7 @@ export default function AccountDetailModal({
 }: AccountDetailModalProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [activeRail, setActiveRail] = useState<"domestic" | "international">("domestic");
 
   if (!acctDetail) return null;
 
@@ -236,6 +273,15 @@ export default function AccountDetailModal({
         : sec,
     )
     .filter((sec) => sec.rows.length > 0);
+  // Plain call, not useMemo: this runs after the `!acctDetail` early return,
+  // so a hook here broke the rules of hooks, and bankRows is a new array each
+  // render anyway (the memo never hit).
+  const railIndices = findRailSectionIndices(bankRows);
+  const hasRailTabs = railIndices.domestic !== -1 && railIndices.international !== -1;
+  // Bank name/address apply to every rail equally — fold them into whichever
+  // rail tab is active instead of giving them their own header, so switching
+  // tabs doesn't cost an extra section's worth of vertical space.
+  const mergeBankDetails = hasRailTabs && railIndices.bankDetails !== -1;
   const showLetter = acctDetail.showDownloadLetter === true && acctDetail.rows.length > 0;
   const isFund = intent === "fund";
   const depositUnavailable =
@@ -263,6 +309,13 @@ export default function AccountDetailModal({
         </div>
       ) : null}
 
+      {acctDetail.deposit_disclaimer ? (
+        <div className="ep-wallets-detail__fund-hint" role="note">
+          <div className="ep-wallets-detail__fund-hint-title">Payment reference required</div>
+          <p className="ep-wallets-detail__fund-hint-body">{acctDetail.deposit_disclaimer}</p>
+        </div>
+      ) : null}
+
       {depositUnavailable ? (
         <div className="ep-wallets-detail__pending" role="status">
           <div className="ep-wallets-detail__pending-title">Deposit unavailable</div>
@@ -285,23 +338,71 @@ export default function AccountDetailModal({
       ) : null}
 
       {depositUnavailable ? null : acctDetail.rows.length ? (
-        bankRows.map((sec) => (
-          <div key={sec.title} className="ep-wallets-detail__section">
-            <div className="ep-wallets-detail__section-title">{sec.title}</div>
-            <div className="ep-wallets-detail__rows" aria-label={sec.title}>
-              {sec.rows.map((row) => (
-                <DetailField
-                  key={row.label}
-                  label={row.label}
-                  value={row.value}
-                  copyValue={row.copyValue}
-                  copiedField={copiedField}
-                  copyField={copyField}
-                />
-              ))}
+        bankRows.map((sec, idx) => {
+          // Merged into the tab block rendered at the domestic index below.
+          if (hasRailTabs && idx === railIndices.international) return null;
+          if (mergeBankDetails && idx === railIndices.bankDetails) return null;
+
+          if (hasRailTabs && idx === railIndices.domestic) {
+            const railSections = [bankRows[railIndices.domestic], bankRows[railIndices.international]];
+            const activeSection = activeRail === "domestic" ? railSections[0] : railSections[1];
+            const activeRows = mergeBankDetails
+              ? [...activeSection.rows, ...bankRows[railIndices.bankDetails].rows]
+              : activeSection.rows;
+            return (
+              <div key="rail-tabs" className="ep-wallets-detail__section">
+                <div className="ep-wallets-detail__rail-tabs" role="tablist" aria-label="Transfer rail">
+                  {railSections.map((railSec, railIdx) => {
+                    const rail = railIdx === 0 ? "domestic" : "international";
+                    return (
+                      <button
+                        key={rail}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeRail === rail}
+                        data-active={activeRail === rail ? "true" : "false"}
+                        className="ep-wallets-detail__rail-tab"
+                        onClick={() => setActiveRail(rail)}
+                      >
+                        {railSec.title}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="ep-wallets-detail__rows" aria-label={activeSection.title}>
+                  {activeRows.map((row) => (
+                    <DetailField
+                      key={row.label}
+                      label={row.label}
+                      value={row.value}
+                      copyValue={row.copyValue}
+                      copiedField={copiedField}
+                      copyField={copyField}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={sec.title} className="ep-wallets-detail__section">
+              <div className="ep-wallets-detail__section-title">{sec.title}</div>
+              <div className="ep-wallets-detail__rows" aria-label={sec.title}>
+                {sec.rows.map((row) => (
+                  <DetailField
+                    key={row.label}
+                    label={row.label}
+                    value={row.value}
+                    copyValue={row.copyValue}
+                    copiedField={copiedField}
+                    copyField={copyField}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       ) : (
         <div className="ep-wallets-detail__pending" role="status">
           <div className="ep-wallets-detail__pending-title">Coordinates pending</div>
@@ -312,28 +413,67 @@ export default function AccountDetailModal({
         </div>
       )}
 
-      {acctDetail.accountId ? (
-        <AccountActivityList accountId={acctDetail.accountId} />
-      ) : null}
+      {(() => {
+        const canDownloadLetter = showLetter && !depositUnavailable;
+        const canRefresh = Boolean(
+          acctDetail.accountId && acctDetail.status === "active" && onRefreshAccount,
+        );
+        const letterButton = canDownloadLetter ? (
+          <button
+            type="button"
+            onClick={() => downloadBankLetter(acctDetail)}
+            className="ep-wallets-detail__letter"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Download bank letter
+          </button>
+        ) : null;
+        const refreshButton = canRefresh ? (
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className="ep-wallets-detail__letter"
+          >
+            {refreshing ? "Refreshing…" : "Refresh details"}
+          </button>
+        ) : null;
 
-      {showLetter && !depositUnavailable ? (
-        <button
-          type="button"
-          onClick={() => downloadBankLetter(acctDetail)}
-          className="ep-wallets-detail__letter"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Download bank letter
-        </button>
-      ) : null}
+        if (canDownloadLetter && canRefresh) {
+          return (
+            <>
+              <div className="ep-wallets-detail__actions">
+                {letterButton}
+                {refreshButton}
+              </div>
+              {refreshError ? (
+                <p className="ep-wallets-detail__pending-body" role="alert">
+                  {refreshError}
+                </p>
+              ) : null}
+            </>
+          );
+        }
+        return (
+          <>
+            {letterButton}
+            {refreshButton}
+            {canRefresh && refreshError ? (
+              <p className="ep-wallets-detail__pending-body" role="alert">
+                {refreshError}
+              </p>
+            ) : null}
+          </>
+        );
+      })()}
 
       {acctDetail.showConvert === true && openModalSwapFromAcct ? (
         <button
@@ -343,24 +483,6 @@ export default function AccountDetailModal({
         >
           Convert balance
         </button>
-      ) : null}
-
-      {acctDetail.accountId && acctDetail.status === "active" && onRefreshAccount ? (
-        <>
-          <button
-            type="button"
-            onClick={() => void handleRefresh()}
-            disabled={refreshing}
-            className="ep-wallets-detail__letter"
-          >
-            {refreshing ? "Refreshing…" : "Refresh details"}
-          </button>
-          {refreshError ? (
-            <p className="ep-wallets-detail__pending-body" role="alert">
-              {refreshError}
-            </p>
-          ) : null}
-        </>
       ) : null}
     </div>
   );

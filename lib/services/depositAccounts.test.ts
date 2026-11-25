@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySyncedDepositAccount,
   buildCreateBankAccountPayload,
   buildDepositAccountDetailRows,
   buildDepositAccountDetailSections,
@@ -12,6 +13,8 @@ import {
   mapDepositAccountToCardView,
   maskAccountIdentifier,
   mergeDepositAccount,
+  needsDepositInstructionsSync,
+  resolveDepositDisclaimer,
   networksForStablecoin,
   SUPPORTED_IBAN_CURRENCIES,
   supportedCurrenciesFromEligibility,
@@ -267,6 +270,15 @@ describe("mapDepositAccountToCardView", () => {
     expect(blank.hasBalance).toBe(false);
   });
 
+  it("filters closed accounts from listedDepositAccounts", async () => {
+    const { listedDepositAccounts } = await import("./depositAccounts");
+    const rows = [
+      { id: "1", currency: "ZAR", status: "active" as const },
+      { id: "2", currency: "USD", status: "closed" as const },
+    ];
+    expect(listedDepositAccounts(rows)).toEqual([rows[0]]);
+  });
+
   it("shows deposit unavailable copy instead of pending coordinates when fiat rails are off", () => {
     const account: DepositAccount = {
       currency: "USD",
@@ -437,12 +449,6 @@ describe("buildDepositAccountDetailSections", () => {
         rows: [
           { label: "Account number", value: "391881521473", copyValue: "391881521473" },
           { label: "Routing number", value: "021214891", copyValue: "021214891" },
-          { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
-          {
-            label: "Bank address",
-            value: "2115 Linwood Ave, Fort Lee, US",
-            copyValue: "2115 Linwood Ave, Fort Lee, US",
-          },
         ],
       },
       {
@@ -450,6 +456,11 @@ describe("buildDepositAccountDetailSections", () => {
         rows: [
           { label: "Account number", value: "391881521473", copyValue: "391881521473" },
           { label: "SWIFT/BIC", value: "CSRVUS33COS", copyValue: "CSRVUS33COS" },
+        ],
+      },
+      {
+        title: "Bank details",
+        rows: [
           { label: "Bank", value: "CROSS RIVER BANK", copyValue: "CROSS RIVER BANK" },
           {
             label: "Bank address",
@@ -461,7 +472,58 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
-  it("keeps a single Bank details section for EUR/IBAN accounts", () => {
+  it("uses partner domestic/international groups when both are present (ZAR)", () => {
+    const account: DepositAccount = {
+      currency: "ZAR",
+      status: "active",
+      account_number: "63221650476",
+      bank_code: "250655",
+      bic: "FIRNZAJJ",
+      bank_name: "FirstRand Bank",
+      reference: "0014181033",
+      domestic_deposit_only: true,
+      domestic: {
+        account_number: "63221650476",
+        bank_code: "250655",
+        bank_name: "FirstRand Bank",
+      },
+      international: {
+        account_number: "63221650476",
+        swift_bic: "FIRNZAJJ",
+        bank_name: "FirstRand Bank",
+      },
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Mboka transfer"]);
+    expect(sections[0]?.rows).toEqual(
+      expect.arrayContaining([
+        { label: "Account number", value: "63221650476", copyValue: "63221650476" },
+        { label: "Branch code", value: "250655", copyValue: "250655" },
+      ]),
+    );
+    const mbokaTransfer = sections.find((s) => s.title === "Mboka transfer");
+    expect(mbokaTransfer?.rows.some((r) => r.label === "Mboka number")).toBe(true);
+  });
+
+  it("uses flat domestic coords when partner sets domestic_deposit_only", () => {
+    const account: DepositAccount = {
+      currency: "ZAR",
+      status: "active",
+      account_number: "63221650476",
+      bank_code: "250655",
+      bic: "FIRNZAJJ",
+      bank_name: "FirstRand Bank",
+      reference: "0014181033",
+      domestic_deposit_only: true,
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    expect(sections.map((s) => s.title)).toEqual(["Domestic transfer", "Mboka transfer"]);
+    expect(sections[0]?.rows.some((r) => r.label === "Branch code")).toBe(true);
+  });
+
+  it("splits an IBAN+BIC account (no routing number) into domestic/international, matching Nuvion's own account-details view", () => {
     const account: DepositAccount = {
       currency: "EUR",
       status: "active",
@@ -472,18 +534,106 @@ describe("buildDepositAccountDetailSections", () => {
 
     expect(buildDepositAccountDetailSections(account)).toEqual([
       {
-        title: "Bank details",
+        title: "Domestic transfer",
         rows: [
+          {
+            label: "Account number",
+            value: "FR7630006000011234567890189",
+            copyValue: "FR7630006000011234567890189",
+          },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "SWIFT/BIC", value: "MODRFR21", copyValue: "MODRFR21" },
           {
             label: "IBAN",
             value: "FR7630006000011234567890189",
             copyValue: "FR7630006000011234567890189",
           },
-          { label: "BIC / SWIFT", value: "MODRFR21", copyValue: "MODRFR21" },
-          { label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" },
+        ],
+      },
+      {
+        title: "Bank details",
+        rows: [{ label: "Bank", value: "SOCIETE GENERALE", copyValue: "SOCIETE GENERALE" }],
+      },
+    ]);
+  });
+
+  it("splits a GB-style account that only has account_number + BIC (no iban), matching live SEK/GBP accounts", () => {
+    // The backend only aliases account_number -> iban for the legacy
+    // USD/EUR rails (map_upstream_account's is_legacy_rail check) — every
+    // other currency (GBP, SEK, ...) arrives with the identifier under
+    // account_number instead. This must still get the domestic/international
+    // split, not fall back to a flat "Bank details" section.
+    const account: DepositAccount = {
+      currency: "SEK",
+      status: "active",
+      account_number: "GB74GRFR04286206171089",
+      bic: "GRFRGB22XXX",
+      bank_name: "Global Remit Financial Services Ltd",
+      bank_address: {
+        line1: "Suite 6034, Unit 3A 34-35 Hatton Garden",
+        city: "Holborn, London",
+        postal_code: "EC1N 8DX",
+        country: "England",
+      },
+    };
+
+    expect(buildDepositAccountDetailSections(account)).toEqual([
+      {
+        title: "Domestic transfer",
+        rows: [
+          {
+            label: "Account number",
+            value: "GB74GRFR04286206171089",
+            copyValue: "GB74GRFR04286206171089",
+          },
+        ],
+      },
+      {
+        title: "International wire",
+        rows: [
+          { label: "SWIFT/BIC", value: "GRFRGB22XXX", copyValue: "GRFRGB22XXX" },
+          {
+            label: "IBAN",
+            value: "GB74GRFR04286206171089",
+            copyValue: "GB74GRFR04286206171089",
+          },
+        ],
+      },
+      {
+        title: "Bank details",
+        rows: [
+          {
+            label: "Bank",
+            value: "Global Remit Financial Services Ltd",
+            copyValue: "Global Remit Financial Services Ltd",
+          },
+          {
+            label: "Bank address",
+            value: "Suite 6034, Unit 3A 34-35 Hatton Garden, Holborn, London, EC1N 8DX, England",
+            copyValue:
+              "Suite 6034, Unit 3A 34-35 Hatton Garden, Holborn, London, EC1N 8DX, England",
+          },
         ],
       },
     ]);
+  });
+
+  it("labels the international identifier 'Account number', not 'IBAN', when account_number isn't IBAN-shaped", () => {
+    const account: DepositAccount = {
+      currency: "GHS",
+      status: "active",
+      account_number: "0123456789",
+      bic: "GHCBGHAC",
+      bank_name: "Ghana Commercial Bank",
+    };
+
+    const sections = buildDepositAccountDetailSections(account);
+    const international = sections.find((s) => s.title === "International wire");
+    expect(international?.rows.map((r) => r.label)).toEqual(["SWIFT/BIC", "Account number"]);
   });
 
   it("falls back to a single domestic-only section when there is no SWIFT/BIC yet", () => {
@@ -507,7 +657,7 @@ describe("buildDepositAccountDetailSections", () => {
     ]);
   });
 
-  it("puts settlement fields in their own section for both currencies", () => {
+  it("puts the partner reference in its own white-labeled section", () => {
     const account: DepositAccount = {
       currency: "USD",
       status: "active",
@@ -517,8 +667,8 @@ describe("buildDepositAccountDetailSections", () => {
     };
 
     const sections = buildDepositAccountDetailSections(account);
-    expect(sections.find((s) => s.title === "Settlement")?.rows).toEqual([
-      { label: "Reference", value: "INV-42", copyValue: "INV-42" },
+    expect(sections.find((s) => s.title === "Mboka transfer")?.rows).toEqual([
+      { label: "Mboka number", value: "INV-42", copyValue: "INV-42" },
     ]);
   });
 
@@ -626,6 +776,106 @@ describe("formatBankAddress", () => {
   it("returns null when the partner sent no address text", () => {
     expect(formatBankAddress(null)).toBeNull();
     expect(formatBankAddress({})).toBeNull();
+  });
+});
+
+describe("needsDepositInstructionsSync", () => {
+  it("returns true for active account with coords but no reference", () => {
+    expect(
+      needsDepositInstructionsSync({
+        id: "81",
+        status: "active",
+        account_number: "63221650476",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when reference and disclaimer are present", () => {
+    expect(
+      needsDepositInstructionsSync({
+        id: "81",
+        status: "active",
+        account_number: "63221650476",
+        reference: "0017068033",
+        deposit_disclaimer: "Include 0017068033 in the payment reference.",
+        deposit_reference_required: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveDepositDisclaimer", () => {
+  it("returns null when reference is not required", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("shows refresh hint when reference is required but not loaded yet", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: null,
+        deposit_disclaimer: null,
+        deposit_reference_required: true,
+      }),
+    ).toMatch(/Refresh account/);
+  });
+
+  it("prefers API disclaimer text", () => {
+    expect(
+      resolveDepositDisclaimer({
+        currency: "ZAR",
+        reference: "0017068033",
+        deposit_disclaimer: "Include 0017068033 in the payment reference.",
+        deposit_reference_required: true,
+      }),
+    ).toBe("Include 0017068033 in the payment reference.");
+  });
+});
+
+describe("applySyncedDepositAccount", () => {
+  it("overlays sync payload onto the matching cached row", () => {
+    const stub: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      bic: "FIRNZAJJ",
+    };
+    const synced: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: "0017068033",
+      deposit_disclaimer: "Include 0017068033 in the payment reference.",
+    };
+    expect(applySyncedDepositAccount([stub], "81", synced)).toMatchObject([
+      { reference: "0017068033", bic: "FIRNZAJJ" },
+    ]);
+  });
+
+  it("clears nullable sync fields when the API returns explicit null", () => {
+    const stub: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: "0017068033",
+    };
+    const synced: DepositAccount = {
+      id: "81",
+      currency: "ZAR",
+      status: "active",
+      reference: null,
+    };
+    expect(applySyncedDepositAccount([stub], "81", synced)[0]?.reference).toBeNull();
   });
 });
 

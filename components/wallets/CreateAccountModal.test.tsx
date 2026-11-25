@@ -24,6 +24,16 @@ function baseProps(overrides: Partial<CreateAccountModalProps> = {}): CreateAcco
   };
 }
 
+/**
+ * The notice emphasises the amount in its own <strong>, so the sentence spans
+ * several nodes. Assert against the panel's flattened text rather than a
+ * single-element matcher, which breaks at the element boundary.
+ */
+function feeNoticeText(): string {
+  const panel = document.querySelector(".ep-wallets-create__kind");
+  return (panel?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 describe("CreateAccountModal — monthly maintenance fee disclosure", () => {
   it("shows no fee disclosure when the backend hasn't shipped supportedAccounts yet", () => {
     render(<CreateAccountModal {...baseProps({ createAccountCurrency: "USD" })} />);
@@ -57,7 +67,7 @@ describe("CreateAccountModal — monthly maintenance fee disclosure", () => {
     expect(submitButton).not.toBeDisabled();
   });
 
-  it("does not show a disclosure for a currency with no fee, even when others have one", () => {
+  it("says the fee is unpublished — not silence — for a currency the schedule omits", () => {
     render(
       <CreateAccountModal
         {...baseProps({
@@ -74,9 +84,87 @@ describe("CreateAccountModal — monthly maintenance fee disclosure", () => {
         })}
       />,
     );
-    expect(screen.queryByText(/maintenance fee/i)).toBeNull();
+    // An omitted figure is "we were not told", not "it is free" — the copy must
+    // not let the reader infer the latter, and there is nothing to consent to.
+    expect(feeNoticeText()).toMatch(
+      /confirm any applicable monthly account fees before they take effect/i,
+    );
+    expect(feeNoticeText()).toMatch(/no published USD monthly fee/i);
+    expect(screen.queryByRole("checkbox")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Create account" }),
     ).not.toBeDisabled();
+  });
+
+  it("states a published zero as free, and does not gate submit on acknowledging it", () => {
+    render(
+      <CreateAccountModal
+        {...baseProps({
+          createAccountCurrency: "GBP",
+          supportedAccounts: [
+            {
+              currency: "GBP",
+              rail_type: "local_bank",
+              fields: ["sort_code"],
+              monthly_maintenance_fee: { amount: "0.00", currency: "GBP" },
+            },
+          ],
+        })}
+      />,
+    );
+    expect(feeNoticeText()).toMatch(/no monthly fee on this GBP account/i);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Create account" }),
+    ).not.toBeDisabled();
+  });
+
+  it("discloses a stablecoin account's fee too, and gates submit on it", () => {
+    render(
+      <CreateAccountModal
+        {...baseProps({
+          createAccountKind: "stablecoin",
+          createAccountStablecoin: "USDC",
+          createAccountNetwork: "BASE",
+          supportedAccounts: [
+            {
+              currency: "USDC",
+              rail_type: "stablecoin",
+              fields: ["network"],
+              monthly_maintenance_fee: { amount: "2.00", currency: "USD" },
+            },
+          ],
+        })}
+      />,
+    );
+    expect(feeNoticeText()).toMatch(/monthly maintenance fee of USD 2\.00 will apply/i);
+    const submit = screen.getByRole("button", { name: "Create account" });
+    expect(submit).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(submit).not.toBeDisabled();
+  });
+
+  it("looks the stablecoin fee up by asset, not by the unused fiat currency field", () => {
+    render(
+      <CreateAccountModal
+        {...baseProps({
+          createAccountKind: "stablecoin",
+          createAccountStablecoin: "USDT",
+          createAccountNetwork: "POLYGON",
+          // A stale fiat selection must not pull in the USD fee.
+          createAccountCurrency: "USD",
+          supportedAccounts: [
+            {
+              currency: "USD",
+              rail_type: "ach_wire",
+              fields: ["account_number"],
+              monthly_maintenance_fee: { amount: "5.00", currency: "USD" },
+            },
+            { currency: "USDT", rail_type: "stablecoin", fields: ["network"] },
+          ],
+        })}
+      />,
+    );
+    expect(screen.queryByText(/maintenance fee/i)).toBeNull();
   });
 });

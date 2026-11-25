@@ -1,4 +1,5 @@
 "use client";
+import { QK } from "@/lib/api/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { ApiRequestError } from "@/lib/apiClient";
 import { catalogApi, type SupportedCatalogData } from "@/lib/services/catalog";
@@ -27,7 +28,7 @@ export function shouldRetryCatalog(failureCount: number, error: unknown): boolea
  */
 export function useSendCatalog(options?: { enabled?: boolean }) {
   return useQuery<SupportedCatalogData>({
-    queryKey: ["supported-catalog"],
+    queryKey: [QK.supportedCatalog],
     queryFn: () => catalogApi.get(),
     retry: shouldRetryCatalog,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),

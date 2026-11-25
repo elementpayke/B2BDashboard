@@ -10,16 +10,24 @@ type SiteverifyResponse = {
   "error-codes"?: string[];
 };
 
+/** Production, or any deploy that shows the widget, must have a real secret. */
+export function turnstileEnforced(): boolean {
+  if (process.env.VERCEL_ENV === "production") return true;
+  return Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+}
+
 /**
- * Returns true when the token is valid, or when no `TURNSTILE_SECRET_KEY`
- * is configured (local/dev environments without Cloudflare keys).
+ * Returns true when the token is valid.
+ * Local dev with neither a site key nor `VERCEL_ENV=production` stays open
+ * so login works without Cloudflare keys. Everywhere else a missing secret
+ * or a missing token is a reject.
  */
 export async function verifyTurnstileToken(
   token: string | null | undefined,
   remoteip?: string | null,
 ): Promise<boolean> {
   const secretKey = getTurnstileSecretKey();
-  if (!secretKey) return true;
+  if (!secretKey) return !turnstileEnforced();
   if (!token) return false;
 
   const body = new URLSearchParams({ secret: secretKey, response: token });

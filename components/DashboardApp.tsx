@@ -1,4 +1,5 @@
 "use client";
+import { QK } from "@/lib/api/queryKeys";
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +10,7 @@ import {
   LIGHT, DARK, DARK_HC_OVERRIDES, qp,
 } from "./mockData";
 import { applyThemeVars, clearThemeVars } from "@/lib/theme/applyThemeVars";
+import { useDashboardUrlSync } from "@/lib/navigation/useDashboardUrlSync";
 import {
   dashboardApi,
   liveRateRowsFromSummary,
@@ -50,7 +52,7 @@ import {
 } from "@/lib/services/transactionFilters";
 import { useTransactionsPage } from "@/lib/hooks/useTransactionsPage";
 import { authApi, type AuthMe } from "@/lib/services/auth";
-import { bootstrapApi } from "@/lib/services/bootstrap";
+import { bootstrapApi, type DashboardBootstrap } from "@/lib/services/bootstrap";
 import { apiKeysApi } from "@/lib/services/apiKeys";
 import {
   teamApi,
@@ -68,6 +70,9 @@ import {
   buildDepositAccountDetailRows,
   buildDepositAccountDetailSections,
   mergeDepositAccount,
+  applySyncedDepositAccount,
+  needsDepositInstructionsSync,
+  resolveDepositDisclaimer,
   currencyIso,
   currencyLabel,
   occupiedFiatCurrencyCodes,
@@ -77,6 +82,9 @@ import {
   networksForStablecoin,
   isClosedDepositStatus,
   isCloseableDepositAccount,
+  listedDepositAccounts,
+  type DepositAccount,
+  type DepositAccountListResult,
 } from "@/lib/services/depositAccounts";
 import {
   ordersApi,
@@ -141,7 +149,36 @@ import {
   networkOptionsForAssetFromRails,
 } from "@/lib/collect/cctpRails";
 import { parseCollectSupportedChainKeys } from "@/lib/collect/sendDestChains";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { useOrderStatus } from "@/lib/hooks/useOrderStatus";
+import {
+  failureMessage as unifiedFailureMessage,
+  feeText as unifiedFeeText,
+  accountBoxError,
+  defaultSendSource,
+  eligibleSendSources,
+  extraFieldError,
+  findPayoutDestination,
+  invalidExtraField,
+  isUsdLike,
+  missingExtraField,
+  payableCorridors,
+  payoutRailDestinations,
+  payoutSource,
+  recipientDetails,
+  recipientExtraFields,
+  sendSourceLabel,
+  findWalletDestination,
+  isQuoteExpired as isUnifiedQuoteExpired,
+  moneyText as unifiedMoneyText,
+  refundText as unifiedRefundText,
+  sendErrorMessage as unifiedSendErrorMessage,
+  sendPollIntervalMs,
+  toOrderQuoteShape,
+  toSendPreviewShape,
+  unifiedSendsApi,
+  unifiedSendsEnabled,
+} from "@/lib/services/unifiedSends";
 import { useCardTransactionsLive } from "@/lib/hooks/useCardTransactionsLive";
 import { useSecretExpiry } from "@/lib/hooks/useSecretExpiry";
 import { useRevealGuard } from "@/lib/hooks/useRevealGuard";
@@ -157,6 +194,7 @@ import {
 import { setSessionLostHandler, ApiRequestError, isSessionExpiredError } from "@/lib/apiClient";
 import { copyText } from "@/lib/clipboard";
 import {
+  feeOnTopUsd,
   formatLimitsLine,
   limitViolation,
   limitViolationAcrossCurrencies,
@@ -180,6 +218,7 @@ import { useViewport } from "@/lib/responsive";
 import {
   buildSendDestinationSummary,
   buildSendStepDots,
+  friendlyDepositAcceptError,
   friendlySendAcceptError,
   friendlySendQuoteError,
   railIndexForMethod,
@@ -213,14 +252,30 @@ import {
 } from "@/lib/services/balances";
 import {
   conversionsApi,
+  pickPreferredConvertAccountId,
   secondsUntilExpiry,
   type ConversionOut,
 } from "@/lib/services/conversions";
-import { stellarSwapsApi } from "@/lib/services/stellarSwaps";
-import ConvertFlow, {
-  normalizeConvertMode,
-  type ConvertMode,
-} from "@/components/convert/ConvertFlow";
+import {
+  isQuotableRoute,
+  resolveConvertRoute,
+  type ConvertRouteLeg,
+} from "@/lib/services/convertRoutes";
+import {
+  describeLedgerConversionError,
+  isTerminalConversionStatus,
+  ledgerConversionsApi,
+  ledgerPreviewToConversionOut,
+  ledgerResultToConversionOut,
+} from "@/lib/services/ledgerConversions";
+import {
+  bookTransferPreviewToConversionOut,
+  bookTransferResultToConversionOut,
+  bookTransfersApi,
+  type BookTransferPreview,
+} from "@/lib/services/bookTransfers";
+import ConvertFlow from "@/components/convert/ConvertFlow";
+import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   cardsApi,
   cardholderPrefillFromKybProfile,
@@ -268,10 +323,21 @@ import ActivityList, { type ActivityItem } from "@/components/ui/ActivityList";
 import ChoicePicker from "@/components/ui/ChoicePicker";
 import ComingSoonPanel from "@/components/ui/ComingSoonPanel";
 import StatementsPanel from "@/components/reports/StatementsPanel";
+import dynamic from "next/dynamic";
+import InvoicesErrorBoundary from "@/components/invoices/InvoicesErrorBoundary";
+
+const InvoicesScreen = dynamic(() => import("@/components/invoices/InvoicesScreen"), {
+  ssr: false,
+  loading: () => (
+    <div className="ep-panel ep-invoices-empty">
+      <p className="ep-invoices-muted">Loading invoices…</p>
+    </div>
+  ),
+});
 import StatusBadge from "@/components/ui/StatusBadge";
 import SectionHeader from "@/components/ui/SectionHeader";
 import HomeIdentity from "@/components/home/HomeIdentity";
-import SendModal from "@/components/send/SendModal";
+import SendFlow from "@/features/send/SendFlow";
 import MbokaMark from "@/components/brand/MbokaMark";
 import NetworkMark, { partnerNetworkForMark } from "@/components/brand/NetworkMark";
 import DesktopSidebar from "@/components/navigation/DesktopSidebar";
@@ -381,22 +447,31 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
-    sendQuote: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
+    sendQuote: null as any, sendUnifiedQuote: null as any, sendUnified: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
     depositQuote: null as any, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null as any, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     bulkSelected: [0,3,6], bulkLoaded: false, bulkDone: false,
     onrampDir: "onramp", quoteSeconds: 87, swapAccepted: false,
-    convertMode: "fiat_to_stable" as ConvertMode,
+    // No convertMode: the rail is derived from the account pair.
     convertSourceAccountId: "",
     convertDestAccountId: "",
     convertAmount: "",
     convertQuote: null as ConversionOut | null,
+    // Raw book-transfer preview, kept so confirm can echo it back the way
+    // BookTransferModal does rather than guess which fields Mboka needs.
+    convertBookPreview: null as BookTransferPreview | null,
     convertQuoteLoading: false,
     convertAccepting: false,
     convertError: "",
+    // A bridged conversion confirms into a job that settles over minutes;
+    // these say where to poll it. Empty when nothing is in flight.
+    convertJobEntityId: "",
+    convertJobAccountId: "",
+    /** Set when live progress can't be fetched — the job still runs. */
+    convertJobNote: "",
     convertHop: 1 as 1 | 2,
     convertBridgeUsdcId: "" as string,
     convertFiatPair: ["EUR", "USD"] as [string, string],
@@ -406,6 +481,7 @@ export default function DashboardApp(props: Props = {}) {
     txCurrency: "all",
     txDateRange: "all" as "all" | "7d" | "30d",
     selectedTxId: null as number | string | null,
+    selectedInvoiceId: null as number | null,
     /** Stable key: `fiat:EUR` or `stablecoin:{accountId}` — not list index. */
     selectedAcctKey: "" as string,
     selectedAcctKind: "fiat" as "fiat" | "stablecoin",
@@ -502,6 +578,12 @@ export default function DashboardApp(props: Props = {}) {
     }));
   }, [setState]);
 
+  // Real URLs per top-level screen (/dashboard/transactions…): address bar
+  // follows state.screen, Back/Forward switch screens and close any modal.
+  useDashboardUrlSync(state.screen, (screen) =>
+    setState({ screen, modal: null, sidebarOpen: false, moreOpen: false }),
+  );
+
   // Portaled overlays (ChoicePicker) mount under document.body and miss the
   // dashboard root's inline theme vars — keep <html> in sync.
   useEffect(() => {
@@ -537,7 +619,7 @@ export default function DashboardApp(props: Props = {}) {
     return () => setSessionLostHandler(null);
   }, [router, queryClient]);
 
-  const meQuery = useQuery({ queryKey: ["auth-me"], queryFn: authApi.me, retry: false });
+  const meQuery = useQuery({ queryKey: [QK.authMe], queryFn: authApi.me, retry: false });
   useEffect(() => {
     if (!meQuery.isError) return;
     if (!isSessionExpiredError(meQuery.error)) return;
@@ -563,8 +645,13 @@ export default function DashboardApp(props: Props = {}) {
     screen === "cards" ||
     screen === "reports" ||
     screen === "transactions";
+  // accountDetail included: a book transfer closes onto it, so without a
+  // poll here a settling transfer never appears on the account it left.
   const activityPoll =
-    screen === "home" || screen === "transactions" || screen === "wallets";
+    screen === "home" ||
+    screen === "transactions" ||
+    screen === "wallets" ||
+    screen === "accountDetail";
   const kybWizard = useKybWizard({
     businessId,
     kybSummary: meQuery.data?.kyb_summary,
@@ -572,14 +659,14 @@ export default function DashboardApp(props: Props = {}) {
     kybStatus: meKybStatus,
     enabled: state.modal === "kyb",
     onSubmitted: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth-me"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
+      queryClient.invalidateQueries({ queryKey: [QK.authMe] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccountsEligibility] });
     },
   });
   // One-shot Home aggregate: identity slice, eligibility, treasury, FX, all accounts.
   const bootstrapQuery = useQuery({
-    queryKey: ["dashboard-bootstrap"],
+    queryKey: [QK.dashboardBootstrap],
     queryFn: bootstrapApi.get,
     retry: false,
     staleTime: 30_000,
@@ -591,7 +678,7 @@ export default function DashboardApp(props: Props = {}) {
   useEffect(() => {
     const patch = bootstrapQuery.data?.authMePatch;
     if (!patch?.business?.name) return;
-    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) => {
+    queryClient.setQueryData([QK.authMe], (prev: AuthMe | undefined) => {
       if (!prev) return prev;
       const prevName = prev.business?.name?.trim() || "";
       const mergedKyb = mergeKybSummaryCache(prev.kyb_summary, patch.kyb_summary);
@@ -621,14 +708,14 @@ export default function DashboardApp(props: Props = {}) {
     });
   }, [bootstrapQuery.data, queryClient]);
   const summaryQuery = useQuery({
-    queryKey: ["dashboard-summary"],
+    queryKey: [QK.dashboardSummary],
     queryFn: dashboardApi.summary,
     retry: false,
     // Bootstrap already carries treasury + FX; keep summary for money-in/out when needed.
     enabled: true,
   });
   const exchangeRatesQuery = useQuery({
-    queryKey: ["exchange-rates"],
+    queryKey: [QK.exchangeRates],
     queryFn: dashboardApi.exchangeRates,
     retry: false,
     staleTime: 60_000,
@@ -643,7 +730,7 @@ export default function DashboardApp(props: Props = {}) {
   // reorder or refetch (15s poll above) while the modal is open, and an
   // index would silently point at a different transaction.
   const txDetailQuery = useQuery({
-    queryKey: ["transaction", state.selectedTxId],
+    queryKey: [QK.transaction, state.selectedTxId],
     queryFn: () => transactionsApi.get(state.selectedTxId as number | string),
     enabled:
       state.selectedTxId != null &&
@@ -660,6 +747,22 @@ export default function DashboardApp(props: Props = {}) {
   });
   const sendStatusQuery = useOrderStatus(state.sendAccept?.merchant_order_id, {
     enabled: state.modal === "send" && state.sendDone && !!state.sendAccept,
+  });
+  // Unified sends (/v1/sends): one status read for every method. Polls until
+  // the send is final; a failed send with a pending refund is re-read slowly.
+  const sendOptionsQuery = useQuery({
+    queryKey: [QK.sendOptions],
+    queryFn: unifiedSendsApi.options,
+    enabled: unifiedSendsEnabled() && state.modal === "send",
+    staleTime: 5 * 60 * 1000,
+  });
+  const unifiedSendId: string | null = state.sendUnified?.send_id ?? null;
+  const unifiedSendQuery = useQuery({
+    queryKey: [QK.unifiedSend, unifiedSendId],
+    queryFn: () => unifiedSendsApi.get(unifiedSendId as string),
+    enabled: state.modal === "send" && state.sendDone && !!unifiedSendId,
+    refetchInterval: (query) =>
+      sendPollIntervalMs(query.state.data, query.state.dataUpdateCount),
   });
   const depositStatusQuery = useOrderStatus(state.depositAccept?.merchant_order_id, {
     enabled:
@@ -681,24 +784,30 @@ export default function DashboardApp(props: Props = {}) {
       !depositStatusQuery.isTerminal);
   const activityPollMs = activityPoll ? (orderTrackingActive ? 5_000 : 15_000) : false;
   const transactionsQuery = useQuery({
-    queryKey: ["transactions"],
+    queryKey: [QK.transactions],
     queryFn: transactionsApi.list,
     retry: false,
     enabled: needsActivityFeed,
     refetchInterval: activityPollMs,
+    // The global 30s staleTime suppressed the recovery paths: navigating to
+    // Home, or alt-tabbing back, would not refetch if the feed had been
+    // fetched seconds earlier. That is what made a missing transfer feel
+    // random rather than consistently late. The activity feed is the one
+    // query where freshness beats the request saved.
+    staleTime: 0,
   });
   const transactionsPageQuery = useTransactionsPage(txFilterStatus, {
     enabled: screen === "transactions",
     refetchIntervalMs: orderTrackingActive ? 5_000 : 15_000,
   });
   const apiKeysQuery = useQuery({
-    queryKey: ["api-keys"],
+    queryKey: [QK.apiKeys],
     queryFn: () => apiKeysApi.list(),
     retry: false,
     enabled: screen === "developer" || state.modal === "apiKey",
   });
   const teamQuery = useQuery({
-    queryKey: ["team", businessId],
+    queryKey: [QK.team, businessId],
     queryFn: () => teamApi.list(businessId as number),
     retry: false,
     enabled: screen === "team" && typeof businessId === "number",
@@ -718,8 +827,12 @@ export default function DashboardApp(props: Props = {}) {
 
   // Settled once the first catalog fetch finishes (success or error).
   const sendCatalogSettled = sendCatalogQuery.isFetched;
+  // With unified sends the country list also depends on the send options, so
+  // it is not ready until they have loaded (otherwise it would reshuffle).
   const sendCatalogLoading =
-    !sendCatalogSettled || (sendCatalogQuery.isFetching && !sendCatalogQuery.data);
+    !sendCatalogSettled ||
+    (sendCatalogQuery.isFetching && !sendCatalogQuery.data) ||
+    (unifiedSendsEnabled() && state.modal === "send" && sendOptionsQuery.isLoading);
   const sendCatalogError =
     sendCatalogQuery.isError && !sendCatalogQuery.data
       ? sendCatalogQuery.error instanceof Error
@@ -730,13 +843,45 @@ export default function DashboardApp(props: Props = {}) {
     void sendCatalogQuery.refetch();
   };
   // Live corridors only — never the hardcoded mock COUNTRIES list.
-  const sendCountries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+  // Unified sends: a bare currency (CAD, EUR …) is listed only when one of the
+  // business's balances has a live rail for it. Its catalog "providers" are
+  // conversion routes, not banks, so there is nothing to pick otherwise.
+  const sendCountriesFromCatalog = (catalog: typeof sendCatalogQuery.data) => {
+    const all = offRampCountriesFromCatalog(catalog);
+    if (!unifiedSendsEnabled()) return all;
+    const countryIsos = Object.entries(catalog?.offramp?.countries ?? {})
+      .filter(([, country]) => country?.enabled)
+      .map(([iso]) => iso);
+    return payableCorridors(all, countryIsos, sendOptionsQuery.data);
+  };
+  const sendCountries = sendCountriesFromCatalog(sendCatalogQuery.data);
   const depositCountries = onRampCountriesFromCatalog(sendCatalogQuery.data);
+  // Unified sends: a currency the business holds a balance in (USD …) is paid
+  // by rail (ACH, wire, SWIFT) straight from that balance, not by converting
+  // from a stablecoin wallet. Real off-ramp countries keep the catalog's bank
+  // list. Null means "use the catalog".
+  const sendPayoutContext = (countryIdx: number, railIdx: number, providerIdx: number) => {
+    if (!unifiedSendsEnabled()) return null;
+    const country = sendCountries[countryIdx];
+    if (!country) return null;
+    const rail = country.rails[railIdx] || country.rails[0];
+    if (!rail || rail.type !== "bank") return null;
+    if (sendCatalogQuery.data?.offramp?.countries?.[country.iso.toUpperCase()]?.enabled) return null;
+    const rails = payoutRailDestinations(sendOptionsQuery.data, country.code);
+    if (rails.length === 0) return null;
+    const destination = rails[Math.min(Math.max(providerIdx, 0), rails.length - 1)];
+    return {
+      rails,
+      destination,
+      source: payoutSource(sendOptionsQuery.data, destination),
+      fields: recipientExtraFields(destination),
+    };
+  };
 
   // When the catalog (or corridor) changes the provider list, clamp the
   // selection so sendProviderIdx never points past the active options.
   useEffect(() => {
-    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    const countries = sendCountriesFromCatalog(sendCatalogQuery.data);
     const country = countries[state.sendCountryIdx];
     if (!country) return;
     const rail = country.rails[state.sendRailIdx] || country.rails[0];
@@ -747,20 +892,27 @@ export default function DashboardApp(props: Props = {}) {
       rail.type,
       country.code,
     );
-    const options = providerNamesFromCatalog(catalogProviders);
+    const payoutCtx = sendPayoutContext(state.sendCountryIdx, state.sendRailIdx, 0);
+    const options = payoutCtx
+      ? payoutCtx.rails.map((d) => d.name)
+      : providerNamesFromCatalog(catalogProviders);
     if (!options.length) return;
     setState((s: any) => {
       if (s.sendProviderIdx < options.length) return {};
       return { sendProviderIdx: options.length - 1 };
     });
-  }, [sendCatalogQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
+    // sendPayoutContext reads the two queries listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendCatalogQuery.data, sendOptionsQuery.data, state.sendCountryIdx, state.sendRailIdx, setState]);
 
   useEffect(() => {
-    const countries = offRampCountriesFromCatalog(sendCatalogQuery.data);
+    const countries = sendCountriesFromCatalog(sendCatalogQuery.data);
     if (!countries.length) return;
     if (state.sendCountryIdx < countries.length) return;
     setState({ sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0 });
-  }, [sendCatalogQuery.data, state.sendCountryIdx, setState]);
+    // sendCountriesFromCatalog also reads the send options listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendCatalogQuery.data, sendOptionsQuery.data, state.sendCountryIdx, setState]);
 
   useEffect(() => {
     const countries = onRampCountriesFromCatalog(sendCatalogQuery.data);
@@ -787,7 +939,7 @@ export default function DashboardApp(props: Props = {}) {
   // Prefer bootstrap accounts. Fall back to eligibility → IBAN + entities walk
   // only when bootstrap fails (older backends / outage).
   const depositEligibilityQuery = useQuery({
-    queryKey: ["deposit-accounts-eligibility"],
+    queryKey: [QK.depositAccountsEligibility],
     queryFn: depositAccountsApi.eligibility,
     retry: false,
     enabled: bootstrapFailed,
@@ -813,7 +965,7 @@ export default function DashboardApp(props: Props = {}) {
       state.modal === "receive" ||
       state.screen === "accountDetail");
   const depositAccountsQuery = useQuery({
-    queryKey: ["deposit-accounts"],
+    queryKey: [QK.depositAccounts],
     queryFn: depositAccountsApi.list,
     retry: false,
     enabled:
@@ -825,7 +977,7 @@ export default function DashboardApp(props: Props = {}) {
           depositEligibilityQuery.isFetched)),
   });
   const stablecoinAccountsQuery = useQuery({
-    queryKey: ["stablecoin-accounts"],
+    queryKey: [QK.stablecoinAccounts],
     queryFn: listStablecoinAccounts,
     retry: false,
     enabled: bootstrapFailed,
@@ -892,9 +1044,11 @@ export default function DashboardApp(props: Props = {}) {
     state.screen === "home" ||
     state.screen === "wallets";
   const bootstrapFiatAccounts = bootstrapQuery.data?.fiatAccounts ?? [];
-  const fundingDepositAccounts = bootstrapReady
-    ? bootstrapFiatAccounts
-    : (depositAccountsQuery.data?.accounts ?? []);
+  const fundingDepositAccounts = listedDepositAccounts(
+    bootstrapReady
+      ? bootstrapFiatAccounts
+      : (depositAccountsQuery.data?.accounts ?? []),
+  );
   // Prefer IBAN USD once eligibility+list settle; still allow entity-account fallback.
   const usdFundingReady =
     bootstrapReady ||
@@ -948,7 +1102,7 @@ export default function DashboardApp(props: Props = {}) {
 
   // Card colours are cosmetic and owned by this dashboard (see app/api/card-colors).
   const cardColorsQuery = useQuery({
-    queryKey: ["card-colors"],
+    queryKey: [QK.cardColors],
     queryFn: listCardColors,
     enabled: cardsSurfaceOpen,
     staleTime: 60_000,
@@ -998,54 +1152,97 @@ export default function DashboardApp(props: Props = {}) {
       cardTxnSurfaceOpen || activityPoll ? 15_000 : false,
   });
 
-  // Prefill convert accounts once lists load so the form isn't empty.
+  // Prefill convert accounts once lists load.
+  //
+  // Prefers a funded source *that has a routable destination*. Ranking by
+  // balance alone used to be enough when the mode narrowed the lists for us;
+  // now that both lists hold every account, the best-funded one might be a
+  // KES balance with nowhere to go, and Convert would open on a refusal.
   useEffect(() => {
     if (state.screen !== "convert" && state.modal !== "convert") return;
-    const fiat = (
-      bootstrapReady
-        ? (bootstrapQuery.data?.fiatAccounts ?? [])
-        : (depositAccountsQuery.data?.accounts ?? [])
-    )
-      .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
-      .map((a) => String(a.id));
-    const convertStables = resolvedStablecoinAccounts
-      .filter(
-        (a) =>
-          (a.currency === "USDC" || a.currency === "USDT") &&
-          isReadyStatus(a.status) &&
-          a.id,
+    // Built from the same helpers the rendered pickers use, so the prefill
+    // can never land on an account (a closed one, say) that the list hides —
+    // which would leave the picker showing its placeholder over a set value.
+    const rows: (ConvertRouteLeg & { balanceAmount: number | null })[] = [
+      ...listedDepositAccounts(
+        bootstrapReady
+          ? (bootstrapQuery.data?.fiatAccounts ?? [])
+          : (depositAccountsQuery.data?.accounts ?? []),
       )
-      .map((a) => String(a.id));
-    const usdcBridge = resolvedStablecoinAccounts
-      .filter((a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id)
-      .map((a) => String(a.id));
-    const mode = state.convertMode;
-    const hop = state.convertHop;
-    const sources =
-      mode === "stable_to_fiat" || (mode === "fiat_to_fiat" && hop === 2)
-        ? convertStables
-        : fiat;
-    const dests =
-      mode === "fiat_to_stable"
-        ? convertStables
-        : fiat.filter((id) => id !== (state.convertSourceAccountId || sources[0]));
+        .filter((a) => a.id)
+        .map((a) => ({
+          id: String(a.id),
+          currency: String(a.currency || "").toUpperCase(),
+          network: null,
+          balanceAmount: parseBalanceNumber(a.balance),
+        })),
+      ...resolvedStablecoinAccounts
+        .filter(
+          (a) =>
+            (a.currency === "USDC" || a.currency === "USDT") &&
+            isReadyStatus(a.status) &&
+            a.id,
+        )
+        .map((a) => ({
+          id: String(a.id),
+          currency: String(a.currency || "").toUpperCase(),
+          network: a.network ?? null,
+          balanceAmount: parseBalanceNumber(a.balance),
+        })),
+    ];
+    const bestDestinationFor = (sourceId: string): string => {
+      const source = rows.find((a) => a.id === sourceId) || null;
+      if (!source) return "";
+      return pickPreferredConvertAccountId(
+        rows.filter(
+          (a) => a.id !== sourceId && isQuotableRoute(resolveConvertRoute(source, a)),
+        ),
+        [sourceId],
+      );
+    };
+    const existingSourceId = String(state.convertSourceAccountId || "");
+    let openingSourceId = existingSourceId;
+    let openingDestId = existingSourceId ? bestDestinationFor(existingSourceId) : "";
+    if (!existingSourceId) {
+      // Walk sources best-funded first and stop at the first one that can
+      // actually reach somewhere. `tried` grows every pass, so this ends.
+      const tried = new Set<string>();
+      for (;;) {
+        const candidateId = pickPreferredConvertAccountId(rows, tried);
+        if (!candidateId) break;
+        tried.add(candidateId);
+        const destId = bestDestinationFor(candidateId);
+        if (destId) {
+          openingSourceId = candidateId;
+          openingDestId = destId;
+          break;
+        }
+      }
+      // Nothing routes: still open on the funded account rather than empty
+      // pickers, and let the route explain itself.
+      if (!openingSourceId) openingSourceId = pickPreferredConvertAccountId(rows);
+    }
     setState((s: any) => {
       const next: Record<string, string> = {};
-      if (!s.convertSourceAccountId && sources[0]) next.convertSourceAccountId = sources[0];
-      if (!s.convertDestAccountId && dests[0]) next.convertDestAccountId = dests[0];
-      if (!s.convertBridgeUsdcId && usdcBridge[0]) next.convertBridgeUsdcId = usdcBridge[0];
+      if (!s.convertSourceAccountId && openingSourceId) {
+        next.convertSourceAccountId = openingSourceId;
+      }
+      if (!s.convertDestAccountId && openingDestId) {
+        next.convertDestAccountId = openingDestId;
+      }
       return Object.keys(next).length ? next : {};
     });
   }, [
     state.screen,
     state.modal,
-    state.convertMode,
-    state.convertHop,
     state.convertSourceAccountId,
     state.convertDestAccountId,
-    state.convertBridgeUsdcId,
     bootstrapReady,
     bootstrapQuery.data,
+    // The query payloads, deliberately — NOT `resolvedStablecoinAccounts`.
+    // That is recomputed into a fresh array every render, and `setState`
+    // always spreads into a new object, so depending on it would re-run this
+    // effect on every render forever.
     depositAccountsQuery.data,
     stablecoinAccountsQuery.data,
     setState,
@@ -1083,11 +1280,11 @@ export default function DashboardApp(props: Props = {}) {
             : {}),
         });
         if (terminal) {
-          queryClient.invalidateQueries({ queryKey: ["transactions"] });
-          queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-          queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
-          queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+          queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+          queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
           return;
         }
         if (!isAfricaFundProcessing(fund.status)) return;
@@ -1171,7 +1368,7 @@ export default function DashboardApp(props: Props = {}) {
   // details so the Developer screen's webhook rows show real values.
   const apiKeyDetailQueries = useQueries({
     queries: (apiKeysQuery.data ?? []).map((k) => ({
-      queryKey: ["api-key", k.id],
+      queryKey: [QK.apiKey, k.id],
       queryFn: () => apiKeysApi.get(k.id),
       retry: false,
       enabled: screen === "developer" || state.modal === "apiKey",
@@ -1203,18 +1400,18 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
-    sendQuote: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendQuote: null, sendUnifiedQuote: null, sendUnified: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
     depositAmount: "", depositQuote: null, depositQuoteLoading: false, depositQuoteError: "", depositAccept: null, depositAccepting: false, depositAcceptError: "", depositDone: false, depositIdempotencyKey: "",
     receiveGroup: "fiat", receiveAcctIdx: 0, receiveAsset: "usdc", receiveNetwork: "base", copiedKey: "",
     swapAccepted: false, onrampDir: "onramp", quoteSeconds: 87,
-    convertMode: "fiat_to_stable" as ConvertMode,
     convertSourceAccountId: "",
     convertDestAccountId: "",
     convertAmount: "",
     convertQuote: null,
+    convertBookPreview: null,
     convertQuoteLoading: false,
     convertAccepting: false,
     convertError: "",
@@ -1269,31 +1466,37 @@ export default function DashboardApp(props: Props = {}) {
   // Ready USDC/USDT Base/Polygon (and Stellar USDC) FinancialAccounts for the
   // Stablecoin send tab (Phase 4 `/v1/accounts/{id}/sends`). Fetched when Send opens.
   const sendableAccountsQuery = useQuery({
-    queryKey: ["sendable-stablecoin-accounts"],
+    queryKey: [QK.sendableStablecoinAccounts],
     queryFn: listSendableStablecoinAccounts,
     enabled: state.modal === "send",
     retry: false,
     staleTime: 30_000,
   });
   const collectSupportedChainsQuery = useQuery({
-    queryKey: ["collect-cctp-supported-chains"],
+    queryKey: [QK.collectCctpSupportedChains],
     queryFn: () => entitiesApi.collectSupportedChains(),
     enabled: state.modal === "send",
     retry: false,
     staleTime: 60_000,
   });
   const savedRecipientsQuery = useQuery({
-    queryKey: ["saved-recipients"],
+    queryKey: [QK.savedRecipients],
     queryFn: listSavedRecipients,
     enabled: state.modal === "send",
     retry: false,
     staleTime: 30_000,
   });
 
-  const sendNext = async () => {
+  // Takes the send state explicitly so the one-page composer can run the
+  // destination checks and the quote back to back (see sendReview). Step 1
+  // returns the patch it applied, or null when it stopped on an error.
+  type SendStateSnapshot = typeof state;
+  const sendNextWith = async (
+    state: SendStateSnapshot,
+  ): Promise<Partial<SendStateSnapshot> | null> => {
     // Country tab step 1: wait for catalog so provider chips / networkId match.
     if (state.sendStep === 1 && state.sendGroup === "country" && !sendCatalogSettled) {
-      return;
+      return null;
     }
     // A bank rail with no catalog-backed provider has no `networkId`, and the
     // backend rejects that payload outright. Stop here rather than collect a
@@ -1304,9 +1507,47 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteError: friendlySendQuoteError("network_id is required"),
         });
-        return;
+        return null;
       }
       const rail = country.rails[state.sendRailIdx] || country.rails[0];
+      const payoutCtx = sendPayoutContext(
+        state.sendCountryIdx,
+        state.sendRailIdx,
+        state.sendProviderIdx,
+      );
+      if (payoutCtx) {
+        // Paid from the held balance: no provider id and no stablecoin wallet.
+        const patch = {
+          sendStep: 2,
+          sendQuoteError: payoutCtx.source
+            ? ""
+            : `You need a ${country.code} balance to send by ${payoutCtx.destination.name}.`,
+          sendAccountId: payoutCtx.source?.account_id || "",
+          sendPreview: null,
+          sendAcceptError: "",
+        };
+        setState(patch);
+        return patch;
+      }
+      if (unifiedSendsEnabled()) {
+        // Any account can pay; the amount step lets the user choose which.
+        const chosen = defaultSendSource(
+          eligibleSendSources(sendOptionsQuery.data, null),
+          state.sendAccountId,
+        );
+        const patch = {
+          sendStep: 2,
+          sendQuoteError:
+            chosen || sendOptionsQuery.isLoading
+              ? ""
+              : "You have no account to pay from yet. Open one under Accounts.",
+          sendAccountId: chosen?.account_id || "",
+          sendPreview: null,
+          sendAcceptError: "",
+        };
+        setState(patch);
+        return patch;
+      }
       const providers = offRampProvidersForRail(
         sendCatalogQuery.data,
         country.iso,
@@ -1325,7 +1566,7 @@ export default function DashboardApp(props: Props = {}) {
         setState({
           sendQuoteError: friendlySendQuoteError("network_id is required"),
         });
-        return;
+        return null;
       }
       // OffRamp quotes need a refund wallet — prefer Polygon USDT (funded
       // treasury rail) over Base USDC leftovers.
@@ -1333,7 +1574,7 @@ export default function DashboardApp(props: Props = {}) {
         fundableRefundWallets,
         state.sendAccountId,
       );
-      setState({
+      const patch = {
         sendStep: 2,
         sendQuoteError: preferred
           ? ""
@@ -1345,8 +1586,9 @@ export default function DashboardApp(props: Props = {}) {
           : state.sendAsset,
         sendPreview: null,
         sendAcceptError: "",
-      });
-      return;
+      };
+      setState(patch);
+      return patch;
     }
     // Stablecoin tab step 1 → 2: require a ready account for the chosen
     // asset + network before collecting the recipient (Phase 4).
@@ -1376,9 +1618,9 @@ export default function DashboardApp(props: Props = {}) {
               ? `No ready Stellar USDC account to send from. Open a USDC account on Stellar first.`
               : `No ready ${selection.asset.toUpperCase()} account on ${selection.chainLabel}. Open a ${selection.asset.toUpperCase()} account on this network first.`,
         });
-        return;
+        return null;
       }
-      setState({
+      const patch = {
         sendStep: 2,
         sendAsset: selection.asset,
         sendChain: selection.chain,
@@ -1386,8 +1628,9 @@ export default function DashboardApp(props: Props = {}) {
         sendQuoteError: "",
         sendPreview: null,
         sendAcceptError: "",
-      });
-      return;
+      };
+      setState(patch);
+      return patch;
     }
     // Step 2 -> 3: OffRamp quote (by country) or account-send preview (stablecoin).
     if (state.sendStep === 2 && state.sendGroup === "country") {
@@ -1420,6 +1663,140 @@ export default function DashboardApp(props: Props = {}) {
       }
       setState({ sendQuoteLoading: true, sendQuoteError: "" });
       try {
+        const payoutCtx = sendPayoutContext(
+          state.sendCountryIdx,
+          state.sendRailIdx,
+          state.sendProviderIdx,
+        );
+        if (payoutCtx) {
+          const payCcy = payoutCtx.destination.currency.toUpperCase();
+          if (!payoutCtx.source) {
+            throw new Error(`You need a ${payCcy} balance to send by ${payoutCtx.destination.name}.`);
+          }
+          const missing = missingExtraField(payoutCtx.fields, state.sendRecipientDetails);
+          if (missing) {
+            throw new Error(`Enter the ${missing.label.toLowerCase()} to continue.`);
+          }
+          const invalid = invalidExtraField(payoutCtx.fields, state.sendRecipientDetails);
+          const accountError = accountBoxError(payoutCtx.fields, state.sendRecipient);
+          if (invalid || accountError) {
+            throw new Error(invalid?.message || accountError || "Check the bank details.");
+          }
+          // A rail pays out the currency it is funded in, so the amount is
+          // that currency as typed — never a converted figure.
+          const typedCcy = amountRate ? state.sendAmountCurrency : "USD";
+          const payoutAmount =
+            payCcy === "USD" ? usdAmount : typedCcy === payCcy ? state.sendAmount.trim() : null;
+          if (!payoutAmount) {
+            throw new Error(`Enter the amount in ${payCcy}.`);
+          }
+          if (payoutCtx.source.available != null) {
+            assertSufficientBalance({
+              amount: payoutAmount,
+              balance: { available: payoutCtx.source.available, currency: payCcy },
+              currency: payCcy,
+            });
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: payoutCtx.destination.id,
+            source_account_id: payoutCtx.source.account_id,
+            amount: payoutAmount,
+            amount_currency: payCcy,
+            recipient: {
+              name: state.sendRecipientName.trim(),
+              account: state.sendRecipient.trim(),
+              details: recipientDetails(payoutCtx.fields, state.sendRecipientDetails),
+            },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: payoutCtx.source.account_id,
+            sendStep: 3,
+          });
+          return;
+        }
+        if (unifiedSendsEnabled()) {
+          // One contract for every method: the user picks the account, the
+          // backend picks the route and returns a single combined price.
+          const country = sendCountries[state.sendCountryIdx];
+          if (!country) {
+            throw new Error("Supported corridors are still loading. Try again in a moment.");
+          }
+          const rail = country.rails[state.sendRailIdx] || country.rails[0];
+          const names = providerNamesFromCatalog(
+            offRampProvidersForRail(sendCatalogQuery.data, country.iso, rail.type, country.code),
+          );
+          const providerName =
+            names[Math.min(state.sendProviderIdx, Math.max(0, names.length - 1))] || "";
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findPayoutDestination(sendOptions, {
+            countryIso: country.iso,
+            railType: rail.type,
+            providerName,
+          });
+          if (!destination) {
+            throw new Error(
+              `${providerName || "That provider"} is not available right now. Pick another provider or try again shortly.`,
+            );
+          }
+          const source = defaultSendSource(
+            eligibleSendSources(sendOptions, destination),
+            state.sendAccountId,
+          );
+          if (!source) {
+            throw new Error("Choose an account to pay from, then try again.");
+          }
+          const srcCcy = source.currency.toUpperCase();
+          const dstCcy = destination.currency.toUpperCase();
+          const typedCcy = (amountRate ? state.sendAmountCurrency : "USD").toUpperCase();
+          // Typed in the destination currency: that is what the recipient
+          // gets. Typed in USD: that is what leaves a dollar-pegged account.
+          let quoteAmount: string;
+          let quoteCurrency: string;
+          if (typedCcy === dstCcy) {
+            quoteAmount = state.sendAmount.trim();
+            quoteCurrency = dstCcy;
+          } else if (isUsdLike(srcCcy)) {
+            quoteAmount = usdAmount;
+            quoteCurrency = srcCcy;
+          } else {
+            throw new Error(
+              `Enter the amount in ${dstCcy} when paying from your ${srcCcy} balance.`,
+            );
+          }
+          if (quoteCurrency === srcCcy && source.available != null) {
+            assertSufficientBalance({
+              amount: quoteAmount,
+              balance: { available: source.available, currency: srcCcy },
+              currency: srcCcy,
+            });
+          }
+          const typedAccount = state.sendRecipient.trim();
+          const quoteAccount =
+            rail.type === "mobile" ? toE164(typedAccount, country.dialCode) : typedAccount;
+          if (quoteAccount !== typedAccount) setState({ sendRecipient: quoteAccount });
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: source.account_id,
+            amount: quoteAmount,
+            amount_currency: quoteCurrency,
+            recipient: { name: state.sendRecipientName.trim(), account: quoteAccount },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: source.account_id,
+            sendStep: 3,
+          });
+          return;
+        }
         // Prefer the selected chain's ready USDC account so the quote can
         // tag asset/network; fall back to summary or any ready USDC wallet
         // so a 500 from /dashboard/summary is not reported as unprovisioned.
@@ -1515,13 +1892,54 @@ export default function DashboardApp(props: Props = {}) {
           networkId,
           networkName: providerName?.trim() || undefined,
         });
+        if (unifiedSendsEnabled()) {
+          // One contract for every method: the backend picks the route and
+          // returns a single combined price.
+          if (!refundWallet) {
+            throw new Error("Choose a wallet to pay from, then try again.");
+          }
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findPayoutDestination(sendOptions, {
+            countryIso: country.iso,
+            railType: rail.type,
+            providerName,
+          });
+          if (!destination) {
+            throw new Error(
+              `${providerName} is not available right now. Pick another provider or try again shortly.`,
+            );
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: refundWallet.id,
+            amount: usdAmount,
+            amount_currency: (refundWallet.currency || "USDT").toUpperCase(),
+            recipient: {
+              name: state.sendRecipientName.trim(),
+              account: recipientAccountNumber,
+            },
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendQuote: toOrderQuoteShape(unifiedQuote),
+            sendAccountId: refundWallet.id,
+            sendStep: 3,
+          });
+          return;
+        }
         const quote = await ordersApi.quote(payload);
         setState({ sendQuoteLoading: false, sendQuote: quote, sendStep: 3 });
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError:
-            err instanceof ApiRequestError
+          sendQuoteError: unifiedSendsEnabled()
+            ? unifiedSendErrorMessage(err, "Couldn't get a quote. Try again.")
+            : err instanceof ApiRequestError
               ? friendlySendQuoteError(
                   err.message,
                   err.data && typeof err.data === "object"
@@ -1571,6 +1989,39 @@ export default function DashboardApp(props: Props = {}) {
           currency: account.currency || assetCode,
           memo: state.sendMemo,
         });
+        if (unifiedSendsEnabled()) {
+          const sendOptions = await queryClient.fetchQuery({
+            queryKey: [QK.sendOptions],
+            queryFn: unifiedSendsApi.options,
+            staleTime: 5 * 60 * 1000,
+          });
+          const destination = findWalletDestination(sendOptions, {
+            asset: assetCode,
+            network: state.sendChain,
+          });
+          if (!destination) {
+            throw new Error(`${assetCode} on this network is not available right now.`);
+          }
+          const unifiedQuote = await unifiedSendsApi.quote({
+            destination_id: destination.id,
+            source_account_id: account.id,
+            amount: state.sendAmount.trim(),
+            amount_currency: (account.currency || assetCode).toUpperCase(),
+            recipient: {
+              name: state.sendRecipientName.trim() || "Wallet",
+              account: state.sendRecipient.trim(),
+            },
+            reference: state.sendMemo?.trim() || null,
+          });
+          setState({
+            sendQuoteLoading: false,
+            sendUnifiedQuote: unifiedQuote,
+            sendPreview: toSendPreviewShape(unifiedQuote),
+            sendAccountId: account.id,
+            sendStep: 3,
+          });
+          return;
+        }
         const preview = await accountSendsApi.preview(account.id, payload);
         setState({
           sendQuoteLoading: false,
@@ -1581,8 +2032,9 @@ export default function DashboardApp(props: Props = {}) {
       } catch (err) {
         setState({
           sendQuoteLoading: false,
-          sendQuoteError:
-            err instanceof ApiRequestError
+          sendQuoteError: unifiedSendsEnabled()
+            ? unifiedSendErrorMessage(err, "Couldn't preview this send. Try again.")
+            : err instanceof ApiRequestError
               ? friendlySendQuoteError(
                   explainAccountSendError(err.message, state.sendChain),
                   err.data && typeof err.data === "object"
@@ -1598,7 +2050,33 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
     setState((s: any) => ({ sendStep: Math.min(3, s.sendStep + 1) }));
+    return null;
   };
+  const sendNext = () => sendNextWith(state);
+  // One-page composer: re-run the destination checks (country, rail and
+  // provider may have changed since the last attempt), then go straight to
+  // the quote / preview with the same inputs.
+  const sendReview = async () => {
+    if (state.sendQuoteLoading) return;
+    const patch = await sendNextWith({ ...state, sendStep: 1 });
+    if (!patch || patch.sendStep !== 2 || patch.sendQuoteError) return;
+    await sendNextWith({ ...state, ...patch });
+  };
+  // After a failed payout: drop the dead order and quote but keep what the
+  // user typed, so they can correct the recipient and send again.
+  const sendRetry = () =>
+    setState({
+      sendDone: false,
+      sendStep: 1,
+      sendAccept: null,
+      sendConfirm: null,
+      sendQuote: null,
+      sendUnifiedQuote: null,
+      sendUnified: null,
+      sendPreview: null,
+      sendQuoteError: "",
+      sendAcceptError: "",
+    });
   const sendBack = () =>
     setState((s: any) => {
       // Step 1 (destination) is the first step after the method chooser, so
@@ -1611,8 +2089,9 @@ export default function DashboardApp(props: Props = {}) {
           sendAcceptError: "",
           sendPreview: null,
           sendQuote: null,
+          sendUnifiedQuote: null,
           sendRecipient: "",
-          sendRecipientName: "",
+          sendRecipientName: "", sendRecipientDetails: {},
           sendMemo: "",
           sendAmount: "",
         };
@@ -1623,6 +2102,7 @@ export default function DashboardApp(props: Props = {}) {
         sendAcceptError: "",
         sendPreview: null,
         sendQuote: null,
+        sendUnifiedQuote: null,
       };
     });
   const depositNext = async () => {
@@ -1769,6 +2249,33 @@ export default function DashboardApp(props: Props = {}) {
         depositAcceptError: "",
       };
     });
+  /**
+   * Refresh everything that shows money after a transfer settles.
+   *
+   * Book transfers used to close their modal without invalidating anything,
+   * so a completed move stayed invisible until something else happened to
+   * refetch. Worse, it closes onto `accountDetail`, which is not in
+   * `activityPoll` — so there was no 15s poll to rescue it either, and the
+   * transfer could sit unseen indefinitely on the very account it left.
+   *
+   * Every other money flow already did this inline; this just names it so a
+   * new flow cannot forget a key.
+   */
+  const refreshMoneyViews = () => {
+    for (const key of [
+      QK.transactions,
+      QK.transactionsPage,
+      QK.dashboardSummary,
+      QK.depositAccounts,
+      QK.stablecoinAccounts,
+      // Was the literal "bootstrap", which matched no query — balances on
+      // Home never refreshed after a money movement settled.
+      QK.dashboardBootstrap,
+    ]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
   const closeModal = () => {
     // Escape reaches every open modal through this shared function — block
     // it here too while a disable-2FA request is in flight (see
@@ -1795,6 +2302,7 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const closeModalRef = useRef(closeModal);
+  const depositInstructionsSyncAttemptedRef = useRef(new Set<string>());
   closeModalRef.current = closeModal;
 
   useEffect(() => {
@@ -1847,6 +2355,8 @@ export default function DashboardApp(props: Props = {}) {
   const stopClick = (e) => e.stopPropagation();
   const openTxDetail = (id: number | string) => () =>
     setState({ modal: "txDetail", selectedTxId: id });
+  const openInvoiceDetail = (id: number) =>
+    setState({ modal: "invoiceDetail", selectedInvoiceId: id });
   const openOnchainTxDetail = (payment: { txHash: string }) =>
     setState({
       modal: "txDetail",
@@ -2030,6 +2540,18 @@ export default function DashboardApp(props: Props = {}) {
     }
     openModal(name)();
   };
+  /** Same KYB gate as guardMoneyModal, but navigates to a screen instead of
+   * opening a modal/money-flow overlay. */
+  const guardScreenNav = (screen: string) => () => {
+    if (meQuery.isLoading || meQuery.isPending) return;
+    const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    if (!isKybApproved(status)) {
+      goVerification();
+      if (canOpenKybWizard(status)) openModalKyb();
+      return;
+    }
+    navigateToScreen(screen);
+  };
   const openSelectedAccountSend = () => {
     guardMoneyModal("send")();
     if (
@@ -2072,7 +2594,7 @@ export default function DashboardApp(props: Props = {}) {
       sendStep: 1,
       sendDone: false,
       sendRecipient: "",
-      sendRecipientName: "",
+      sendRecipientName: "", sendRecipientDetails: {},
       sendMemo: "",
       sendAmount: "",
       sendQuote: null,
@@ -2188,7 +2710,14 @@ export default function DashboardApp(props: Props = {}) {
       countryRail.type,
       country.code,
     );
-    const providerOptions = providerNamesFromCatalog(catalogProviders);
+    const savePayoutCtx = sendPayoutContext(
+      state.sendCountryIdx,
+      state.sendRailIdx,
+      state.sendProviderIdx,
+    );
+    const providerOptions = savePayoutCtx
+      ? savePayoutCtx.rails.map((d) => d.name)
+      : providerNamesFromCatalog(catalogProviders);
     const provider =
       state.sendGroup === "country"
         ? providerOptions[Math.min(state.sendProviderIdx, Math.max(0, providerOptions.length - 1))] ||
@@ -2207,7 +2736,7 @@ export default function DashboardApp(props: Props = {}) {
         provider,
         network: state.sendGroup === "crypto" ? state.sendChain : undefined,
       });
-      await queryClient.invalidateQueries({ queryKey: ["saved-recipients"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.savedRecipients] });
       setSaveRecipientMessage("Recipient saved. You can pick them next time from saved details.");
     } catch (err) {
       setSaveRecipientMessage(
@@ -2218,6 +2747,43 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const submitSend = async () => {
+    if (unifiedSendsEnabled() && state.sendUnifiedQuote) {
+      if (state.sendAccepting) return;
+      setState({ sendAccepting: true, sendAcceptError: "" });
+      try {
+        // One key per confirm attempt. The backend also returns the same send
+        // if this quote is confirmed twice, so a double click cannot pay twice.
+        const confirmed = await unifiedSendsApi.confirm(
+          state.sendUnifiedQuote.quote_id,
+          newIdempotencyKey(),
+        );
+        queryClient.setQueryData([QK.unifiedSend, confirmed.send_id], confirmed);
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendOptions] });
+        setState({ sendAccepting: false, sendUnified: confirmed, sendDone: true });
+      } catch (err) {
+        if (isUnifiedQuoteExpired(err)) {
+          setState({
+            sendAccepting: false,
+            sendQuote: null,
+            sendPreview: null,
+            sendUnifiedQuote: null,
+            sendStep: 2,
+            sendAcceptError: "",
+            sendQuoteError: "That quote expired. Press Review to get a fresh price, then try again.",
+          });
+          return;
+        }
+        setState({
+          sendAccepting: false,
+          sendAcceptError: unifiedSendErrorMessage(err, "Couldn't send the payment. Try again."),
+        });
+      }
+      return;
+    }
     if (state.sendGroup === "crypto") {
       if (!state.sendPreview?.preview_token || !state.sendAccountId) return;
       setState({ sendAccepting: true, sendAcceptError: "" });
@@ -2231,10 +2797,10 @@ export default function DashboardApp(props: Props = {}) {
           { preview_token: state.sendPreview.preview_token },
           idempotencyKey,
         );
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
         setState({ sendAccepting: false, sendConfirm: confirmed, sendDone: true });
       } catch (err) {
         setState({
@@ -2251,9 +2817,9 @@ export default function DashboardApp(props: Props = {}) {
     setState({ sendAccepting: true, sendAcceptError: "" });
     try {
       const accepted = await ordersApi.accept(state.sendQuote.quote_id);
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
       setState({ sendAccepting: false, sendAccept: accepted, sendDone: true });
     } catch (err) {
       if (isQuoteExpiredError(err)) {
@@ -2272,9 +2838,9 @@ export default function DashboardApp(props: Props = {}) {
         // A duplicate accept (e.g. a double-click) already produced an
         // order for this quote_id — the payout went through, so this is
         // not a failure to show the user.
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["transactions-page"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactionsPage] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
         setState({ sendAccepting: false, sendAccept: null, sendDone: true });
         return;
       }
@@ -2318,8 +2884,8 @@ export default function DashboardApp(props: Props = {}) {
         undefined,
         state.depositQuote.quote_id,
       );
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
       const isMobile = rail.type === "mobile";
       setState({
         depositAccepting: false,
@@ -2339,8 +2905,8 @@ export default function DashboardApp(props: Props = {}) {
         return;
       }
       if (isQuoteAlreadyAcceptedError(err)) {
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+        queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardSummary] });
         setState({
           depositAccepting: false,
           depositAccept: null,
@@ -2352,7 +2918,9 @@ export default function DashboardApp(props: Props = {}) {
       setState({
         depositAccepting: false,
         depositAcceptError:
-          err instanceof ApiRequestError ? err.message : "Couldn't confirm the top-up. Try again.",
+          err instanceof ApiRequestError
+            ? friendlyDepositAcceptError(err.message, err.data)
+            : "Couldn't confirm the top-up. Try again.",
       });
     }
   };
@@ -2502,56 +3070,87 @@ export default function DashboardApp(props: Props = {}) {
   };
 
   const toggleBulkCountry = (i) => () => setState(s => ({ bulkSelected: s.bulkSelected.includes(i) ? s.bulkSelected.filter(x => x !== i) : [...s.bulkSelected, i] }));
-  const setConvertMode = (mode: ConvertMode) =>
-    setState({
-      convertMode: mode,
-      convertSourceAccountId: "",
-      convertDestAccountId: "",
-      convertQuote: null,
-      convertError: "",
-      convertHop: 1,
-      swapAccepted: false,
-      quoteSeconds: 0,
-    });
-  /** Resolve a ready USDC FinancialAccount id for fiat↔fiat bridging. */
-  const resolveUsdcBridgeId = (): string => {
-    const fromState = (state.convertBridgeUsdcId || "").trim();
-    if (fromState) return fromState;
-    const ready = resolvedStablecoinAccounts.find(
-      (a) => a.currency === "USDC" && isReadyStatus(a.status) && a.id,
+  /**
+   * The rail for the pair currently selected, read off raw account data.
+   *
+   * The render body derives the same route for display; this reads it again
+   * from the query caches because the handlers run against `state`, not the
+   * rendered snapshot. Both go through `resolveConvertRoute`, so the button
+   * the user pressed and the endpoint we call can never disagree.
+   */
+  const convertLegFor = (accountId: string): ConvertRouteLeg | null => {
+    const id = String(accountId || "").trim();
+    if (!id) return null;
+    const fiat =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === id);
+    if (fiat) {
+      return { id, currency: String(fiat.currency || ""), network: null };
+    }
+    const stable =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === id);
+    if (stable) {
+      return {
+        id,
+        currency: String(stable.currency || ""),
+        network: stable.network ?? null,
+      };
+    }
+    return null;
+  };
+  const currentConvertRoute = () =>
+    resolveConvertRoute(
+      convertLegFor(state.convertSourceAccountId),
+      convertLegFor(state.convertDestAccountId),
     );
-    return ready?.id ? String(ready.id) : "";
+  /**
+   * Owning entity for a convert source account.
+   *
+   * Book transfers and ledger FX are both entity-scoped, and ledger FX now
+   * runs from stablecoin sources too (USDC → USDT), so this cannot read
+   * `entity_id` off the fiat list alone — stablecoin accounts carry it as
+   * `entityId`.
+   */
+  const convertEntityIdFor = (accountId: string): string => {
+    const id = String(accountId || "").trim();
+    if (!id) return "";
+    const fiat =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === id);
+    if (fiat) return String(fiat.entity_id || "").trim();
+    const stable =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === id) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === id);
+    return stable ? String(stable.entityId || "").trim() : "";
   };
   const refreshConvertQuote = async () => {
     const sourceId = state.convertSourceAccountId;
     const selectedDestId = state.convertDestAccountId;
     const amount = state.convertAmount;
-    const twoHopHop1 =
-      state.convertMode === "fiat_to_fiat" && state.convertHop === 1;
-    const stellarStableSwap = state.convertMode === "stable_to_stable";
-    const bridgeId = twoHopHop1 ? resolveUsdcBridgeId() : "";
-    // Hop 1 of EUR↔USD quotes source fiat → USDC; selectedDestId is the final fiat.
-    const quoteDestId = twoHopHop1 ? bridgeId : selectedDestId;
+    const route = currentConvertRoute();
 
     if (!sourceId || !selectedDestId || !amount.trim()) {
       setState({ convertError: "Pick both accounts and enter an amount (min 1.00)." });
       return;
     }
-    if (twoHopHop1 && !bridgeId) {
+
+    // The CTA is already disabled for an unsupported pair; this is the
+    // belt-and-braces so no programmatic path can quote one.
+    if (!isQuotableRoute(route)) {
       setState({
-        convertError:
-          "Open a ready USDC account first — fiat↔fiat converts via USDC.",
+        convertError: route.reason || "This pair can't be converted yet.",
       });
       return;
     }
 
     // Client-side available-balance guard when the partner exposed a balance.
-    const fiatSource = (depositAccountsQuery.data?.accounts ?? []).find(
-      (a) => String(a.id) === sourceId,
-    );
-    const stableSource = (stablecoinAccountsQuery.data ?? []).find(
-      (a) => String(a.id) === sourceId,
-    );
+    const fiatSource =
+      (depositAccountsQuery.data?.accounts ?? []).find((a) => String(a.id) === sourceId) ||
+      (bootstrapQuery.data?.fiatAccounts ?? []).find((a) => String(a.id) === sourceId);
+    const stableSource =
+      (stablecoinAccountsQuery.data ?? []).find((a) => String(a.id) === sourceId) ||
+      (bootstrapQuery.data?.stablecoinAccounts ?? []).find((a) => String(a.id) === sourceId);
     try {
       if (fiatSource) {
         assertSufficientBalance({
@@ -2573,28 +3172,59 @@ export default function DashboardApp(props: Props = {}) {
       return;
     }
 
+    // Book transfers and ledger FX are entity-scoped endpoints; the ramp is
+    // not. Resolving the entity up front keeps the failure in front of the
+    // spinner rather than behind it.
+    const entityId = convertEntityIdFor(sourceId);
+    if ((route.kind === "ledger_fx" || route.kind === "book_transfer") && !entityId) {
+      setState({
+        convertError: "Couldn't resolve the business entity for this account.",
+      });
+      return;
+    }
+
     setState({
       convertQuoteLoading: true,
       convertError: "",
       convertQuote: null,
+      convertBookPreview: null,
       swapAccepted: false,
-      ...(bridgeId ? { convertBridgeUsdcId: bridgeId } : {}),
+      convertHop: 1,
     });
     try {
-      const quote = stellarStableSwap
-        ? await stellarSwapsApi.quote({
-            source_account_id: sourceId,
-            destination_account_id: quoteDestId,
-            amount,
-          })
-        : await conversionsApi.quote({
-            source_account_id: sourceId,
-            destination_account_id: quoteDestId,
-            amount,
-          });
+      let quote: ConversionOut;
+      let bookPreview: BookTransferPreview | null = null;
+      if (route.kind === "book_transfer") {
+        bookPreview = await bookTransfersApi.preview(entityId, sourceId, {
+          destination_account_id: selectedDestId,
+          amount: amount.trim(),
+          currency: String(fiatSource?.currency || ""),
+        });
+        quote = bookTransferPreviewToConversionOut(bookPreview, {
+          sourceAccountId: sourceId,
+          destinationAccountId: selectedDestId,
+          currency: String(fiatSource?.currency || ""),
+        });
+      } else if (route.kind === "ledger_fx") {
+        const preview = await ledgerConversionsApi.preview(entityId, sourceId, {
+          destination_account_id: selectedDestId,
+          amount,
+        });
+        quote = ledgerPreviewToConversionOut(preview, {
+          sourceAccountId: sourceId,
+          destinationAccountId: selectedDestId,
+        });
+      } else {
+        quote = await conversionsApi.quote({
+          source_account_id: sourceId,
+          destination_account_id: selectedDestId,
+          amount,
+        });
+      }
       setState({
         convertQuoteLoading: false,
         convertQuote: quote,
+        convertBookPreview: bookPreview,
         quoteSeconds: secondsUntilExpiry(quote.expires_at) || 120,
       });
     } catch (err) {
@@ -2613,81 +3243,145 @@ export default function DashboardApp(props: Props = {}) {
       setState({
         convertQuoteLoading: false,
         convertError:
-          upstream ||
-          (err instanceof Error ? err.message : "Couldn't get a conversion quote."),
+          route.kind === "ledger_fx"
+            ? describeLedgerConversionError(err, "Couldn't get a conversion quote.")
+            : upstream ||
+              (err instanceof Error ? err.message : "Couldn't get a conversion quote."),
       });
     }
   };
   const acceptConvertQuote = async () => {
     const quote = state.convertQuote;
-    if (!quote?.quote_id || state.quoteSeconds <= 0) return;
-    const bridgeId = resolveUsdcBridgeId();
-    const finalFiatId = state.convertDestAccountId;
-    const stellarStableSwap = state.convertMode === "stable_to_stable";
-    setState({ convertAccepting: true, convertError: "" });
+    if (!quote?.quote_id) return;
+    // Only a locked rate expires client-side. A bridged quote prices on
+    // arrival and shows no countdown; the backend judges its token.
+    if (quote.rate_locked !== false && state.quoteSeconds <= 0) return;
+    // Re-derive rather than trusting a stashed flag: the accept must hit the
+    // same rail that produced the quote the user is looking at.
+    const route = currentConvertRoute();
+    setState({ convertAccepting: true, convertError: "", convertJobNote: "" });
+    let jobEntityId = "";
     try {
-      const accepted = stellarStableSwap
-        ? await stellarSwapsApi.confirm(quote.quote_id)
-        : await conversionsApi.accept(quote.quote_id);
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-
-      // EUR↔USD two-hop: after hop 1 (fiat→USDC), quote hop 2 (USDC→other fiat).
-      if (
-        state.convertMode === "fiat_to_fiat" &&
-        state.convertHop === 1 &&
-        bridgeId &&
-        finalFiatId
-      ) {
-        const hop2Amount = accepted.destination_amount || quote.destination_amount;
-        if (!hop2Amount) {
-          throw new Error("First hop settled but no USDC amount returned for hop 2.");
+      let accepted: ConversionOut;
+      const sourceId = state.convertSourceAccountId;
+      if (route.kind === "book_transfer" || route.kind === "ledger_fx") {
+        const entityId = convertEntityIdFor(sourceId);
+        if (!entityId) {
+          throw new Error("Couldn't resolve the business entity for this account.");
         }
-        // Hop 1 has settled — the funds are in the USDC bridge account. Pin the
-        // flow to hop 2 *before* quoting, so a failed quote leaves a retryable
-        // state instead of one that re-accepts the spent hop-1 quote_id.
-        setState({
-          convertHop: 2,
-          convertBridgeUsdcId: bridgeId,
-          convertSourceAccountId: bridgeId,
-          convertDestAccountId: finalFiatId,
-          convertQuote: null,
-          convertAmount: String(hop2Amount),
-        });
-        const hop2 = await conversionsApi.quote({
-          source_account_id: bridgeId,
-          destination_account_id: finalFiatId,
-          amount: String(hop2Amount),
-        });
-        setState({
-          convertAccepting: false,
-          convertHop: 2,
-          convertBridgeUsdcId: bridgeId,
-          convertSourceAccountId: bridgeId,
-          convertDestAccountId: finalFiatId,
-          convertQuote: hop2,
-          convertAmount: String(hop2Amount),
-          quoteSeconds: secondsUntilExpiry(hop2.expires_at) || 120,
-          convertError: "",
-        });
-        return;
+        if (route.kind === "book_transfer") {
+          // Echoes the preview back the way BookTransferModal does — that is
+          // the shape Mboka's confirm is known to accept, and a money move is
+          // the wrong place to find out which fields were actually optional.
+          const result = await bookTransfersApi.confirm(entityId, sourceId, {
+            ...(state.convertBookPreview ?? {}),
+            destination_account_id: state.convertDestAccountId,
+            amount: quote.source_amount,
+            currency: quote.source_currency,
+            preview_token: quote.quote_id,
+          });
+          accepted = bookTransferResultToConversionOut(result, quote);
+        } else {
+          const result = await ledgerConversionsApi.confirm(entityId, sourceId, {
+            preview_token: quote.quote_id,
+          });
+          accepted = ledgerResultToConversionOut(result, quote);
+          jobEntityId = entityId;
+        }
+      } else {
+        accepted = await conversionsApi.accept(quote.quote_id);
       }
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+      queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+      queryClient.invalidateQueries({ queryKey: [QK.transactions] });
 
+      // A bridged confirm returns a job still in flight: keep where to poll
+      // it, and the polling effect takes it from there.
+      // Only bridged jobs (`cvj_…`) are pollable: a direct confirm is already
+      // final, and the aggregator answers 404 for its transfer id.
+      const inFlight =
+        route.kind === "ledger_fx" &&
+        accepted.route === "bridged" &&
+        !isTerminalConversionStatus(accepted.status);
       setState({
         convertAccepting: false,
         swapAccepted: true,
         convertQuote: accepted,
+        convertHop: 1,
+        convertJobEntityId: inFlight ? jobEntityId : "",
+        convertJobAccountId: inFlight ? sourceId : "",
       });
     } catch (err) {
       setState({
         convertAccepting: false,
         convertError:
-          err instanceof Error ? err.message : "Couldn't accept this conversion.",
+          route.kind === "ledger_fx"
+            ? describeLedgerConversionError(err, "Couldn't accept this conversion.")
+            : err instanceof Error
+              ? err.message
+              : "Couldn't accept this conversion.",
       });
     }
   };
+
+  // Poll an in-flight bridged conversion until it reaches a terminal status.
+  // The job runs server-side regardless; this only keeps the view current.
+  const convertJobId = state.convertJobAccountId ? state.convertQuote?.id ?? "" : "";
+  const convertJobEntityId = state.convertJobEntityId;
+  const convertJobAccountId = state.convertJobAccountId;
+  useEffect(() => {
+    if (!convertJobId || !convertJobEntityId || !convertJobAccountId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      try {
+        const result = await ledgerConversionsApi.get(
+          convertJobEntityId,
+          convertJobAccountId,
+          convertJobId,
+        );
+        if (cancelled) return;
+        // Read off the response, not inside the updater — React may run
+        // the updater after this function has moved on.
+        const terminal = isTerminalConversionStatus(result.status);
+        setState((s: any) => {
+          if (!s.convertQuote || s.convertQuote.id !== convertJobId) return {};
+          const next = ledgerResultToConversionOut(result, s.convertQuote);
+          return terminal
+            ? { convertQuote: next, convertJobEntityId: "", convertJobAccountId: "" }
+            : { convertQuote: next };
+        });
+        if (terminal) {
+          queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+          queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+          queryClient.invalidateQueries({ queryKey: [QK.transactions] });
+          return;
+        }
+      } catch (err) {
+        if (cancelled) return;
+        // Job unknown upstream (404), or no status route on this backend
+        // (405): stop asking and say where to look.
+        if (err instanceof ApiRequestError && (err.status === 404 || err.status === 405)) {
+          setState({
+            convertJobNote:
+              "Couldn't load live progress. The conversion carries on — check Transactions for the result.",
+            convertJobEntityId: "",
+            convertJobAccountId: "",
+          });
+          return;
+        }
+        // Anything else is likely transient; keep polling.
+      }
+      if (!cancelled) timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 3000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [convertJobId, convertJobEntityId, convertJobAccountId, queryClient, setState]);
   const setTxFilter = (filter: PrimaryTransactionFilter) => () =>
     setState({ txFilter: filter });
   // Add Account: a small menu that branches into two create modals.
@@ -2843,7 +3537,7 @@ export default function DashboardApp(props: Props = {}) {
         },
       });
       persistCardColor(issued.id, state.newCardColor);
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
       setState({
         newCardIssuing: false,
         newCardDone: true,
@@ -2869,10 +3563,10 @@ export default function DashboardApp(props: Props = {}) {
   };
   /** Colour is chosen once, at issue time, and saved against the new card id. */
   const persistCardColor = (cardId: string, color: CardColorKey) => {
-    queryClient.setQueryData<CardColorMap>(["card-colors"], (m) => ({ ...(m ?? {}), [cardId]: color }));
+    queryClient.setQueryData<CardColorMap>([QK.cardColors], (m) => ({ ...(m ?? {}), [cardId]: color }));
     // Fire and forget: a failed save leaves the card on its resolved fallback.
     void saveCardColor(cardId, color)
-      .then((map) => queryClient.setQueryData(["card-colors"], map))
+      .then((map) => queryClient.setQueryData([QK.cardColors], map))
       .catch(() => undefined);
   };
   const toggleFreezeCard = async (cardId: string = state.selectedCardId) => {
@@ -2896,11 +3590,11 @@ export default function DashboardApp(props: Props = {}) {
         ),
       };
       queryClient.setQueryData(
-        ["issued-cards", funding.entityId, funding.accountId],
+        [QK.issuedCards, funding.entityId, funding.accountId],
         patched,
       );
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
-      await queryClient.invalidateQueries({ queryKey: ["card-transactions"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
+      await queryClient.invalidateQueries({ queryKey: [QK.cardTransactions] });
       setState({
         cardFreezeBusy: false,
         cardFreezeError: "",
@@ -2946,7 +3640,7 @@ export default function DashboardApp(props: Props = {}) {
         cardSecretsError: "",
       });
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
     } catch (err) {
       if (abandoned()) return;
       setState({
@@ -3004,7 +3698,7 @@ export default function DashboardApp(props: Props = {}) {
         cardTileSecretsError: { ...s.cardTileSecretsError, [cardId]: "" },
       }));
       // Brand is derived from PAN at reveal and persisted upstream — refresh list marks.
-      await queryClient.invalidateQueries({ queryKey: ["issued-cards"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.issuedCards] });
     } catch (err) {
       if (abandoned()) return;
       setState((s: any) => ({
@@ -3118,7 +3812,7 @@ export default function DashboardApp(props: Props = {}) {
         role: state.inviteRole as MembershipRole,
         accept_url: defaultTeamAcceptUrl(),
       });
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       setState({ inviteOpen: false, inviteBusy: false, inviteError: "" });
     } catch (err) {
       setState({
@@ -3133,9 +3827,9 @@ export default function DashboardApp(props: Props = {}) {
     setState({ teamActionError: "" });
     try {
       await teamApi.updateRole(businessId, userId, role);
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       if (userId === myUserId) {
-        await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+        await queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       }
     } catch (err) {
       setState({
@@ -3166,7 +3860,7 @@ export default function DashboardApp(props: Props = {}) {
       } else {
         await teamApi.revokeInvite(businessId, id);
       }
-      await queryClient.invalidateQueries({ queryKey: ["team", businessId] });
+      await queryClient.invalidateQueries({ queryKey: [QK.team, businessId] });
       setState({ teamConfirm: null, teamConfirmBusy: false });
     } catch (err) {
       setState({
@@ -3187,11 +3881,11 @@ export default function DashboardApp(props: Props = {}) {
   const openMfaSetup = () => setState({ modal: "mfaSetup" });
   const onMfaSetupComplete = () => {
     setState({ modal: null });
-    queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+    queryClient.invalidateQueries({ queryKey: [QK.authMe] });
   };
   const dismissMfaReminder = async () => {
     // Optimistically hide now; `/me` is the source of truth on next load.
-    queryClient.setQueryData(["auth-me"], (prev: AuthMe | undefined) =>
+    queryClient.setQueryData([QK.authMe], (prev: AuthMe | undefined) =>
       prev?.mfa ? { ...prev, mfa: { ...prev.mfa, should_remind: false } } : prev,
     );
     try {
@@ -3220,7 +3914,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ mfaDisableBusy: true, mfaDisableError: "" });
     try {
       await mfaApi.disable(password, code);
-      await queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      await queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       setState({ modal: null, mfaDisableBusy: false, mfaDisablePassword: "", mfaDisableCode: "" });
     } catch (err) {
       setState({
@@ -3238,7 +3932,7 @@ export default function DashboardApp(props: Props = {}) {
     setState({ apiKeyCreating: true, apiKeyError: "" });
     try {
       const created = await apiKeysApi.create({ name: state.apiKeyName.trim(), environment: state.apiKeyEnvironment });
-      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
       // Auto-reveal the new key in its own row — it's the only moment the
       // plaintext exists, so it must be visible without an extra click.
       setState((prev: any) => ({
@@ -3286,9 +3980,9 @@ export default function DashboardApp(props: Props = {}) {
         });
         const entityId = await resolvePrimaryEntityId();
         await entitiesApi.openAccount(entityId, payload);
-        queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-        queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
-        queryClient.invalidateQueries({ queryKey: ["sendable-stablecoin-accounts"] });
+        queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+        queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
+        queryClient.invalidateQueries({ queryKey: [QK.sendableStablecoinAccounts] });
         setState({ createAccountSaving: false, modal: null });
       } catch (err) {
         setState({
@@ -3318,8 +4012,8 @@ export default function DashboardApp(props: Props = {}) {
         },
         supportedFiatCurrencies,
       );
-      queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
       setState({ createAccountSaving: false, modal: null });
     } catch (err) {
       setState({
@@ -3329,17 +4023,63 @@ export default function DashboardApp(props: Props = {}) {
     }
   };
   const refreshDepositAccount = async (accountId: string) => {
-    await depositAccountsApi.sync(accountId);
-    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+    const synced = await depositAccountsApi.sync(accountId);
+    await queryClient.cancelQueries({ queryKey: [QK.dashboardBootstrap] });
+    await queryClient.cancelQueries({ queryKey: [QK.depositAccounts] });
+    queryClient.setQueryData<DashboardBootstrap | undefined>(
+      [QK.dashboardBootstrap],
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              fiatAccounts: applySyncedDepositAccount(prev.fiatAccounts, accountId, synced),
+            }
+          : prev,
+    );
+    queryClient.setQueryData<DepositAccountListResult | undefined>(
+      [QK.depositAccounts],
+      (prev) => ({
+        ...(prev ?? { accounts: [] }),
+        accounts: applySyncedDepositAccount(prev?.accounts, accountId, synced),
+      }),
+    );
   };
+  useEffect(() => {
+    if (state.modal !== "acctDetail") return;
+    if (state.selectedAcctKind !== "fiat") return;
+    if (!state.selectedAcctKey.startsWith("fiat:")) return;
+    const currency = state.selectedAcctKey.slice("fiat:".length).trim();
+    if (!currency) return;
+    const stub =
+      (bootstrapQuery.data?.fiatAccounts ?? []).find(
+        (row) => (row.currency || "").trim().toUpperCase() === currency.toUpperCase(),
+      ) ?? null;
+    const overlay =
+      (depositAccountsQuery.data?.accounts ?? []).find(
+        (row) => (row.currency || "").trim().toUpperCase() === currency.toUpperCase(),
+      ) ?? null;
+    const account = mergeDepositAccount(stub, overlay);
+    if (!account || !needsDepositInstructionsSync(account)) return;
+    const id = String(account.id ?? "").trim();
+    if (!id || depositInstructionsSyncAttemptedRef.current.has(id)) return;
+    depositInstructionsSyncAttemptedRef.current.add(id);
+    void refreshDepositAccount(id).catch(() => {
+      depositInstructionsSyncAttemptedRef.current.delete(id);
+    });
+  }, [
+    state.modal,
+    state.selectedAcctKind,
+    state.selectedAcctKey,
+    bootstrapQuery.data,
+    depositAccountsQuery.data,
+  ]);
   const revokeApiKey = (id: number) => async () => {
     await apiKeysApi.revoke(id);
-    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
   };
   const deleteApiKey = (id: number) => async () => {
     await apiKeysApi.remove(id);
-    queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    queryClient.invalidateQueries({ queryKey: [QK.apiKeys] });
   };
 
   const setBalanceView = (v) => () => setState({ balanceView: v });
@@ -3356,18 +4096,37 @@ export default function DashboardApp(props: Props = {}) {
   };
   /** Send opens on a method chooser. Bank/mobile preselect that rail, then the
    *  flow runs the design's three steps: destination → recipient → review.
-   *  Internal transfer jumps to Convert (USDC/USDT → fiat VA). */
+   *
+   *  Internal transfer jumps to Convert meaning "move a stablecoin balance
+   *  into a fiat VA". Convert no longer has a mode to set for that, so the
+   *  intent is expressed as a preselected source instead — a funded, non-
+   *  Stellar stablecoin account. The route is still derived from the pair,
+   *  and the prefill effect fills in a destination that actually routes. */
   const openInternalTransfer = () =>
     setState({
       ...moneyFlowReset,
       modal: "convert",
       moreOpen: false,
       sidebarOpen: false,
-      convertMode: "stable_to_fiat",
-      convertSourceAccountId: "",
+      convertSourceAccountId: pickPreferredConvertAccountId(
+        resolvedStablecoinAccounts
+          .filter(
+            (a) =>
+              (a.currency === "USDC" || a.currency === "USDT") &&
+              isReadyStatus(a.status) &&
+              toPartnerNetwork(a.network) !== "Stellar" &&
+              a.id,
+          )
+          .map((a) => ({
+            id: String(a.id),
+            currency: String(a.currency || "").toUpperCase(),
+            balanceAmount: parseBalanceNumber(a.balance),
+          })),
+      ),
       convertDestAccountId: "",
       convertAmount: "",
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       convertHop: 1,
       swapAccepted: false,
@@ -3384,7 +4143,7 @@ export default function DashboardApp(props: Props = {}) {
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
-      sendRecipientName: "",
+      sendRecipientName: "", sendRecipientDetails: {},
       sendMemo: "",
       sendAmount: "",
       sendAmountCurrency: "USD",
@@ -3420,12 +4179,12 @@ export default function DashboardApp(props: Props = {}) {
       accountDetail: ["Account", "Balance, details, and activity for this account"],
       cards: ["Cards", "Virtual USD cards for team spend"],
       transactions: ["Transactions", "Every payout, deposit, and swap across rails"],
-      invoices: ["Invoices", "Request and track incoming payments"],
+      invoices: ["Invoices", "Create and manage payment requests across every payment method"],
       reports: ["Statements", "Download period statements for reconcile and books"],
       verification: ["Verification", "Submit once — then track compliance feedback"],
       team: ["Team", "Invite teammates and manage their access"],
       developer: ["Developer", "API keys and webhooks"],
-      send: ["Send money", "Pick a method, recipient, and amount"],
+      send: ["Send money", "Pay a bank account, mobile money wallet or stablecoin wallet"],
       deposit: [
         s.fundAfricanTargetCurrency
           ? `Fund ${s.fundAfricanTargetCurrency}`
@@ -3472,7 +4231,10 @@ export default function DashboardApp(props: Props = {}) {
       sendRail.type,
       sendCountry.code,
     );
-    const sendProviderOptions = providerNamesFromCatalog(sendCatalogProviders);
+    const sendPayoutRails = sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx);
+    const sendProviderOptions = sendPayoutRails
+      ? sendPayoutRails.rails.map((d) => d.name)
+      : providerNamesFromCatalog(sendCatalogProviders);
     const sendProviderIdx =
       sendProviderOptions.length === 0
         ? 0
@@ -3610,12 +4372,15 @@ export default function DashboardApp(props: Props = {}) {
       pending: ["var(--amber)", "var(--amber-tint)"],
       unavailable: ["var(--red)", "var(--red-tint)"],
       deposit_unavailable: ["var(--red)", "var(--red-tint)"],
+      closed: ["var(--muted)", "var(--surface2)"],
     };
     const depositStatusColors = (status: string): [string, string] =>
       depositStatusPalette[status] || ["var(--muted)", "var(--surface2)"];
-    const depositAccountsList = bootstrapReady
-      ? (bootstrapQuery.data?.fiatAccounts ?? [])
-      : (depositAccountsQuery.data?.accounts ?? []);
+    const depositAccountsList = listedDepositAccounts(
+      bootstrapReady
+        ? (bootstrapQuery.data?.fiatAccounts ?? [])
+        : (depositAccountsQuery.data?.accounts ?? []),
+    );
     const stablecoinAccountsList = visibleStablecoinAccounts(
       bootstrapReady
         ? (bootstrapQuery.data?.stablecoinAccounts ?? [])
@@ -3752,6 +4517,9 @@ export default function DashboardApp(props: Props = {}) {
             rows,
             sections,
             instructions: selectedDepositAccount.instructions,
+            deposit_reference_required:
+              selectedDepositAccount.deposit_reference_required === true,
+            deposit_disclaimer: resolveDepositDisclaimer(selectedDepositAccount),
             railLabel: fiatRailForCurrency(view.currency),
             showConvert: true,
             showDownloadLetter: rows.length > 0,
@@ -3901,10 +4669,10 @@ export default function DashboardApp(props: Props = {}) {
     (account) => isReadyStatus(account.status) && toPartnerNetwork(account.network) === "Stellar",
   );
   const quickActionTiles = [
-        { label: "Send", icon: "↗", desc: "Mobile money, bank, SEPA or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
-        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "From your USDC balance to wallets or phones." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
-        { label: "Receive globally", icon: "↙", desc: "Share your IBAN, Paybill or wallet details.", open: guardMoneyModal("receive"), iconBg: "var(--amber)", iconColor: "#fff" },
-        { label: "Top up", icon: "＋", desc: "Fund your balance from any rail.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
+        { label: "Send money", icon: "↗", desc: "Pay anyone by bank, mobile money or stablecoin.", open: guardMoneyModal("send"), iconBg: "var(--indigo)", iconColor: "var(--indigo-on)" },
+        { label: "Bulk payout", icon: "⇉", desc: (MIXED_RAIL_BULK_PAYOUTS_ENABLED || STELLAR_BULK_PAYOUTS_ENABLED) ? (MIXED_RAIL_BULK_PAYOUTS_ENABLED ? "Pay many recipients at once from one file." : "CSV disbursements from your Stellar wallet.") : "Coming soon — join the waitlist.", open: guardMoneyModal("bulk"), iconBg: "var(--ink-panel)", iconColor: "#fff" },
+        { label: "Get paid", icon: "↙", desc: "Share account details to receive local currency or USDC.", open: guardScreenNav("wallets"), iconBg: "var(--amber)", iconColor: "#fff" },
+        { label: "Add money", icon: "＋", desc: "Top up by bank, mobile money or stablecoin.", open: guardMoneyModal("deposit"), iconBg: "var(--indigo-tint)", iconColor: "var(--indigo-text)" },
       ];
   const liveRates = liveRateRowsFromSummary(homeFxRates);
   // Money in/out: FX-convert completed Mboka txs (last 30d). Do not use raw
@@ -3992,6 +4760,7 @@ export default function DashboardApp(props: Props = {}) {
       name: a.currency,
       label: `${a.currency} · ${networkLabel}`,
       flagUrl: null as string | null,
+      network: a.network,
       rail: `Stablecoin · ${networkLabel}`,
       balance,
       detail: networkLabel,
@@ -4151,7 +4920,7 @@ export default function DashboardApp(props: Props = {}) {
       statusColor: settled ? "var(--indigo-text)" : row.statusColor,
       statusSoft: settled ? "var(--indigo-tint)" : row.statusSoft,
       amount: formatCardSpendAmount(row),
-      amountColor: row.direction === "in" ? "var(--success)" : "var(--ink)",
+      amountColor: row.direction === "in" ? "var(--positive)" : "var(--ink)",
       openDetail: row.openDetail,
     };
   });
@@ -4378,8 +5147,12 @@ export default function DashboardApp(props: Props = {}) {
   const modalTitle = { send: "Send money", deposit: s.fundAfricanTargetCurrency ? `Fund ${s.fundAfricanTargetCurrency}` : "Top up balance", receive: "Receive globally", convert: "Convert", bulk: "Bulk payout", swap: "Convert", txDetail: "Transaction", acctDetail: s.acctDetailIntent === "fund" ? "Fund via bank transfer" : "Account details", fundChooser: "Fund account", fundStablecoin: "Fund account", fundPaymentRequest: "Fund via remittance", bookTransfer: "Move between accounts", payout: "Bank payout", closeAccount: "Close account", cardDetail: (issuedCardsQuery.data?.cards ?? []).find((c) => c.id === s.selectedCardId)?.card_name || "Card", newCard: "Create virtual card", kyb: "Business verification", fundCard: "Fund card", apiKey: "Create API key",
     support: "Help",
     mfaSetup: "Set up 2FA",
+    invoiceDetail: "Invoice",
+    invoiceCreate: "New invoice",
     createAccount: s.createAccountKind === "stablecoin" ? "Create Stablecoin Account" : "Create Account" }[s.modal] || "";
   const isModalCreateAccount = s.modal === "createAccount";
+  const isModalInvoiceDetail = s.modal === "invoiceDetail";
+  const isModalInvoiceCreate = s.modal === "invoiceCreate";
   const isModalSupport = s.modal === "support";
   const isSendFlow = s.modal === "send";
   const isDepositFlow = s.modal === "deposit";
@@ -4525,7 +5298,9 @@ export default function DashboardApp(props: Props = {}) {
         network: s.sendConfirm.network || s.sendChain,
       })
     : null;
-  const sendExplorerUrl = s.sendConfirm
+  const sendExplorerUrl = s.sendUnified
+    ? (unifiedSendQuery.data ?? s.sendUnified).explorer_url ?? null
+    : s.sendConfirm
     ? buildSendExplorerUrl({
         network: s.sendConfirm.network || s.sendChain,
         txHash: s.sendConfirm.tx_hash,
@@ -4542,6 +5317,40 @@ export default function DashboardApp(props: Props = {}) {
   const sendLiveStatus = sendLiveDescriptor
     ? { label: sendLiveDescriptor.label, color: sendLiveDescriptor.color, soft: sendLiveDescriptor.soft, isSettling: !sendStatusQuery.isTerminal }
     : null;
+  // One outcome for the status panel. Country sends follow the polled order;
+  // stablecoin sends follow the confirm response. Anything not clearly
+  // delivered or failed stays "processing" — never a guessed success.
+  const sendConfirmStatusKey = String(s.sendConfirm?.status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  // Unified sends report one status for every method. "sending" (confirmed,
+  // not yet with the provider) shows as processing on the status panel.
+  const unifiedSend = s.sendUnified ? unifiedSendQuery.data ?? s.sendUnified : null;
+  const sendOutcome: "processing" | "delivered" | "failed" | "refunded" = unifiedSend
+    ? unifiedSend.status === "delivered" || unifiedSend.status === "failed" || unifiedSend.status === "refunded"
+      ? unifiedSend.status
+      : "processing"
+    : s.sendConfirm
+    ? ["completed", "settled", "success", "succeeded"].includes(sendConfirmStatusKey)
+      ? "delivered"
+      : ["failed", "canceled", "cancelled", "rejected"].includes(sendConfirmStatusKey)
+        ? "failed"
+        : "processing"
+    : sendLiveOrderStatus === "completed"
+      ? "delivered"
+      : sendLiveOrderStatus === "refunded"
+        ? "refunded"
+        : sendLiveOrderStatus === "failed" || sendLiveOrderStatus === "canceled"
+          ? "failed"
+          : "processing";
+  const sendOrderId = unifiedSend
+    ? unifiedSend.send_id
+    : s.sendConfirm
+    ? String(s.sendConfirm.id || "").trim() || null
+    : s.sendAccept?.merchant_order_id != null
+      ? String(s.sendAccept.merchant_order_id)
+      : null;
   const sendRecipientLabel = s.sendGroup === "crypto" ? "Recipient wallet address" : sendRail.field;
   const sendRecipientPlaceholder =
     s.sendGroup === "crypto"
@@ -4634,27 +5443,40 @@ export default function DashboardApp(props: Props = {}) {
     currency: sendAmountCurrency,
     rate: sendIndicativeRate,
   };
+  // The stablecoin rail charges its fee ON TOP of the amount, so the balance
+  // has to cover both. Without this, 7,000 USDT of balance "passes" a 7,000
+  // send carrying a 17.50 fee and the backend rejects it with no warning
+  // ever shown. Taken from the preview — null until one exists, never guessed.
+  const sendPreviewFeeUsd = sendIsCountry ? null : s.sendPreview?.fee_amount ?? null;
   const sendCryptoMaxAmount = sendAvailableBalance === null
     ? null
-    : maxAmountForBalance(sendAvailableBalance, sendAmountMode);
+    : maxAmountForBalance(sendAvailableBalance, sendAmountMode, sendPreviewFeeUsd);
   const sendEnteredUsdAmount = toPayloadUsdAmount(s.sendAmount, sendAmountMode);
+  const sendBalanceLabel = `${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}`;
+  const sendFeeOnTopNote = feeOnTopUsd(sendPreviewFeeUsd)
+    ? ` once the ${sendPreviewFeeUsd} fee is added`
+    : "";
   const sendBalanceError = !sendIsCountry && amountExceedsBalance(
     s.sendAmount,
     sendAmountMode,
     sendAvailableBalance,
+    sendPreviewFeeUsd,
   )
       ? sendAmountCurrency.toUpperCase() === "USD"
-        ? `This amount is above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
-        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${formatAccountBalance(sendBalanceAccount?.balance)} ${sendBalanceAccount?.balance?.currency || sendBalanceAccount?.currency}.`
+        ? `This amount is above your available balance of ${sendBalanceLabel}${sendFeeOnTopNote}.`
+        : `This amount needs about ${sendEnteredUsdAmount} USD, above your available balance of ${sendBalanceLabel}${sendFeeOnTopNote}.`
       : null;
   const sendIndicativeRateLine = sendIsCountry
     ? formatRateLine(sendIndicativeRate, sendLocalCurrency)
     : null;
-  const sendBlockedNoNetworkId = sendRailBlockedByMissingNetworkId({
-    sendGroup: s.sendGroup,
-    networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
-    catalogSettled: sendCatalogSettled,
-  });
+  // A payout rail is paid from a held balance and needs no provider id.
+  const sendBlockedNoNetworkId =
+    !sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx) &&
+    sendRailBlockedByMissingNetworkId({
+      sendGroup: s.sendGroup,
+      networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
+      catalogSettled: sendCatalogSettled,
+    });
   const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
   const depositIsCrypto = s.depositGroup === "crypto";
@@ -4772,8 +5594,17 @@ export default function DashboardApp(props: Props = {}) {
   const sendPreview = s.sendPreview;
   // Fee in both currencies, converted at the *quote's* rate so it lines up
   // with the figures beside it rather than with a rate that has since moved.
-  const sendFeeText = s.sendGroup === "crypto"
-    ? (sendPreview?.fee_amount != null ? `${sendPreview.fee_amount} ${sendPreview.currency || sendAssetCode}` : "Fee from preview")
+  const sendFeeCurrency = sendPreview?.currency || sendAssetCode;
+  // A preview fee of "0" is real information, so it reads "No fee" rather
+  // than disappearing; an absent one says when it lands.
+  const sendFeeText = s.sendUnifiedQuote
+    ? unifiedFeeText(s.sendUnifiedQuote.fee) ?? "Shown on review"
+    : s.sendGroup === "crypto"
+    ? feeDisclosureText({
+        raw: sendPreview?.fee_amount,
+        formatted: `${sendPreview?.fee_amount} ${sendFeeCurrency}`,
+        whenUnknown: "Shown on review",
+      })
     : sendQuote
       ? formatFeeDual(
           formatQuoteFees(sendQuote.amounts.fees),
@@ -4781,18 +5612,98 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote.amounts.rate_currency || sendQuote.amounts.user_receives.currency,
         )
       : "Shown on review";
+  // The crypto rail charges its fee ON TOP of the amount — the recipient gets
+  // the full `amount` — so what actually leaves the account is a third figure.
+  // Taken verbatim from the aggregator's `total_debit`; never summed here.
+  const sendTotalDebitText = s.sendUnifiedQuote
+    ? unifiedMoneyText(s.sendUnifiedQuote.total_debit)
+    : s.sendGroup === "crypto" &&
+    sendPreview?.total_debit != null &&
+    String(sendPreview.total_debit).trim()
+      ? `${String(sendPreview.total_debit).trim()} ${sendFeeCurrency}`
+      : null;
   const sendLimits = sendIsCountry ? providerLimits(sendCatalogProviders, sendProvider, sendCountry.code) : null;
   // Same wallet the submit handler settles from — resolved here too so the
   // balance check below reflects what Next would actually reject.
-  const sendRefundWallet = sendIsCountry
-    ? fundableRefundWallets.find((a) => a.id === s.sendAccountId) ||
-      preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+  // Unified payout rails are paid from the held balance, so that balance is
+  // the source for the checks below; otherwise it is the stablecoin wallet.
+  const sendPayoutCtx = sendIsCountry
+    ? sendPayoutContext(s.sendCountryIdx, s.sendRailIdx, s.sendProviderIdx)
     : null;
+  // Unified sends: the user chooses which account pays, from every account
+  // the business holds (a rail paid from a balance narrows it to that one).
+  const sendUnifiedCountry = unifiedSendsEnabled() && sendIsCountry;
+  const sendEligibleSources = sendUnifiedCountry
+    ? eligibleSendSources(sendOptionsQuery.data, sendPayoutCtx?.destination ?? null)
+    : [];
+  const sendUnifiedSource = sendUnifiedCountry
+    ? defaultSendSource(sendEligibleSources, s.sendAccountId)
+    : null;
+  const sendUnifiedSourceWallet = sendUnifiedSource
+    ? ({
+        id: sendUnifiedSource.account_id,
+        currency: sendUnifiedSource.currency,
+        network: sendUnifiedSource.network ?? "",
+        // The checks below compare a USD figure with this balance, so only a
+        // dollar-pegged balance is comparable; others are left to the quote.
+        balance:
+          sendUnifiedSource.available != null && isUsdLike(sendUnifiedSource.currency)
+            ? {
+                available: sendUnifiedSource.available,
+                currency: sendUnifiedSource.currency,
+              }
+            : undefined,
+      } as unknown as (typeof fundableRefundWallets)[number])
+    : null;
+  const sendRefundWallet = sendUnifiedCountry
+    ? sendUnifiedSourceWallet
+    : sendIsCountry
+      ? fundableRefundWallets.find((a) => a.id === s.sendAccountId) ||
+        preferCountryOfframpWallet(fundableRefundWallets, s.sendAccountId)
+      : null;
   // USD figure the payload would carry, converted the same way submitSend
   // does — so the balance check lines up with whatever currency is typed.
   const sendUsdAmountForChecks = sendIsCountry
     ? toPayloadUsdAmount(s.sendAmount, { currency: sendAmountCurrency, rate: sendIndicativeRate })
     : null;
+  // Unified sends: an indicative fee and total while the amount is typed,
+  // before any recipient is entered. Debounced so typing does not spam it.
+  const sendEstimateDestination =
+    unifiedSendsEnabled() && sendIsCountry
+      ? sendPayoutCtx?.destination ??
+        findPayoutDestination(sendOptionsQuery.data, {
+          countryIso: sendCountry.iso,
+          railType: sendRail.type,
+          providerName: sendProvider,
+        })
+      : null;
+  const sendEstimateAmount = useDebouncedValue(sendUsdAmountForChecks ?? "", 500);
+  const sendEstimateReady =
+    !!sendEstimateDestination &&
+    !!sendRefundWallet &&
+    isUsdLike(sendRefundWallet.currency) &&
+    !s.sendUnifiedQuote &&
+    !s.sendDone &&
+    Number(sendEstimateAmount) > 0;
+  const sendEstimateQuery = useQuery({
+    queryKey: [
+      QK.sendEstimate,
+      sendEstimateDestination?.id ?? null,
+      sendRefundWallet?.id ?? null,
+      sendEstimateAmount,
+    ],
+    queryFn: () =>
+      unifiedSendsApi.estimate({
+        destination_id: sendEstimateDestination!.id,
+        source_account_id: sendRefundWallet!.id,
+        amount: sendEstimateAmount,
+        amount_currency: (sendRefundWallet!.currency || "USDT").toUpperCase(),
+      }),
+    enabled: sendEstimateReady,
+    staleTime: 20 * 1000,
+    retry: false,
+  });
+  const sendEstimate = sendEstimateReady ? sendEstimateQuery.data ?? null : null;
   const sendLimitError = sendIsCountry
     ? limitViolationAcrossCurrencies(s.sendAmount, sendAmountCurrency, sendLimits, sendIndicativeRate) ??
       (sendRefundWallet && sendUsdAmountForChecks
@@ -5045,8 +5956,15 @@ export default function DashboardApp(props: Props = {}) {
     ? copyReceiveField("addr", receivePickerDest.address)
     : () => {};
   const receiveAddressCopied = s.copiedKey === "addr";
+  // Convert offers every account the customer owns on both sides and derives
+  // the rail from the pair (lib/services/convertRoutes.ts). No currency
+  // filter here on purpose: a same-currency move is a book transfer, which
+  // the aggregator allows on *any* fiat currency, so a KES account belongs in
+  // this list even though KES itself is not convertible. Filtering the list
+  // by currency would hide a pair that works; the route object is what
+  // refuses the pairs that don't, with a reason.
   const fiatConvertAccounts = depositAccountsList
-    .filter((a) => a.id && ["EUR", "USD", "GBP"].includes(a.currency.toUpperCase()))
+    .filter((a) => a.id)
     .map((a) => {
       const view = mapDepositAccountToCardView(a);
       return {
@@ -5055,6 +5973,8 @@ export default function DashboardApp(props: Props = {}) {
         label: `${view.name} (${a.currency.toUpperCase()})`,
         balanceLabel: view.hasBalance ? view.balance : "—",
         balanceAmount: parseBalanceNumber(a.balance),
+        flagUrl: view.iso ? flagUrl(view.iso) : null,
+        network: null as string | null,
       };
     });
   const usdcConvertAccounts = stablecoinAccountsList
@@ -5066,6 +5986,9 @@ export default function DashboardApp(props: Props = {}) {
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
     }));
+  // Stellar USDC accounts convert too: `resolveConvertRoute` sends any pair
+  // with a Stellar leg to the ledger conversion, which bridges it over CCTP
+  // (`route: "bridged"`) and reports progress stage by stage.
   const stableConvertAccounts = stablecoinAccountsList
     .filter(
       (a) =>
@@ -5079,65 +6002,28 @@ export default function DashboardApp(props: Props = {}) {
       label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
       balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
       balanceAmount: parseBalanceNumber(a.balance),
+      network: a.network as string | null,
+      flagUrl: null as string | null,
     }));
-  const stellarSwapSourceAccounts = stablecoinAccountsList
-    .filter(
-      (a) =>
-        isReadyStatus(a.status) &&
-        a.id &&
-        toPartnerNetwork(a.network) === "Stellar" &&
-        isAllowlistedStellarStable(a.currency) &&
-        a.currency !== "USDC",
-    )
-    .map((a) => ({
-      id: String(a.id),
-      currency: String(a.currency || "").toUpperCase(),
-      label: `${String(a.currency || "").toUpperCase()} · ${formatNetworkLabel(a.network)}`,
-      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
-      balanceAmount: parseBalanceNumber(a.balance),
-    }));
-  const stellarSwapDestAccounts = stablecoinAccountsList
-    .filter(
-      (a) =>
-        a.currency === "USDC" &&
-        isReadyStatus(a.status) &&
-        a.id &&
-        toPartnerNetwork(a.network) === "Stellar",
-    )
-    .map((a) => ({
-      id: String(a.id),
-      currency: "USDC",
-      label: `USDC · ${formatNetworkLabel(a.network)}`,
-      balanceLabel: formatAccountBalance(a.balance, { maximumFractionDigits: 2 }),
-      balanceAmount: parseBalanceNumber(a.balance),
-    }));
-  const convertMode: ConvertMode = normalizeConvertMode(s.convertMode);
-  const convertBridgeUsdcId = s.convertBridgeUsdcId || usdcConvertAccounts[0]?.id || "";
-  const convertSourceAccounts =
-    convertMode === "stable_to_stable"
-      ? stellarSwapSourceAccounts
-      :
-    convertMode === "stable_to_fiat" || (convertMode === "fiat_to_fiat" && s.convertHop === 2)
-      ? convertMode === "fiat_to_fiat"
-        ? usdcConvertAccounts
-        : stableConvertAccounts
-      : fiatConvertAccounts;
-  // Fiat↔fiat hop 1: pick final fiat dest in the UI; quote uses USDC under the hood.
-  const convertDestAccounts =
-    convertMode === "stable_to_stable"
-      ? stellarSwapDestAccounts.filter((a) => a.id !== s.convertSourceAccountId)
-      : convertMode === "fiat_to_stable"
-      ? stableConvertAccounts
-      : convertMode === "fiat_to_fiat" && s.convertHop === 1
-        ? fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId)
-        : fiatConvertAccounts.filter((a) => a.id !== s.convertSourceAccountId);
-  const convertHopLabel =
-    convertMode === "stable_to_stable"
-      ? "Stellar allowlisted stables settle into USDC."
-      : convertMode === "fiat_to_fiat"
-      ? s.convertHop === 1
-        ? "Hop 1 of 2 — convert source fiat to USDC (then USDC → destination)"
-        : "Hop 2 of 2 — convert USDC to destination fiat"
+  const convertSourceAccounts = [...fiatConvertAccounts, ...stableConvertAccounts];
+  // The destination list is the same set minus the chosen source — picking
+  // the same account twice is the one pair that needs no explanation.
+  const convertDestAccounts = convertSourceAccounts.filter(
+    (a) => a.id !== s.convertSourceAccountId,
+  );
+  const convertSourceAccount =
+    convertSourceAccounts.find((a) => a.id === s.convertSourceAccountId) || null;
+  const convertDestAccount =
+    convertSourceAccounts.find((a) => a.id === s.convertDestAccountId) || null;
+  // The whole mode machinery collapses into this one call.
+  const convertRoute = resolveConvertRoute(convertSourceAccount, convertDestAccount);
+  const convertSourceCurrency = convertSourceAccount?.currency || "";
+  const convertDestCurrency = convertDestAccount?.currency || "";
+  const convertPathLabel =
+    convertSourceCurrency &&
+    convertDestCurrency &&
+    convertSourceCurrency !== convertDestCurrency
+      ? `${convertSourceCurrency} → ${convertDestCurrency}`
       : null;
   const swapAccepted = s.swapAccepted;
   const cardIsFrozen = isCardFrozenStatus(cardSel?.status);
@@ -5363,7 +6249,7 @@ export default function DashboardApp(props: Props = {}) {
 </div>
 ) : null}
 
-<SectionHeader title="Recent Activity" actionLabel="See All" onAction={goTransactions} />
+<SectionHeader title="Recent activity" actionLabel="See all" onAction={goTransactions} />
 <ActivityList title="Recent activity" items={homeRecent} showHeader={false} emptyLabel={transactionsQuery.isLoading ? "Loading…" : "No recent activity"} />
 
 </div>
@@ -5412,10 +6298,10 @@ export default function DashboardApp(props: Props = {}) {
   }
   accountsErrorMessage={depositAccountsErrorMessage}
   onRetryAccounts={() => {
-    queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts-eligibility"] });
-    queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
-    queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+    queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+    queryClient.invalidateQueries({ queryKey: [QK.depositAccountsEligibility] });
+    queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
+    queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
   }}
   walletsRecent={walletsRecent}
   goTransactions={goTransactions}
@@ -5635,12 +6521,10 @@ export default function DashboardApp(props: Props = {}) {
 </>) : null}
 
 {(isInvoices) ? (<>
-<div data-screen-label="Invoices" className="ep-invoices">
-<ComingSoonPanel
-  featureKey="invoices"
-  title="Invoices"
-  description="Requesting and tracking incoming payments isn’t live yet. Join the waitlist and we’ll email you when it’s ready."
-/>
+<div data-screen-label="Invoices" className="ep-invoices-shell">
+<InvoicesErrorBoundary>
+<InvoicesScreen />
+</InvoicesErrorBoundary>
 </div>
 </>) : null}
 
@@ -5925,7 +6809,172 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 />
 ) : null}
 
-{modalOpen ? (<>
+{isSendFlow ? (
+<SendFlow
+  sendNotDone={sendNotDone}
+  sendDone={sendDone}
+  sendMethodChosen={sendMethodChosen}
+  sendMethodOptions={sendMethodOptions}
+  resetSendMethod={resetSendMethod}
+  sendStepDots={sendStepDots}
+  sendStepIs1={sendStepIs1}
+  sendStepIs2={sendStepIs2}
+  sendStepIs3={sendStepIs3}
+  sendIsCountry={sendIsCountry}
+  sendIsCrypto={sendIsCrypto}
+  sendCountryChips={sendCountryChips}
+  sendRailHasChoice={sendRailHasChoice}
+  sendRailChips={sendRailChips}
+  sendProviderHasChoice={sendProviderHasChoice}
+  sendProviderChips={sendProviderChips}
+  sendCatalogLoading={sendCatalogLoading}
+  sendCatalogError={sendCatalogError}
+  onRetrySendCatalog={retrySendCatalog}
+  sendAssets={sendAssets}
+  sendChains={sendChains}
+  sendAssetCode={sendAssetCode}
+  sendChainLabel={sendChainLabel}
+  sendNext={sendNext}
+  sendReview={sendReview}
+  sendMethodKey={s.sendMethod}
+  sendBack={sendBack}
+  sendDestinationSummary={sendDestinationSummary}
+  sendCountryName={sendCountry.name}
+  sendCountryFlagUrl={flagUrl(sendCountry.iso)}
+  sendCurrencyCode={sendCountry.code}
+  sendCurrencyName={currencyLabel(sendCountry.code)}
+  sendCountryIdx={s.sendCountryIdx}
+  selectSendCountry={(i) => selectSendCountry(i)()}
+  sendProviderLabel={sendProviderPickerLabel}
+  sendProviderOptions={sendProviderOptions}
+  selectSendProvider={pickSendProvider}
+  sendProviderIdx={sendProviderIdx}
+  sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
+  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
+  sendProvidersAreFallback={sendProvidersAreFallback}
+  sendBlockedNoNetworkId={sendBlockedNoNetworkId}
+  sendAmountCurrency={sendAmountCurrency}
+  sendYouPayText={sendYouPayText}
+  sendLocalCurrency={sendLocalCurrency}
+  sendCanEnterLocal={sendCanEnterLocal}
+  setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
+  sendAmountEquivalent={sendAmountEquivalent}
+  sendIndicativeRateLine={sendIndicativeRateLine}
+  sendQuotedRateLine={sendQuotedRateLine}
+  sendLimitError={sendLimitError}
+  sendMaxAmount={sendMaxAmount}
+  onMaxSendAmount={
+    sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
+  setSendAmountToMax={
+    !sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
+  }
+  sendBalanceError={sendBalanceError}
+  savedRecipients={savedRecipientsQuery.data ?? []}
+  savedRecipientsLoading={savedRecipientsQuery.isLoading}
+  onSelectSavedRecipient={applySavedRecipient}
+  onSaveRecipientDetails={saveCurrentRecipientDetails}
+  saveRecipientBusy={saveRecipientBusy}
+  saveRecipientMessage={saveRecipientMessage}
+  sendRefundWalletOptions={sendUnifiedCountry
+    ? sendEligibleSources.map((source) => ({
+        value: source.account_id,
+        label: sendSourceLabel(source),
+      }))
+    : fundableRefundWallets.map((a) => {
+    const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
+    const balPart =
+      bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
+    return {
+      value: a.id,
+      label: `${a.currency} · ${formatNetworkLabel(a.network)}${balPart}${
+        a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
+      }`,
+    };
+  })}
+  sendRefundWalletId={sendUnifiedCountry ? sendUnifiedSource?.account_id || "" : s.sendAccountId || ""}
+  selectSendRefundWallet={(accountId) => {
+    if (sendUnifiedCountry) {
+      setState({ sendAccountId: accountId, sendQuoteError: "", sendPreview: null });
+      return;
+    }
+    const account = fundableRefundWallets.find((row) => row.id === accountId);
+    if (!account) return;
+    setState({
+      sendAccountId: account.id,
+      sendChain: toUiNetworkKey(account.network) || s.sendChain,
+      sendAsset: account.currency.trim().toLowerCase() || s.sendAsset,
+      sendQuoteError: "",
+      sendPreview: null,
+    });
+  }}
+  sendRefundWalletsLoading={
+    (sendUnifiedCountry
+      ? sendOptionsQuery.isLoading
+      : bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading))
+  }
+  sendRecipientName={sendRecipientName}
+  setSendRecipientName={setSendRecipientName}
+  sendProviderIsRail={!!sendPayoutCtx}
+  sendExtraFields={(sendPayoutCtx?.fields ?? []).map((f) => ({
+    ...f,
+    value: String(s.sendRecipientDetails?.[f.key] ?? ""),
+    error: extraFieldError(f.key, s.sendRecipientDetails?.[f.key], f.country),
+  }))}
+  sendRecipientError={accountBoxError(sendPayoutCtx?.fields ?? [], s.sendRecipient)}
+  setSendExtraField={(key, value) =>
+    setState((prev: any) => ({
+      sendRecipientDetails: { ...(prev.sendRecipientDetails || {}), [key]: value },
+      sendQuoteError: "",
+    }))
+  }
+  sendRecipientLabel={sendRecipientLabel}
+  sendRecipient={sendRecipient}
+  setSendRecipient={setSendRecipient}
+  normalizeSendRecipientPhone={normalizeSendRecipientPhone}
+  sendRecipientPlaceholder={sendRecipientPlaceholder}
+  sendMemo={s.sendMemo}
+  setSendMemo={setSendMemo}
+  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
+  sendAmount={sendAmount}
+  setSendAmount={setSendAmount}
+  sendQuoteError={sendQuoteError}
+  sendQuoteLoading={sendQuoteLoading}
+  sendQuoteRateText={sendQuoteRateText}
+  sendFeeText={
+    sendEstimate && !s.sendUnifiedQuote
+      ? `${unifiedFeeText(sendEstimate.fee)} (estimate)`
+      : sendFeeText
+  }
+  sendTotalDebitText={
+    sendEstimate && !s.sendUnifiedQuote
+      ? unifiedMoneyText(sendEstimate.total_debit)
+      : sendTotalDebitText
+  }
+  sendArrivalText={sendArrivalText}
+  sendQuoteExpiresAt={(s.sendGroup === "crypto" ? sendPreview?.expires_at : sendQuote?.expires_at) ?? null}
+  sendAcceptError={sendAcceptError}
+  sendAccepting={sendAccepting}
+  submitSend={submitSend}
+  sendResultText={sendResultText}
+  sendSuccessDetails={sendSuccessDetails}
+  sendExplorerUrl={sendExplorerUrl}
+  sendLiveStatus={sendLiveStatus}
+  closeModal={closeModal}
+  onContactSupport={() => openHelp({ category: "payout" })}
+  sendOutcome={sendOutcome}
+  sendOrderId={sendOrderId}
+  sendUpdatedAt={unifiedSend ? unifiedSend.updated_at : sendStatusQuery.data?.updated_at ?? null}
+  sendFailureMessage={unifiedFailureMessage(unifiedSend)}
+  sendRefundText={unifiedRefundText(unifiedSend)}
+  sendRetry={sendRetry}
+  onViewTransactions={() => {
+    closeModal();
+    goTransactions();
+  }}
+  containerRef={modalRef}
+/>
+) : modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div
   ref={modalRef}
@@ -5957,9 +7006,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 <span className="ep-modal__grabber-bar" />
 </div>
 
-<div className="ep-modal__header">
-<h3 id="ep-modal-title" className="ep-modal__title">{modalTitle}</h3>
-<div className="ep-modal__header-actions">
+<div style={{ position: "absolute", top: "12px", right: "12px", zIndex: 1 }}>
 {isModalBulk ? (
 <button
   type="button"
@@ -5979,7 +7026,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 </button>
 ) : null}
 <button type="button" onClick={closeModal} className="ep-modal__close" aria-label="Close">✕</button>
-</div>
 </div>
 {isModalBulk && bulkModalExpanded ? (
   <>
@@ -6016,130 +7062,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   </>
 ) : null}
 
-{(isSendFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Send">
-<SendModal
-  sendNotDone={sendNotDone}
-  sendDone={sendDone}
-  sendMethodChosen={sendMethodChosen}
-  sendMethodOptions={sendMethodOptions}
-  resetSendMethod={resetSendMethod}
-  sendStepDots={sendStepDots}
-  sendStepIs1={sendStepIs1}
-  sendStepIs2={sendStepIs2}
-  sendStepIs3={sendStepIs3}
-  sendIsCountry={sendIsCountry}
-  sendIsCrypto={sendIsCrypto}
-  sendCountryChips={sendCountryChips}
-  sendRailHasChoice={sendRailHasChoice}
-  sendRailChips={sendRailChips}
-  sendProviderHasChoice={sendProviderHasChoice}
-  sendProviderChips={sendProviderChips}
-  sendCatalogLoading={sendCatalogLoading}
-  sendCatalogError={sendCatalogError}
-  onRetrySendCatalog={retrySendCatalog}
-  sendAssets={sendAssets}
-  sendChains={sendChains}
-  sendAssetCode={sendAssetCode}
-  sendChainLabel={sendChainLabel}
-  sendNext={sendNext}
-  sendBack={sendBack}
-  sendDestinationSummary={sendDestinationSummary}
-  sendCountryName={sendCountry.name}
-  sendCountryFlagUrl={flagUrl(sendCountry.iso)}
-  sendCurrencyCode={sendCountry.code}
-  sendCurrencyName={currencyLabel(sendCountry.code)}
-  sendCountryIdx={s.sendCountryIdx}
-  selectSendCountry={(i) => selectSendCountry(i)()}
-  sendProviderLabel={sendProviderPickerLabel}
-  sendProviderOptions={sendProviderOptions}
-  selectSendProvider={pickSendProvider}
-  sendProviderIdx={sendProviderIdx}
-  sendIsBankRail={sendIsCountry && sendRail.type === "bank"}
-  sendIsMobileRail={sendIsCountry && isMobileMoneyRail(sendRail.type)}
-  sendProvidersAreFallback={sendProvidersAreFallback}
-  sendBlockedNoNetworkId={sendBlockedNoNetworkId}
-  sendAmountCurrency={sendAmountCurrency}
-  sendYouPayText={sendYouPayText}
-  sendLocalCurrency={sendLocalCurrency}
-  sendCanEnterLocal={sendCanEnterLocal}
-  setSendAmountCurrency={(c: string) => setState({ sendAmountCurrency: c })}
-  sendAmountEquivalent={sendAmountEquivalent}
-  sendIndicativeRateLine={sendIndicativeRateLine}
-  sendQuotedRateLine={sendQuotedRateLine}
-  sendLimitError={sendLimitError}
-  sendMaxAmount={sendMaxAmount}
-  onMaxSendAmount={
-    sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
-  }
-  setSendAmountToMax={
-    !sendIsCountry && sendMaxAmount ? () => setState({ sendAmount: sendMaxAmount }) : undefined
-  }
-  sendBalanceError={sendBalanceError}
-  savedRecipients={(savedRecipientsQuery.data ?? []).filter((r) => {
-    if (sendIsCrypto) return r.railType === "crypto";
-    if (s.sendMethod === "mobile") return r.railType === "mobile";
-    if (s.sendMethod === "bank") return r.railType === "bank";
-    return r.railType !== "crypto";
-  })}
-  savedRecipientsLoading={savedRecipientsQuery.isLoading}
-  onSelectSavedRecipient={applySavedRecipient}
-  onSaveRecipientDetails={saveCurrentRecipientDetails}
-  saveRecipientBusy={saveRecipientBusy}
-  saveRecipientMessage={saveRecipientMessage}
-  sendRefundWalletOptions={fundableRefundWallets.map((a) => {
-    const bal = formatAccountBalance(a.balance, { maximumFractionDigits: 2 });
-    const balPart =
-      bal !== "—" ? ` · Available ${bal} ${a.balance?.currency || a.currency}` : "";
-    return {
-      value: a.id,
-      label: `${a.currency} · ${formatNetworkLabel(a.network)}${balPart}${
-        a.walletAddress ? ` · ${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : ""
-      }`,
-    };
-  })}
-  sendRefundWalletId={s.sendAccountId || ""}
-  selectSendRefundWallet={(accountId) => {
-    const account = fundableRefundWallets.find((row) => row.id === accountId);
-    if (!account) return;
-    setState({
-      sendAccountId: account.id,
-      sendChain: toUiNetworkKey(account.network) || s.sendChain,
-      sendAsset: account.currency.trim().toLowerCase() || s.sendAsset,
-      sendQuoteError: "",
-      sendPreview: null,
-    });
-  }}
-  sendRefundWalletsLoading={
-    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
-  }
-  sendRecipientName={sendRecipientName}
-  setSendRecipientName={setSendRecipientName}
-  sendRecipientLabel={sendRecipientLabel}
-  sendRecipient={sendRecipient}
-  setSendRecipient={setSendRecipient}
-  normalizeSendRecipientPhone={normalizeSendRecipientPhone}
-  sendRecipientPlaceholder={sendRecipientPlaceholder}
-  sendMemo={s.sendMemo}
-  setSendMemo={setSendMemo}
-  sendMemoApplies={sendIsCrypto && s.sendChain === "stellar"}
-  sendAmount={sendAmount}
-  setSendAmount={setSendAmount}
-  sendQuoteError={sendQuoteError}
-  sendQuoteLoading={sendQuoteLoading}
-  sendQuoteRateText={sendQuoteRateText}
-  sendFeeText={sendFeeText}
-  sendArrivalText={sendArrivalText}
-  sendAcceptError={sendAcceptError}
-  sendAccepting={sendAccepting}
-  submitSend={submitSend}
-  sendResultText={sendResultText}
-  sendSuccessDetails={sendSuccessDetails}
-  sendExplorerUrl={sendExplorerUrl}
-  sendLiveStatus={sendLiveStatus}
-  closeModal={closeModal}
-  onContactSupport={() => openHelp({ category: "payout" })}
-/>
-</section>) : null}
 
 {(isDepositFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Top up">
 <DepositModal
@@ -6255,13 +7177,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 
 {(isConvertFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Convert">
 <ConvertFlow
-  mode={convertMode}
-  onMode={(mode) => {
-    setConvertMode(mode);
-    if (mode === "fiat_to_fiat" && convertBridgeUsdcId) {
-      setState({ convertBridgeUsdcId });
-    }
-  }}
+  route={convertRoute}
   sourceAccounts={convertSourceAccounts}
   destinationAccounts={convertDestAccounts}
   sourceAccountId={s.convertSourceAccountId}
@@ -6269,7 +7185,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onSourceAccount={(id) =>
     setState({
       convertSourceAccountId: id,
+      // Picking the source you were about to receive into would leave the
+      // pair pointing at one account; drop the destination and let the
+      // user (or the prefill) choose again.
+      ...(id === s.convertDestAccountId ? { convertDestAccountId: "" } : {}),
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       swapAccepted: false,
     })
@@ -6277,25 +7198,28 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   onDestinationAccount={(id) =>
     setState({
       convertDestAccountId: id,
-      convertBridgeUsdcId: convertBridgeUsdcId || s.convertBridgeUsdcId,
       convertQuote: null,
+      convertBookPreview: null,
       convertError: "",
       swapAccepted: false,
     })
   }
   amount={s.convertAmount}
-  onAmount={(value) => setState({ convertAmount: value, convertQuote: null, convertError: "" })}
+  onAmount={(value) =>
+    setState({
+      convertAmount: value,
+      convertQuote: null,
+      convertBookPreview: null,
+      convertError: "",
+    })
+  }
   quote={s.convertQuote}
   quoteSeconds={s.quoteSeconds}
   quoteLoading={s.convertQuoteLoading}
   acceptLoading={s.convertAccepting}
   error={s.convertError}
-  hopLabel={convertHopLabel}
-  settlesViaLabel={
-    convertMode === "stable_to_stable"
-      ? `Stellar swap${s.convertDestAccountId ? ` · ${(convertDestAccounts.find((a) => a.id === s.convertDestAccountId)?.label || "USDC")}` : ""}`
-      : null
-  }
+  progressNote={s.convertJobNote}
+  pathLabel={convertPathLabel}
   done={swapAccepted}
   doneBody={
     s.convertQuote
@@ -6430,7 +7354,12 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     network: "",
     status: String(a.status || ""),
   }))}
-  onDone={closeModal}
+  onDone={() => {
+    // The confirm already succeeded upstream; refresh before closing so
+    // the row is present on the screen the user lands back on.
+    refreshMoneyViews();
+    closeModal();
+  }}
   onCancel={closeModal}
 />
 </>) : null}
@@ -6493,15 +7422,15 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
         selectedStablecoinAccount.entityId,
         selectedStablecoinAccount.id,
       );
-      queryClient.invalidateQueries({ queryKey: ["stablecoin-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.stablecoinAccounts] });
     } else if (selectedDepositAccount?.entity_id && selectedDepositAccount?.id) {
       await entitiesApi.deleteAccount(
         selectedDepositAccount.entity_id,
         selectedDepositAccount.id,
       );
-      queryClient.invalidateQueries({ queryKey: ["deposit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: [QK.depositAccounts] });
     }
-    await queryClient.invalidateQueries({ queryKey: ["dashboard-bootstrap"] });
+    await queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
     backToWallets();
   }}
 />

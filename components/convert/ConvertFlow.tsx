@@ -1,11 +1,18 @@
 "use client";
 
 import React from "react";
+import AssetSelect from "@/components/money/AssetSelect";
+import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   describeConversionRate,
   formatConvertAmount,
   type ConversionOut,
 } from "@/lib/services/conversions";
+import { isQuotableRoute, type ConvertRoute } from "@/lib/services/convertRoutes";
+import {
+  CONVERSION_STAGE_LABELS,
+  isTerminalConversionStatus,
+} from "@/lib/services/ledgerConversions";
 
 export type ConvertAccountOption = {
   id: string;
@@ -15,30 +22,26 @@ export type ConvertAccountOption = {
   balanceLabel: string;
   /** Raw available balance. Null when the partner returned none. */
   balanceAmount: number | null;
+  /** Flag image for fiat with one country; null for shared/stablecoin. */
+  flagUrl?: string | null;
+  /** Settlement chain, badged onto a stablecoin's coin mark. */
+  network?: string | null;
 };
 
-export type ConvertMode =
-  | "fiat_to_stable"
-  | "stable_to_fiat"
-  | "fiat_to_fiat"
-  | "stable_to_stable";
-
-export function isConvertMode(value: string | null | undefined): value is ConvertMode {
-  return (
-    value === "fiat_to_stable" ||
-    value === "stable_to_fiat" ||
-    value === "fiat_to_fiat" ||
-    value === "stable_to_stable"
-  );
-}
-
-export function normalizeConvertMode(value: string | null | undefined): ConvertMode {
-  return isConvertMode(value) ? value : "fiat_to_stable";
-}
-
+/**
+ * There are no mode tabs any more.
+ *
+ * The user used to pick a direction ("Fiat → Stablecoin", …) which then
+ * filtered the account lists. That asked them to know which of our three
+ * backends services a pair — and left USDC ↔ USDT, an advertised product,
+ * with no tab and therefore no route at all. Now both pickers list every
+ * account they own and `resolveConvertRoute` derives the rail from the pair.
+ *
+ * @see lib/services/convertRoutes.ts for the routing table and its refusals.
+ */
 export type ConvertFlowProps = {
-  mode: ConvertMode;
-  onMode: (mode: ConvertMode) => void;
+  /** Derived from the chosen pair — never chosen by the user. */
+  route: ConvertRoute;
   sourceAccounts: ConvertAccountOption[];
   destinationAccounts: ConvertAccountOption[];
   sourceAccountId: string;
@@ -53,20 +56,24 @@ export type ConvertFlowProps = {
   acceptLoading: boolean;
   error: string;
   hopLabel?: string | null;
+  /** Optional path strip for fiat↔fiat, e.g. "EUR → USDC → USD". */
+  pathLabel?: string | null;
   settlesViaLabel?: string | null;
+  /**
+   * Overrides the fee read off the quote. Only for a flow whose fee is not
+   * on `quote.fee_amount` — by default the quote's own figure is shown, so
+   * all three rails (book transfer, ramp, ledger FX) disclose a fee without
+   * the call site having to remember to pass one.
+   */
+  feeText?: string | null;
   done: boolean;
   doneBody?: string;
+  /** Shown under a bridged job's progress, e.g. when live status is unavailable. */
+  progressNote?: string | null;
   onRefreshQuote: () => void;
   onAccept: () => void;
   onDone: () => void;
 };
-
-const MODES: { key: ConvertMode; label: string; hint: string }[] = [
-  { key: "fiat_to_stable", label: "Fiat → Stablecoin", hint: "Sell EUR, USD, or GBP for USDC or USDT" },
-  { key: "stable_to_fiat", label: "Stablecoin → Fiat", hint: "Sell USDC or USDT for EUR, USD, or GBP" },
-  { key: "fiat_to_fiat", label: "EUR ↔ USD", hint: "Two hops via USDC" },
-  { key: "stable_to_stable", label: "Stellar stable → USDC", hint: "Convert allowlisted Stellar stables into USDC" },
-];
 
 function friendlyError(message: string): { title: string; body: string } {
   const m = (message || "").trim();
@@ -76,6 +83,12 @@ function friendlyError(message: string): { title: string; body: string } {
       title: "Couldn't get a quote",
       body: "Something went wrong on our side. Try again in a moment.",
     };
+  }
+  if (lower.includes("can't be converted") || lower.includes("not supported for conversion")) {
+    return { title: "Currency not supported", body: m };
+  }
+  if (lower.includes("isn't switched on")) {
+    return { title: "Not available yet", body: m };
   }
   if (lower.includes("insufficient")) {
     return { title: "Not enough balance", body: m };
@@ -90,19 +103,48 @@ function friendlyError(message: string): { title: string; body: string } {
 }
 
 export default function ConvertFlow(p: ConvertFlowProps) {
-  const expired = p.quoteSeconds <= 0 && Boolean(p.quote);
+  // The conversion keeps running whether or not the overlay is on screen —
+  // hiding is a view preference, never a cancel. Re-arms for the next
+  // attempt so dismissing once doesn't permanently silence progress.
+  const [progressHidden, setProgressHidden] = React.useState(false);
+  React.useEffect(() => {
+    if (!p.acceptLoading) setProgressHidden(false);
+  }, [p.acceptLoading]);
+
+  // A bridged quote prices on arrival: no rate to lock, so no countdown and
+  // nothing to expire client-side.
+  const rateLocked = p.quote?.rate_locked !== false;
+  const estimated = Boolean(p.quote?.destination_amount_estimated);
+  const approx = estimated ? "≈ " : "";
+  const expired = rateLocked && p.quoteSeconds <= 0 && Boolean(p.quote);
   const source = p.sourceAccounts.find((a) => a.id === p.sourceAccountId);
   const dest = p.destinationAccounts.find((a) => a.id === p.destinationAccountId);
+  const amountNum = Number(String(p.amount || "").trim().replace(/,/g, ""));
+  const knownBalance =
+    source && typeof source.balanceAmount === "number" ? source.balanceAmount : null;
+  const insufficientKnownBalance =
+    knownBalance !== null &&
+    Number.isFinite(amountNum) &&
+    amountNum > 0 &&
+    amountNum > knownBalance;
+  const zeroKnownBalance = knownBalance !== null && knownBalance <= 0;
+  // An unsupported pair is refused here, before the amount field matters, so
+  // the user never types a figure and presses a button to discover a 422.
+  const routeQuotable = isQuotableRoute(p.route);
   const canQuote =
+    routeQuotable &&
     Boolean(p.sourceAccountId) &&
     Boolean(p.destinationAccountId) &&
     Boolean(p.amount.trim()) &&
     !p.quoteLoading &&
+    !zeroKnownBalance &&
+    !insufficientKnownBalance &&
     p.sourceAccounts.length > 0 &&
     p.destinationAccounts.length > 0;
   const canAccept = Boolean(p.quote) && !expired && !p.acceptLoading && !p.done;
-  const modeMeta = MODES.find((m) => m.key === p.mode) || MODES[0];
   const err = p.error ? friendlyError(p.error) : null;
+  const noAccounts =
+    p.sourceAccounts.length === 0 || p.destinationAccounts.length === 0;
   const available =
     source && source.balanceLabel && source.balanceLabel !== "—"
       ? source.balanceLabel
@@ -113,6 +155,30 @@ export default function ConvertFlow(p: ConvertFlowProps) {
     source && typeof source.balanceAmount === "number" && source.balanceAmount > 0
       ? source.balanceAmount
       : null;
+  // Every rail into this component (book transfer, ramp, ledger FX)
+  // normalizes its preview into `ConversionOut`, so the fee is always on the
+  // quote — read it there rather than depend on three separate call sites
+  // remembering to forward it. Zero reads "No fee"; an absent
+  // figure says when it lands instead of implying the conversion is free.
+  const quoteFeeCurrency =
+    (p.quote?.fee_currency || p.quote?.source_currency || "").toUpperCase();
+  const feeText = p.quote
+    ? p.feeText?.trim() ||
+      feeDisclosureText({
+        raw: p.quote.fee_amount,
+        formatted: `${formatConvertAmount(p.quote.fee_amount)}${quoteFeeCurrency ? ` ${quoteFeeCurrency}` : ""}`,
+        whenUnknown:
+          p.quote.fee_status === "estimated"
+            ? "Charged on top by the provider — final figure once settled"
+            : "Shown on your statement once settled",
+      })
+    : null;
+
+  // A bridged confirm returns a job, not a settled conversion: show where it is.
+  const jobStatus = String(p.quote?.status || "").toLowerCase();
+  if (p.done && p.quote && p.quote.route === "bridged" && jobStatus !== "completed") {
+    return <BridgedProgress quote={p.quote} note={p.progressNote} onDone={p.onDone} />;
+  }
 
   if (p.done) {
     return (
@@ -140,94 +206,90 @@ export default function ConvertFlow(p: ConvertFlowProps) {
 
   return (
     <div className="ep-convert">
-      <div className="ep-convert__panel">
-        <div className="ep-convert__tabs" role="tablist" aria-label="Convert direction">
-          {MODES.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              role="tab"
-              aria-selected={p.mode === m.key}
-              data-active={p.mode === m.key ? "true" : "false"}
-              className="ep-convert__tab"
-              onClick={() => p.onMode(m.key)}
-            >
-              {m.label}
-            </button>
-          ))}
+      {p.acceptLoading && !progressHidden ? (
+        <div className="ep-convert__progress" role="status" aria-live="polite">
+          <span className="ep-convert__spinner" aria-hidden />
+          <span className="ep-convert__progress-text">
+            <strong>Converting your balance…</strong>
+            This usually takes a few seconds. You can keep watching or hide this —
+            the conversion carries on either way.
+          </span>
+          <button
+            type="button"
+            className="ep-convert__progress-hide"
+            onClick={() => setProgressHidden(true)}
+          >
+            Hide
+          </button>
         </div>
+      ) : null}
 
-        <p className="ep-convert__lede">{modeMeta.hint}</p>
-        {p.mode === "fiat_to_fiat" ? (
-          <p className="ep-money-hint">
-            Fiat↔fiat isn&apos;t a direct rail — we convert via USDC in two steps.
+      <div className="ep-convert__panel">
+        {/* The derived route, stated plainly. This replaced the mode tabs:
+            the pair the user picked is the input, this line is the output. */}
+        <p className="ep-convert__lede" data-testid="convert-route">
+          {p.route.summary}
+        </p>
+        {p.pathLabel ? (
+          <p className="ep-money-hint" data-testid="convert-path">
+            Path: {p.pathLabel}
           </p>
         ) : null}
         {p.hopLabel ? <p className="ep-money-hint">{p.hopLabel}</p> : null}
 
-        {p.sourceAccounts.length === 0 || p.destinationAccounts.length === 0 ? (
+        {noAccounts ? (
           <div className="ep-convert__expired" role="status">
             <span className="ep-convert__expired-title">Accounts needed</span>
             <span className="ep-convert__expired-body">
-              {p.mode === "fiat_to_stable"
-                ? "Open a fiat deposit account and a ready USDC or USDT account first."
-                : p.mode === "stable_to_fiat"
-                  ? "Open a ready USDC or USDT account and a fiat deposit account first."
-                  : p.mode === "stable_to_stable"
-                    ? "Open a ready Stellar USDT or EURC account plus a ready Stellar USDC account first."
-                  : "Open EUR and USD deposit accounts plus a ready USDC bridge account."}
+              {/* Deliberately not listing currencies: the convertible set is
+                  nine and grows, and naming a subset here is what made
+                  Convert look GBP/USD-only in the first place. */}
+              Open at least two accounts — Convert works out the route between
+              whichever two you pick.
             </span>
           </div>
         ) : (
           <>
             <div className="ep-convert__legs">
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="convert-source">
-                  From
-                </label>
-                <select
-                  id="convert-source"
-                  className="ep-money-input"
-                  value={p.sourceAccountId}
-                  onChange={(e) => p.onSourceAccount(e.target.value)}
-                >
-                  <option value="">Select source</option>
-                  {p.sourceAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                      {a.balanceLabel !== "—" ? ` · ${a.balanceLabel}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <AssetSelect
+                id="convert-source"
+                label="From"
+                placeholder="Choose an account to convert from"
+                value={p.sourceAccountId}
+                options={p.sourceAccounts}
+                onChange={p.onSourceAccount}
+              />
 
               <div className="ep-convert__swap" aria-hidden>
                 ↓
               </div>
 
-              <div className="ep-money-field">
-                <label className="ep-money-label" htmlFor="convert-dest">
-                  {p.mode === "fiat_to_fiat" && !p.hopLabel?.includes("Hop 2")
-                    ? "Final destination"
-                    : "To"}
-                </label>
-                <select
-                  id="convert-dest"
-                  className="ep-money-input"
-                  value={p.destinationAccountId}
-                  onChange={(e) => p.onDestinationAccount(e.target.value)}
-                >
-                  <option value="">Select destination</option>
-                  {p.destinationAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                      {a.balanceLabel !== "—" ? ` · ${a.balanceLabel}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <AssetSelect
+                id="convert-dest"
+                label="To"
+                placeholder="Choose an account to receive"
+                value={p.destinationAccountId}
+                options={p.destinationAccounts}
+                onChange={p.onDestinationAccount}
+              />
             </div>
 
+            {p.route.kind === "unsupported" ? (
+              // Shown instead of the amount field, not after it. Letting a
+              // user price a pair we are going to refuse is the failure this
+              // whole routing change exists to prevent.
+              <div className="ep-convert__expired" role="status">
+                <span className="ep-convert__expired-title">
+                  We can&apos;t convert this pair
+                </span>
+                <span
+                  className="ep-convert__expired-body"
+                  data-testid="convert-unsupported"
+                >
+                  {p.route.reason}
+                </span>
+              </div>
+            ) : (
             <div className="ep-money-field">
               <div className="ep-convert__amount-head">
                 <label className="ep-money-label" htmlFor="convert-amount">
@@ -254,7 +316,19 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               {available ? (
                 <p className="ep-convert__avail">Available {available}{source ? ` ${source.currency}` : ""}</p>
               ) : null}
+              {zeroKnownBalance ? (
+                <p className="ep-money-hint" role="status">
+                  This account has no available balance — pick a funded From account to get a quote.
+                </p>
+              ) : null}
+              {insufficientKnownBalance ? (
+                <p className="ep-money-hint" role="status">
+                  Amount is above the available balance
+                  {available ? ` (${available}${source ? ` ${source.currency}` : ""})` : ""}.
+                </p>
+              ) : null}
             </div>
+            )}
           </>
         )}
 
@@ -263,6 +337,15 @@ export default function ConvertFlow(p: ConvertFlowProps) {
             <span className="ep-convert__expired-title">{err.title}</span>
             <span className="ep-convert__expired-body">{err.body}</span>
           </div>
+        ) : null}
+
+        {/* Fee is stated before the quote too. Showing it only after quoting
+            means a user decides to convert without knowing whether it costs
+            anything, which is the gap this whole change set exists to close. */}
+        {!p.quote && !noAccounts && routeQuotable ? (
+          <p className="ep-convert__prefee" role="status">
+            Fees are shown with your quote, before you confirm anything.
+          </p>
         ) : null}
 
         {p.quote ? (
@@ -279,6 +362,7 @@ export default function ConvertFlow(p: ConvertFlowProps) {
               </div>
               <div className="ep-convert__row">
                 <span className="ep-convert__amount ep-convert__amount--out">
+                  {approx}
                   {formatConvertAmount(p.quote.destination_amount)}
                 </span>
                 <span className="ep-convert__ccy">{p.quote.destination_currency}</span>
@@ -289,16 +373,46 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 <span className="ep-convert__meta-k">Rate</span>
                 <span className="ep-convert__meta-v ep-convert__meta-v--mono">
                   {describeConversionRate(p.quote)}
+                  {rateLocked ? "" : " · estimated"}
+                </span>
+              </div>
+              <div className="ep-convert__meta-row">
+                <span className="ep-convert__meta-k">Fee</span>
+                <span
+                  className="ep-convert__meta-v ep-convert__meta-v--mono"
+                  data-testid="convert-fee"
+                >
+                  {feeText}
+                </span>
+              </div>
+              <div className="ep-convert__meta-row ep-convert__meta-row--total">
+                <span className="ep-convert__meta-k">
+                  {estimated ? "You receive (estimate)" : "You receive"}
+                </span>
+                <span
+                  className="ep-convert__meta-v ep-convert__meta-v--mono"
+                  data-testid="convert-receive"
+                >
+                  {approx}
+                  {formatConvertAmount(p.quote.destination_amount)}{" "}
+                  {p.quote.destination_currency}
                 </span>
               </div>
               <div className="ep-convert__meta-row">
                 <span className="ep-convert__meta-k">Settles via</span>
-                <span className="ep-convert__meta-v">
-                  {p.settlesViaLabel || `Ledger FX${dest ? ` · ${dest.label}` : ""}`}
+                <span className="ep-convert__meta-v" data-testid="convert-settles-via">
+                  {p.settlesViaLabel ||
+                    p.route.settlesVia ||
+                    `Ledger FX${dest ? ` · ${dest.label}` : ""}`}
                 </span>
               </div>
             </div>
-            {expired ? (
+            {p.quote.notice ? (
+              <p className="ep-convert__prefee" role="note" data-testid="convert-notice">
+                {p.quote.notice}
+              </p>
+            ) : null}
+            {!rateLocked ? null : expired ? (
               <div className="ep-convert__expired" role="alert">
                 <span className="ep-convert__expired-title">Rate expired</span>
                 <span className="ep-convert__expired-body">
@@ -349,11 +463,105 @@ export default function ConvertFlow(p: ConvertFlowProps) {
                 onClick={p.onAccept}
                 disabled={!canAccept}
               >
-                {p.acceptLoading ? "Settling…" : "Accept & settle"}
+                {p.acceptLoading ? "Converting…" : "Accept & convert"}
               </button>
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Progress for a bridged conversion (Stellar USDC over CCTP). The job settles
+ * over minutes and keeps running if this is closed; polling lives in the
+ * parent, which feeds the latest job back in as `quote`.
+ */
+function BridgedProgress({
+  quote,
+  note,
+  onDone,
+}: {
+  quote: ConversionOut;
+  note?: string | null;
+  onDone: () => void;
+}) {
+  const status = String(quote.status || "pending").toLowerCase();
+  const terminal = isTerminalConversionStatus(status);
+  const stages = quote.stages && quote.stages.length > 0 ? quote.stages : [status];
+  const currentIndex = stages.indexOf(status);
+  const amounts = `${formatConvertAmount(quote.source_amount)} ${quote.source_currency} → ${
+    quote.destination_amount_estimated ? "≈ " : ""
+  }${formatConvertAmount(quote.destination_amount)} ${quote.destination_currency}`;
+
+  let title = "Conversion in progress";
+  let body = quote.stage || "This usually takes a few minutes.";
+  let icon = "…";
+  if (status === "returning") {
+    title = "Returning your funds";
+    body = quote.return_reason || quote.stage || "A step failed, so the balance is going back to the source account.";
+    icon = "↺";
+  } else if (status === "returned") {
+    title = "Conversion returned";
+    body =
+      (quote.return_reason ? `${quote.return_reason} ` : "") +
+      "The balance has been sent back to the source account.";
+    icon = "↺";
+  } else if (status === "failed") {
+    title = "Conversion needs support";
+    body =
+      (quote.error ? `${quote.error} ` : "") +
+      "Our team has to finish this one — contact support with the reference below.";
+    icon = "!";
+  }
+
+  return (
+    <div className="ep-convert">
+      <div className="ep-convert__success" role="status" aria-live="polite" data-testid="convert-job">
+        <span className="ep-convert__success-icon" aria-hidden>
+          {icon}
+        </span>
+        <span className="ep-convert__success-title">{title}</span>
+        <span className="ep-convert__success-body">{body}</span>
+        <span className="ep-convert__success-body">{amounts}</span>
+
+        {status === "failed" || status === "returned" ? null : (
+          <ol className="ep-convert__stages" aria-label="Conversion steps">
+            {stages.map((stage, i) => {
+              const state =
+                status === "completed" || (currentIndex >= 0 && i < currentIndex)
+                  ? "done"
+                  : i === currentIndex
+                    ? "current"
+                    : "todo";
+              return (
+                <li key={stage} className="ep-convert__stage" data-state={state}>
+                  <span className="ep-convert__stage-dot" aria-hidden />
+                  {CONVERSION_STAGE_LABELS[stage] || stage.replace(/_/g, " ")}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <span className="ep-convert__success-body">
+          Reference <code>{quote.id}</code>
+        </span>
+        {!terminal ? (
+          <span className="ep-convert__success-body">
+            You can close this — the conversion carries on.
+          </span>
+        ) : null}
+        {note ? <span className="ep-convert__success-body">{note}</span> : null}
+        <button
+          type="button"
+          className="ep-convert__btn ep-convert__btn--ghost"
+          style={{ width: "auto", minWidth: 120, marginTop: 6 }}
+          onClick={onDone}
+        >
+          {terminal ? "Done" : "Close"}
+        </button>
       </div>
     </div>
   );

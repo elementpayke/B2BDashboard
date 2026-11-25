@@ -138,6 +138,54 @@ describe("insufficientBalanceMessage", () => {
       }),
     ).toBeNull();
   });
+
+  // The fee is charged on top, so the balance has to cover amount + fee.
+  it("flags the boundary where the amount fits but the amount plus fee does not", () => {
+    const balance = { available: "7000.00", currency: "USDT" };
+    expect(
+      insufficientBalanceMessage({ amount: "7000", balance, currency: "USDT" }),
+    ).toBeNull();
+    expect(
+      insufficientBalanceMessage({ amount: "7000", balance, currency: "USDT", fee: "17.50" }),
+    ).toMatch(
+      /Insufficient USDT balance\. Available 7,000\.00; you entered 7,000 plus a 17\.5 fee\./,
+    );
+  });
+
+  it("stays silent when the balance covers amount plus fee exactly", () => {
+    expect(
+      insufficientBalanceMessage({
+        amount: "7000",
+        balance: { available: "7017.50", currency: "USDT" },
+        currency: "USDT",
+        fee: "17.50",
+      }),
+    ).toBeNull();
+  });
+
+  it("omits the fee clause and the fee itself when none has been quoted", () => {
+    const balance = { available: "337.54", currency: "USDC" };
+    for (const fee of [null, undefined, "", "0", 0]) {
+      const message = insufficientBalanceMessage({
+        amount: "400",
+        balance,
+        currency: "USDC",
+        fee,
+      });
+      expect(message).toMatch(/you entered 400\.$/);
+    }
+  });
+
+  it("does not accumulate binary noise at the cent boundary", () => {
+    expect(
+      insufficientBalanceMessage({
+        amount: "0.1",
+        balance: { available: "0.3", currency: "USDC" },
+        currency: "USDC",
+        fee: "0.2",
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("sumAvailableBalances", () => {

@@ -2,6 +2,49 @@
    Breakpoints: mobile <640 | tablet 640–1023 | desktop ≥1024 | large ≥1440
 */
 
+/* ── Design system wiring ───────────────────────────────────────────
+   Tokens come from design/tokens.json → app/tokens.generated.css
+   (`npm run tokens`). Tailwind v4 is loaded WITHOUT preflight so the
+   legacy .ep-* styles below render exactly as before, and utilities are
+   only generated for the folders listed in @source — new, token-based
+   code. Legacy .ep-* rules are unlayered, so they still win over any
+   utility. When a screen is migrated off .ep-*, add its folder here. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./tokens.generated.css";
+
+@source "../components/ui";
+@source "../components/patterns";
+@source "../features";
+@source "../.storybook";
+
+/* Scoped preflight. Tailwind's global reset is off (it would restyle legacy
+   screens that rely on browser defaults), so design-system components reset
+   themselves: every element marked data-slot — all components/ui and
+   components/patterns roots, and new feature screen roots — plus its
+   descendants. Lowest priority (base layer + :where), so utilities win. */
+@layer base {
+  :where([data-slot], [data-slot] *) {
+    margin: 0;
+  }
+  :where(button[data-slot], [data-slot] button) {
+    border: 0 solid;
+    background-color: transparent;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+  }
+  :where(input[data-slot], [data-slot] input, [data-slot] textarea, [data-slot] select) {
+    font: inherit;
+    color: inherit;
+  }
+  :where([data-slot] ul, [data-slot] ol) {
+    list-style: none;
+    padding: 0;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -10,30 +53,6 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-}
-
-/* Light-theme defaults so brand tokens resolve outside the dashboard root
-   (auth pages, printed documents). DashboardApp / Landing also sync the
-   active palette onto document.documentElement so portaled overlays
-   (ChoicePicker sheets) inherit dark mode. Values mirror LIGHT in
-   components/mockData.ts and the brand kit's four colour tokens:
-   indigo #3B2ED3 · indigo lift #7C6FFF (dark only) · ink #131126 ·
-   bone #F6F4EF (never pure white). */
-:root {
-  --bg: #f6f4ef;
-  --surface2: rgba(19, 17, 38, 0.045);
-  --surface3: rgba(19, 17, 38, 0.09);
-  --border: rgba(19, 17, 38, 0.08);
-  --panel: #ffffff;
-  --ink: #131126;
-  --muted: #4c4a66;
-  --muted2: #8b89a6;
-  --indigo: #3b2ed3;
-  --indigo-on: #fff;
-  --indigo-text: #3b2ed3;
-  --indigo-tint: #eeedfb;
-  --ink-panel: #131126;
-  --ink-panel-text: #c4c2dc;
 }
 
 body {
@@ -428,6 +447,26 @@ select option {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/* Amount with its fee beneath, right-aligned so the figures stack cleanly.
+   The fee sat at the end of `meta` before, which truncates — a fee behind an
+   ellipsis is not disclosure. */
+.ep-activity__amount-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.ep-activity__fee {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--muted2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .ep-activity__desktop {
@@ -940,6 +979,9 @@ select option {
   font-weight: 700;
   color: var(--muted2);
   letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .ep-txn-detail__step--done .ep-txn-detail__step-label {
@@ -952,6 +994,39 @@ select option {
 
 .ep-txn-detail__step--failed .ep-txn-detail__step-label {
   color: var(--red);
+}
+
+.ep-txn-detail__hash-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--indigo-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.ep-txn-detail__hash-link:hover {
+  background-color: rgba(59, 46, 211, 0.08);
+  text-decoration: underline;
+}
+
+.ep-txn-detail__hash {
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+
+.ep-txn-detail__link-icon {
+  font-size: 11px;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+}
+
+.ep-txn-detail__hash-link:hover .ep-txn-detail__link-icon {
+  opacity: 1;
 }
 
 .ep-activity__sr,
@@ -1034,6 +1109,1263 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ep-invoices-shell,
+.ep-invoices {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.ep-invoices-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ep-invoices__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.ep-invoices-stat {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--stat-accent, var(--border));
+  border-radius: 16px;
+  padding: 14px 20px;
+}
+
+.ep-invoices-stat__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stat-accent, var(--muted2));
+  flex: 0 0 auto;
+}
+
+.ep-invoices-stat__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: 1 1 auto;
+}
+
+.ep-invoices-stat__value {
+  font-size: clamp(18px, 3.4vw, 22px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--stat-accent, var(--ink));
+}
+
+.ep-invoices-stat--total {
+  --stat-accent: var(--indigo-text);
+}
+
+.ep-invoices-stat--paid {
+  --stat-accent: var(--success);
+}
+
+.ep-invoices-stat--pending {
+  --stat-accent: var(--amber);
+}
+
+.ep-invoices-stat--overdue {
+  --stat-accent: var(--red, #c42a2f);
+}
+
+.ep-invoices-rail-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.ep-invoices__toolbar {
+  margin-bottom: 4px;
+}
+
+.ep-invoices-list .ep-activity__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ep-invoices-list.ep-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ep-invoices-list .ep-activity__row {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ep-invoices-list__item {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-invoices-list__item:last-child {
+  border-bottom: none;
+}
+
+.ep-invoices-row-menu--list {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .ep-invoices-list-head {
+    display: grid;
+    grid-template-columns: 1.1fr 1.2fr 1fr 1.1fr 0.9fr 0.8fr 36px;
+    gap: 10px;
+    padding: 11px 20px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted2);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .ep-invoices-list .ep-activity__desktop.ep-invoices-list-row {
+    display: grid !important;
+    grid-template-columns: 1.1fr 1.2fr 1fr 1.1fr 0.9fr 0.8fr 36px !important;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 48px 14px 20px !important;
+    min-height: 56px;
+  }
+
+  .ep-invoices-row-menu--list {
+    display: block;
+  }
+}
+
+.ep-invoices-list-head {
+  display: none;
+}
+
+.ep-invoices-row-menu__trigger {
+  border: none;
+  background: var(--surface2);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ep-invoices-compose {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: var(--surface2);
+}
+
+.ep-invoices-compose__title {
+  margin: 0 0 10px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ep-invoices-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.ep-invoices-items-table th,
+.ep-invoices-items-table td {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-invoices-items-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted2);
+}
+
+.ep-invoices-step-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.ep-invoices-section__title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ep-invoices-detail-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.ep-invoices-detail-head,
+.ep-invoices-section {
+  width: 100%;
+}
+
+.ep-invoices-detail-head__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ep-invoices-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ep-invoices-back {
+  border: none;
+  background: transparent;
+  color: var(--indigo, #3b2ed3);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 12px;
+  font-size: 13px;
+}
+
+.ep-invoices-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ep-invoices-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.ep-invoices-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ep-invoices-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ep-invoices-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ep-invoices-stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.ep-invoices-stat__value {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.ep-invoices-stat__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-invoices-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ep-invoices-toolbar input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.ep-invoices-toolbar input,
+.ep-invoices-toolbar select {
+  border: 1px solid var(--input-border, var(--border));
+  background: var(--input-bg, var(--panel));
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  min-height: 40px;
+}
+
+.ep-invoices-btn {
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.ep-invoices-btn--primary {
+  background: var(--indigo, #3b2ed3);
+  color: #fff;
+}
+
+.ep-invoices-btn--secondary {
+  background: var(--surface2);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.ep-invoices-btn--ghost {
+  background: transparent;
+  color: var(--ink);
+}
+
+.ep-invoices-btn--dashed {
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+}
+
+.ep-invoices-table-wrap {
+  overflow-x: auto;
+}
+
+.ep-invoices-table-head,
+.ep-invoices-table-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr 1.1fr 1fr 0.9fr 40px;
+  gap: 8px;
+  align-items: center;
+  min-width: 820px;
+  padding: 10px 12px;
+}
+
+.ep-invoices-table-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted2);
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-invoices-table-row {
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.ep-invoices-link {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--indigo, #3b2ed3);
+}
+
+.ep-invoices-rail-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface2);
+  margin-right: 4px;
+}
+
+.ep-invoices-status {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.ep-invoices-status--paid {
+  color: var(--indigo-text, #3b2ed3);
+  background: var(--indigo-tint, #eeedfb);
+}
+
+.ep-invoices-status--pending,
+.ep-invoices-status--partially_paid {
+  color: var(--amber, #b47700);
+  background: var(--amber-tint, #fbf2de);
+}
+
+.ep-invoices-status--overdue {
+  color: var(--red-text, #c42a2f);
+  background: var(--red-tint, #fcebec);
+}
+
+.ep-invoices-status--cancelled,
+.ep-invoices-status--draft {
+  color: var(--muted2);
+  background: var(--surface2);
+}
+
+.ep-invoices-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg, rgba(19, 17, 38, 0.45));
+  backdrop-filter: blur(8px);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.ep-invoices-modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--panel);
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  padding: 18px 20px;
+  box-shadow: 0 24px 64px rgba(19, 17, 38, 0.18);
+}
+
+.ep-invoices-create {
+  width: min(720px, 100%);
+}
+
+.ep-invoices-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ep-invoices-modal__close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ep-invoices-steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ep-invoices-steps__seg {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface3);
+}
+
+.ep-invoices-steps__seg--done {
+  background: var(--indigo, #3b2ed3);
+}
+
+.ep-invoices-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+  margin-bottom: 4px;
+}
+
+.ep-invoices-field-label--spaced {
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.ep-invoices-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ep-invoices-form-row label {
+  margin-bottom: 0;
+}
+
+.ep-invoices-form-row--compact {
+  margin-bottom: 0;
+}
+
+.ep-invoices-new-customer {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--surface2);
+}
+
+.ep-invoices-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ep-invoices-form > label,
+.ep-invoices-compose > label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.ep-invoices-form input:not([type="checkbox"]):not([type="radio"]),
+.ep-invoices-form select,
+.ep-invoices-form textarea,
+.ep-invoices-compose input:not([type="checkbox"]):not([type="radio"]),
+.ep-invoices-compose select,
+.ep-invoices-compose textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--input-border, var(--border));
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.ep-invoices-line-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ep-invoices-rail-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--indigo-tint, #eeedfb);
+  border: 1px solid var(--indigo-tint, #eeedfb);
+}
+
+.ep-invoices-rail-banner strong {
+  color: var(--indigo-text, #3b2ed3);
+  font-size: 14px;
+}
+
+.ep-invoices-rail-banner .ep-invoices-muted {
+  line-height: 1.45;
+}
+
+.ep-invoices-method-card,
+.ep-invoices-settlement-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ep-invoices-method-card--on {
+  border-color: var(--indigo, #3b2ed3);
+  background: var(--indigo-tint, #eeedfb);
+}
+
+.ep-invoices-method-card input[type="checkbox"],
+.ep-invoices-settlement-card input[type="radio"],
+.ep-invoices-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--indigo, #3b2ed3);
+}
+
+.ep-invoices-method-card > span,
+.ep-invoices-settlement-card > span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ep-invoices-method-card strong,
+.ep-invoices-settlement-card strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.ep-invoices-method-card .ep-invoices-muted,
+.ep-invoices-settlement-card .ep-invoices-muted {
+  display: block;
+  line-height: 1.4;
+}
+
+.ep-invoices-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ep-invoices-preview-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 12px 0;
+  background: var(--surface2);
+}
+
+.ep-invoices-preview-card__issuer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ep-invoices-preview-card__logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 4px;
+  flex: 0 0 auto;
+}
+
+.ep-invoices-preview-card__issuer-text {
+  min-width: 0;
+}
+
+.ep-invoices-preview-card__brand {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.ep-invoices-preview-card__address-line {
+  margin: 2px 0 0;
+  line-height: 1.3;
+}
+
+.ep-invoices-preview-card__amount {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 8px 0 12px;
+}
+
+.ep-invoices-preview-pay-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-invoices-preview-pay-row:last-child {
+  border-bottom: none;
+}
+
+.ep-invoices-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.ep-invoices-modal-actions .ep-invoices-btn--ghost {
+  margin-right: auto;
+}
+
+.ep-invoices-detail-head.ep-panel,
+.ep-invoices-section.ep-panel {
+  padding: 20px 22px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.ep-invoices-line-items input {
+  margin-top: 0;
+}
+
+.ep-invoices-settlement-block {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 0 10px;
+}
+
+.ep-invoices-branding {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ep-invoices-branding__toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 14px 18px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+
+.ep-invoices-branding__toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ep-invoices-branding__toggle-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 3px;
+  flex: 0 0 auto;
+}
+
+.ep-invoices-branding__toggle-logo--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--indigo-text, #3b2ed3);
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--indigo-tint, #eeedfb);
+}
+
+.ep-invoices-branding__toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.ep-invoices-branding__toggle-text .ep-invoices-muted {
+  font-family: "DM Sans", sans-serif;
+  font-weight: 400;
+  font-size: 12.5px;
+}
+
+.ep-invoices-branding__body {
+  padding: 0 18px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ep-invoices-branding__field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.ep-invoices-branding__field input,
+.ep-invoices-branding__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--input-border, var(--border));
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.ep-invoices-branding__logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.ep-invoices-branding__logo-preview {
+  width: 120px;
+  height: 48px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  padding: 6px;
+}
+
+.ep-invoices-branding__logo-placeholder {
+  width: 120px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.ep-invoices-branding__logo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ep-invoices-share {
+  width: min(480px, 100%);
+}
+
+.ep-invoices-share__info {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ep-invoices-share__via-label {
+  margin: 18px 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-invoices-share__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 480px) {
+  .ep-invoices-share__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ep-invoices-share__channel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--indigo-text, #3b2ed3);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.ep-invoices-share__channel:hover {
+  background: var(--indigo-tint, #eeedfb);
+  border-color: var(--indigo, #3b2ed3);
+}
+
+.ep-invoices-payment-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-invoices-items-table .ep-invoices-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.ep-invoices-total-bar {
+  background: var(--indigo-tint, #eeedfb);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.ep-invoices-error {
+  color: var(--red-text, #c42a2f);
+  font-size: 13px;
+}
+
+.ep-invoices-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ep-invoices-id {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.ep-invoices-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: left;
+}
+
+.ep-invoices-empty h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ep-invoices-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 46ch;
+}
+
+.ep-invoices-detail-amount {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 8px 0;
+}
+
+.ep-invoices-detail-ccy {
+  font-size: 16px;
+  color: var(--muted2);
+}
+
+.ep-invoices-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ep-invoices-timeline li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.ep-invoices-timeline__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--indigo, #3b2ed3);
+  box-shadow: 0 0 0 4px var(--indigo-tint, #eeedfb);
+}
+
+.ep-invoices-timeline__step:not(.ep-invoices-timeline__step--done) .ep-invoices-timeline__dot {
+  background: var(--surface3, #e4e2f0);
+  box-shadow: 0 0 0 4px var(--surface2, #f4f3fa);
+}
+
+.ep-invoices-timeline__label {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.ep-invoices-timeline__step:not(.ep-invoices-timeline__step--done) .ep-invoices-timeline__label {
+  color: var(--muted2);
+}
+
+.ep-invoices-timeline__time {
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.ep-invoices-row-menu__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.ep-invoices-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ep-invoices-section__header .ep-invoices-section__title {
+  margin: 0;
+}
+
+.ep-invoices-items-table__total-label {
+  text-align: right;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.ep-invoices-items-table tfoot td {
+  border-bottom: none;
+  border-top: 2px solid var(--border);
+  font-weight: 700;
+  padding-top: 10px;
+}
+
+.ep-invoices-detail-dates {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted2);
+}
+
+.ep-invoices-detail-balance {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ep-invoices-settled {
+  color: var(--indigo-text, #3b2ed3);
+}
+
+.ep-invoices-outstanding {
+  color: var(--amber-text, #b47700);
+}
+
+.ep-invoices-payment-row__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ep-invoices-payment-row__date {
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.ep-invoices-manual-payment {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
+.ep-invoices-manual-payment__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.ep-invoices-manual-payment__fields label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ep-invoices-manual-payment__fields input,
+.ep-invoices-manual-payment__fields select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--input-border, var(--border));
+  padding: 9px 10px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.ep-invoices-manual-payment__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ep-invoices-row-menu {
+  position: relative;
+}
+
+.ep-invoices-row-menu__pop {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(19, 17, 38, 0.12);
+}
+
+.ep-invoices-row-menu__pop button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ep-invoices-danger {
+  color: var(--red-text, #c42a2f);
+}
+
+@media (max-width: 900px) {
+  .ep-invoices-page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ep-invoices-page-head .ep-invoices-btn--primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ep-invoices-table-head--data {
+    display: none;
+  }
+
+  .ep-invoices-table-row {
+    min-width: 0;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "id status"
+      "customer customer"
+      "amount methods"
+      "due menu";
+    gap: 6px 10px;
+    padding: 14px 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 8px;
+    border-bottom: none;
+  }
+
+  .ep-invoices-table-row .ep-invoices-link {
+    grid-area: id;
+  }
+
+  .ep-invoices-table-row > span:nth-child(2) {
+    grid-area: customer;
+  }
+
+  .ep-invoices-table-row > span:nth-child(3) {
+    grid-area: amount;
+    font-weight: 600;
+  }
+
+  .ep-invoices-table-row .ep-invoices-methods {
+    grid-area: methods;
+  }
+
+  .ep-invoices-table-row .ep-invoices-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .ep-invoices-table-row > span:nth-child(7) {
+    grid-area: due;
+    font-size: 11px;
+    color: var(--muted2);
+  }
+
+  .ep-invoices-row-menu {
+    grid-area: menu;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 640px) {
+  .ep-invoices-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ep-invoices-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .ep-invoices-modal,
+  .ep-invoices-create {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .ep-invoices-stats {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* ── App shell ─────────────────────────────────────────────────── */
@@ -3187,9 +4519,12 @@ button.ep-home__stat:focus-visible {
   position: fixed;
   inset: 0;
   background: var(--overlay-bg);
-  /* Soften background chrome so page copy stays unreadable behind the dialog */
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  /* A scrim, not a mirror. The saturate() boost pushed colour back through
+     the blur, so the page behind stayed legible as a shimmering reflection
+     under the dialog -- the glassy look this is meant to prevent. A heavier
+     scrim plus a plain blur hides the chrome without the mirror. */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   z-index: 100;
   display: flex;
   align-items: flex-end;
@@ -3210,11 +4545,19 @@ button.ep-home__stat:focus-visible {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  /* Opaque panel — no glass/blur so background UI never bleeds through */
-  background: var(--modal-bg);
-  border: 1px solid var(--glass-border);
+  /* Opaque panel — no glass/blur so background UI never bleeds through.
+     The fallback matters: --modal-bg is set at runtime by applyThemeVars, so
+     before that lands (or on any surface that renders outside the themed
+     tree) an undefined var computes to `transparent` and the dialog really
+     does become a window onto the page. */
+  background: var(--modal-bg, var(--panel, #ffffff));
+  border: 1px solid var(--glass-border, var(--border));
   border-radius: 24px 24px 0 0;
-  box-shadow: 0 34px 90px -22px rgba(19, 17, 38, 0.5);
+  /* Heavier and tighter: the dialog should read as sitting above the page,
+     not floating in it. */
+  box-shadow:
+    0 2px 10px rgba(19, 17, 38, 0.10),
+    0 40px 96px -20px rgba(19, 17, 38, 0.62);
   /* Extra top padding for the sheet grabber on phones */
   padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   display: flex;
@@ -5753,6 +7096,37 @@ button.ep-home__stat:focus-visible {
   line-height: 1;
 }
 
+/* Stablecoin coin mark. Transparent plate: the coin SVG carries its own
+   issuer colour (USDC #2775CA, USDT #26A17B), so a tinted tile behind it would
+   only muddy the brand. */
+.ep-wallets__flag--coin {
+  background: transparent;
+  overflow: visible;
+  position: relative;
+}
+
+/* Chain badge, notched into the coin's lower-right like a wallet app. The
+   ring is the card surface, so the badge reads as sitting on top of the coin
+   rather than being part of its artwork. */
+.ep-wallets__flag-chain {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  line-height: 0;
+}
+
+/* Shared currencies (XOF across 8 states, XAF across 6) and unknown assets
+   show their code: no single national flag is correct for them. */
+.ep-wallets__flag-code {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .ep-wallets__card-name {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 14px;
@@ -6473,28 +7847,32 @@ button.ep-home__stat:focus-visible {
   gap: 12px;
 }
 
+/* Container for AssetMark: the flag image, brand disc or code badge is a
+   child, so this holds the frame and the child fills it. */
 .ep-acct-detail__flag {
   width: 34px;
   height: 25px;
   border-radius: 5px;
-  background-size: cover;
-  background-position: center;
   border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.ep-acct-detail__flag-fallback {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--indigo-tint);
-  color: var(--indigo-text);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   flex-shrink: 0;
+}
+
+/* A stablecoin disc carries its own brand colour and reads as a coin, not a
+   flag, so it loses the rectangular frame. */
+.ep-acct-detail__flag.ep-wallets__flag--coin {
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .ep-acct-detail__identity-text {
@@ -6884,7 +8262,23 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+}
+
+.ep-wallets-detail__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ep-wallets-detail__actions .ep-wallets-detail__letter {
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  .ep-wallets-detail__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ep-wallets-detail__fund-hint {
@@ -6927,6 +8321,36 @@ button.ep-home__stat:focus-visible {
   color: var(--muted2);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* Domestic/International rail switcher — shows one rail's coordinates at a
+   time instead of stacking both full coordinate blocks (the scroll fix). */
+.ep-wallets-detail__rail-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface2);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.ep-wallets-detail__rail-tab {
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ep-wallets-detail__rail-tab[data-active="true"] {
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .ep-wallets-detail__beneficiary {
@@ -7003,7 +8427,7 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail__rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .ep-wallets-detail__row {
@@ -7013,9 +8437,9 @@ button.ep-home__stat:focus-visible {
     "label copy"
     "value copy";
   column-gap: 10px;
-  row-gap: 4px;
+  row-gap: 3px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   background: var(--surface2);
 }
@@ -7034,7 +8458,7 @@ button.ep-home__stat:focus-visible {
   grid-area: value;
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0.01em;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -7046,7 +8470,7 @@ button.ep-home__stat:focus-visible {
 .ep-wallets-detail__value--iban {
   font-family: 'Space Grotesk', sans-serif;
   letter-spacing: 0.01em;
-  font-size: 14px;
+  font-size: 12.5px;
 }
 
 .ep-wallets-detail__copy {
@@ -7150,38 +8574,56 @@ button.ep-home__stat:focus-visible {
   gap: 16px;
 }
 
+/* Fee notice. Deliberately quiet: a neutral surface with a single outline
+   icon, so the amount inside it is the only thing competing for attention.
+   The old indigo tint + uppercase pill badge shouted louder than the number. */
 .ep-wallets-create__kind {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--indigo-tint);
-  border: 1px solid color-mix(in srgb, var(--indigo) 18%, var(--border));
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
 }
 
-.ep-wallets-create__kind-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--indigo);
-  color: var(--indigo-on);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.ep-wallets-create__kind-icon {
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--muted);
+}
+
+/* An explicit zero still deserves emphasis, but not the charge colour. */
+.ep-wallets-create__kind-free {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .ep-wallets-create__kind-text {
-  font-size: 12.5px;
-  font-weight: 500;
+  /* Disclosure copy reads at body size, not caption size — it carries the
+     number the user is agreeing to pay. Regular weight with only the amount
+     emphasised (see --kind-amount) keeps the figure the thing that stands out. */
+  font-size: 14px;
+  font-weight: 400;
   color: var(--ink);
-  line-height: 1.45;
+  line-height: 1.55;
+  margin: 0;
 }
+
+.ep-wallets-create__kind-amount {
+  font-weight: 700;
+  /* Brand numerals: amounts are set in DM Mono everywhere else in the app. */
+  font-family: 'DM Mono', monospace;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  /* The charge is the one thing in this dialog that costs money. --red is the
+     brand's existing alert ink, already used for required-field markers, so
+     this stays inside the palette rather than introducing a new colour. */
+  color: var(--red);
+}
+
 
 .ep-wallets-create__field {
   display: flex;
@@ -7190,9 +8632,10 @@ button.ep-home__stat:focus-visible {
 }
 
 .ep-wallets-create__label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  letter-spacing: -0.005em;
 }
 
 .ep-wallets-create__req {
@@ -7744,6 +9187,48 @@ select.ep-wallets-create__control {
 .ep-convert__success-body {
   font-size: 12.5px;
   color: var(--muted);
+}
+
+/* Bridged conversion steps: done / current / todo. */
+.ep-convert__stages {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--muted2);
+}
+
+.ep-convert__stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ep-convert__stage[data-state="done"],
+.ep-convert__stage[data-state="current"] {
+  color: var(--ink);
+}
+
+.ep-convert__stage[data-state="current"] {
+  font-weight: 700;
+}
+
+.ep-convert__stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  flex: none;
+}
+
+.ep-convert__stage[data-state="done"] .ep-convert__stage-dot,
+.ep-convert__stage[data-state="current"] .ep-convert__stage-dot {
+  background: var(--indigo);
+  border-color: var(--indigo);
 }
 
 .ep-money-step-label {
@@ -12160,12 +13645,13 @@ button.ep-card-face:focus-visible {
   line-height: 1.45;
 }
 
+/* One row at every width: compact Share + primary Download receipt. */
 .ep-txn-detail__actions {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto 1fr;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .ep-txn-detail__share-wrap {
@@ -12175,6 +13661,31 @@ button.ep-card-face:focus-visible {
 .ep-txn-detail__share,
 .ep-txn-detail__receipt {
   width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+}
+
+.ep-txn-detail__share {
+  padding: 12px 18px;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--ink);
+}
+
+.ep-txn-detail__share:hover,
+.ep-txn-detail__share[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--border));
+  color: var(--indigo-text);
+}
+
+.ep-txn-detail__share:focus-visible,
+.ep-txn-detail__receipt:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring);
 }
 
 /* Opaque panel — never use translucent --surface here or detail rows bleed through. */
@@ -12271,9 +13782,6 @@ button.ep-card-face:focus-visible {
 }
 
 @media (max-width: 640px) {
-  .ep-txn-detail__actions {
-    grid-template-columns: 1fr;
-  }
 
   .ep-txn-detail__share-backdrop {
     display: block;
@@ -12934,3 +14442,1580 @@ button.ep-card-face:focus-visible {
   font-size: 12px;
   color: var(--muted2);
 }
+
+/* ---- Asset picker (AssetSelect) ---------------------------------------- */
+/* Replaces a native <select> so each row can carry its flag or coin mark.
+   Sizing mirrors .ep-money-input so the two read as the same control. */
+.ep-asset-select {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ep-asset-select__trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--input-border);
+  background: var(--surface2);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.ep-asset-select__trigger:focus-visible {
+  outline: none;
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--indigo) 18%, transparent);
+}
+
+.ep-asset-select__trigger[aria-expanded="true"] {
+  border-color: var(--indigo);
+}
+
+.ep-asset-select__trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ep-asset-select__mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--indigo-tint);
+  color: var(--indigo-text);
+  font-weight: 700;
+  position: relative;
+}
+
+/* Coin marks carry their own issuer colour, so no tinted plate behind them. */
+.ep-asset-select__mark.ep-wallets__flag--coin {
+  background: transparent;
+  overflow: visible;
+  border-radius: 50%;
+}
+
+.ep-asset-select__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ep-asset-select__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Balances are figures: mono keeps them aligned down the list. */
+.ep-asset-select__balance {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  color: var(--muted2);
+}
+
+.ep-asset-select__placeholder {
+  flex: 1;
+  color: var(--muted2);
+  font-size: 14px;
+}
+
+.ep-asset-select__caret {
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.ep-asset-select__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 264px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  /* Opaque: --surface is translucent glass, so a dropdown painted with it
+     shows the form fields behind it through the list. */
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(19, 17, 38, 0.14);
+}
+
+.ep-asset-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+/* Keyboard and pointer share one highlight: the active row is the one Enter
+   commits, whether it was reached by arrow key or hover. */
+.ep-asset-select__option[data-active] {
+  background: var(--indigo-tint);
+}
+
+.ep-asset-select__option[aria-selected="true"] .ep-asset-select__name {
+  color: var(--indigo-text);
+}
+
+/* ---- Convert: pre-quote fee note + settling overlay --------------------- */
+.ep-convert__prefee {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted2);
+  line-height: 1.45;
+}
+
+.ep-convert__progress {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--indigo-tint);
+  border: 1px solid color-mix(in srgb, var(--indigo) 18%, var(--border));
+}
+
+.ep-convert__spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--indigo) 25%, transparent);
+  border-top-color: var(--indigo);
+  animation: ep-convert-spin 0.8s linear infinite;
+}
+
+@keyframes ep-convert-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respect reduced-motion: pulse instead of spin rather than freezing the
+   indicator, which would read as "stuck". */
+@media (prefers-reduced-motion: reduce) {
+  .ep-convert__spinner {
+    animation: ep-convert-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes ep-convert-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+}
+
+.ep-convert__progress-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--muted2);
+  line-height: 1.45;
+}
+
+.ep-convert__progress-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-convert__progress-hide {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--indigo-text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+
+.ep-convert__meta-row--total .ep-convert__meta-k,
+.ep-convert__meta-row--total .ep-convert__meta-v {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ── CCTP Modal & Transaction Detail ───────────────────────────────── */
+
+.ep-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.ep-modal__content {
+  background: var(--panel);
+  border-radius: 22px;
+  max-width: 900px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+}
+
+.ep-txn-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+}
+
+.ep-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.ep-modal__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.ep-modal__title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.ep-modal__close {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 20px;
+  transition: background 0.12s ease;
+}
+
+.ep-modal__close:hover {
+  background: var(--surface3);
+}
+
+/* ── CCTP Detail summary grid ───────────────────────────────────── */
+
+.ep-txn-detail__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface2);
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+
+.ep-txn-detail__summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-txn-detail__label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ep-txn-detail__value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-txn-detail__error {
+  padding: 12px 16px;
+  background: rgba(229, 72, 77, 0.08);
+  border: 1px solid color-mix(in srgb, #e5484d 20%, var(--border));
+  border-radius: 12px;
+  color: #c62828;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+/* ── Settlement Progress Timeline ─────────────────────────────────── */
+
+.ep-txn-timeline {
+  margin-bottom: 24px;
+}
+
+.ep-txn-timeline__title {
+  margin: 0 0 20px 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.ep-txn-timeline__track {
+  position: relative;
+  padding-left: 32px;
+}
+
+.ep-txn-timeline__stage {
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.ep-txn-timeline__stage--has-next {
+  margin-bottom: 28px;
+}
+
+.ep-txn-timeline__dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--indigo);
+  border: 3px solid var(--panel);
+  box-shadow: 0 0 0 2px var(--indigo);
+}
+
+.ep-txn-timeline__line {
+  position: absolute;
+  left: 7px;
+  top: 16px;
+  width: 2px;
+  height: 28px;
+  background: var(--border);
+}
+
+.ep-txn-timeline__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-txn-timeline__stage-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.ep-txn-timeline__stage-info {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ep-txn-timeline__hash-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.ep-txn-timeline__chain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  margin-top: -2px;
+}
+
+.ep-chain-logo {
+  width: 24px !important;
+  height: 24px !important;
+  object-fit: contain;
+}
+
+.ep-chain-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.ep-txn-timeline__hash {
+  font-family: 'DM Mono', monospace;
+  color: var(--indigo-text);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.ep-txn-timeline__hash-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--indigo-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ep-txn-timeline__hash-link:hover {
+  background: var(--indigo-tint);
+  color: var(--indigo);
+}
+
+.ep-txn-timeline__link-icon {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.6;
+  transition: opacity 0.12s ease;
+}
+
+.ep-txn-timeline__hash-link:hover .ep-txn-timeline__link-icon {
+  opacity: 1;
+}
+
+.ep-txn-timeline__payer {
+  font-family: 'DM Mono', monospace;
+}
+
+.ep-txn-timeline__pending {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.ep-txn-timeline__gas {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ep-txn-timeline__gas-label {
+  font-weight: 500;
+}
+
+.ep-txn-timeline__gas-usd {
+  color: var(--indigo-text);
+  font-weight: 500;
+  font-family: 'DM Mono', monospace;
+}
+
+/* ── Settlement Status Boxes ──────────────────────────────────────── */
+
+.ep-txn-settlement {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.ep-txn-settlement__box {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.ep-txn-settlement__box--crypto {
+  background: color-mix(in srgb, #1a8a4a 6%, var(--panel));
+  border-color: color-mix(in srgb, #1a8a4a 15%, var(--border));
+}
+
+.ep-txn-settlement__box--fiat {
+  background: color-mix(in srgb, #b47700 6%, var(--panel));
+  border-color: color-mix(in srgb, #b47700 15%, var(--border));
+}
+
+.ep-txn-settlement__title {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-txn-settlement__status {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ep-txn-settlement__status--confirmed {
+  color: #1a8a4a;
+  font-weight: 500;
+}
+
+.ep-txn-settlement__status--pending {
+  color: #b47700;
+}
+
+.ep-txn-settlement__status--failed {
+  color: #c62828;
+}
+
+.ep-txn-settlement__hash {
+  font-size: 11px;
+  color: var(--muted2);
+  word-break: break-all;
+  font-family: 'DM Mono', monospace;
+  margin-top: 6px;
+}
+
+.ep-txn-settlement__psp {
+  font-size: 11px;
+  color: var(--muted2);
+  margin-top: 6px;
+}
+
+/* ── Fee Breakdown ─────────────────────────────────────────────────── */
+
+.ep-txn-detail__fees {
+  padding: 16px;
+  background: var(--surface2);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.ep-txn-detail__section-title {
+  margin: 0 0 12px 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ep-txn-detail__fee-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink);
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.ep-txn-detail__fee-row:last-child {
+  margin-bottom: 0;
+}
+
+.ep-txn-detail__fee-row span:last-child {
+  font-weight: 600;
+  font-family: 'DM Mono', monospace;
+  text-align: right;
+}
+
+/* ── Timestamps ───────────────────────────────────────────────────── */
+
+.ep-txn-detail__timestamps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface2);
+  border-radius: 12px;
+}
+
+.ep-txn-detail__timestamp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ep-txn-detail__timestamp span:first-child {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ep-txn-detail__timestamp span:last-child {
+  font-size: 13px;
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+}
+
+
+/* ── Notifications & Live Updates ──────────────────────────────────── */
+
+/* Toast Notification */
+.ep-notification-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border-left: 4px solid var(--indigo);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  animation: ep-toast-enter 0.3s ease-out;
+  margin-bottom: 10px;
+}
+
+.ep-notification-toast--exit {
+  animation: ep-toast-exit 0.3s ease-out forwards;
+}
+
+@keyframes ep-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ep-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.ep-notification-toast__content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.ep-notification-toast__icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.ep-notification-toast__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-notification-toast__title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-notification-toast__message {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ep-notification-toast__amount {
+  margin-top: 4px;
+  color: var(--indigo);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.ep-notification-toast__close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted2);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  transition: color 0.12s ease;
+}
+
+.ep-notification-toast__close:hover {
+  color: var(--ink);
+}
+
+/* Notification Center */
+.ep-notification-center {
+  position: relative;
+  display: inline-block;
+}
+
+.ep-notification-center__bell {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s ease;
+}
+
+.ep-notification-center__bell:hover {
+  color: var(--indigo);
+}
+
+.ep-notification-center__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #c62828;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ep-notification-center__dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 500px;
+}
+
+.ep-notification-center__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.ep-notification-center__title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-notification-center__unread {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c62828;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ep-notification-center__list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.ep-notification-center__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--border);
+  background: var(--panel);
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  transition: background 0.12s ease;
+}
+
+.ep-notification-center__item:hover {
+  background: var(--surface2);
+}
+
+.ep-notification-center__item--unread {
+  background: color-mix(in srgb, var(--indigo) 4%, var(--panel));
+}
+
+.ep-notification-center__item-left {
+  display: flex;
+  gap: 10px;
+}
+
+.ep-notification-center__item-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.ep-notification-center__item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ep-notification-center__item-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ep-notification-center__item-message {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ep-notification-center__item-amount {
+  margin-top: 2px;
+  color: var(--indigo);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.ep-notification-center__item-time {
+  color: var(--muted2);
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.ep-notification-center__item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--indigo);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ep-notification-center__empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ep-notification-center__footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.ep-notification-center__view-all {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--indigo-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: center;
+  transition: color 0.12s ease;
+}
+
+.ep-notification-center__view-all:hover {
+  color: var(--indigo);
+  text-decoration: underline;
+}
+
+/* Live Deposits Widget */
+.ep-live-deposits-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, #1a8a4a 6%, var(--panel)) 0%, var(--panel) 100%);
+  border: 1px solid color-mix(in srgb, #1a8a4a 15%, var(--border));
+}
+
+.ep-live-deposits-widget__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ep-live-deposits-widget__title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ep-live-deposits-widget__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a8a4a;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ep-live-deposits-widget__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a8a4a;
+  animation: ep-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ep-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.ep-live-deposits-widget__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-live-deposits-widget__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: var(--panel);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, #1a8a4a 10%, var(--border));
+  transition: all 0.3s ease;
+}
+
+.ep-live-deposits-widget__item--new {
+  animation: ep-deposit-new 1s ease-out;
+  box-shadow: 0 0 20px color-mix(in srgb, #1a8a4a 30%, transparent);
+}
+
+@keyframes ep-deposit-new {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    box-shadow: 0 0 40px color-mix(in srgb, #1a8a4a 40%, transparent);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    box-shadow: 0 0 0px color-mix(in srgb, #1a8a4a 0%, transparent);
+  }
+}
+
+.ep-live-deposits-widget__item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-live-deposits-widget__item-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ep-live-deposits-widget__item-icon--confirmed {
+  background: #e8f5e9;
+  color: #1a8a4a;
+}
+
+.ep-live-deposits-widget__item-icon--pending {
+  background: #fff3e0;
+  color: #b47700;
+}
+
+.ep-live-deposits-widget__item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ep-live-deposits-widget__item-source {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ep-live-deposits-widget__item-time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ep-live-deposits-widget__item-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.ep-live-deposits-widget__item-currency {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ep-live-deposits-widget__footer {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, #1a8a4a 10%, var(--border));
+}
+
+.ep-live-deposits-widget__view-all {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #1a8a4a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: center;
+  transition: color 0.12s ease;
+}
+
+.ep-live-deposits-widget__view-all:hover {
+  color: var(--indigo);
+  text-decoration: underline;
+}
+
+
+/* ── Enhanced Dashboard Layout ────────────────────────────────────── */
+
+.ep-notification-stack {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ep-notification-stack > * {
+  pointer-events: all;
+}
+
+.ep-enhanced-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+.ep-enhanced-dashboard__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-enhanced-dashboard__header h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ep-enhanced-dashboard__controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ep-enhanced-dashboard__content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ep-enhanced-dashboard__tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+  margin: 0;
+  background: var(--panel);
+  border-radius: 16px 16px 0 0;
+}
+
+.ep-enhanced-dashboard__tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.ep-enhanced-dashboard__tab:hover {
+  color: var(--ink);
+}
+
+.ep-enhanced-dashboard__tab--active {
+  color: var(--indigo);
+  border-bottom-color: var(--indigo);
+}
+
+@media (max-width: 1024px) {
+  .ep-notification-stack {
+    max-width: 90vw;
+    right: 5vw;
+  }
+
+  .ep-enhanced-dashboard {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .ep-enhanced-dashboard__content {
+    gap: 16px;
+  }
+
+  .ep-enhanced-dashboard__header h1 {
+    font-size: 24px;
+  }
+}
+
+
+/* ── Improved Modal Design (High Contrast & Readable) ─────────────── */
+
+/* Override existing modal styles for better UX */
+.ep-modal-overlay {
+  background: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(4px);
+}
+
+.ep-modal {
+  background: var(--panel) !important;
+  border: none !important;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.3) !important;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Transaction Detail Modal Improvements */
+.ep-txn-detail {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+/* Hero: Mboka letterhead + status-tinted panel. Tone comes from
+   lib/services/transactionStatus.ts (success = indigo, warning = amber,
+   danger = red, neutral = grey) — the same mapping as badges and PDFs. */
+.ep-txn-detail__hero {
+  --hero-tone: var(--muted);
+  --hero-tint: var(--surface2);
+  position: relative;
+  padding: 16px 20px 22px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--hero-tint) 0%, transparent 70%),
+    var(--panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--hero-tone);
+  border-radius: 22px;
+  margin: 0;
+}
+
+.ep-txn-detail__hero--success { --hero-tone: var(--success); --hero-tint: var(--success-tint); --hero-text: var(--indigo-text); }
+.ep-txn-detail__hero--warning { --hero-tone: var(--amber); --hero-tint: var(--amber-tint); --hero-text: var(--amber-text); }
+.ep-txn-detail__hero--danger  { --hero-tone: var(--red); --hero-tint: var(--red-tint); --hero-text: var(--red-text); }
+.ep-txn-detail__hero--neutral { --hero-tone: var(--muted2); --hero-tint: var(--surface2); --hero-text: var(--muted); }
+
+.ep-txn-detail__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px dashed var(--border);
+  color: var(--ink);
+  text-align: left;
+  /* Clear the modal's close button, which sits over the hero's top-right. */
+  padding-right: 52px;
+}
+
+.ep-txn-detail__brand-kind {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.ep-txn-detail__status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  color: var(--hero-tone);
+  background: var(--hero-tint);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--hero-tint) 55%, transparent);
+}
+
+.ep-txn-detail__hero--success .ep-txn-detail__status-icon {
+  color: var(--indigo-on);
+  background: var(--success);
+}
+
+.ep-txn-detail__hero--warning .ep-txn-detail__status-icon svg {
+  animation: ep-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-txn-detail__hero--warning .ep-txn-detail__status-icon svg { animation: none; }
+}
+
+.ep-txn-detail__amount {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+/* Green only once incoming money has actually settled. */
+.ep-txn-detail__hero--success .ep-txn-detail__amount--in {
+  color: var(--positive) !important;
+}
+
+.ep-txn-detail__hero--danger .ep-txn-detail__amount {
+  color: var(--muted) !important;
+}
+
+.ep-txn-detail__party {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.ep-txn-detail__status {
+  display: inline-flex;
+}
+
+.ep-txn-detail__live {
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--indigo) 6%, var(--panel));
+  border-bottom: 1px solid color-mix(in srgb, var(--indigo) 20%, var(--border));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--indigo-text);
+}
+
+.ep-txn-detail__live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--indigo);
+  animation: ep-pulse 2s ease-in-out infinite;
+  display: inline-block;
+}
+
+.ep-txn-detail__progress {
+  list-style: none;
+  padding: 20px;
+  margin: 0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.ep-txn-detail__step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  text-align: center;
+}
+
+.ep-txn-detail__step-line {
+  position: absolute;
+  left: -50%;
+  top: 16px;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.ep-txn-detail__step--done .ep-txn-detail__step-line {
+  background: var(--indigo);
+}
+
+.ep-txn-detail__step:first-child .ep-txn-detail__step-line {
+  display: none;
+}
+
+.ep-txn-detail__step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  position: relative;
+  z-index: 1;
+  transition: all 0.2s ease;
+}
+
+.ep-txn-detail__step--done .ep-txn-detail__step-dot {
+  border-color: var(--indigo);
+  background: var(--indigo);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--indigo) 10%, var(--panel));
+}
+
+.ep-txn-detail__step--current .ep-txn-detail__step-dot {
+  border-color: var(--indigo);
+  background: var(--panel);
+  box-shadow: 0 0 8px var(--indigo);
+  animation: ep-pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes ep-pulse-ring {
+  0%, 100% {
+    box-shadow: 0 0 8px var(--indigo), 0 0 0 0px color-mix(in srgb, var(--indigo) 20%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 8px var(--indigo), 0 0 0 8px color-mix(in srgb, var(--indigo) 10%, transparent);
+  }
+}
+
+.ep-txn-detail__step-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 1;
+}
+
+.ep-txn-detail__step--done .ep-txn-detail__step-label {
+  color: var(--indigo);
+  font-weight: 700;
+}
+
+.ep-txn-detail__step--current .ep-txn-detail__step-label {
+  color: var(--indigo);
+  font-weight: 700;
+}
+
+/* Transaction Details Grid */
+.ep-txn-detail__section {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.ep-txn-detail__section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0 0 14px 0;
+  display: block;
+}
+
+.ep-txn-detail__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--surface2);
+}
+
+.ep-txn-detail__row:last-child {
+  border-bottom: none;
+}
+
+.ep-txn-detail__label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ep-txn-detail__value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  word-break: break-word;
+}
+
+.ep-txn-detail__value.ep-mono {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Modal Header */
+.ep-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.ep-modal__title {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.ep-modal__close {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 18px;
+  transition: all 0.12s ease;
+}
+
+.ep-modal__close:hover {
+  background: var(--surface3);
+  color: var(--ink);
+}
+
+/* Badge inside the detail hero follows the status tone (was hard-coded amber
+   for every status). Text uses the AA-safe -text shades. */
+.ep-txn-detail .ep-activity__badge {
+  background: var(--hero-tint, var(--surface2)) !important;
+  color: var(--hero-text, var(--muted)) !important;
+  border: 1px solid color-mix(in srgb, var(--hero-tone, var(--muted)) 22%, var(--border));
+  padding: 6px 10px;
+  border-radius: 20px;
+}
+
+.ep-txn-detail .ep-activity__badge--md {
+  font-size: 12px;
+}
+

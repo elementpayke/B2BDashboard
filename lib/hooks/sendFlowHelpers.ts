@@ -371,6 +371,28 @@ export function friendlySendAcceptError(
   );
 }
 
+type DepositAutoFundErrorData = {
+  field?: string;
+  auto_fund?: boolean;
+};
+
+/**
+ * Accept-time failure for a Stellar OffRamp that was meant to auto-fund from
+ * the business's own ElementPay Stellar wallet (``data.auto_fund === true``
+ * from the aggregator). The underlying message is already short ("Insufficient
+ * balance", "This wallet cannot send", "Destination cannot receive this
+ * asset") — this just frames it so the user understands *why* the order
+ * didn't go to "awaiting deposit" the way an external-wallet OffRamp would.
+ */
+export function friendlyDepositAcceptError(message: string, data?: unknown): string {
+  const d = data && typeof data === "object" ? (data as DepositAutoFundErrorData) : null;
+  if (d?.auto_fund) {
+    const reason = (message || "").trim() || "the transfer failed";
+    return `Couldn't send USDC automatically from your ElementPay Stellar wallet (${reason}). Top up the wallet, or choose a different funding wallet, and try again.`;
+  }
+  return message || "Couldn't confirm the top-up. Try again.";
+}
+
 /** The four entry points on the Send method chooser. `internal` opens
  *  Convert in stablecoin → fiat mode (USDC/USDT into deposit VAs). */
 export type SendMethod = "bank" | "mobile" | "crypto" | "internal";

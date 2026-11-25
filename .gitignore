@@ -45,3 +45,10 @@ next-env.d.ts
 
 # SDP sample destination secrets (never commit)
 **/*.SECRETS.txt
+storybook-static/
+debug-storybook.log
+
+# Claude Code
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md

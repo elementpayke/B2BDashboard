@@ -1,0 +1,33 @@
+{
+  // Strict typecheck for new code. The root tsconfig stays non-strict for
+  // the legacy screens; anything in these folders must pass strict mode.
+  // Add a folder here when you migrate it (part of `npm run typecheck`).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": false,
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "vitest.setup.ts",
+    "components/ui/Amount.tsx",
+    "components/ui/Badge.tsx",
+    "components/ui/Button.tsx",
+    "components/ui/Card.tsx",
+    "components/ui/Dialog.tsx",
+    "components/ui/EmptyState.tsx",
+    "components/ui/Field.tsx",
+    "components/ui/Input.tsx",
+    "components/ui/Skeleton.tsx",
+    "components/ui/primitives.test.tsx",
+    "components/patterns/**/*.ts",
+    "components/patterns/**/*.tsx",
+    "features/**/*.ts",
+    "features/**/*.tsx",
+    "lib/api/**/*.ts",
+    "lib/utils.ts",
+    "lib/theme/**/*.ts"
+  ]
+}

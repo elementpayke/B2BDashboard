@@ -50,8 +50,9 @@ export default function CloseAccountModal({
             {networkLabel ? ` on ${networkLabel}` : ""} afterwards.
           </p>
           <p className="ep-fund-chooser__option-warn">
-            Existing deposit addresses stop working, and the balance must be zero.
-            Move funds out first.
+            {currency && !networkLabel
+              ? "Bank deposit details for this account stop working, and the balance must be zero. Move funds out first."
+              : "Existing deposit addresses stop working, and the balance must be zero. Move funds out first."}
           </p>
         </>
       )}

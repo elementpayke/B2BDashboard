@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
+import Turnstile from "@/components/auth/Turnstile";
 import {
   AUTH_INK,
   authPageStyle,
@@ -25,6 +26,8 @@ import {
 import AuthBrand from "@/components/brand/AuthBrand";
 import { stashResetEmail } from "@/lib/auth/resetHandoff";
 
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
+
 function forgotPasswordErrorMessage(err: unknown): string {
   if (err instanceof ApiRequestError) return err.message;
   if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
@@ -43,6 +46,8 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileBlocked = Boolean(TURNSTILE_SITE_KEY) && !turnstileToken;
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,7 +55,7 @@ export default function ForgotPasswordPage() {
     setSubmitting(true);
 
     try {
-      await authApi.forgotPassword(email);
+      await authApi.forgotPassword(email, turnstileToken ?? undefined);
       setSubmitted(true);
     } catch (err) {
       setError(forgotPasswordErrorMessage(err));
@@ -143,7 +148,13 @@ export default function ForgotPasswordPage() {
           />
         </div>
 
-        <button type="submit" style={authButtonStateStyle(submitting)} disabled={submitting}>
+        <Turnstile siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+
+        <button
+          type="submit"
+          style={authButtonStateStyle(submitting || turnstileBlocked)}
+          disabled={submitting || turnstileBlocked}
+        >
           {submitting ? "Sending…" : "Send reset code"}
         </button>
 

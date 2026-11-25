@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState } from "react";
+import { QK } from "@/lib/api/queryKeys";
+import { useId, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { authApi, authMePlaceholderFromLogin, loginNeedsMfa } from "@/lib/services/auth";
@@ -26,6 +27,7 @@ import {
 } from "@/components/auth/authStyles";
 import AuthBrand from "@/components/brand/AuthBrand";
 import Turnstile from "@/components/auth/Turnstile";
+import OtpInput from "@/components/auth/OtpInput";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
@@ -170,8 +172,8 @@ export default function LoginForm() {
       }
       // Seed shell identity/KYB from login so Home doesn't wait on /me alone,
       // then invalidate so the real `/me` replaces the placeholder promptly.
-      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
-      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      queryClient.setQueryData([QK.authMe], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       proceedToNext();
     } catch (err) {
       setError(loginErrorMessage(err));
@@ -180,21 +182,34 @@ export default function LoginForm() {
     }
   }
 
-  async function onSubmitMfaCode(e: React.FormEvent) {
-    e.preventDefault();
-    if (!mfaCode.trim()) return;
+  const submitMfaRef = useRef<((code: string) => void) | null>(null);
+
+  async function verifyMfaCode(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed || mfaSubmitting) return;
     setMfaError(null);
     setMfaSubmitting(true);
     try {
-      const login = await mfaApi.verify(mfaCode.trim());
-      queryClient.setQueryData(["auth-me"], authMePlaceholderFromLogin(login, email));
-      void queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      const login = await mfaApi.verify(trimmed);
+      queryClient.setQueryData([QK.authMe], authMePlaceholderFromLogin(login, email));
+      void queryClient.invalidateQueries({ queryKey: [QK.authMe] });
       proceedToNext();
     } catch (err) {
       setMfaError(mfaErrorMessage(err));
+      // A rejected code is almost always a stale one (they rotate every 30s),
+      // so clear it: retyping over six stale digits is worse than starting
+      // fresh, and a half-cleared field invites a second failure.
+      setMfaCode("");
     } finally {
       setMfaSubmitting(false);
     }
+  }
+
+  submitMfaRef.current = verifyMfaCode;
+
+  async function onSubmitMfaCode(e: React.FormEvent) {
+    e.preventDefault();
+    await verifyMfaCode(mfaCode);
   }
 
   const inputStyle = error ? authInputErrorStyle : authInputStyle;
@@ -221,26 +236,55 @@ export default function LoginForm() {
           ) : null}
 
           <div style={authFieldRowStyle}>
-            <label htmlFor="mfa-code" style={authLabelStyle}>
+            <label
+              htmlFor={useBackupCode ? "mfa-code" : undefined}
+              style={authLabelStyle}
+              id="mfa-code-label"
+            >
               {useBackupCode ? "Backup code" : "6-digit code"}
             </label>
-            <input
-              id="mfa-code"
-              name="mfa-code"
-              inputMode={useBackupCode ? "text" : "numeric"}
-              autoComplete="one-time-code"
-              autoFocus
-              value={mfaCode}
-              onChange={(e) => {
-                setMfaCode(useBackupCode ? e.target.value : e.target.value.replace(/[^0-9]/g, ""));
-                if (mfaError) setMfaError(null);
-              }}
-              style={mfaError ? authInputErrorStyle : authInputStyle}
-              placeholder={useBackupCode ? "xxxx-xxxx" : "000000"}
-              maxLength={useBackupCode ? 32 : 6}
-              disabled={mfaSubmitting}
-              aria-invalid={mfaError ? true : undefined}
-            />
+
+            {useBackupCode ? (
+              <input
+                id="mfa-code"
+                name="mfa-code"
+                inputMode="text"
+                autoComplete="one-time-code"
+                autoFocus
+                value={mfaCode}
+                onChange={(e) => {
+                  setMfaCode(e.target.value);
+                  if (mfaError) setMfaError(null);
+                }}
+                style={mfaError ? authInputErrorStyle : authInputStyle}
+                placeholder="xxxx-xxxx"
+                maxLength={32}
+                disabled={mfaSubmitting}
+                aria-invalid={mfaError ? true : undefined}
+              />
+            ) : (
+              <OtpInput
+                label="6-digit verification code"
+                describedBy="mfa-code-hint"
+                value={mfaCode}
+                autoFocus
+                disabled={mfaSubmitting}
+                invalid={Boolean(mfaError)}
+                onChange={(next) => {
+                  setMfaCode(next);
+                  if (mfaError) setMfaError(null);
+                }}
+                // Six digits is the whole input — making the user then reach
+                // for a button is a pointless extra step.
+                onComplete={(code) => submitMfaRef.current?.(code)}
+              />
+            )}
+
+            <p id="mfa-code-hint" style={authHintStyle}>
+              {useBackupCode
+                ? "Each backup code works once. Enter one you haven't used yet."
+                : "Codes refresh every 30 seconds — if this one is rejected, wait for the next."}
+            </p>
           </div>
 
           <button

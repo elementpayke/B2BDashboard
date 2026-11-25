@@ -1,0 +1,246 @@
+/**
+ * Convert routing: derive the rail from the pair the user picked.
+ *
+ * Convert used to make the user choose a *mode* first ("Fiat → Stablecoin",
+ * "Stablecoin → Fiat", "Fiat ↔ Fiat") and then filtered the account lists to
+ * match. That is backwards: the user knows which two of *their* accounts they
+ * want to move between, not which of our three backends services that pair.
+ * Worse, it made a whole advertised product unreachable — USDC ↔ USDT has no
+ * tab, so the UI offered no route for it at all.
+ *
+ * So the pair is the input and the rail is the output:
+ *
+ *   1. same currency, different account          → book transfer (free)
+ *   2. EUR/GBP/USD ↔ USDC/USDT, no Stellar leg    → ramp
+ *   3. every other pair of different currencies  → ledger conversion
+ *
+ * The ledger conversion endpoint picks its own sub-route — `direct` when both
+ * accounts are Nuvion ledger accounts, `bridged` (CCTP via a Nuvion Base USDC
+ * account) when either is an Element Stellar USDC account — and names it as
+ * `route` on the preview. See the aggregator's `app/docs/partner/CONVERSIONS.md`.
+ *
+ * Refused here, before the user types an amount, is only what the backend
+ * refuses on structure alone: the same account twice, and the same currency
+ * on two stablecoin accounts (not a conversion — that is a Send). Which
+ * currencies convert is the backend's call; a rejected one comes back as a
+ * 422 carrying `data.supported`, which the UI renders.
+ */
+
+import {
+  isRampFiatCurrency,
+} from "@/lib/services/conversions";
+import { isStellarNetwork } from "@/lib/stellar/network";
+
+/** The only stablecoins any convert rail accepts. */
+export const CONVERT_STABLECOINS = ["USDC", "USDT"] as const;
+
+/**
+ * There is deliberately no `LEDGER_CONVERTIBLE_CURRENCIES` list here.
+ *
+ * There used to be: a mirror of `_ALLOWED_CURRENCIES` from the aggregator's
+ * `customer_conversion.py`, back when that was a hand-written set of seven
+ * fiats plus the stablecoins. The aggregator's gate is now "can the customer
+ * hold this currency" (`NUVION_FIAT_CATALOG` plus the stablecoins, ~32 codes),
+ * and the stale copy here is what refused KES → USD in the UI while both the
+ * backend and the published pricing allowed it.
+ *
+ * Holding an account *is* the precondition, and both legs of a convert come
+ * from the customer's own accounts — so there is nothing left for the client
+ * to check. A list here can only ever be wrong in one direction: refusing a
+ * pair the backend would have quoted. Whether a specific pair is quotable is
+ * the provider's answer to give, and it comes back as a 422 naming the pair.
+ *
+ * If you are about to add the list back, add it to the aggregator instead.
+ */
+
+export type ConvertAssetKind = "fiat" | "stablecoin";
+
+export function convertAssetKind(code: string | null | undefined): ConvertAssetKind {
+  const upper = String(code ?? "").trim().toUpperCase();
+  return (CONVERT_STABLECOINS as readonly string[]).includes(upper)
+    ? "stablecoin"
+    : "fiat";
+}
+
+/** One side of the pair. `network` only matters for stablecoins. */
+export type ConvertRouteLeg = {
+  id: string;
+  currency: string;
+  network?: string | null;
+};
+
+export type ConvertRouteKind =
+  /** One or both legs not chosen yet. Not an error. */
+  | "incomplete"
+  | "book_transfer"
+  | "ramp"
+  | "ledger_fx"
+  | "unsupported";
+
+export type ConvertRoute = {
+  kind: ConvertRouteKind;
+  /** Plain-language line under the pickers naming the rail. */
+  summary: string;
+  /** Copy for the quote's "Settles via" row. Empty when there is no rail. */
+  settlesVia: string;
+  /** Why this pair is refused. Empty unless `kind` is "unsupported". */
+  reason: string;
+};
+
+/** True for an Element-provisioned Stellar account — such a pair is `bridged`. */
+export function isStellarLeg(leg: ConvertRouteLeg | null | undefined): boolean {
+  return Boolean(leg) && isStellarNetwork(leg?.network);
+}
+
+/** "EUR, USD and GBP" — so refusals can name the real set without a wall of commas. */
+export function listCurrencies(codes: readonly string[]): string {
+  const list = codes.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+  if (list.length === 0) return "";
+  if (list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
+function normalizeLeg(
+  leg: ConvertRouteLeg | null | undefined,
+): ConvertRouteLeg | null {
+  if (!leg) return null;
+  const currency = String(leg.currency ?? "").trim().toUpperCase();
+  const id = String(leg.id ?? "").trim();
+  if (!id || !currency) return null;
+  return { id, currency, network: leg.network ?? null };
+}
+
+function unsupported(reason: string): ConvertRoute {
+  return { kind: "unsupported", summary: "Not available", settlesVia: "", reason };
+}
+
+/**
+ * The route for a (source, destination) pair.
+ *
+ * Pure and total: every pair gets an answer, and an unsupported one carries
+ * copy that names the actual currency at fault rather than "unsupported pair".
+ */
+export function resolveConvertRoute(
+  source: ConvertRouteLeg | null | undefined,
+  destination: ConvertRouteLeg | null | undefined,
+): ConvertRoute {
+  const src = normalizeLeg(source);
+  const dst = normalizeLeg(destination);
+
+  if (!src || !dst) {
+    return {
+      kind: "incomplete",
+      summary: "Pick an account to convert from and an account to receive.",
+      settlesVia: "",
+      reason: "",
+    };
+  }
+
+  if (src.id === dst.id) {
+    return unsupported(
+      "Pick two different accounts — money has to land somewhere other than where it started.",
+    );
+  }
+
+  const srcKind = convertAssetKind(src.currency);
+  const dstKind = convertAssetKind(dst.currency);
+
+  // ── Route 1: same currency → book transfer ───────────────────────────────
+  //
+  // Free, per pricing sheet s1 ("Transfers between Mboka accounts (any
+  // currency): Free"), and open to every currency a customer can hold — the
+  // aggregator puts no allowlist on book transfers. It does require *fiat*
+  // on both legs: `_assert_active_fiat` in `book_transfer.py` 422s a
+  // stablecoin account with "Book transfers are only supported on fiat
+  // accounts". Two same-currency stablecoin accounts therefore have no rail
+  // here at all — conversion refuses them too, because
+  // `customer_conversion.py` requires `from_ccy != to_ccy`.
+  if (src.currency === dst.currency) {
+    if (srcKind === "fiat" && dstKind === "fiat") {
+      return {
+        kind: "book_transfer",
+        summary: "Same currency — moves instantly between your accounts, no fee.",
+        settlesVia: "Book transfer · your accounts",
+        reason: "",
+      };
+    }
+    return unsupported(
+      `${src.currency} → ${src.currency} isn't a conversion, and book transfers run on fiat accounts only. ` +
+        `Use Send to move ${src.currency} between your stablecoin accounts.`,
+    );
+  }
+
+  // ── Route 2: EUR/GBP/USD ↔ stablecoin, no Stellar leg → ramp ────────────
+  //
+  // Mboka `POST /v1/conversions/quote`, whose `resolve_pair` accepts only
+  // EUR/GBP/USD against USDC|USDT. Anything the ramp can't price — another
+  // fiat, or an Element Stellar account (the ramp has no bridge) — falls
+  // through to the ledger conversion, which can.
+  const stellar = isStellarLeg(src) || isStellarLeg(dst);
+  if (srcKind !== dstKind && !stellar) {
+    const fiat = srcKind === "fiat" ? src : dst;
+    const stable = srcKind === "fiat" ? dst : src;
+    if (isRampFiatCurrency(fiat.currency)) {
+      const onRamp = srcKind === "fiat";
+      return {
+        kind: "ramp",
+        summary: onRamp
+          ? `On-ramp — buys ${stable.currency} with your ${fiat.currency} balance.`
+          : `Off-ramp — sells ${stable.currency} into your ${fiat.currency} balance.`,
+        settlesVia: `Conversion order · ${src.currency} → ${dst.currency}`,
+        reason: "",
+      };
+    }
+  }
+
+  // ── Route 3: a Stellar leg → bridged ledger conversion ──────────────────
+  //
+  // An Element Stellar account isn't a Nuvion ledger account, so the
+  // aggregator bridges it over CCTP via a Nuvion Base USDC account and
+  // returns `route: "bridged"`. The destination amount is priced when the
+  // USDC lands, minutes later.
+  if (stellar) {
+    return {
+      kind: "ledger_fx",
+      summary: `Moves USDC on-chain, then converts — ${src.currency} to ${dst.currency}. Takes a few minutes.`,
+      settlesVia: "Bridged · CCTP + ledger FX",
+      reason: "",
+    };
+  }
+
+  // ── Route 3: every other pair → direct ledger conversion ───────────────
+  //
+  // Fiat ↔ fiat, stablecoin ↔ stablecoin, and fiat ↔ stablecoin the ramp
+  // won't price all go to the aggregator's customer conversions
+  // (`/v1/entities/{entity_id}/accounts/{account_id}/conversions/preview`),
+  // whose only pair rule is `from != to` once both currencies are in
+  // `_ALLOWED_CURRENCIES`. That is what makes USDC ↔ USDT work — and why it
+  // must NOT go through Mboka's `/v1/conversions/quote`, whose `resolve_pair`
+  // explicitly raises "stablecoin-to-stablecoin conversions are not
+  // supported".
+  // No currency gate here on purpose. The aggregator accepts any currency the
+  // customer can hold, and every leg above came from their own accounts, so a
+  // client-side list could only ever be wrong in one direction: refusing a
+  // pair the backend would have quoted. That is exactly what happened to
+  // KES → USD. An unquotable pair now returns a 422 naming both currencies,
+  // which is a better answer than a guess made here.
+
+  return {
+    kind: "ledger_fx",
+    summary:
+      srcKind === "stablecoin"
+        ? `Converts on the ledger — ${src.currency} to ${dst.currency}, one quote, one confirm.`
+        : "Converts on the ledger — one quote, one confirm.",
+    settlesVia: "Ledger FX · same customer",
+    reason: "",
+  };
+}
+
+/** True when a route can actually be quoted. */
+export function isQuotableRoute(route: ConvertRoute): boolean {
+  return (
+    route.kind === "book_transfer" ||
+    route.kind === "ramp" ||
+    route.kind === "ledger_fx"
+  );
+}

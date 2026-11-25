@@ -15,7 +15,7 @@ const TONES = [
   "color-mix(in srgb, var(--indigo) 72%, #1a1630)",
   "color-mix(in srgb, var(--ink) 85%, var(--indigo))",
   "color-mix(in srgb, #3d2a1f 80%, var(--amber))",
-  "color-mix(in srgb, #1f3d36 75%, var(--success))",
+  "color-mix(in srgb, #1f3d36 75%, var(--positive))",
   "color-mix(in srgb, #2a2440 70%, var(--indigo))",
 ];
 

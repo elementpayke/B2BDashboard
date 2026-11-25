@@ -21,6 +21,31 @@ flows during e2e testing — see `lib/server/mbokaProxy.ts` and its test for
 the exact failure mode). See
 `lib/server/mbokaProxy.ts`.
 
+## Typed client & spec snapshot
+
+New integrations use the typed client in `lib/api/mboka.ts`:
+`mboka.get("/v1/transactions/{transaction_id}", { path: { transaction_id } })`.
+Paths, params, request bodies and the unwrapped envelope `data` type come from
+`lib/api/generated/mboka.ts`, generated (`npm run api:gen`, openapi-typescript)
+from `lib/api/openapi.json` — a snapshot of Mboka's FastAPI spec trimmed to the
+proxy allowlist (`v1`, `api-keys`, `businesses`; never `webhooks`) by
+`npm run api:spec`. Transport is the existing `apiEnvelope`, so the BFF proxy,
+cookie auth, refresh-on-401 and error semantics are unchanged. CI fails if the
+generated types don't match the committed snapshot.
+
+Refresh the snapshot when the backend changes:
+`npm run api:spec` (Mboka on :8000) or, without a server,
+`(cd ../Mboka-Backend && myenv/bin/python -c "import json; from app.main import app; print(json.dumps(app.openapi()))") > /tmp/mboka-openapi.json && npm run api:spec -- --file /tmp/mboka-openapi.json`,
+then `npm run api:gen`.
+
+Snapshot taken from Mboka-Backend `7e89460`: 141 dashboard-reachable paths.
+About 40% of all backend operations declare no `response_model`; those return
+`unknown` here and must be normalized (fail closed) in `lib/services`. Adding
+response models upstream is the highest-leverage way to improve type coverage.
+
+TanStack Query keys are built from `QK` (`lib/api/queryKeys.ts`); ESLint
+rejects string-literal keys.
+
 ## Wired (real backend calls)
 
 | Area | Endpoints | Notes |
@@ -31,7 +56,7 @@ the exact failure mode). See
 | Account credits (Stellar inbound) | `GET /v1/account-credits`, `GET /v1/account-credits/{id}` | Partner `account.credited` projections (e.g. Freighter/QR USDC top-ups observed against a business FinancialAccount). Mapped in `lib/services/accountCredits.ts` → dashboard `Transaction` via `mapAccountCreditToTransaction`. Required: id, amount, financial_account_id, observed_at. `tx_hash` / `memo` never invented when omitted. If the running Mboka env returns 404, UI surfaces must fail closed (no mock credits). On Stellar USDC account detail, these rows are now only used to enrich/link matching Horizon payments; the recent list itself is Horizon-backed. See Stellar inbound mapping notes below. |
 | Order status lifecycle | `GET /v1/orders/{merchant_order_id}` | Post-accept, `lib/hooks/useOrderStatus.ts` polls with exponential backoff (2s → 30s cap) until the order reaches a terminal status (`completed`/`failed`/`refunded`/`canceled`) or freezes (`frozen`, needs manual review — not terminal, see `app/services/orders/status.py` `_ALLOWED_TRANSITIONS`). On terminal, it invalidates `["transactions"]`, `["transactions-page"]`, `["transaction", id]`, and `["dashboard-summary"]` so the rest of the app reflects the settled order without a manual refresh. Wired into the tx detail modal and the send-modal success step. |
 | Reports | derived from `dashboard summary` + `transactions` | Volume-by-day and success-rate are computed client-side from fetched transactions, not hardcoded. |
-| Invoices | `POST /v1/invoices/drafts`, `POST /v1/invoices`, `GET /v1/invoices`, `POST /v1/invoices/{id}/mark-paid`, `GET /v1/invoices/{id}/public-link` | The dashboard's simple 2-field ("client" + "amount") modal composes a minimal `DraftPayloadIn` and calls create-draft → issue in sequence. |
+| Invoices | `GET /v1/invoices/summary`, `GET/POST /v1/invoices/drafts`, `POST /v1/invoices`, `GET /v1/invoices`, `GET /v1/invoices/{id}`, `GET /v1/invoices/{id}/payments`, `POST /v1/invoices/{id}/payments/manual`, `POST /v1/invoices/{id}/pdf`, `POST /v1/invoices/{id}/send`, `POST /v1/invoices/{id}/send-reminder`, `POST /v1/invoices/{id}/cancel`, `POST /v1/invoices/{id}/duplicate`, `POST /v1/invoices/{id}/mark-paid` | Full handoff UI on the Invoices screen (list, detail, 3-step create, share sheet). **No hosted payment links** in the UI — customers pay via PDF instructions. Invoice customers (create-flow picker) are dashboard BFF-only: `GET/POST /api/invoice-customers`. **Stellar USDC** auto-reconciles on inbound credits; **USDT / M-Pesa / bank** show on the PDF and can be recorded via manual payment or mark-paid until automated matching ships. |
 | Verification | `GET /api/auth/me` → `kyb_summary.profile.kyb_status`; full KYB wizard via `GET/POST/PATCH /api/businesses/{id}/kyb/*` | **Customer-vault semantics (partner `/partner/customers*` upstream):** requirements → profile → docs → `POST …/kyb/submit` → poll. Status stays **`pending`** through initiate/profile/docs (vault `incomplete`); only final submit flips to **`submitted`** (vault `pending_review` / “In review”). After submit, FE calls `POST …/kyb/status/poll` (sync from vault) and may use `GET …/kyb/status` for cached reads. Money CTAs and deposit-account creation stay gated until `kyb_status === "approved"`. Multipart uploads go through `/api/mboka/...`. |
 | Developer / API keys | `POST/GET/PATCH/DELETE /api-keys/*`, `POST /api-keys/{id}/revoke`, `POST /api-keys/{id}/rotate` | Keeps the original three-row design (secret key / webhook URL / webhook signing secret). The list endpoint (`ApiKeyListOut`) omits `webhook_url`/`webhook_secret`, so each key's detail is fetched via `GET /api-keys/{id}` to fill those rows. Full plaintext key exists only in the create/rotate response — that key's row auto-reveals with working Reveal/Copy; for every other key those two buttons render in place but disabled, with a title explaining the key is only shown once. |
 | Ops liquidity | `GET /v1/liquidity/stellar` | Admin-gated developer panel for the current Stellar stable swap book. Shows pairs plus `refreshed_at`; no trading UI on the merchant nav. |
@@ -159,6 +184,32 @@ the exact failure mode). See
   (`isQuoteAlreadyAcceptedError`). The success screen falls back to its
   generic amount/recipient summary line since the 409 response doesn't
   carry the original accept payload.
+
+## Unified sends (`lib/services/unifiedSends.ts`) — behind `NEXT_PUBLIC_UNIFIED_SENDS`
+
+Source: local checkout `../Mboka-Backend` (branch `feat/unified-sends`, `app/routes/unified_sends.py`, `app/schema/unified_sends.py`); types generated from its OpenAPI spec.
+
+With `NEXT_PUBLIC_UNIFIED_SENDS=true` the Send composer prices and sends every method through one contract. With the flag unset it keeps the order (`/v1/orders/quote` → accept) and account-send (`/v1/accounts/{id}/sends`) wiring described above and below.
+
+| Step | Call | Used for |
+|------|------|----------|
+| Destinations + balances | `GET /v1/sends/options` (cached 5 min, `QK.sendOptions`) | Resolving the picked provider / chain to a `destination_id` |
+| Amount screen | `POST /v1/sends/estimate` (debounced 500 ms, `QK.sendEstimate`) | Indicative fee and total before any recipient is entered; labelled "(estimate)" |
+| Review | `POST /v1/sends/quote` | Binding fee, rate, total debit, receive amount and expiry |
+| Send | `POST /v1/sends` with `Idempotency-Key` | Returns at once in `sending`; one send per quote even on a double click |
+| Status | `GET /v1/sends/{send_id}` (`QK.unifiedSend`) | Polled every 2 s for the first minute, then 5 s; 15 s while a provider refund is pending; stops on a final status |
+
+Mapping rules:
+
+- **Destination lookup** matches country + method + provider name against `options.destinations` and only accepts `status: "live"`. No match fails closed with a message; nothing is guessed.
+- **Source** is the wallet the composer already selected (`source_account_id`), and the amount is sent in that wallet's currency.
+- **Figures are never recomputed.** `total_debit`, `fee`, `receive_amount` and `rate` are shown as returned. `toOrderQuoteShape` / `toSendPreviewShape` only re-label them for the existing review screen.
+- **Status**: `sending` and `processing` both show as processing; `delivered`, `failed` and `refunded` map one to one. `refunded` is its own state.
+- **Failure copy** is `failure.message` from the backend. A confirmed refund shows `refund.amount`, which after a converted send is in the stablecoin it was converted into, not the original currency.
+- **Errors**: every 4xx carries `data.error = {code, message, field, limit}`; `message` is shown as-is. `quote_expired` sends the user back to Review for a fresh price.
+- **Request budget**: Mboka limits requests per peer per minute (`AUTH_FLOOD_GENERAL_PER_MINUTE`, default 60) and the BFF is one peer, so polling and the estimate debounce are deliberately no faster than the existing order tracker.
+
+Not wired yet: saved recipients still use the local store (`/v1/recipients` exists on the backend), the SSE stream (`/v1/sends/{id}/events`) is not proxied by the BFF, and `POST /v1/sends` returns 503 `sends_unavailable` wherever `UNIFIED_SENDS_EXECUTION_ENABLED` is off on the backend.
 
 ## Stellar inbound account-credit mapping notes (`lib/services/accountCredits.ts`, `lib/services/transactions.ts`)
 

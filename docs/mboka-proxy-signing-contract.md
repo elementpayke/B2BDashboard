@@ -14,13 +14,12 @@ HMAC signature computed with a secret only this app's server and the
 backend know. A bare JWT is no longer enough on its own once the backend
 enforces it; the request must also prove it came from this app's server.
 
-**Status:** frontend-only. The backend does not verify or require the
-signature yet — every signed request today is simply extra, currently-unused
-headers riding along on top of the existing JWT-authenticated calls. No
-behavior changes until the backend opts in to checking them. Until then,
-this ships with zero risk of breaking anything: a request with a correct
-signature behaves identically to one without, since nothing currently reads
-these headers upstream.
+**Status:** the dashboard signs whenever `MBOKA_PROXY_SHARED_SECRET` is
+set. Mboka checks the signature only when `MBOKA_PROXY_SIGNATURE_REQUIRED=true`,
+and only on money writes (sends, conversions, book transfers, orders,
+payouts). Reads stay on the JWT. With the flag unset, a signed request and
+an unsigned request behave the same. If the flag is true and this app has
+no secret, the proxy returns 503 and does not send the request.
 
 ## 1. What's signed, and how
 
@@ -63,35 +62,28 @@ fallback-when-absent pattern used throughout the Turnstile and bank-account
 eligibility work, so there's no forced rollout timeline on the frontend side
 either.
 
-## 2. What the backend needs to do
+## 2. What the backend does
 
-Nothing yet — this section is the spec for when the backend team is ready
-to enforce it, not a request to implement immediately.
+Mboka verifies money writes when `MBOKA_PROXY_SIGNATURE_REQUIRED=true`.
+The default is false, so current deploys keep working.
 
-1. **Share the secret.** Mint a random, sufficiently long secret
-   (32+ bytes, base64 or hex) and provision it as `MBOKA_PROXY_SHARED_SECRET`
-   in both this app's environment (Vercel) and the Mboka backend's.
-2. **Verify on every request** (or, as a rollout step, only on a subset —
-   see open question 2): recompute the canonical string and HMAC exactly as
-   in §1 using the *received* method, path+query, and raw request body
-   bytes, and compare against `x-mboka-proxy-signature` using a
-   constant-time comparison (not `==`/`string equality`, to avoid a timing
-   side-channel — e.g. Python's `hmac.compare_digest`).
-3. **Reject stale timestamps** — compare `x-mboka-proxy-timestamp` against
-   the backend's own clock and reject anything outside a tolerance window
-   (suggest 5 minutes, matching common webhook-signing conventions) to
-   prevent replaying a captured request indefinitely. This is the piece
-   that actually stops replay; the signature alone only proves origin at
-   the time it was computed.
-4. **Decide the rejection response** — likely 401 with a distinct message
-   from a JWT failure, so this app's own 401-handling (session refresh,
-   cookie clearing in `lib/server/mbokaProxy.ts`) doesn't misinterpret a
-   signature rejection as "this user's session expired." See open question 3.
-5. **Roll out gated, not flag-day.** Since this app sends the headers
-   unconditionally whenever `MBOKA_PROXY_SHARED_SECRET` is set here, the
-   backend can verify-but-not-reject first (log mismatches) to catch any
-   canonicalization mismatch between the two implementations before
-   flipping to hard rejection.
+1. **Share the secret.** Mint a random secret of at least 32 bytes and set
+   `MBOKA_PROXY_SHARED_SECRET` on this app first, then on Mboka. The
+   dashboard starts sending the headers. Mboka still accepts unsigned
+   requests until the flag below is set.
+2. **Verify** with `hmac.compare_digest` over the canonical string in §1.
+   The timestamp window is ±60 seconds. A replay of the same signature is
+   stored in Redis when `REDIS_URL` is set, and in memory otherwise.
+3. **Reject** a missing, stale, wrong, or replayed signature with HTTP 403
+   and message `Proxy signature rejected.` That is not a 401, so this app
+   does not refresh or clear the session cookies.
+4. **Fail closed on a short secret.** If the flag is true and Mboka's
+   secret is shorter than 32 bytes, those money writes return 503. The
+   process still starts. This app returns 503 from the proxy in the same
+   situation instead of sending an unsigned request.
+5. **Turn the flag on last.** Set `MBOKA_PROXY_SIGNATURE_REQUIRED=true` on
+   Mboka only after both sides have the same secret. Reads are not covered
+   by this first set.
 
 ## Open questions for backend team
 

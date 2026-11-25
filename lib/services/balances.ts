@@ -7,6 +7,7 @@ import type { SupportedCatalogData } from "@/lib/services/catalog";
 import { supportedCurrenciesFromCatalog } from "@/lib/services/catalog";
 import type { ExchangeRates } from "@/lib/services/dashboard";
 import { normalizeExchangeRates } from "@/lib/services/dashboard";
+import { feeOnTopUsd, totalWithFee } from "@/lib/services/transferTerms";
 
 export type AccountBalance = {
   available?: string | null;
@@ -230,27 +231,40 @@ export function parseAmountInput(amount: string): number | null {
 }
 
 /**
- * Inline check while typing. Returns a message only when the amount is a
- * real number over known available balance — null when balance is unknown
- * (partner omitted it) so we don't block on missing data, and null for an
- * empty field.
+ * Inline check while typing. Returns a message only when the amount *plus
+ * its fee* is over the known available balance — null when balance is
+ * unknown (partner omitted it) so we don't block on missing data, and null
+ * for an empty field.
+ *
+ * The fee has to be in the sum because it is charged on top: someone holding
+ * exactly 7,000 who types 7,000 against a 17.50 fee used to sail past this
+ * check, see no warning at all, and be rejected by the backend instead.
+ * `fee` comes from the quote/preview and is simply omitted when none has
+ * been returned yet — the check then compares the amount alone rather than
+ * inventing a figure.
  */
 export function insufficientBalanceMessage(params: {
   amount: string;
   balance: AccountBalance | null | undefined;
   currency: string;
+  fee?: string | number | null;
 }): string | null {
   const available = parseBalanceNumber(params.balance);
   if (available == null) return null;
   const amount = parseAmountInput(params.amount);
   if (amount == null) return null;
-  if (amount <= available) return null;
+  const fee = feeOnTopUsd(params.fee);
+  if (totalWithFee(amount, fee) <= available) return null;
   const label = formatAccountBalance(params.balance);
-  return `Insufficient ${params.currency} balance. Available ${label}; you entered ${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}.`;
+  const entered = amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  const feeNote = fee
+    ? ` plus a ${fee.toLocaleString(undefined, { maximumFractionDigits: 6 })} fee`
+    : "";
+  return `Insufficient ${params.currency} balance. Available ${label}; you entered ${entered}${feeNote}.`;
 }
 
 /**
- * Throw when the spend amount exceeds known available balance.
+ * Throw when the spend amount plus its fee exceeds known available balance.
  * Skips the check when balance is unknown (partner omitted it) so we don't
  * block flows on missing data — the partner still enforces funded balance.
  */
@@ -258,6 +272,7 @@ export function assertSufficientBalance(params: {
   amount: string;
   balance: AccountBalance | null | undefined;
   currency: string;
+  fee?: string | number | null;
 }): void {
   const message = insufficientBalanceMessage(params);
   if (message) throw new Error(message);

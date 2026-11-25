@@ -34,6 +34,12 @@ export type BootstrapAccount = {
   bic?: string | null;
   bank_name?: string | null;
   account_holder_name?: string | null;
+  account_number?: string | null;
+  bank_code?: string | null;
+  reference?: string | null;
+  deposit_reference_required?: boolean | null;
+  deposit_disclaimer?: string | null;
+  domestic_deposit_only?: boolean | null;
   wallet_address?: string | null;
   balance?: BootstrapBalance | null;
 };
@@ -96,6 +102,13 @@ function mapFiat(row: BootstrapAccount): DepositAccount {
     iban: row.iban ?? null,
     bic: row.bic ?? null,
     bank_name: row.bank_name ?? null,
+    account_number: row.account_number ?? null,
+    bank_code: row.bank_code ?? null,
+    reference: row.reference ?? null,
+    deposit_reference_required:
+      row.deposit_reference_required === true ? true : null,
+    deposit_disclaimer: row.deposit_disclaimer ?? null,
+    domestic_deposit_only: row.domestic_deposit_only === true ? true : null,
     balance: row.balance
       ? {
           available: row.balance.available ?? null,
