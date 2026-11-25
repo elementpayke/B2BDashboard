@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { downloadPdfBlob } from "@/lib/documents/receiptPdf";
 import { buildSendReceiptPdf, type SendReceiptDoc } from "@/lib/documents/sendReceiptPdf";
 import { cn } from "@/lib/utils";
-import { SectionLabel } from "./parts";
+import { SectionLabel } from "@/components/patterns/flow";
 
 export type SendReceiptProps = {
   /** "processing" receipts confirm the instruction only, not delivery. */

@@ -1,16 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useStellarCreditWatch } from "@/lib/hooks/useStellarCreditWatch";
-import { parseStellarAmount } from "@/lib/stellar/amount";
-import { formatStellarWalletError, isWalletModalClosed } from "@/lib/stellar/errors";
-import { resolveStellarNetwork, stellarExplorerTxUrl, truncateStellarAddress } from "@/lib/stellar/network";
-import { sendStellarUsdc } from "@/lib/stellar/sendUsdc";
-import {
-  connectStellarWallet,
-  disconnectStellarWallet,
-  signStellarTransaction,
-} from "@/lib/stellar/walletKit";
+import React from "react";
+import { useStellarWalletDeposit } from "@/lib/hooks/useStellarWalletDeposit";
+import { truncateStellarAddress } from "@/lib/stellar/network";
 
 export type StellarWalletDepositProps = {
   destination: string;
@@ -23,73 +15,11 @@ export default function StellarWalletDeposit({
   network,
   suggestedAmount,
 }: StellarWalletDepositProps) {
-  const config = useMemo(() => resolveStellarNetwork(network), [network]);
-  const [address, setAddress] = useState<string | null>(null);
-  const [amount, setAmount] = useState(suggestedAmount);
-
-  useEffect(() => {
-    setAmount(suggestedAmount);
-  }, [suggestedAmount]);
-  const [busy, setBusy] = useState<"connect" | "send" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [hash, setHash] = useState<string | null>(null);
-
-  const creditWatch = useStellarCreditWatch(hash, { enabled: Boolean(hash) });
-
-  const parsed = parseStellarAmount(amount);
-  const canSend = Boolean(address) && parsed.ok && !busy && !hash;
-  const amountHint = parsed.error;
-  const explorerUrl = hash
-    ? stellarExplorerTxUrl({ txHash: hash, isTestnet: config.isTestnet })
-    : null;
-
-  const connect = async () => {
-    setError(null);
-    setBusy("connect");
-    try {
-      const next = await connectStellarWallet(config);
-      setAddress(next);
-    } catch (err) {
-      if (!isWalletModalClosed(err)) {
-        setError(formatStellarWalletError(err) || "Could not connect a Stellar wallet.");
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const disconnect = async () => {
-    setError(null);
-    try {
-      await disconnectStellarWallet();
-    } catch {
-      /* still clear local session */
-    }
-    setAddress(null);
-    setHash(null);
-  };
-
-  const send = async () => {
-    if (!address || !parsed.ok) return;
-    setError(null);
-    setBusy("send");
-    try {
-      const result = await sendStellarUsdc({
-        config,
-        fromAddress: address,
-        toAddress: destination,
-        amountRaw: amount,
-        signXdr: (xdr) => signStellarTransaction(config, xdr, address),
-      });
-      setHash(result.hash);
-    } catch (err) {
-      if (!isWalletModalClosed(err)) {
-        setError(formatStellarWalletError(err));
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
+  const w = useStellarWalletDeposit({ destination, network, suggestedAmount });
+  const { address, amount, busy, error, hash, canSend, amountHint, explorerUrl, connect, disconnect, send } = w;
+  const creditWatch = { message: w.message };
+  const setAmount = w.setAmount;
+  const setHash = (_: null) => w.reset();
 
   return (
     <div className="ep-fund-sc__wallet">
@@ -133,7 +63,7 @@ export default function StellarWalletDeposit({
               inputMode="decimal"
               placeholder="0"
               value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+              onChange={(e) => setAmount(e.target.value)}
               className="ep-fund-sc__amount-input"
             />
           </div>

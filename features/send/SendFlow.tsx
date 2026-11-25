@@ -27,7 +27,7 @@ import {
   SearchBox,
   SectionLabel,
   StepHeading,
-} from "./parts";
+} from "@/components/patterns/flow";
 import type { SavedRecipient, SendFlowProps } from "./types";
 
 type Step = "who" | "saved" | "place" | "provider" | "account" | "amount";

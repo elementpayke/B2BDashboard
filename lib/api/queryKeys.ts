@@ -26,6 +26,7 @@ export const QK = {
   issuedCards: "issued-cards",
   landingExchangeRates: "landing-exchange-rates",
   orderStatus: "order-status",
+  paymentRequest: "payment-request",
   savedRecipients: "saved-recipients",
   sendEstimate: "send-estimate",
   sendOptions: "send-options",

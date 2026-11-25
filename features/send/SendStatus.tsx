@@ -4,7 +4,7 @@ import MbokaMark from "@/components/brand/MbokaMark";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
-import { DetailRow, MoneyText, Notice } from "./parts";
+import { DetailRow, MoneyText, Notice } from "@/components/patterns/flow";
 import type { SendOutcome } from "./types";
 
 export type SendStatusKind = "sending" | SendOutcome;

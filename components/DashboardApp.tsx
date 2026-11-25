@@ -229,7 +229,7 @@ import {
   type SendQuoteErrorData,
 } from "@/lib/hooks/sendFlowHelpers";
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
-import { buildDepositDestinationSummary, buildDepositStepDots, countryRailsLabel, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
+import { countryRailsLabel, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
 import {
   isMobileMoneyRail,
@@ -407,7 +407,7 @@ import {
   resolveStablecoinPickerDestination,
   stablecoinNetworksForAsset,
 } from "@/lib/services/depositRampDestination";
-import DepositModal from "@/components/deposit/DepositModal";
+import DepositFlow from "@/features/deposit/DepositFlow";
 import ReceiveModal from "@/components/deposit/ReceiveModal";
 import VerificationScreen from "@/components/verification/VerificationScreen";
 import KybWizardModal from "@/components/verification/KybWizardModal";
@@ -496,6 +496,8 @@ export default function DashboardApp(props: Props = {}) {
     fundFiatAccountId: null as string | null,
     /** Stablecoin account to credit via OnRamp (prefer Polygon USDT for fiat VA funds). */
     fundTargetAccountId: null as string | null,
+    /** CAD account being funded by Interac from inside the account. */
+    fundInteracAccountId: null as string | null,
     africaFundId: null as string | null,
     africaFundStatus: "" as string,
     fundConvertStatus: "" as string,
@@ -1432,7 +1434,7 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundInteracAccountId: null, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
     depositAsset: "usdc", depositNetwork: "stellar",
@@ -4311,6 +4313,12 @@ export default function DashboardApp(props: Props = {}) {
         code: c.code,
         railsLabel: countryRailsLabel(c),
         searchText: countrySearchHaystack(c, extraNames),
+        railTypes: Array.from(
+          new Set(c.rails.map((rail) => (isMobileMoneyRail(rail.type) ? "mobile" : "bank") as "mobile" | "bank")),
+        ),
+        providerNames: Array.from(
+          new Set(extraNames.length ? extraNames : c.rails.flatMap((rail) => rail.options)),
+        ),
         select: selectDepositCountry(i),
       };
     });
@@ -5502,22 +5510,13 @@ export default function DashboardApp(props: Props = {}) {
       networkId: networkIdForProvider(sendCatalogProviders, sendProvider),
       catalogSettled: sendCatalogSettled,
     });
-  const depositMethods = ["country","crypto"].map(g => ({ key: g, label: g === "country" ? "By country" : "Stablecoin", select: setDepositGroup(g), bg: s.depositGroup === g ? "var(--ink)" : "var(--surface2)", color: s.depositGroup === g ? "var(--bg)" : "var(--muted)" }));
   const depositIsCountry = s.depositGroup === "country";
-  const depositIsCrypto = s.depositGroup === "crypto";
-  const depositSub = s.depositSub === "method" ? "method" : "country";
-  const depositMethodChosen = s.depositRailIdx >= 0 && Boolean(s.depositProviderName);
   const depositIsMobileRail = isMobileMoneyRail(depositRail.type);
-  const depositIsBankRail = depositRail.type === "bank";
   const depositChannelLabel = depositIsMobileRail
     ? mobileMoneyDisplayLabel(depositProvider) || channelLabelForRail(depositRail.type)
     : channelLabelForRail(depositRail.type);
   const depositOperator = depositChannelLabel;
   const depositMobileCode = depositCountry.code;
-  const depositPhone = s.depositPhone;
-  const depositAmount = s.depositAmount;
-  const depositPromptSent = s.depositPromptSent;
-  const depositBankLabel = depositRail.label;
   const depositBankArrival = depositRail.arrival;
   const depositPaymentInstructionRows = s.depositAccept
     ? buildPaymentInstructionRows(s.depositAccept.payment_instructions).map((row) => ({
@@ -5835,8 +5834,6 @@ export default function DashboardApp(props: Props = {}) {
       ? `${sendQuote.amounts.user_receives.amount} ${sendQuote.amounts.user_receives.currency}`
       : null;
   const depositStep = s.depositStep;
-  const depositStepDots = buildDepositStepDots(s.depositStep, s.depositGroup === "country" ? 3 : 2);
-  const depositStepIs1 = s.depositStep === 1;
   const depositStepIs2 = s.depositStep === 2;
   const depositStepIs3 = s.depositStep === 3;
   // USDC's home wallet is always Stellar, so fundTargetAccountId is pinned
@@ -5907,20 +5904,11 @@ export default function DashboardApp(props: Props = {}) {
         s.fundAfricanTargetCurrency.trim().toUpperCase(),
       ),
   );
-  const depositDestinationSummary = buildDepositDestinationSummary({
-    depositGroup: s.depositGroup,
-    depositAsset: (pinnedOnRampDest?.asset.currency || s.depositAsset).toLowerCase(),
-    depositNetworkLabel,
-    countryName: depositCountry.name,
-    channelLabel: depositChannelLabel,
-  });
-  const depositNotDone = !s.depositDone;
   const depositDone = s.depositDone;
   const depositPayerLabel = depositIsMobileRail
     ? "Your mobile number"
     : "Bank account you'll send funds from";
   const depositPayerPlaceholder = depositIsMobileRail ? "712 345 678" : depositRail.placeholder;
-  const depositAmountLabel = `Amount (${depositCountry.code})`;
   const depositQuote = s.depositQuote;
   const depositQuoteLoading = s.depositQuoteLoading;
   const depositQuoteError = s.depositQuoteError;
@@ -5943,22 +5931,10 @@ export default function DashboardApp(props: Props = {}) {
         depositQuote.amounts.rate_currency || depositQuote.amounts.user_pays.currency,
       )
     : null;
-  const depositArrivalText = depositQuote?.expires_at
-    ? new Date(depositQuote.expires_at).toLocaleTimeString()
-    : depositRail.arrival;
   const depositQuoteRateText = depositQuote?.amounts.rate
     ? `${depositQuote.amounts.user_receives.amount} ${depositQuote.amounts.user_receives.currency}`
     : null;
-  const depositResultText = s.depositAccept
-    ? `Order #${s.depositAccept.merchant_order_id} · ${s.depositAccept.status}`
-    : null;
   const depositLiveOrderStatus = s.depositAccept ? depositStatusQuery.data?.status ?? "processing" : null;
-  const depositLiveDescriptor = depositLiveOrderStatus
-    ? describeTransactionStatus(depositLiveOrderStatus)
-    : null;
-  const depositLiveStatus = depositLiveDescriptor
-    ? { label: depositLiveDescriptor.label, color: depositLiveDescriptor.color, soft: depositLiveDescriptor.soft, isSettling: !depositStatusQuery.isTerminal }
-    : null;
   const receiveGroups = ["fiat","crypto"].map(g => ({ key: g, label: g === "fiat" ? "Fiat account" : "Stablecoin", select: setReceiveGroup(g), bg: s.receiveGroup === g ? "var(--ink)" : "var(--surface2)", color: s.receiveGroup === g ? "var(--bg)" : "var(--muted)" }));
   const receiveIsFiat = s.receiveGroup === "fiat";
   const receiveIsCrypto = s.receiveGroup === "crypto";
@@ -7061,6 +7037,163 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   }}
   containerRef={modalRef}
 />
+) : isDepositFlow ? (
+<DepositFlow
+  containerRef={modalRef}
+  walletOptions={fundableRefundWallets.map((a) => {
+    const available = a.balance?.available;
+    const n = available == null || available === "" ? Number.NaN : Number(available);
+    return {
+      value: a.id,
+      label: `${a.currency} wallet · ${formatNetworkLabel(a.network)}`,
+      meta: a.walletAddress ? `${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : null,
+      balanceText: Number.isFinite(n)
+        ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`
+        : null,
+    };
+  })}
+  walletId={s.fundTargetAccountId || ""}
+  selectWallet={(accountId) => {
+    if (depositWalletLocked) return;
+    const account = fundableRefundWallets.find((row) => row.id === accountId);
+    if (!account) return;
+    setState({
+      fundTargetAccountId: account.id,
+      depositAsset: account.currency.trim().toLowerCase() || s.depositAsset,
+      depositNetwork: toUiNetworkKey(account.network) || s.depositNetwork,
+      depositQuote: null,
+      depositQuoteError: "",
+      depositAccept: null,
+      depositAcceptError: "",
+      depositDone: false,
+    });
+  }}
+  walletsLoading={bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)}
+  walletsError={!bootstrapReady && stablecoinAccountsQuery.isError ? "Couldn’t load your accounts." : null}
+  onRetryWallets={() => {
+    void bootstrapQuery.refetch();
+    void stablecoinAccountsQuery.refetch();
+  }}
+  walletLocked={depositWalletLocked}
+  walletLabel={
+    fundableRefundWallets.find((a) => a.id === s.fundTargetAccountId)
+      ? (() => {
+          const a = fundableRefundWallets.find((row) => row.id === s.fundTargetAccountId)!;
+          return `${a.currency} wallet · ${formatNetworkLabel(a.network)}`;
+        })()
+      : depositWalletLabel
+  }
+  interacAccounts={depositAccountsList
+    .filter(
+      (a) =>
+        remittanceMethodForCurrency(a.currency) === "interac" &&
+        (a.status === "active" || a.status === "deposit_unavailable") &&
+        Boolean(String(a.entity_id || "").trim() && a.id),
+    )
+    .map((a) => {
+      const available = a.balance?.available;
+      const n = available == null || available === "" ? Number.NaN : Number(available);
+      return {
+        id: String(a.id),
+        entityId: String(a.entity_id),
+        label: `${a.currency} account`,
+        balanceText: Number.isFinite(n)
+          ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`
+          : null,
+      };
+    })}
+  interacLockedAccountId={s.fundInteracAccountId}
+  interacPayerName={meQuery.data?.business?.legal_name || meQuery.data?.business?.name || ""}
+  interacDefaultEmail={meQuery.data?.user?.email?.trim() || ""}
+  setGroup={(group) => setDepositGroup(group)()}
+  group={s.depositGroup === "crypto" ? "crypto" : "country"}
+  countryRows={depositCountryRows.map((r) => ({
+    idx: r.idx,
+    name: r.name,
+    code: r.code,
+    flagUrl: r.flagUrl,
+    railTypes: r.railTypes,
+    providerNames: r.providerNames,
+    select: r.select,
+  }))}
+  catalogLoading={sendCatalogLoading}
+  catalogError={sendCatalogError}
+  onRetryCatalog={retrySendCatalog}
+  countryName={depositCountryPicked ? depositCountry.name : ""}
+  countryFlagUrl={depositCountryPicked ? flagUrl(depositCountry.iso) : null}
+  currency={depositCountry.code}
+  railGroups={depositMethodGroups.map((g) => ({
+    railIdx: g.railIdx,
+    type: isMobileMoneyRail(g.type) ? ("mobile" as const) : ("bank" as const),
+    label: g.label,
+    providers: g.providers,
+  }))}
+  providerLabel={depositIsMobileRail ? depositOperator : depositProvider || depositOperator}
+  stepIs2={depositStepIs2}
+  stepIs3={depositStepIs3}
+  next={depositNext}
+  back={depositBack}
+  payerLabel={depositIsMobileRail ? `${depositOperator} number to charge` : depositPayerLabel}
+  payerPlaceholder={depositPayerPlaceholder}
+  dialCode={depositMobileCode}
+  phone={s.depositPhone}
+  setPhone={setDepositPhone}
+  amount={s.depositAmount}
+  setAmount={setDepositAmount}
+  limitsText={depositLimitsText}
+  limitError={depositLimitError}
+  quoteLoading={depositQuoteLoading}
+  quoteError={depositQuoteError}
+  feeText={depositQuote ? depositFeeText : ""}
+  rateLine={depositRateLine}
+  receiveText={depositQuoteRateText}
+  arrivalText={depositRail.arrival}
+  quoteExpiresAt={depositQuote?.expires_at ?? null}
+  acceptError={depositAcceptError}
+  accepting={depositAccepting}
+  submit={submitDeposit}
+  done={depositDone}
+  outcome={
+    !depositDone
+      ? null
+      : depositLiveOrderStatus === "completed"
+        ? "received"
+        : ["failed", "refunded", "canceled", "cancelled", "expired"].includes(String(depositLiveOrderStatus || ""))
+          ? "failed"
+          : "processing"
+  }
+  orderId={s.depositAccept?.merchant_order_id != null ? String(s.depositAccept.merchant_order_id) : null}
+  retry={() =>
+    setState({
+      depositDone: false,
+      depositAccept: null,
+      depositQuote: null,
+      depositStep: 2,
+      depositAcceptError: "",
+      depositPromptSent: false,
+    })
+  }
+  bankLines={(depositBankLines || []).map((ln: { k: unknown; v: unknown }) => ({ k: String(ln.k), v: String(ln.v) }))}
+  bankArrival={depositBankArrival}
+  fundTargetCurrency={s.fundAfricanTargetCurrency}
+  fundConvertStatus={s.fundConvertStatus}
+  fundConvertError={s.fundConvertError}
+  assets={depositAssets.map((a) => ({ key: a.key, label: a.label, select: a.select, selected: s.depositAsset === a.key }))}
+  networks={depositNetworks}
+  assetCode={depositAssetCode}
+  networkKey={depositNetworkKey}
+  networkLabel={depositNetworkLabel}
+  address={depositAddress}
+  addressEmptyMessage={depositAddressEmptyMessage}
+  createAccount={depositCreateAccount}
+  createAccountLabel={depositCreateAccountLabel}
+  close={closeModal}
+  onViewTransactions={() => {
+    closeModal();
+    goTransactions();
+  }}
+  onHelp={() => openHelp({ category: "deposit" })}
+/>
 ) : modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div
@@ -7149,96 +7282,6 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   </>
 ) : null}
 
-
-{(isDepositFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Top up">
-<DepositModal
-  depositNotDone={depositNotDone}
-  depositDone={depositDone}
-  depositStepDots={depositStepDots}
-  depositStepIs1={depositStepIs1}
-  depositStepIs2={depositStepIs2}
-  depositStepIs3={depositStepIs3}
-  depositMethods={depositMethods}
-  depositIsCountry={depositIsCountry}
-  depositIsCrypto={depositIsCrypto}
-  depositSub={depositSub}
-  depositCountryRows={depositCountryRows}
-  depositCatalogLoading={sendCatalogLoading}
-  depositCatalogError={sendCatalogError}
-  onRetryDepositCatalog={retrySendCatalog}
-  depositMethodGroups={depositMethodGroups}
-  depositSelectedCountryName={depositCountryPicked ? depositCountry.name : ""}
-  depositMethodChosen={depositMethodChosen}
-  depositAssets={depositAssets}
-  depositNetworks={depositNetworks}
-  depositNext={depositNext}
-  depositBack={depositBack}
-  depositDestinationSummary={depositDestinationSummary}
-  depositIsMobileRail={depositIsMobileRail}
-  depositIsBankRail={depositIsBankRail}
-  depositPayerLabel={depositPayerLabel}
-  depositPayerPlaceholder={depositPayerPlaceholder}
-  depositOperator={depositOperator}
-  depositMobileCode={depositMobileCode}
-  depositPhone={depositPhone}
-  setDepositPhone={setDepositPhone}
-  depositAmount={depositAmount}
-  setDepositAmount={setDepositAmount}
-  depositAmountLabel={depositAmountLabel}
-  depositQuoteError={depositQuoteError}
-  depositQuoteLoading={depositQuoteLoading}
-  depositQuoteRateText={depositQuoteRateText}
-  depositFeeText={depositFeeText}
-  depositArrivalText={depositArrivalText}
-  depositLimitsText={depositLimitsText}
-  depositLimitError={depositLimitError}
-  depositRateLine={depositRateLine}
-  depositQuoteExpiresAt={depositQuote?.expires_at ?? null}
-  depositCurrency={depositCountry.code}
-  depositAcceptError={depositAcceptError}
-  depositAccepting={depositAccepting}
-  submitDeposit={submitDeposit}
-  depositResultText={depositResultText}
-  depositLiveStatus={depositLiveStatus}
-  depositPromptSent={depositPromptSent}
-  depositBankLabel={depositBankLabel}
-  depositBankArrival={depositBankArrival}
-  depositBankLines={depositBankLines}
-  depositAssetCode={depositAssetCode}
-  depositNetwork={depositNetworkKey}
-  depositNetworkLabel={depositNetworkLabel}
-  depositAddress={depositAddress}
-  depositAddressEmptyMessage={depositAddressEmptyMessage}
-  depositCreateAccount={depositCreateAccount}
-  depositCreateAccountLabel={depositCreateAccountLabel}
-  closeModal={closeModal}
-  fundTargetCurrency={s.fundAfricanTargetCurrency}
-  fundConvertStatus={s.fundConvertStatus}
-  fundConvertError={s.fundConvertError}
-  depositWalletOptions={depositWalletOptions}
-  depositWalletId={s.fundTargetAccountId || ""}
-  selectDepositWallet={(accountId) => {
-    if (depositWalletLocked) return;
-    const account = fundableRefundWallets.find((row) => row.id === accountId);
-    if (!account) return;
-    setState({
-      fundTargetAccountId: account.id,
-      depositAsset: account.currency.trim().toLowerCase() || s.depositAsset,
-      depositNetwork: toUiNetworkKey(account.network) || s.depositNetwork,
-      depositQuote: null,
-      depositQuoteError: "",
-      depositAccept: null,
-      depositAcceptError: "",
-      depositDone: false,
-    });
-  }}
-  depositWalletsLoading={
-    bootstrapQuery.isLoading || (!bootstrapReady && stablecoinAccountsQuery.isLoading)
-  }
-  depositWalletLocked={depositWalletLocked}
-  depositWalletLabel={depositWalletLabel}
-/>
-</section>) : null}
 
 {(isReceiveFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Receive">
 <ReceiveModal
@@ -7369,6 +7412,16 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       return;
     }
     if (option === "remittance") {
+      const cadAccount =
+        selectedDepositAccount &&
+        remittanceMethodForCurrency(selectedDepositAccount.currency) === "interac" &&
+        String(selectedDepositAccount.entity_id || "").trim()
+          ? selectedDepositAccount
+          : null;
+      if (cadAccount) {
+        setState({ ...moneyFlowReset, modal: "deposit", fundInteracAccountId: String(cadAccount.id) });
+        return;
+      }
       setState({ modal: "fundPaymentRequest" });
       return;
     }
