@@ -752,6 +752,10 @@ export default function DashboardApp(props: Props = {}) {
   });
   // Unified sends (/v1/sends): one status read for every method. Polls until
   // the send is final; a failed send with a pending refund is re-read slowly.
+  // Shown when the send options cannot be read: the accounts exist, the list
+  // just did not load (for example a backend without `/v1/sends` yet).
+  const SEND_OPTIONS_UNAVAILABLE =
+    "We couldn’t load your accounts just now. Try again in a moment.";
   const sendOptionsQuery = useQuery({
     queryKey: [QK.sendOptions],
     queryFn: unifiedSendsApi.options,
@@ -1542,7 +1546,9 @@ export default function DashboardApp(props: Props = {}) {
           sendQuoteError:
             chosen || sendOptionsQuery.isLoading
               ? ""
-              : "You have no account to pay from yet. Open one under Accounts.",
+              : sendOptionsQuery.isError
+                ? SEND_OPTIONS_UNAVAILABLE
+                : "You have no account to pay from yet. Open one under Accounts.",
           sendAccountId: chosen?.account_id || "",
           sendPreview: null,
           sendAcceptError: "",
@@ -6965,6 +6971,14 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       sendPreview: null,
     });
   }}
+  sendRefundWalletsError={
+    sendUnifiedCountry && sendOptionsQuery.isError && !sendOptionsQuery.data
+      ? SEND_OPTIONS_UNAVAILABLE
+      : null
+  }
+  onRetrySendRefundWallets={
+    sendUnifiedCountry ? () => void sendOptionsQuery.refetch() : undefined
+  }
   sendRefundWalletsLoading={
     (sendUnifiedCountry
       ? sendOptionsQuery.isLoading
