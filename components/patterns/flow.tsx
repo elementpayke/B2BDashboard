@@ -62,8 +62,11 @@ export function StepHeading({
   onBack,
   chips,
   centered,
+  titleId = "send-flow-title",
 }: {
   title: string;
+  /** id of the h1, referenced by the flow's aria-labelledby. */
+  titleId?: string;
   sub?: React.ReactNode;
   onBack?: () => void;
   chips?: React.ReactNode;
@@ -82,7 +85,7 @@ export function StepHeading({
       ) : null}
       {chips ? <div className="flex flex-wrap gap-1.5">{chips}</div> : null}
       <h1
-        id="send-flow-title"
+        id={titleId}
         className="font-display text-page font-bold leading-heading tracking-display text-foreground desktop:text-hero"
       >
         {title}
