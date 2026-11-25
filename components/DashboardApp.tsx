@@ -449,7 +449,7 @@ export default function DashboardApp(props: Props = {}) {
     /** Where Back from a money flow should return (home / accountDetail / …). */
     moneyFlowReturn: null as string | null,
     sendStep: 1, sendMethod: null as null | "bank" | "mobile" | "crypto" | "internal",
-    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
+    sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendRecipient: "", sendRecipientTyped: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendDone: false, sendAsset: "usdc", sendChain: "stellar",
     sendQuote: null as any, sendUnifiedQuote: null as any, sendUnified: null as any, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null as any, sendAccepting: false, sendAcceptError: "",
     sendPreview: null as any, sendConfirm: null as any, sendAccountId: "",
     depositStep: 1, depositGroup: "country", depositSub: "country", depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositPhone: "", depositAmount: "", depositPromptSent: false, depositAsset: "usdc", depositNetwork: "stellar",
@@ -1415,7 +1415,7 @@ export default function DashboardApp(props: Props = {}) {
   const goTransactions = () => navigateToScreen("transactions");
 
   const moneyFlowReset = {
-    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
+    sendStep: 1, sendDone: false, sendRecipient: "", sendRecipientTyped: "", sendRecipientName: "", sendRecipientDetails: {}, sendReference: "", sendMemo: "", sendAmount: "", sendAmountCurrency: "USD", sendCountryIdx: 0, sendRailIdx: 0, sendProviderIdx: 0, sendGroup: "country", sendMethod: null,
     sendQuote: null, sendUnifiedQuote: null, sendUnified: null, sendQuoteLoading: false, sendQuoteError: "", sendAccept: null, sendAccepting: false, sendAcceptError: "",
     sendPreview: null, sendConfirm: null, sendAccountId: "", sendAsset: "usdc", sendChain: "stellar",
     bulkLoaded: false, bulkDone: false, depositStep: 1, depositPromptSent: false, depositCountryIdx: -1, depositRailIdx: -1, depositProviderIdx: -1, depositProviderName: "", depositGroup: "country", depositSub: "country",
@@ -2110,6 +2110,7 @@ export default function DashboardApp(props: Props = {}) {
           sendQuote: null,
           sendUnifiedQuote: null,
           sendRecipient: "",
+          sendRecipientTyped: "",
           sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
           sendMemo: "",
           sendAmount: "",
@@ -2613,6 +2614,7 @@ export default function DashboardApp(props: Props = {}) {
       sendStep: 1,
       sendDone: false,
       sendRecipient: "",
+      sendRecipientTyped: "",
       sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
       sendMemo: "",
       sendAmount: "",
@@ -2625,7 +2627,9 @@ export default function DashboardApp(props: Props = {}) {
     });
   };
   const openConvert = openMoneyFlow("convert");
-  const setSendRecipient = (e) => setState({ sendRecipient: e.target.value });
+  // sendRecipientTyped keeps the account exactly as entered; sendRecipient may
+  // be rewritten to E.164 for the API, but receipts show what the user typed.
+  const setSendRecipient = (e) => setState({ sendRecipient: e.target.value, sendRecipientTyped: e.target.value });
   const setSendRecipientName = (e) => setState({ sendRecipientName: e.target.value });
   const setSendMemo = (e) => setState({ sendMemo: e.target.value });
   // Blocks typing past whichever cap is known (corridor max, wallet balance —
@@ -2663,6 +2667,7 @@ export default function DashboardApp(props: Props = {}) {
     const patch: Record<string, unknown> = {
       sendRecipientName: r.label,
       sendRecipient: r.accountNumber,
+      sendRecipientTyped: r.accountNumber,
     };
     let countryIdx = state.sendCountryIdx;
     if (state.sendGroup === "country" && (r.countryCode || r.currency)) {
@@ -4162,6 +4167,7 @@ export default function DashboardApp(props: Props = {}) {
       sendCountryIdx: 0,
       sendProviderIdx: 0,
       sendRecipient: "",
+      sendRecipientTyped: "",
       sendRecipientName: "", sendRecipientDetails: {}, sendReference: "",
       sendMemo: "",
       sendAmount: "",
@@ -7010,6 +7016,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   }
   sendRecipientLabel={sendRecipientLabel}
   sendRecipient={sendRecipient}
+  sendRecipientTyped={s.sendRecipientTyped}
   setSendRecipient={setSendRecipient}
   normalizeSendRecipientPhone={normalizeSendRecipientPhone}
   sendRecipientPlaceholder={sendRecipientPlaceholder}
