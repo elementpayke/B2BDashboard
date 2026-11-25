@@ -215,6 +215,8 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
   const providerName = providers[p.sendProviderIdx] || "";
   const providerDisplay = p.sendIsMobileRail ? mobileMoneyDisplayLabel(providerName) || providerName : providerName;
   const destinationLabel = p.sendIsCrypto ? p.sendChainLabel : providerDisplay || p.sendCountryName;
+  // What the user typed (07…), not the +254… form the API was sent.
+  const typedAccount = (p.sendRecipientTyped || p.sendRecipient).trim();
   const assets = p.sendAssets || [];
   const chains = p.sendChains || [];
 
@@ -370,7 +372,7 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
           p.sendIsCrypto
             ? `${p.sendAssetCode} on ${p.sendChainLabel}`
             : [providerDisplay, p.sendCountryName].filter(Boolean).join(", "),
-          p.sendRecipient,
+          typedAccount,
         ].filter(Boolean)}
         sourceLabel={sourceLabel}
         methodLabel={methodCopy?.formal || "Transfer"}
@@ -378,6 +380,8 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
         amountText={`${p.sendAmount} ${p.sendIsCrypto ? p.sendAssetCode : p.sendAmountCurrency}`}
         feeText={p.sendFeeText || null}
         rateLine={p.sendQuotedRateLine}
+        channelText={destinationLabel || null}
+        accountText={typedAccount || null}
         totalText={totalText}
         orderId={p.sendOrderId}
         onBack={() => setShowReceipt(false)}
@@ -392,7 +396,7 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
         totalText={totalText}
         recipientShort={recipientShort}
         recipientName={recipientName}
-        recipientAccount={p.sendRecipient.trim() || null}
+        recipientAccount={typedAccount || null}
         sourceLabel={sourceLabel}
         sourceMark={sourceMark}
         providerLabel={destinationLabel || "The provider"}

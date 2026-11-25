@@ -2,8 +2,8 @@
 import * as React from "react";
 import MbokaLogo from "@/components/brand/MbokaLogo";
 import { Button } from "@/components/ui/Button";
-import { buildReceiptPdfBlob, downloadPdfBlob } from "@/lib/documents/receiptPdf";
-import type { ReceiptShareDoc } from "@/lib/documents/receiptShare";
+import { downloadPdfBlob } from "@/lib/documents/receiptPdf";
+import { buildSendReceiptPdf, type SendReceiptDoc } from "@/lib/documents/sendReceiptPdf";
 import { cn } from "@/lib/utils";
 import { SectionLabel } from "./parts";
 
@@ -24,6 +24,10 @@ export type SendReceiptProps = {
   amountText: string;
   feeText: string | null;
   rateLine: string | null;
+  /** Where it was paid out: "M-Pesa", "KCB Bank", "Polygon". */
+  channelText?: string | null;
+  /** The account exactly as the user entered it. */
+  accountText?: string | null;
   totalText: string;
   orderId: string | null;
   onBack: () => void;
@@ -42,52 +46,46 @@ function formatPaidAt(iso: string | null): string | null {
   });
 }
 
-type Row = { label: string; value: string };
-
-function buildRows(p: SendReceiptProps): { payment: Row[]; meta: Row[] } {
+/** One model for the screen and the PDF, so the two can't drift apart. */
+function buildDoc(p: SendReceiptProps): SendReceiptDoc {
+  const pending = p.status === "processing";
   return {
-    payment: [
+    pending,
+    orderId: p.orderId,
+    paidAt: formatPaidAt(p.paidAt),
+    statusText: pending ? "Processing" : "Completed",
+    sourceLabel: p.sourceLabel,
+    recipientName: p.recipientName,
+    toLines: p.toLines,
+    rows: [
+      ...(p.channelText ? [{ label: "Channel", value: p.channelText }] : []),
+      ...(p.accountText ? [{ label: "Account", value: p.accountText }] : []),
       { label: "Amount sent", value: p.amountText },
       ...(p.feeText ? [{ label: "Transfer fee", value: p.feeText }] : []),
       ...(p.rateLine ? [{ label: "Exchange rate", value: p.rateLine }] : []),
     ],
+    totalText: p.totalText,
+    getsLabel: pending ? "Amount beneficiary will receive" : "Amount received by beneficiary",
+    getsText: p.getsText,
     meta: [
       { label: "Payment method", value: p.methodLabel },
-      ...(p.orderId ? [{ label: "Transaction ID", value: p.orderId }] : []),
+      ...(p.orderId ? [{ label: "Transaction ID", value: p.orderId, mono: true }] : []),
     ],
+    footnote: pending
+      ? "This payment is still processing. This receipt confirms the payment instruction and does not confirm delivery to the beneficiary."
+      : "This receipt was generated electronically and is valid without a signature.",
+    credit: "Mboka is a product of ElementPay",
   };
 }
 
-function buildDoc(p: SendReceiptProps, paidAt: string | null): ReceiptShareDoc {
-  const rows = buildRows(p);
-  const pending = p.status === "processing";
-  return {
-    fileTitle: "Mboka payment receipt",
-    heading: "Payment receipt",
-    statusBadge: pending ? "Processing" : "Paid",
-    statusTone: pending ? "warning" : "success",
-    amount: p.getsText,
-    amountCaption: pending ? "Beneficiary will receive" : "Received by beneficiary",
-    party: [p.recipientName, ...p.toLines].filter(Boolean).join(" · "),
-    sections: [
-      {
-        title: "Payment",
-        rows: [...rows.payment, { label: "Total debited", value: p.totalText }, ...rows.meta],
-      },
-    ],
-    ...(paidAt ? { dateLine: paidAt } : {}),
-  };
-}
-
-function buildText(p: SendReceiptProps, paidAt: string | null): string {
-  const rows = buildRows(p);
+function buildText(d: SendReceiptDoc): string {
   return [
-    `Mboka payment receipt${p.orderId ? ` ${p.orderId}` : ""}`,
-    ...(paidAt ? [paidAt] : []),
-    `${p.getsText} to ${p.recipientName || "recipient"}`,
-    ...p.toLines,
-    `From: ${p.sourceLabel}`,
-    ...[...rows.payment, { label: "Total debited", value: p.totalText }, ...rows.meta].map(
+    `Mboka payment receipt${d.orderId ? ` ${d.orderId}` : ""}`,
+    ...(d.paidAt ? [d.paidAt] : []),
+    `${d.getsText} to ${d.recipientName || "recipient"}`,
+    ...d.toLines,
+    `From: ${d.sourceLabel}`,
+    ...[...d.rows, { label: "Total debited", value: d.totalText }, ...d.meta].map(
       (row) => `${row.label}: ${row.value}`,
     ),
   ].join("\n");
@@ -105,20 +103,23 @@ function HeadRow({ label, children }: { label: string; children: React.ReactNode
 /** The payment laid out as a document a supplier or accountant can file. */
 export default function SendReceipt(p: SendReceiptProps) {
   const [note, setNote] = React.useState("");
-  const paidAt = formatPaidAt(p.paidAt);
-  const pending = p.status === "processing";
-  const rows = buildRows(p);
+  const d = buildDoc(p);
   const filename = `mboka-receipt${p.orderId ? `-${p.orderId}` : ""}`;
 
-  const download = () => {
-    const pdf = buildReceiptPdfBlob(buildDoc(p, paidAt), filename);
-    downloadPdfBlob(pdf.blob, pdf.filename);
-    setNote("PDF saved");
+  const download = async () => {
+    setNote("Preparing PDF…");
+    try {
+      const pdf = await buildSendReceiptPdf(d, filename);
+      downloadPdfBlob(pdf.blob, pdf.filename);
+      setNote("PDF saved");
+    } catch {
+      setNote("Couldn’t create the PDF");
+    }
   };
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(buildText(p, paidAt));
+      await navigator.clipboard.writeText(buildText(d));
       setNote("Details copied");
     } catch {
       setNote("Couldn’t copy the details");
@@ -137,7 +138,7 @@ export default function SendReceipt(p: SendReceiptProps) {
       >
         <header className="flex flex-wrap items-start justify-between gap-5 border-b-2 border-foreground pb-5">
           <MbokaLogo size={28} />
-          <div className="min-w-56 flex-1 desktop:flex-none">
+          <div className="min-w-56 flex-1">
             <h1
               id="send-flow-title"
               className="mb-2 text-right font-display text-headline font-bold tracking-title"
@@ -145,11 +146,11 @@ export default function SendReceipt(p: SendReceiptProps) {
               Payment receipt
             </h1>
             <dl>
-              {p.orderId ? <HeadRow label="Receipt no.">{p.orderId}</HeadRow> : null}
-              {paidAt ? <HeadRow label="Date">{paidAt}</HeadRow> : null}
+              {d.orderId ? <HeadRow label="Receipt no.">{d.orderId}</HeadRow> : null}
+              {d.paidAt ? <HeadRow label="Date">{d.paidAt}</HeadRow> : null}
               <HeadRow label="Status">
-                <span className={cn("font-medium", pending ? "text-warning-text" : "text-link")}>
-                  {pending ? "Processing" : "Completed"}
+                <span className={cn("font-medium", d.pending ? "text-warning-text" : "text-link")}>
+                  {d.statusText}
                 </span>
               </HeadRow>
             </dl>
@@ -159,12 +160,12 @@ export default function SendReceipt(p: SendReceiptProps) {
         <div className="grid grid-cols-2 gap-6 border-b border-border py-5">
           <div className="min-w-0">
             <SectionLabel>From</SectionLabel>
-            <p className="mt-1.5 text-title font-bold">{p.sourceLabel}</p>
+            <p className="mt-1.5 text-title font-bold">{d.sourceLabel}</p>
           </div>
           <div className="min-w-0">
             <SectionLabel>To</SectionLabel>
-            <p className="mt-1.5 text-title font-bold">{p.recipientName || "Recipient"}</p>
-            {p.toLines.map((line) => (
+            <p className="mt-1.5 text-title font-bold">{d.recipientName || "Recipient"}</p>
+            {d.toLines.map((line) => (
               <p key={line} className="break-words text-body-lg leading-body text-muted-foreground">
                 {line}
               </p>
@@ -178,39 +179,35 @@ export default function SendReceipt(p: SendReceiptProps) {
             <SectionLabel>Amount</SectionLabel>
           </div>
           <dl>
-            {rows.payment.map((row) => (
+            {d.rows.map((row) => (
               <div key={row.label} className="flex justify-between gap-5 border-b border-border py-2.5 text-body-lg">
-                <dt className="text-muted-foreground">{row.label}</dt>
-                <dd className="text-right font-mono">{row.value}</dd>
+                <dt className="shrink-0 text-muted-foreground">{row.label}</dt>
+                <dd className="min-w-0 break-words text-right font-mono">{row.value}</dd>
               </div>
             ))}
             <div className="flex justify-between gap-5 border-b border-border py-3 text-title font-bold">
               <dt>Total debited</dt>
-              <dd className="font-mono font-medium">{p.totalText}</dd>
+              <dd className="font-mono font-medium">{d.totalText}</dd>
             </div>
             <div className="mt-3 flex items-baseline justify-between gap-5 bg-background px-4 py-3.5 text-title font-bold">
-              <dt>{pending ? "Amount beneficiary will receive" : "Amount received by beneficiary"}</dt>
-              <dd className="text-right font-mono text-headline font-medium">{p.getsText}</dd>
+              <dt>{d.getsLabel}</dt>
+              <dd className="text-right font-mono text-headline font-medium">{d.getsText}</dd>
             </div>
           </dl>
         </div>
 
         <dl className="border-b border-border py-3.5">
-          {rows.meta.map((row) => (
+          {d.meta.map((row) => (
             <div key={row.label} className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-4 py-1 text-body-lg">
               <dt className="text-muted-foreground">{row.label}</dt>
-              <dd className={cn("break-words", row.label === "Transaction ID" && "font-mono")}>{row.value}</dd>
+              <dd className={cn("break-words", row.mono && "font-mono")}>{row.value}</dd>
             </div>
           ))}
         </dl>
 
         <footer className="pt-4 text-caption leading-relaxed text-muted-foreground">
-          <p>
-            {pending
-              ? "This payment is still processing. This receipt confirms the payment instruction and does not confirm delivery to the beneficiary."
-              : "This receipt was generated electronically and is valid without a signature."}
-          </p>
-          <p className="mt-1.5">Mboka is a product of ElementPay</p>
+          <p>{d.footnote}</p>
+          <p className="mt-1.5">{d.credit}</p>
         </footer>
       </article>
 
