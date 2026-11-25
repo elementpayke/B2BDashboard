@@ -259,6 +259,24 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
     : sourceOption
       ? sourceOption.label.split(" · ").slice(0, 2).join(" · ")
       : "your balance";
+  // Marks for the status screen. Decorative: the labels beside them name the asset and provider.
+  const sourceAsset = p.sendIsCrypto ? p.sendAssetCode : (sourceOption?.label.split(" · ")[0] ?? "");
+  const sourceNetwork = p.sendIsCrypto ? null : (sourceOption?.label.split(" · ")[1] ?? null);
+  const sourceMark = isCoinMarkAsset(sourceAsset) ? (
+    <span className="relative inline-flex">
+      <CoinMark asset={sourceAsset} size={22} title={null} />
+      {sourceNetwork ? (
+        <span className="absolute -bottom-1 -right-1 rounded-pill bg-card ring-2 ring-card">
+          <NetworkListIcon network={sourceNetwork} label={sourceNetwork} size={12} />
+        </span>
+      ) : null}
+    </span>
+  ) : null;
+  const providerMark = p.sendIsCrypto ? (
+    <NetworkListIcon network={p.sendChainLabel} label={p.sendChainLabel} size={22} />
+  ) : p.sendIsMobileRail && providerName ? (
+    <MobileMoneyMark name={providerName} size={22} className="rounded-pill shadow-hairline" />
+  ) : null;
   const maxAction = p.onMaxSendAmount || p.setSendAmountToMax;
   const getsText = p.sendQuoteRateText || p.sendYouPayText;
   const totalText = p.sendTotalDebitText || p.sendYouPayText;
@@ -374,8 +392,15 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
         totalText={totalText}
         recipientShort={recipientShort}
         recipientName={recipientName}
+        recipientAccount={p.sendRecipient.trim() || null}
         sourceLabel={sourceLabel}
+        sourceMark={sourceMark}
         providerLabel={destinationLabel || "The provider"}
+        providerMark={providerMark}
+        feeText={p.sendFeeText || null}
+        rateLine={p.sendQuotedRateLine}
+        reference={p.sendOrderId}
+        finishedAt={p.sendDone ? (p.sendUpdatedAt ?? null) : null}
         explorerUrl={p.sendExplorerUrl}
         explorerLabel={p.sendSuccessDetails?.explorerLabel}
         failureMessage={p.sendFailureMessage}

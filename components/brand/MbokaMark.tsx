@@ -35,6 +35,12 @@ export type MbokaMarkProps = {
   tone?: MbokaTone;
   /** Accessible name; pass null for decorative marks beside a visible wordmark. */
   title?: string | null;
+  /**
+   * Turn the whole mark slowly while a payment is still moving. Only for the
+   * payment status screen, and only until the money lands — then render it
+   * still. Off under prefers-reduced-motion.
+   */
+  spin?: boolean;
   className?: string;
 };
 
@@ -56,6 +62,7 @@ export default function MbokaMark({
   motion = "static",
   tone = "brand",
   title = "Mboka",
+  spin = false,
   className,
 }: MbokaMarkProps) {
   const clipId = useId();
@@ -68,7 +75,7 @@ export default function MbokaMark({
       viewBox="0 0 44 44"
       width={size}
       height={size}
-      className={`ep-mark ep-mark--${motion}${className ? ` ${className}` : ""}`}
+      className={`ep-mark ep-mark--${motion}${spin ? " ep-mark--spin" : ""}${className ? ` ${className}` : ""}`}
       role={decorative ? undefined : "img"}
       aria-label={decorative ? undefined : title}
       aria-hidden={decorative || undefined}

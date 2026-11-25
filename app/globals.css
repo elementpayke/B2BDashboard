@@ -13574,6 +13574,14 @@ button.ep-card-face:focus-visible {
   }
 }
 
+/* 5d · Spin — the whole mark turns while a payment is still moving (send
+   status screen only). It stops, and the mark sits still, once funds land. */
+@keyframes ep-mark-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* 5c · Routing — the block holds while providers rotate behind it. */
 @keyframes ep-mark-orbit {
   to {
@@ -13596,6 +13604,10 @@ button.ep-card-face:focus-visible {
 
   .ep-mark--settlement .ep-mark__seam {
     animation: ep-mark-settle-seam 0.9s linear 1 both;
+  }
+
+  .ep-mark--spin {
+    animation: ep-mark-spin 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   }
 
   .ep-mark--routing .ep-mark__orbit {

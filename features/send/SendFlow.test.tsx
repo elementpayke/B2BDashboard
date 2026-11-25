@@ -599,36 +599,60 @@ describe("SendFlow — after sending", () => {
   it("shows the sending state, which can be closed without stopping the payment", () => {
     const close = vi.fn();
     render(<SendFlow {...baseProps({ ...review, sendAccepting: true, closeModal: close })} />);
-    expect(heading("Sending your payment")).toBeInTheDocument();
-    expect(screen.getByText("64600.00 KES to Jane Mukami")).toBeInTheDocument();
+    expect(heading("Sending to Jane Mukami on KCB Bank")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Processing" })).toBeInTheDocument();
+    expect(screen.getByText("Sending")).toBeInTheDocument();
     expect(screen.queryByText(/Step \d of 6/)).toBeNull();
     click("Close, it keeps going");
     expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it("says a payment is almost there and points to Transactions", () => {
+  it("tracks a payment on its way: the number as typed, the steps, the figures and Transactions", () => {
     const transactions = vi.fn();
     render(<SendFlow {...baseProps({ ...done, onViewTransactions: transactions })} />);
-    expect(heading("Almost there")).toBeInTheDocument();
-    expect(screen.getByText(/on its way to Jane\. KCB Bank is still processing it/)).toBeInTheDocument();
+    expect(heading("Sending to Jane Mukami on KCB Bank")).toBeInTheDocument();
+    expect(screen.getByText("1234567890")).toBeInTheDocument();
+    expect(screen.getByText(/^Sent ·/)).toBeInTheDocument();
+    expect(screen.getByText("Waiting for KCB Bank to confirm delivery")).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("Sent to KCB Bank");
+    expect(screen.getByText("Total debited")).toBeInTheDocument();
+    expect(screen.getByText("1 USD = 129.20 KES")).toBeInTheDocument();
+    expect(screen.getByText("4821")).toBeInTheDocument();
+    // A receipt is only offered once the money has landed.
+    expect(screen.queryByRole("button", { name: "View receipt" })).toBeNull();
     click("Follow it in Transactions");
     expect(transactions).toHaveBeenCalledTimes(1);
   });
 
-  it("marks a processing receipt as not yet delivered", () => {
+  it("says it's slow, and not to send again, once a payment takes longer than usual", () => {
+    vi.useFakeTimers();
+    try {
+      render(<SendFlow {...baseProps(done)} />);
+      act(() => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+      expect(screen.getByText(/Taking longer than usual/)).toBeInTheDocument();
+      expect(screen.getByText(/Don’t send it again\./)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("copies the reference", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
     render(<SendFlow {...baseProps(done)} />);
-    click("View receipt");
-    expect(heading("Payment receipt")).toBeInTheDocument();
-    expect(screen.getByText("Processing")).toBeInTheDocument();
-    expect(screen.getByText("Amount beneficiary will receive")).toBeInTheDocument();
-    expect(screen.getByText(/does not confirm delivery/)).toBeInTheDocument();
+    click("Copy reference");
+    expect(writeText).toHaveBeenCalledWith("4821");
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
   it("confirms a delivered payment and closes from Done", () => {
     const close = vi.fn();
     render(<SendFlow {...baseProps({ ...done, sendOutcome: "delivered", closeModal: close })} />);
-    expect(heading("All done")).toBeInTheDocument();
-    expect(screen.getByText("Jane received 64600.00 KES.")).toBeInTheDocument();
+    expect(heading("Jane Mukami received it on KCB Bank")).toBeInTheDocument();
+    expect(screen.getByText("Settled")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Processing" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Follow it in Transactions" })).toBeNull();
     click("Done");
     expect(close).toHaveBeenCalledTimes(1);
@@ -662,7 +686,7 @@ describe("SendFlow — after sending", () => {
     expect(pdf.download).toHaveBeenCalledTimes(1);
 
     click("Close receipt");
-    expect(heading("All done")).toBeInTheDocument();
+    expect(heading("Jane Mukami received it on KCB Bank")).toBeInTheDocument();
   });
 
   it("says so when the details can't be copied", async () => {
@@ -673,25 +697,29 @@ describe("SendFlow — after sending", () => {
     expect(await screen.findByText("Couldn’t copy the details")).toBeInTheDocument();
   });
 
-  it("offers Fix the details and help on a failed payment, without claiming a refund", () => {
+  it("asks to try again later or contact support on a failed payment, without claiming a refund", () => {
     const retry = vi.fn();
     const help = vi.fn();
     render(
       <SendFlow {...baseProps({ ...done, sendOutcome: "failed", sendRetry: retry, onContactSupport: help })} />,
     );
-    expect(heading("That didn’t go through")).toBeInTheDocument();
-    expect(screen.getByText(/wasn’t delivered\. Check the details and try again/)).toBeInTheDocument();
-    expect(screen.queryByText(/is back in/)).toBeNull();
+    expect(heading("Payment to Jane Mukami didn’t go through")).toBeInTheDocument();
+    expect(screen.getByText("Please try again later or contact support.")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.queryByText("Reason")).toBeNull();
+    expect(screen.queryByText("Returned to you")).toBeNull();
     expect(screen.queryByRole("button", { name: "View receipt" })).toBeNull();
-    click("Get help");
+    click("Contact support");
     expect(help).toHaveBeenCalledTimes(1);
-    click("Fix the details");
+    click("Try again");
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it("says the money is back only when the order is refunded", () => {
     render(<SendFlow {...baseProps({ ...done, sendOutcome: "refunded" })} />);
-    expect(screen.getByText(/Your 503.00 USDT is back in USDT · Polygon/)).toBeInTheDocument();
+    expect(screen.getByText("Refunded")).toBeInTheDocument();
+    expect(screen.getByText("Returned to you")).toBeInTheDocument();
+    expect(screen.getByText("503.00 USDT back in USDT · Polygon")).toBeInTheDocument();
   });
 
   it("shows the backend's reason for a failed payment when it has one", () => {
@@ -704,9 +732,9 @@ describe("SendFlow — after sending", () => {
         })}
       />,
     );
+    expect(screen.getByText("Reason")).toBeInTheDocument();
     expect(screen.getByText("KCB Bank could not find that account.")).toBeInTheDocument();
-    expect(screen.queryByText(/Check the details and try again/)).toBeNull();
-    expect(screen.queryByText(/is back in/)).toBeNull();
+    expect(screen.queryByText("Returned to you")).toBeNull();
   });
 
   it("says exactly what came back when a refund is in another currency", () => {
@@ -720,11 +748,8 @@ describe("SendFlow — after sending", () => {
         })}
       />,
     );
-    expect(
-      screen.getByText(
-        "The recipient name does not match the account holder. Your 99.50 USDT is back in your account.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("The recipient name does not match the account holder.")).toBeInTheDocument();
+    expect(screen.getByText("99.50 USDT back in your account")).toBeInTheDocument();
   });
 
   it("links to the explorer for a stablecoin send", () => {
