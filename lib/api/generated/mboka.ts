@@ -4818,6 +4818,12 @@ export interface components {
             fee_breakdown?: components["schemas"]["FeeLine"][];
             /** Route Summary */
             route_summary: string;
+            /**
+             * Fee Known
+             * @description False when part of the fee is only known at the quote step, so `fee` is not the whole fee yet. Show it as pending, never as free.
+             * @default true
+             */
+            fee_known: boolean;
             /** @description Most the source account can send right now. */
             max_sendable?: components["schemas"]["Money"] | null;
             /**

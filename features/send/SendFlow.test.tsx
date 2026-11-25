@@ -777,3 +777,52 @@ describe("payout rails", () => {
   });
 });
 
+describe("live breakdown on the amount step", () => {
+  const rows = [
+    { key: "rate", label: "Exchange rate", value: "1 USDC = 129.58 KES" },
+    { key: "fee", label: "Fee", value: "0.0849 USDC" },
+    { key: "receive", label: "Jane receives", value: "≈ 636.90 KES", strong: true },
+    { key: "total", label: "Total deducted", value: "5.00 USDC", strong: true, divider: true },
+  ];
+  const headline = { label: "Jane receives", value: "636.90 KES" };
+
+  function toAmount(extra: Record<string, unknown>) {
+    render(
+      <SendFlow
+        {...baseProps({
+          sendRecipient: "1234567890",
+          sendRecipientName: "Jane Mukami",
+          sendAmount: "5",
+          ...extra,
+        })}
+      />,
+    );
+    toBankAccount();
+    click("Continue");
+    expect(heading("How much?")).toBeInTheDocument();
+  }
+
+  it("shows what they receive, the rate, the fee and the total as the amount is typed", () => {
+    toAmount({ sendBreakdown: { rows, headline, pending: false, error: null } });
+    const card = screen.getByRole("region", { name: "Price breakdown" });
+    expect(card).toHaveTextContent("Exchange rate1 USDC = 129.58 KES");
+    expect(card).toHaveTextContent("Fee0.0849 USDC");
+    expect(card).toHaveTextContent("Total deducted5.00 USDC");
+    expect(card).toHaveTextContent("Estimate · locked on the next step");
+    // The receive figure is also the large headline under the amount.
+    expect(screen.getAllByText(/Jane receives/).length).toBeGreaterThan(1);
+  });
+
+  it("says it is working before the first figure arrives", () => {
+    toAmount({ sendBreakdown: { rows: [], headline: null, pending: true, error: null } });
+    expect(screen.getByText("Working out the fee and rate…")).toBeInTheDocument();
+  });
+
+  it("takes an optional reference and shows it on the review", () => {
+    const setReference = vi.fn();
+    toAmount({ sendReference: "INV-0042", setSendReference: setReference });
+    const input = screen.getByPlaceholderText("e.g. INV-0042");
+    fireEvent.change(input, { target: { value: "INV-0043" } });
+    expect(setReference).toHaveBeenCalled();
+  });
+});

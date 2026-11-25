@@ -91,6 +91,21 @@ export type SendFlowProps = {
   sendAmountEquivalent: string | null;
   /** Indicative "1 USD = 130.50 KES" shown while entering an amount. */
   sendIndicativeRateLine: string | null;
+  /** Optional note for the recipient's statement (unified sends). */
+  sendReference?: string;
+  setSendReference?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /**
+   * Live fee, rate and totals for the typed amount (unified sends). Null keeps
+   * the simple "recipient gets" line.
+   */
+  sendBreakdown?: {
+    rows: { key: string; label: string; value: string; strong?: boolean; divider?: boolean }[];
+    /** The other side of the typed amount, shown large (what they receive). */
+    headline: { label: string; value: string } | null;
+    /** A newer figure is on its way; the rows shown are for the previous amount. */
+    pending: boolean;
+    error: string | null;
+  } | null;
   /** Inline message when the typed amount is outside the published limits
    *  (country sends fold an insufficient-balance check into this same
    *  message; crypto sends use sendBalanceError below instead). */
