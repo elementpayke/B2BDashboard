@@ -1067,7 +1067,16 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
           ) : null}
         </div>
 
-        {p.sendIsCountry ? (
+        {p.sendIsCountry && p.sendRefundWalletsError ? (
+          <Notice tone="danger">
+            <p>{p.sendRefundWalletsError}</p>
+            {p.onRetrySendRefundWallets ? (
+              <Button variant="link" onClick={p.onRetrySendRefundWallets}>
+                Try again
+              </Button>
+            ) : null}
+          </Notice>
+        ) : p.sendIsCountry ? (
           p.selectSendRefundWallet &&
           (p.sendRefundWalletsLoading || (p.sendRefundWalletOptions || []).length > 0) ? (
             <ChoicePicker
@@ -1149,7 +1158,7 @@ export default function SendFlow({ containerRef, ...p }: SendFlowProps) {
             We can’t price this route right now. Our provider list is unavailable. Please try again
             shortly.
           </Notice>
-        ) : p.sendQuoteError ? (
+        ) : p.sendQuoteError && p.sendQuoteError !== p.sendRefundWalletsError ? (
           <Notice tone="danger" id="send-quote-error">
             <p>{p.sendQuoteError}</p>
             {p.onContactSupport && /contact support/i.test(p.sendQuoteError) ? (

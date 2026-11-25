@@ -826,3 +826,28 @@ describe("live breakdown on the amount step", () => {
     expect(setReference).toHaveBeenCalled();
   });
 });
+
+describe("pay-from account list", () => {
+  it("says the list did not load, not that there are no accounts, and offers a retry", () => {
+    const retry = vi.fn();
+    const message = "We couldn’t load your accounts just now. Try again in a moment.";
+    render(
+      <SendFlow
+        {...baseProps({
+          sendRecipient: "1234567890",
+          sendRecipientName: "Jane Mukami",
+          sendRefundWalletsError: message,
+          onRetrySendRefundWallets: retry,
+          sendQuoteError: message,
+        })}
+      />,
+    );
+    toBankAccount();
+    click("Continue");
+    expect(screen.getAllByText(message)).toHaveLength(1);
+    expect(screen.queryByText(/You have no account to pay from yet/)).not.toBeInTheDocument();
+    click("Try again");
+    expect(retry).toHaveBeenCalled();
+  });
+});
+

@@ -133,6 +133,9 @@ export type SendFlowProps = {
   sendRefundWalletId?: string;
   selectSendRefundWallet?: (accountId: string) => void;
   sendRefundWalletsLoading?: boolean;
+  /** The account list failed to load (not the same as having no accounts). */
+  sendRefundWalletsError?: string | null;
+  onRetrySendRefundWallets?: () => void;
   sendRecipientName: string;
   setSendRecipientName: (e: React.ChangeEvent<HTMLInputElement>) => void;
   sendRecipientLabel: string;
