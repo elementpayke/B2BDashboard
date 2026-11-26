@@ -21,7 +21,9 @@ import { formatAmount } from "@/components/ui/Amount";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
+import ChoicePicker from "@/components/ui/ChoicePicker";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { BANK_SEARCH_THRESHOLD } from "@/lib/hooks/depositFlowHelpers";
 import { cn } from "@/lib/utils";
 import BankDetails from "./BankDetails";
 import DepositStatus from "./DepositStatus";
@@ -481,6 +483,17 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
           <Notice tone="info" role="status">
             No {method === "bank" ? "banks" : "providers"} take top-ups here yet. Pick another country or method.
           </Notice>
+        ) : providers.length > BANK_SEARCH_THRESHOLD ? (
+          <ChoicePicker
+            id="deposit-provider"
+            label={method === "bank" ? "Bank" : "Provider"}
+            title={method === "bank" ? "Choose a bank" : "Choose a provider"}
+            placeholder={method === "bank" ? "Choose your bank" : "Choose your provider"}
+            searchable
+            value={providers.find((pr) => pr.selected)?.name ?? ""}
+            options={providers.map((pr) => ({ value: pr.name, label: pr.displayLabel || pr.name }))}
+            onChange={(name) => providers.find((pr) => pr.name === name)?.select()}
+          />
         ) : (
           <PickList label={method === "bank" ? "Bank" : "Provider"}>
             {providers.map((pr) => (
@@ -496,13 +509,15 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                   )
                 }
                 title={pr.displayLabel || pr.name}
-                meta={p.limitsText || undefined}
                 selected={pr.selected}
                 onClick={pr.select}
               />
             ))}
           </PickList>
         )}
+        {providers.length > 0 && p.limitsText ? (
+          <p className="text-body text-muted-foreground">Limits: {p.limitsText}</p>
+        ) : null}
         <div className="flex justify-center">
           <Button className="rounded-pill px-8" disabled={!picked} onClick={p.next}>
             Continue

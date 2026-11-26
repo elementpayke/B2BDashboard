@@ -203,6 +203,26 @@ describe("DepositFlow — country and provider", () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it("uses a searchable dropdown for a long bank list, with Continue right under it", () => {
+    const next = vi.fn();
+    const pick = vi.fn();
+    const banks = Array.from({ length: 9 }, (_, i) => ({
+      name: `Bank ${String.fromCharCode(65 + i)}`,
+      selected: false,
+      select: i === 4 ? pick : vi.fn(),
+    }));
+    toCountry(/Bank transfer/, {
+      next,
+      railGroups: [{ railIdx: 1, type: "bank", label: "Bank transfer", providers: banks }],
+    });
+    click(/Kenya/);
+    expect(screen.queryByRole("button", { name: /Bank A/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Min KES 100 · Max KES 150,000/)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /^Bank:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Bank E" }));
+    expect(pick).toHaveBeenCalled();
+  });
+
   it("uses bank wording and lists banks for a bank transfer", () => {
     toCountry(/Bank transfer/);
     click(/Kenya/);
