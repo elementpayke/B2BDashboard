@@ -128,6 +128,19 @@ describe("Dialog", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("stacks above a full-screen flow when opened from one", () => {
+    render(
+      <Dialog open>
+        <DialogContent title="Convert from" layer="flow">
+          body
+        </DialogContent>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Convert from" });
+    expect(dialog).toHaveClass("z-110");
+    expect(dialog).not.toHaveClass("z-50");
+  });
 });
 
 describe("EmptyState", () => {

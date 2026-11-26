@@ -28,7 +28,11 @@ export type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Con
   size?: "sm" | "md" | "lg";
   /** Hide the × button (e.g. mid-submit). Esc still closes unless prevented. */
   hideClose?: boolean;
+  /** "flow": opened from inside a full-screen flow (z-100), so it stacks above it. */
+  layer?: "page" | "flow";
 };
+
+const LAYERS = { page: "z-50", flow: "z-110" } as const;
 
 const SIZES = { sm: "desktop:max-w-sm", md: "desktop:max-w-lg", lg: "desktop:max-w-2xl" } as const;
 
@@ -39,24 +43,26 @@ export function DialogContent({
   footer,
   size = "md",
   hideClose,
+  layer = "page",
   className,
   children,
   ...props
 }: DialogContentProps) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
+      <DialogPrimitive.Overlay className={cn("fixed inset-0 bg-overlay", LAYERS[layer])} />
       <DialogPrimitive.Content
         data-slot="dialog"
         // No description → opt out explicitly (silences Radix's a11y warning)
         // without breaking the auto-link when one is given.
         {...(description ? {} : { "aria-describedby": undefined })}
         className={cn(
-          "fixed z-50 flex max-h-[92dvh] w-full flex-col bg-popover text-popover-foreground shadow-modal outline-none",
+          "fixed flex max-h-[92dvh] w-full flex-col bg-popover text-popover-foreground shadow-modal outline-none",
           // mobile: bottom sheet
           "inset-x-0 bottom-0 rounded-t-3xl pb-[env(safe-area-inset-bottom)]",
           // ≥900: centered dialog
           "desktop:inset-auto desktop:top-1/2 desktop:left-1/2 desktop:-translate-x-1/2 desktop:-translate-y-1/2 desktop:rounded-3xl desktop:pb-0",
+          LAYERS[layer],
           SIZES[size],
           className,
         )}

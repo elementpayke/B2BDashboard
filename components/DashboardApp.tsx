@@ -276,7 +276,7 @@ import {
   bookTransfersApi,
   type BookTransferPreview,
 } from "@/lib/services/bookTransfers";
-import ConvertFlow from "@/components/convert/ConvertFlow";
+import ConvertComposer from "@/features/convert/ConvertComposer";
 import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   cardsApi,
@@ -2343,8 +2343,9 @@ export default function DashboardApp(props: Props = {}) {
     lastModalFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
+    // A picker or a shared <Dialog> open on top owns Esc and Tab.
     const pickerOpen = () =>
-      Boolean(document.querySelector(".ep-choice-overlay, .ep-choice-popover"));
+      Boolean(document.querySelector('.ep-choice-overlay, .ep-choice-popover, [data-slot="dialog"]'));
     const focusables = () =>
       [
         ...node.querySelectorAll<HTMLElement>(
@@ -7324,6 +7325,62 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   }}
   onHelp={() => openHelp({ category: "deposit" })}
 />
+) : isConvertFlow ? (
+<ConvertComposer
+  containerRef={modalRef}
+  route={convertRoute}
+  sourceAccounts={convertSourceAccounts}
+  destinationAccounts={convertDestAccounts}
+  sourceAccountId={s.convertSourceAccountId}
+  destinationAccountId={s.convertDestAccountId}
+  onSourceAccount={(id) =>
+    setState({
+      convertSourceAccountId: id,
+      // Picking the source you were about to receive into would leave the
+      // pair pointing at one account; drop the destination and let the
+      // user (or the prefill) choose again.
+      ...(id === s.convertDestAccountId ? { convertDestAccountId: "" } : {}),
+      convertQuote: null,
+      convertBookPreview: null,
+      convertError: "",
+      swapAccepted: false,
+    })
+  }
+  onDestinationAccount={(id) =>
+    setState({
+      convertDestAccountId: id,
+      convertQuote: null,
+      convertBookPreview: null,
+      convertError: "",
+      swapAccepted: false,
+    })
+  }
+  amount={s.convertAmount}
+  onAmount={(value) =>
+    setState({
+      convertAmount: value,
+      convertQuote: null,
+      convertBookPreview: null,
+      convertError: "",
+    })
+  }
+  quote={s.convertQuote}
+  quoteSeconds={s.quoteSeconds}
+  quoteLoading={s.convertQuoteLoading}
+  acceptLoading={s.convertAccepting}
+  error={s.convertError}
+  progressNote={s.convertJobNote}
+  pathLabel={convertPathLabel}
+  done={swapAccepted}
+  doneBody={
+    s.convertQuote
+      ? `${s.convertQuote.source_amount} ${s.convertQuote.source_currency} → ${s.convertQuote.destination_amount ?? "—"} ${s.convertQuote.destination_currency}`
+      : undefined
+  }
+  onRefreshQuote={() => void refreshConvertQuote()}
+  onAccept={() => void acceptConvertQuote()}
+  onDone={closeModal}
+/>
 ) : modalOpen ? (<>
 <div onClick={closeModal} className="ep-modal-overlay" role="presentation">
 <div
@@ -7435,62 +7492,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
 />
 </section>) : null}
 
-{(isConvertFlow) ? (<section className="ep-flow ep-flow--sheet" data-screen-label="Convert">
-<ConvertFlow
-  route={convertRoute}
-  sourceAccounts={convertSourceAccounts}
-  destinationAccounts={convertDestAccounts}
-  sourceAccountId={s.convertSourceAccountId}
-  destinationAccountId={s.convertDestAccountId}
-  onSourceAccount={(id) =>
-    setState({
-      convertSourceAccountId: id,
-      // Picking the source you were about to receive into would leave the
-      // pair pointing at one account; drop the destination and let the
-      // user (or the prefill) choose again.
-      ...(id === s.convertDestAccountId ? { convertDestAccountId: "" } : {}),
-      convertQuote: null,
-      convertBookPreview: null,
-      convertError: "",
-      swapAccepted: false,
-    })
-  }
-  onDestinationAccount={(id) =>
-    setState({
-      convertDestAccountId: id,
-      convertQuote: null,
-      convertBookPreview: null,
-      convertError: "",
-      swapAccepted: false,
-    })
-  }
-  amount={s.convertAmount}
-  onAmount={(value) =>
-    setState({
-      convertAmount: value,
-      convertQuote: null,
-      convertBookPreview: null,
-      convertError: "",
-    })
-  }
-  quote={s.convertQuote}
-  quoteSeconds={s.quoteSeconds}
-  quoteLoading={s.convertQuoteLoading}
-  acceptLoading={s.convertAccepting}
-  error={s.convertError}
-  progressNote={s.convertJobNote}
-  pathLabel={convertPathLabel}
-  done={swapAccepted}
-  doneBody={
-    s.convertQuote
-      ? `${s.convertQuote.source_amount} ${s.convertQuote.source_currency} → ${s.convertQuote.destination_amount ?? "—"} ${s.convertQuote.destination_currency}`
-      : undefined
-  }
-  onRefreshQuote={() => void refreshConvertQuote()}
-  onAccept={() => void acceptConvertQuote()}
-  onDone={closeModal}
-/>
-</section>) : null}
+
 
 
 {(isModalBulk) ? (<>

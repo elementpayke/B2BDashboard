@@ -216,10 +216,13 @@ export function PickRow({
   selected,
   hint,
   soon,
+  wrapMeta,
 }: {
   leading?: React.ReactNode;
   title: React.ReactNode;
   meta?: React.ReactNode;
+  /** Let the meta line wrap instead of truncating (e.g. a reason the row is disabled). */
+  wrapMeta?: boolean;
   trailing?: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
@@ -249,7 +252,9 @@ export function PickRow({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-title font-bold leading-snug text-foreground">{title}</span>
           {meta ? (
-            <span className="block truncate text-body-lg leading-snug text-muted-foreground">{meta}</span>
+            <span className={cn("block text-body-lg leading-snug text-muted-foreground", wrapMeta ? "whitespace-normal" : "truncate")}>
+              {meta}
+            </span>
           ) : null}
         </span>
         {soon ? (
