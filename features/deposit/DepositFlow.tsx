@@ -160,6 +160,15 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
 
   const interacAccount = interacAccounts.find((a) => a.id === interacId) ?? null;
   const fiatAccount = fiatAccounts.find((a) => a.id === fiatId) ?? null;
+  const onOpenFiatAccount = p.onOpenFiatAccount;
+  const lockedFiatId = lockedFiat?.id ?? null;
+  const syncedFiatRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    // Opened from inside the account: refresh its details once, as a pick does.
+    if (!lockedFiatId || syncedFiatRef.current === lockedFiatId) return;
+    syncedFiatRef.current = lockedFiatId;
+    onOpenFiatAccount?.(lockedFiatId);
+  }, [lockedFiatId, onOpenFiatAccount]);
 
   const selectedRail = p.railGroups.find((g) => g.providers.some((pr) => pr.selected));
   const railType: "mobile" | "bank" = selectedRail?.type ?? (method === "bank" ? "bank" : "mobile");

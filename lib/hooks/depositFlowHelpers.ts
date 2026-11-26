@@ -133,3 +133,34 @@ export function depositRailBlockedByMissingNetworkId(input: {
   if (!input.catalogSettled) return false;
   return !input.networkId;
 }
+
+export type FundFromAccountTarget =
+  | { kind: "wallet"; id: string; asset: string; network: string }
+  | { kind: "interac"; id: string }
+  | { kind: "fiat"; id: string };
+
+/**
+ * Fund pressed inside an account: which Add money path opens with that
+ * account already chosen. Stablecoin wallets go to the method step; CAD
+ * accounts with an entity use Interac; every other fiat account shows its own
+ * bank details.
+ */
+export function fundFromAccountTarget(input: {
+  stablecoin: { id?: string | null; currency: string; network?: string | null } | null;
+  fiat: { id?: string | number | null; currency: string; entity_id?: string | null } | null;
+}): FundFromAccountTarget | null {
+  const { stablecoin, fiat } = input;
+  if (stablecoin?.id) {
+    return {
+      kind: "wallet",
+      id: stablecoin.id,
+      asset: stablecoin.currency.trim().toLowerCase(),
+      network: stablecoin.network || "",
+    };
+  }
+  const fiatId = fiat?.id == null ? "" : String(fiat.id).trim();
+  if (!fiat || !fiatId) return null;
+  const isCad = fiat.currency.trim().toUpperCase() === "CAD";
+  if (isCad && String(fiat.entity_id || "").trim()) return { kind: "interac", id: fiatId };
+  return { kind: "fiat", id: fiatId };
+}

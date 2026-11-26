@@ -156,6 +156,15 @@ describe("DepositFlow — fiat accounts", () => {
     expect(screen.getByText(/details aren’t ready yet/)).toBeInTheDocument();
   });
 
+  it("opens straight on the details when Fund is pressed inside that account", () => {
+    const onOpenFiatAccount = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdAccount], fiatLockedAccountId: "usd-1", onOpenFiatAccount }));
+    expect(title()).toHaveTextContent("Fund your USD account");
+    expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
+    expect(screen.getByText("Step 1 of 1")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+  });
+
   it("can go back to the account list", () => {
     renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
     click(/USD account/);

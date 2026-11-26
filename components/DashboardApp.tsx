@@ -229,7 +229,7 @@ import {
   type SendQuoteErrorData,
 } from "@/lib/hooks/sendFlowHelpers";
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
-import { countryRailsLabel, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
+import { countryRailsLabel, fundFromAccountTarget, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
 import {
   isMobileMoneyRail,
@@ -498,6 +498,10 @@ export default function DashboardApp(props: Props = {}) {
     fundTargetAccountId: null as string | null,
     /** CAD account being funded by Interac from inside the account. */
     fundInteracAccountId: null as string | null,
+    /** Fiat account (USD/EUR/GBP…) whose bank details Add money opens on, from inside it. */
+    fundFiatLockedId: null as string | null,
+    /** Add money opened from inside a stablecoin wallet: that wallet is chosen. */
+    depositFromAccount: false,
     africaFundId: null as string | null,
     africaFundStatus: "" as string,
     fundConvertStatus: "" as string,
@@ -1434,7 +1438,7 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundInteracAccountId: null, fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundInteracAccountId: null, fundFiatLockedId: null, depositFromAccount: false, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
     depositAsset: "usdc", depositNetwork: "stellar",
@@ -5899,10 +5903,11 @@ export default function DashboardApp(props: Props = {}) {
       : null);
   const depositWalletLocked = Boolean(
     s.fundTargetAccountId &&
-      s.fundAfricanTargetCurrency &&
-      !(AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(
-        s.fundAfricanTargetCurrency.trim().toUpperCase(),
-      ),
+      ((s.depositFromAccount && !s.fundFiatLockedId && !s.fundInteracAccountId) ||
+        (s.fundAfricanTargetCurrency &&
+          !(AFRICAN_FUND_FIAT_CURRENCIES as readonly string[]).includes(
+            s.fundAfricanTargetCurrency.trim().toUpperCase(),
+          ))),
   );
   const depositDone = s.depositDone;
   const depositPayerLabel = depositIsMobileRail
@@ -6395,7 +6400,50 @@ export default function DashboardApp(props: Props = {}) {
   }
   onBack={backToWallets}
   onOpenDetails={openAcctDetailsModal}
-  onFund={openAcctFundChooser}
+  onFund={() => {
+    // Fund inside an account opens Add money with that account already chosen.
+    if (meQuery.isLoading || meQuery.isPending) return;
+    const kyb = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
+    if (!isKybApproved(kyb)) {
+      goVerification();
+      if (canOpenKybWizard(kyb)) openModalKyb();
+      return;
+    }
+    const target = fundFromAccountTarget({
+      stablecoin: selectedStablecoinAccount
+        ? {
+            id: selectedStablecoinAccount.id,
+            currency: selectedStablecoinAccount.currency,
+            network: selectedStablecoinAccount.network,
+          }
+        : null,
+      fiat: selectedDepositAccount
+        ? {
+            id: selectedDepositAccount.id,
+            currency: selectedDepositAccount.currency,
+            entity_id: selectedDepositAccount.entity_id,
+          }
+        : null,
+    });
+    if (!target) {
+      openAcctFundChooser();
+      return;
+    }
+    const base = { ...moneyFlowReset, modal: "deposit", moreOpen: false, sidebarOpen: false };
+    if (target.kind === "wallet") {
+      setState({
+        ...base,
+        depositFromAccount: true,
+        fundTargetAccountId: target.id,
+        depositAsset: target.asset || s.depositAsset,
+        depositNetwork: toUiNetworkKey(target.network) || s.depositNetwork,
+      });
+    } else if (target.kind === "interac") {
+      setState({ ...base, fundInteracAccountId: target.id });
+    } else {
+      setState({ ...base, fundFiatLockedId: target.id });
+    }
+  }}
   onSend={
     selectedDepositAccount &&
     fiatSendOpensBankPayout(String(selectedDepositAccount.currency || ""))
@@ -7137,6 +7185,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       depositInstructionsSyncAttemptedRef.current.delete(id);
     });
   }}
+  fiatLockedAccountId={s.fundFiatLockedId}
   interacLockedAccountId={s.fundInteracAccountId}
   interacPayerName={meQuery.data?.business?.legal_name || meQuery.data?.business?.name || ""}
   interacDefaultEmail={meQuery.data?.user?.email?.trim() || ""}
