@@ -589,9 +589,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
   } else if (screen === "country") {
     const want = method === "bank" ? "bank" : "mobile";
     const q = query.trim().toLowerCase();
-    const rows = p.countryRows
-      .filter((r) => r.railTypes.includes(want))
-      .filter((r) => !q || [r.name, r.code, ...r.providerNames].join(" ").toLowerCase().includes(q));
+    const forMethod = p.countryRows.filter((r) => r.railTypes.includes(want));
+    const rows = forMethod.filter(
+      (r) => !q || [r.name, r.code, ...r.providerNames].join(" ").toLowerCase().includes(q),
+    );
     body = (
       <>
         <StepHeading
@@ -628,7 +629,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 {q ? `No country matches “${query.trim()}”.` : "No countries take this method yet."}
               </p>
             ) : (
-              <PickList label="Country">
+              <PickList label="Country" scrollable={forMethod.length > SEARCH_THRESHOLD}>
                 {rows.map((r) => (
                   <PickRow
                     key={r.idx}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DepositFlow from "./DepositFlow";
 import { baseProps, reviewProps } from "./DepositFlow.fixtures";
@@ -316,6 +316,27 @@ describe("DepositFlow — country and provider", () => {
     expect(screen.queryByRole("button", { name: /Kenya/ })).not.toBeInTheDocument();
     fireEvent.change(search, { target: { value: "zzz" } });
     expect(screen.getByText(/No country matches/)).toBeInTheDocument();
+  });
+
+  it("scrolls a long country list in its own region, a short one stays plain", () => {
+    toCountry(/Mobile money/);
+    expect(screen.queryByRole("region", { name: "Country" })).not.toBeInTheDocument();
+    cleanup();
+    const names = ["Kenya", "Uganda", "Tanzania", "Ghana", "Rwanda", "Zambia"];
+    toCountry(/Mobile money/, {
+      countryRows: names.map((name, idx) => ({
+        idx,
+        name,
+        code: "",
+        flagUrl: "",
+        railTypes: ["mobile"],
+        providerNames: ["MTN MoMo"],
+        select: () => {},
+      })),
+    });
+    const region = screen.getByRole("region", { name: "Country" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(within(region).getAllByRole("button")).toHaveLength(6);
   });
 
   it("shows the catalogue error with a retry, not an empty search", () => {
