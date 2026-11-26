@@ -23,14 +23,20 @@ export type InteracAccount = {
   entityId: string;
   label: string;
   balanceText?: string | null;
+  /** Country flag image (Canada). */
+  flagUrl?: string | null;
 };
 
 /** A fiat account the user opened (USD, EUR, GBP…): funded by a bank transfer to its own details. */
 export type FiatFundingAccount = {
   id: string;
   currency: string;
+  /** e.g. "Kenyan Shilling", for search. */
+  currencyName?: string;
   label: string;
   balanceText?: string | null;
+  /** Country flag image; initials when null (e.g. XOF, which spans several countries). */
+  flagUrl?: string | null;
   /** Grouped bank details, e.g. "Domestic transfer" / "International wire". Empty while not issued yet. */
   sections: { title: string; rows: { label: string; value: string; copyValue?: string }[] }[];
   /** Reference rule from the partner, shown as a warning. */

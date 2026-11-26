@@ -7160,6 +7160,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
         id: String(a.id),
         entityId: String(a.entity_id),
         label: `${a.currency} account`,
+        flagUrl: currencyIso(a.currency) ? `https://flagcdn.com/w80/${currencyIso(a.currency)}.png` : null,
         balanceText: Number.isFinite(n)
           ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`
           : null,
@@ -7181,6 +7182,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       return {
         id: String(a.id),
         currency: a.currency,
+        currencyName: currencyLabel(a.currency),
+        flagUrl: currencyIso(a.currency) ? `https://flagcdn.com/w80/${currencyIso(a.currency)}.png` : null,
         label: `${a.currency} account`,
         balanceText: Number.isFinite(n)
           ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`

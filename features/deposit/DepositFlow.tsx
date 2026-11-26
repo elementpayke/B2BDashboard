@@ -36,6 +36,8 @@ type View = "account" | "method" | "country" | "provider" | "network" | "interac
 type Screen = View | "amount" | "review" | "address";
 
 const TITLE_ID = "deposit-flow-title";
+/** More accounts than this and the account step gets a search box. */
+const ACCOUNT_SEARCH_THRESHOLD = 4;
 
 // Phosphor duotone paths (MIT): device-mobile, bank, coin, envelope.
 const GLYPHS: Record<DepositMethod, { back: string; front: string }> = {
@@ -106,6 +108,16 @@ function useExpired(expiresAt: string | null | undefined): boolean {
 }
 
 /** A network's brand mark with the coin as a small badge, or the coin alone. */
+/** Fiat account mark: the country flag, or initials when the currency has none. */
+function FiatMark({ flagUrl, label }: { flagUrl?: string | null; label: string }) {
+  return flagUrl ? <Flag url={flagUrl} className="size-11" /> : <Initials name={label} />;
+}
+
+/** Lowercased text an account row can be found by. */
+function haystack(...parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
 function AssetMark({ asset, network, label }: { asset?: string; network?: string; label: string }) {
   const coin = isCoinMarkAsset(asset) ? asset.toUpperCase() : null;
   if (network) {
@@ -719,6 +731,18 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
       </>
     );
   } else {
+    const accountQ = query.trim().toLowerCase();
+    const matches = (text: string) => !accountQ || text.includes(accountQ);
+    const shownWallets = p.walletOptions.filter((w) =>
+      matches(haystack(w.label, w.meta, w.asset, w.network, w.balanceText)),
+    );
+    const shownInterac = interacAccounts.filter((a) =>
+      matches(haystack(a.label, "Canadian Dollar Interac", a.balanceText)),
+    );
+    const shownFiat = fiatAccounts.filter((a) =>
+      matches(haystack(a.label, a.currency, a.currencyName, a.balanceText)),
+    );
+    const accountCount = p.walletOptions.length + interacAccounts.length + fiatAccounts.length;
     body = (
       <>
         <StepHeading title="Add money" titleId={TITLE_ID} sub="Which account are you funding?" />
@@ -737,8 +761,20 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             <Skeleton className="h-18 rounded-2xl" />
           </div>
         ) : (
+          <>
+          {accountCount > ACCOUNT_SEARCH_THRESHOLD ? (
+            <SearchBox
+              label="Search accounts"
+              placeholder="Search by name, currency or balance"
+              value={query}
+              onChange={setQuery}
+            />
+          ) : null}
+          {accountQ && !shownWallets.length && !shownInterac.length && !shownFiat.length ? (
+            <p className="px-1 text-body text-muted-foreground">No accounts match “{query.trim()}”.</p>
+          ) : null}
           <PickList label="Account to fund">
-            {p.walletOptions.map((w) => (
+            {shownWallets.map((w) => (
               <PickRow
                 key={w.value}
                 leading={<AssetMark asset={w.asset} network={w.network} label={w.label} />}
@@ -754,10 +790,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 }}
               />
             ))}
-            {interacAccounts.map((a) => (
+            {shownInterac.map((a) => (
               <PickRow
                 key={a.id}
-                leading={<Initials name={a.label} />}
+                leading={<FiatMark flagUrl={a.flagUrl} label={a.label} />}
                 title={a.label}
                 meta="Fund by Interac e-Transfer"
                 selected={interacId === a.id}
@@ -770,10 +806,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 }}
               />
             ))}
-            {fiatAccounts.map((a) => (
+            {shownFiat.map((a) => (
               <PickRow
                 key={a.id}
-                leading={<Initials name={a.label} />}
+                leading={<FiatMark flagUrl={a.flagUrl} label={a.label} />}
                 title={a.label}
                 selected={fiatId === a.id}
                 trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
@@ -787,6 +823,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
               />
             ))}
           </PickList>
+          </>
         )}
       </>
     );

@@ -100,6 +100,44 @@ describe("DepositFlow — which account", () => {
     expect(onRetryWallets).toHaveBeenCalled();
   });
 
+  it("searches accounts by name, currency, network or balance and keeps each balance showing", () => {
+    renderFlow(
+      baseProps({
+        interacAccounts: [{ id: "cad-1", entityId: "e1", label: "CAD account", balanceText: "40.00 CAD" }],
+        fiatAccounts: [
+          { id: "kes-1", currency: "KES", currencyName: "Kenyan Shilling", label: "KES account", balanceText: "0.00 KES", sections: [] },
+          { id: "ngn-1", currency: "NGN", currencyName: "Nigerian Naira", label: "NGN account", balanceText: "1,017.88 NGN", sections: [] },
+        ],
+      }),
+    );
+    const search = screen.getByRole("searchbox", { name: "Search accounts" });
+    fireEvent.change(search, { target: { value: "naira" } });
+    expect(screen.getByRole("button", { name: /NGN account/ })).toHaveTextContent("1,017.88 NGN");
+    expect(screen.queryByRole("button", { name: /KES account/ })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "stellar" } });
+    expect(screen.getByRole("button", { name: /USDC wallet · Stellar/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /USDC wallet · Base/ })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "1,240" } });
+    expect(screen.getByRole("button", { name: /USDC wallet · Base/ })).toHaveTextContent("1,240.50 USDC");
+    fireEvent.change(search, { target: { value: "yen" } });
+    expect(screen.getByText("No accounts match “yen”.")).toBeInTheDocument();
+  });
+
+  it("shows the country flag for fiat accounts, initials when there is none", () => {
+    const { container } = renderFlow(
+      baseProps({
+        fiatAccounts: [
+          { id: "kes-1", currency: "KES", label: "KES account", flagUrl: "https://flagcdn.com/w80/ke.png", sections: [] },
+          { id: "xof-1", currency: "XOF", label: "XOF account", flagUrl: null, sections: [] },
+        ],
+      }),
+    );
+    const kes = screen.getByRole("button", { name: /KES account/ });
+    expect(kes.querySelector("[style*='flagcdn.com/w80/ke.png']")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /XOF account/ })).toHaveTextContent("XA");
+    expect(container).toBeTruthy();
+  });
+
   it("lists CAD accounts that take Interac", () => {
     renderFlow(baseProps({ interacAccounts: [{ id: "cad-1", entityId: "e1", label: "CAD account", balanceText: "40.00 CAD" }] }));
     expect(screen.getByRole("button", { name: /CAD account/ })).toHaveTextContent("Fund by Interac e-Transfer");
