@@ -164,3 +164,19 @@ export function fundFromAccountTarget(input: {
   if (isCad && String(fiat.entity_id || "").trim()) return { kind: "interac", id: fiatId };
   return { kind: "fiat", id: fiatId };
 }
+
+/** Where open banking was opened from inside Add money, so Back can return there. */
+export type OpenBankingReturn = { fiatId: string; locked: boolean };
+
+/** State patch for Back on the open banking request screen. */
+export function openBankingBackPatch(ret: OpenBankingReturn | null):
+  | { modal: "fundChooser" }
+  | { modal: "deposit"; fundFiatLockedId: string | null; depositResumeFiatId: string | null; openBankingReturn: null } {
+  if (!ret) return { modal: "fundChooser" };
+  return {
+    modal: "deposit",
+    fundFiatLockedId: ret.locked ? ret.fiatId : null,
+    depositResumeFiatId: ret.locked ? null : ret.fiatId,
+    openBankingReturn: null,
+  };
+}

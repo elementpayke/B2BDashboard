@@ -229,7 +229,7 @@ import {
   type SendQuoteErrorData,
 } from "@/lib/hooks/sendFlowHelpers";
 import { preferCountryOfframpWallet } from "@/lib/services/offrampAsset";
-import { countryRailsLabel, fundFromAccountTarget, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
+import { countryRailsLabel, fundFromAccountTarget, openBankingBackPatch, type OpenBankingReturn, countrySearchHaystack, depositRailBlockedByMissingNetworkId, ensureSelectedProvider, indexOfProviderName, resolveQuotedProviderName } from "@/lib/hooks/depositFlowHelpers";
 import { channelLabelForRail } from "@/lib/services/channelLabels";
 import {
   isMobileMoneyRail,
@@ -502,6 +502,10 @@ export default function DashboardApp(props: Props = {}) {
     fundFiatLockedId: null as string | null,
     /** Add money opened from inside a stablecoin wallet: that wallet is chosen. */
     depositFromAccount: false,
+    /** Fiat account Add money reopens on (method step) after Back from open banking. */
+    depositResumeFiatId: null as string | null,
+    /** Open banking opened from Add money: Back returns there. */
+    openBankingReturn: null as OpenBankingReturn | null,
     africaFundId: null as string | null,
     africaFundStatus: "" as string,
     fundConvertStatus: "" as string,
@@ -1438,7 +1442,7 @@ export default function DashboardApp(props: Props = {}) {
     convertError: "",
     convertHop: 1,
     convertBridgeUsdcId: "",
-    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundInteracAccountId: null, fundFiatLockedId: null, depositFromAccount: false, fundConvertStatus: "", fundConvertError: "",
+    fundAfricanTargetCurrency: null, fundFiatAccountId: null, fundTargetAccountId: null, fundInteracAccountId: null, fundFiatLockedId: null, depositFromAccount: false, depositResumeFiatId: null, openBankingReturn: null, fundConvertStatus: "", fundConvertError: "",
     // africaFundId / africaFundStatus intentionally omitted — keep background
     // polling alive after the deposit modal closes until the fund is terminal.
     depositAsset: "usdc", depositNetwork: "stellar",
@@ -2405,6 +2409,7 @@ export default function DashboardApp(props: Props = {}) {
   const openAcctFundChooser = () =>
     setState({
       modal: "fundChooser",
+      openBankingReturn: null,
       fundConvertStatus: "",
       fundConvertError: "",
       fundAfricanTargetCurrency: null,
@@ -7209,6 +7214,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     });
   }}
   fiatLockedAccountId={s.fundFiatLockedId}
+  fiatResumeAccountId={s.depositResumeFiatId}
   onFiatConvertFund={(id) => {
     const account = depositAccountsList.find((a) => String(a.id) === id);
     if (account) openAfricanFundOnRamp({ id, currency: account.currency });
@@ -7220,6 +7226,7 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
       selectedAcctKind: "fiat",
       selectedAcctKey: `fiat:${account.currency.toUpperCase()}`,
       modal: "fundPaymentRequest",
+      openBankingReturn: { fiatId: id, locked: s.fundFiatLockedId === id },
     });
   }}
   interacLockedAccountId={s.fundInteracAccountId}
@@ -7591,7 +7598,10 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
   currency={acctDetail.currency}
   accountName={acctDetail.name}
   method={remittanceMethodForCurrency(acctDetail.currency) || "interac"}
-  onBack={() => setState({ modal: "fundChooser" })}
+  onBack={() => {
+    const patch = openBankingBackPatch(s.openBankingReturn);
+    setState(patch.modal === "deposit" ? { ...moneyFlowReset, moreOpen: false, sidebarOpen: false, ...patch } : patch);
+  }}
 />
 </>) : null}
 

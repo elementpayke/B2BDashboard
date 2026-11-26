@@ -152,8 +152,11 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     : null;
   const locked = Boolean(p.walletLocked || lockedInterac || lockedFiat);
 
-  const [view, setView] = React.useState<View>(locked ? "method" : "account");
-  const [fiatId, setFiatId] = React.useState<string | null>(lockedFiat?.id ?? null);
+  const resumeFiat = !locked && p.fiatResumeAccountId
+    ? fiatAccounts.find((a) => a.id === p.fiatResumeAccountId) ?? null
+    : null;
+  const [view, setView] = React.useState<View>(locked || resumeFiat ? "method" : "account");
+  const [fiatId, setFiatId] = React.useState<string | null>(lockedFiat?.id ?? resumeFiat?.id ?? null);
   const [method, setMethod] = React.useState<DepositMethod | null>(null);
   const [interacId, setInteracId] = React.useState<string | null>(lockedInterac?.id ?? null);
   const [query, setQuery] = React.useState("");

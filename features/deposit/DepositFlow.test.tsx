@@ -209,6 +209,15 @@ describe("DepositFlow — fiat accounts", () => {
     expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
   });
 
+  it("comes back from open banking on that account's method step, still able to change account", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], fiatResumeAccountId: "usd-1" }));
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Change account/ })).toHaveTextContent("Into USD account");
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    click(/Back/);
+    expect(screen.getByText("Which account are you funding?")).toBeInTheDocument();
+  });
+
   it("can go back from the details to the method, then to the account list", () => {
     renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
     click(/USD account/);

@@ -100,6 +100,8 @@ export type DepositFlowProps = {
   fiatAccounts?: FiatFundingAccount[];
   /** Opened from inside a fiat account: go straight to its details. */
   fiatLockedAccountId?: string | null;
+  /** Coming back (e.g. from open banking): start on this account's method step, not locked. */
+  fiatResumeAccountId?: string | null;
   /** Called when a fiat account is chosen, so the parent can refresh missing details. */
   onOpenFiatAccount?: (id: string) => void;
   /** Mobile money or African bank into a fiat account: parent sets up the converted top-up. */

@@ -3,6 +3,7 @@ import { COUNTRIES } from "@/components/mockData";
 import {
   BANK_SEARCH_THRESHOLD,
   fundFromAccountTarget,
+  openBankingBackPatch,
   buildDepositDestinationSummary,
   buildDepositStepDots,
   countryMatchesQuery,
@@ -131,5 +132,29 @@ describe("fundFromAccountTarget", () => {
   it("returns null with nothing selected", () => {
     expect(fundFromAccountTarget({ stablecoin: null, fiat: null })).toBeNull();
     expect(fundFromAccountTarget({ stablecoin: null, fiat: { id: null, currency: "USD" } })).toBeNull();
+  });
+});
+
+describe("openBankingBackPatch", () => {
+  it("goes back to the old chooser when open banking wasn't opened from Add money", () => {
+    expect(openBankingBackPatch(null)).toEqual({ modal: "fundChooser" });
+  });
+
+  it("returns to Add money on the account it was opened for", () => {
+    expect(openBankingBackPatch({ fiatId: "eur-1", locked: false })).toEqual({
+      modal: "deposit",
+      fundFiatLockedId: null,
+      depositResumeFiatId: "eur-1",
+      openBankingReturn: null,
+    });
+  });
+
+  it("keeps the account locked when Add money was opened from inside it", () => {
+    expect(openBankingBackPatch({ fiatId: "eur-1", locked: true })).toEqual({
+      modal: "deposit",
+      fundFiatLockedId: "eur-1",
+      depositResumeFiatId: null,
+      openBankingReturn: null,
+    });
   });
 });
