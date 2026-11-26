@@ -277,6 +277,9 @@ import {
   type BookTransferPreview,
 } from "@/lib/services/bookTransfers";
 import ConvertComposer from "@/features/convert/ConvertComposer";
+import KybGateDialog, { gateActionLabel } from "@/features/onboarding/KybGateDialog";
+import GetStartedChecklist from "@/features/onboarding/GetStartedChecklist";
+import { track } from "@/lib/analytics/track";
 import { feeDisclosureText } from "@/components/money/FeeDisclosure";
 import {
   cardsApi,
@@ -417,6 +420,8 @@ import {
   canOpenKybWizard,
   describeKybStatus,
   isKybApproved,
+  kybStatusChangedToDecision,
+  kybStatusRefetchMs,
   mergeKybSummaryCache,
   normalizeKybReviewFindings,
 } from "@/lib/services/kyb";
@@ -631,7 +636,26 @@ export default function DashboardApp(props: Props = {}) {
     return () => setSessionLostHandler(null);
   }, [router, queryClient]);
 
-  const meQuery = useQuery({ queryKey: [QK.authMe], queryFn: authApi.me, retry: false });
+  const meQuery = useQuery({
+    queryKey: [QK.authMe],
+    queryFn: authApi.me,
+    retry: false,
+    // While compliance reviews KYB, re-check so approval shows without a reload.
+    refetchInterval: (query) =>
+      kybStatusRefetchMs(query.state.data?.kyb_summary?.profile?.kyb_status as string | undefined),
+  });
+  const lastKybStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const next = meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined;
+    if (lastKybStatusRef.current && next && lastKybStatusRef.current !== next) {
+      track("kyb_status_changed", { from: lastKybStatusRef.current, to: next });
+    }
+    if (kybStatusChangedToDecision(lastKybStatusRef.current, next)) {
+      void queryClient.invalidateQueries({ queryKey: [QK.dashboardBootstrap] });
+      void queryClient.invalidateQueries({ queryKey: [QK.depositAccountsEligibility] });
+    }
+    lastKybStatusRef.current = next;
+  }, [meQuery.data, queryClient]);
   useEffect(() => {
     if (!meQuery.isError) return;
     if (!isSessionExpiredError(meQuery.error)) return;
@@ -2559,16 +2583,19 @@ export default function DashboardApp(props: Props = {}) {
       goVerification();
       return;
     }
+    track("kyb_wizard_opened", { status });
     setState({ modal: "kyb" });
   };
+  /** The gated action the user just tried, explained in KybGateDialog. */
+  const [kybGate, setKybGate] = useState<string | null>(null);
   const guardMoneyModal = (name: string) => () => {
     // Wait for /auth/me before treating KYB as pending — otherwise approved
     // businesses get bounced to verification while the profile is still loading.
     if (meQuery.isLoading || meQuery.isPending) return;
     const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
     if (!isKybApproved(status)) {
-      goVerification();
-      if (canOpenKybWizard(status)) openModalKyb();
+      track("kyb_gate_shown", { action: name, status });
+      setKybGate(name);
       return;
     }
     if (name === "send" || name === "deposit" || name === "receive" || name === "convert") {
@@ -2583,8 +2610,8 @@ export default function DashboardApp(props: Props = {}) {
     if (meQuery.isLoading || meQuery.isPending) return;
     const status = (meQuery.data?.kyb_summary?.profile?.kyb_status as string | undefined) ?? "pending";
     if (!isKybApproved(status)) {
-      goVerification();
-      if (canOpenKybWizard(status)) openModalKyb();
+      track("kyb_gate_shown", { action: screen, status });
+      setKybGate(screen);
       return;
     }
     navigateToScreen(screen);
@@ -6279,6 +6306,27 @@ export default function DashboardApp(props: Props = {}) {
 <KybGateBanner verificationStatus={kybStatus} reviewerNotes={kybReviewerNotes} showAction={canOpenKybWizard(kybStatus)} actionLabel={kybActionLabel} onStartVerification={() => { goVerification(); openModalKyb(); }} />
 ) : null}
 
+{kybApproved && bootstrapReady && transactionsQuery.isSuccess && businessId != null ? (
+<GetStartedChecklist
+  hasAccount={accountsCount > 0}
+  hasMoneyIn={(transactionsQuery.data?.items ?? []).some((tx) => tx.direction === "in")}
+  hasMoneyOut={(transactionsQuery.data?.items ?? []).some((tx) => tx.direction === "out")}
+  storageKey={`mboka:get-started:${businessId}`}
+  onOpenAccount={() => {
+    track("get_started_clicked", { step: "account" });
+    guardScreenNav("wallets")();
+  }}
+  onAddMoney={() => {
+    track("get_started_clicked", { step: "money_in" });
+    guardMoneyModal("deposit")();
+  }}
+  onSend={() => {
+    track("get_started_clicked", { step: "send" });
+    guardMoneyModal("send")();
+  }}
+/>
+) : null}
+
 {mfaShouldRemind ? (
 <MfaReminderBanner cutoverAt={mfaCutoverAt} onSetUp={openMfaSetup} onDismiss={dismissMfaReminder} />
 ) : null}
@@ -6343,6 +6391,10 @@ export default function DashboardApp(props: Props = {}) {
       ? bootstrapQuery.data?.eligibility.verification_status
       : depositEligibilityQuery.data?.verification_status
   }
+  onStartVerification={() => {
+    goVerification();
+    openModalKyb();
+  }}
   eligibilityErrorMessage={depositEligibilityErrorMessage}
   accountsLoading={
     accounts.length === 0 &&
@@ -7885,6 +7937,7 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
   patchAssociate={kybWizard.patchAssociate}
   setUboCount={kybWizard.setUboCount}
   error={kybWizard.error}
+  errorField={kybWizard.errorField}
   busy={kybWizard.busy}
   docRows={kybWizard.docRows}
   setDocumentFile={kybWizard.setDocumentFile}
@@ -8014,6 +8067,21 @@ Cards spend your linked USD deposit balance — there is no separate card wallet
 </div>
 
 </>) : null}
+<KybGateDialog
+  open={kybGate !== null && kybStatus !== undefined}
+  status={kybStatus ?? "pending"}
+  action={gateActionLabel(kybGate ?? "")}
+  onStartVerification={() => {
+    setKybGate(null);
+    goVerification();
+    openModalKyb();
+  }}
+  onViewStatus={() => {
+    setKybGate(null);
+    goVerification();
+  }}
+  onClose={() => setKybGate(null)}
+/>
     </div>
   );
 }

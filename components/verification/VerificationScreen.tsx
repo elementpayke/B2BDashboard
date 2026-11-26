@@ -7,6 +7,7 @@ import {
   describeKybStatusDetail,
   isKybApproved,
   isKybInReview,
+  KYB_REVIEW_ETA,
   kybStatusPresentation,
   normalizeKybReviewFindings,
 } from "@/lib/services/kyb";
@@ -230,7 +231,7 @@ export default function VerificationScreen(p: VerificationScreenProps) {
             }}
           >
             Your submission is with compliance. You can’t edit or resubmit until they respond.
-            {submittedWhen ? ` Submitted ${submittedWhen}.` : ""} Usually 1–2 business days.
+            {submittedWhen ? ` Submitted ${submittedWhen}.` : ""} Usually {KYB_REVIEW_ETA}.
           </div>
         ) : null}
 

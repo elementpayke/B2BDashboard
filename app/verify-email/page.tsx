@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
+import { track } from "@/lib/analytics/track";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
@@ -85,6 +86,7 @@ function VerifyEmailForm() {
       await authApi.verifyEmail(nextEmail.trim(), nextCode.trim());
       clearVerifyHandoff();
       stashVerifyEmail(nextEmail.trim());
+      track("email_verified");
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Verification failed.");

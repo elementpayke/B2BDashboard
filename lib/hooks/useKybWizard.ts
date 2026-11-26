@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics/track";
 import {
+  buildBusinessStepPayload,
   buildProfilePayload,
   buildShareholderPayload,
   buildUploadFormData,
@@ -15,8 +17,8 @@ import {
   newKybIdempotencyKey,
   profileDraftFromSummary,
   resizeAssociates,
-  validateAddressUboStep,
-  validateBusinessStep,
+  validateAddressUboStepIssue,
+  validateBusinessStepIssue,
   validateKybDocumentFile,
   validateProfileDraft,
   validateSubmitStep,
@@ -161,6 +163,8 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     profileDraftFromSummary(opts.kybSummary, opts.business),
   );
   const [error, setError] = useState("");
+  /** The draft field the current error belongs to, shown next to that field. */
+  const [errorField, setErrorField] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [requirements, setRequirements] = useState<KybDocumentRequirements | null>(null);
   const [docRows, setDocRows] = useState<DocumentUploadState[]>([]);
@@ -293,6 +297,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   }, [opts.enabled, opts.businessId, opts.kybSummary, opts.business, opts.kybStatus]);
 
   const patchDraft = useCallback((patch: Partial<KybWizardProfileDraft>) => {
+    setErrorField((f) => (f && f in patch ? null : f));
     setDraft((prev) => {
       const next = { ...prev, ...patch };
       if (patch.country && patch.country !== prev.country) {
@@ -308,6 +313,9 @@ export function useKybWizard(opts: UseKybWizardOptions) {
   }, []);
 
   const patchAssociate = useCallback((index: number, patch: Partial<KybWizardProfileDraft["associates"][0]>) => {
+    setErrorField((f) =>
+      f && Object.keys(patch).some((k) => f === `associates.${index}.${k}`) ? null : f,
+    );
     setDraft((prev) => ({
       ...prev,
       associates: prev.associates.map((a, i) => (i === index ? { ...a, ...patch } : a)),
@@ -354,6 +362,31 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       return false;
     }
   }, [draft, opts.businessId, requirements]);
+
+  /** Saves step 1 on Continue, so closing the wizard never loses it. */
+  const saveBusinessStep = useCallback(async (): Promise<boolean> => {
+    if (!opts.businessId) {
+      setError("No business is linked to this session.");
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const payload = buildBusinessStepPayload(draft);
+      const summary = await kybApi.summary(opts.businessId);
+      if (summary.profile) {
+        await kybApi.patchProfile(opts.businessId, payload);
+      } else {
+        await kybApi.createProfile(opts.businessId, payload);
+      }
+      setBusy(false);
+      return true;
+    } catch (err) {
+      setBusy(false);
+      setError(formatKybServiceError(err));
+      return false;
+    }
+  }, [draft, opts.businessId]);
 
   const prepareDocuments = useCallback(async (): Promise<boolean> => {
     if (!opts.businessId) return false;
@@ -445,6 +478,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
       }
       const fileError = validateKybDocumentFile(file);
       if (fileError) {
+        track("kyb_document_failed", { type: row.requirementType, reason: "file_check", size_kb: Math.round(file.size / 1024) });
         setDocRows((rows) =>
           rows.map((r, i) => (i === index ? { ...r, file: null, error: fileError, uploading: false } : r)),
         );
@@ -481,6 +515,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
           associateRefId: row.associateRefId,
         });
         const uploaded = await kybApi.uploadDocument(opts.businessId, form);
+        track("kyb_document_uploaded", { type: row.requirementType, size_kb: Math.round(file.size / 1024) });
         setDocRows((rows) =>
           rows.map((r, i) =>
             i === index
@@ -498,6 +533,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         );
         return true;
       } catch (err) {
+        track("kyb_document_failed", { type: row.requirementType, reason: "upload", size_kb: Math.round(file.size / 1024) });
         setDocRows((rows) =>
           rows.map((r, i) =>
             i === index
@@ -567,6 +603,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     setError("");
     try {
       await kybApi.submitForReview(opts.businessId, newKybIdempotencyKey());
+      track("kyb_submitted");
       const polled = await pollAfterSubmit(opts.businessId);
       if (polled?.kyb_status === "approved") {
         setSubmitOutcome("approved");
@@ -642,25 +679,43 @@ export function useKybWizard(opts: UseKybWizardOptions) {
 
   const nextStep = useCallback(async () => {
     if (step === 1) {
-      const validationError = validateBusinessStep(draft);
-      if (validationError) {
-        setError(validationError);
+      const issue = validateBusinessStepIssue(draft);
+      if (issue) {
+        setError(issue.message);
+        setErrorField(issue.field);
+        track("kyb_validation_failed", { step: 1, field: issue.field });
         return;
       }
-      setError("");
+      setErrorField(null);
+      const saved = await saveBusinessStep();
+      if (!saved) {
+        track("kyb_save_failed", { step: 1 });
+        return;
+      }
+      track("kyb_step_completed", { step: 1 });
       setStep(2);
       return;
     }
     if (step === 2) {
-      const validationError = validateAddressUboStep(draft, requirements);
-      if (validationError) {
-        setError(validationError);
+      const issue = validateAddressUboStepIssue(draft, requirements);
+      if (issue) {
+        setError(issue.message);
+        setErrorField(issue.field);
+        track("kyb_validation_failed", { step: 2, field: issue.field.replace(/^associates\.\d+\./, "associates.") });
         return;
       }
+      setErrorField(null);
       const ok = await saveProfile();
-      if (!ok) return;
+      if (!ok) {
+        track("kyb_save_failed", { step: 2 });
+        return;
+      }
       const docsOk = await prepareDocuments();
-      if (!docsOk) return;
+      if (!docsOk) {
+        track("kyb_save_failed", { step: 2 });
+        return;
+      }
+      track("kyb_step_completed", { step: 2, owners: draft.associates.length });
       setStep(3);
       return;
     }
@@ -691,14 +746,16 @@ export function useKybWizard(opts: UseKybWizardOptions) {
         setBusy(false);
       }
       setError("");
+      track("kyb_step_completed", { step: 3, documents: docRows.length });
       setStep(4);
       return;
     }
     await submitForReview();
-  }, [docRows, draft, prepareDocuments, requirements, saveProfile, step, submitForReview, uploadDocumentRow]);
+  }, [docRows, draft, prepareDocuments, requirements, saveBusinessStep, saveProfile, step, submitForReview, uploadDocumentRow]);
 
   const backStep = useCallback(() => {
     setError("");
+    setErrorField(null);
     setStep((s) => Math.max(1, s - 1) as KybWizardStep);
   }, []);
 
@@ -715,6 +772,7 @@ export function useKybWizard(opts: UseKybWizardOptions) {
     patchAssociate,
     setUboCount,
     error,
+    errorField,
     busy,
     docRows,
     setDocumentFile,

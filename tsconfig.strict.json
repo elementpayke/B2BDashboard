@@ -28,6 +28,7 @@
     "features/**/*.tsx",
     "lib/api/**/*.ts",
     "lib/utils.ts",
+    "lib/analytics/**/*.ts",
     "lib/theme/**/*.ts"
   ]
 }

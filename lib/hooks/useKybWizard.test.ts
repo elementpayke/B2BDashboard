@@ -630,3 +630,84 @@ describe("useKybWizard restore + submit poll", () => {
     expect(result.current.docRows[0]?.submitted).toBe(false);
   });
 });
+
+describe("useKybWizard saves the business step", () => {
+  const businessFields = {
+    legalName: "Acme Traders",
+    registrationNumber: "PVT-123",
+    country: "KE",
+    incorporationDate: "2020-01-15",
+    businessType: "LimitedCompany",
+    industry: "Import and export",
+    website: "https://acme.example",
+    estimatedEmployees: "1-10",
+    annualRevenueRange: "100kTo1M",
+    sourceOfFunds: "Revenue",
+  } as const;
+
+  async function openOnStepOne() {
+    summary.mockResolvedValue({ profile: null });
+    const hook = renderHook(() =>
+      useKybWizard({ businessId: 7, enabled: true, kybSummary: null, business: { country: "KE" } }),
+    );
+    await waitFor(() => expect(hook.result.current.step).toBe(1));
+    act(() => {
+      hook.result.current.patchDraft(businessFields as never);
+    });
+    return hook;
+  }
+
+  it("creates the profile with only the business details on Continue, so closing keeps them", async () => {
+    createProfile.mockResolvedValue({});
+    const { result } = await openOnStepOne();
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    expect(createProfile).toHaveBeenCalledTimes(1);
+    const [id, payload] = createProfile.mock.calls[0];
+    expect(id).toBe(7);
+    expect(payload).toMatchObject({ legal_name: "Acme Traders", registration_number: "PVT-123", business_type: "LimitedCompany" });
+    expect(payload).not.toHaveProperty("associates");
+    expect(payload).not.toHaveProperty("registered_address");
+    expect(result.current.step).toBe(2);
+  });
+
+  it("patches an existing profile instead of creating one", async () => {
+    const { result } = await openOnStepOne();
+    summary.mockResolvedValue({ profile: { kyb_status: "pending" } });
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    expect(patchProfile).toHaveBeenCalledWith(7, expect.objectContaining({ legal_name: "Acme Traders" }));
+    expect(createProfile).not.toHaveBeenCalled();
+  });
+
+  it("stays on the business step and says why when saving fails", async () => {
+    createProfile.mockRejectedValue(new ApiRequestError("Registration number is already in use.", 422));
+    const { result } = await openOnStepOne();
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    expect(result.current.step).toBe(1);
+    expect(result.current.error).toMatch(/already in use/);
+  });
+});
+
+describe("useKybWizard flags the field that failed", () => {
+  it("names the field, and clears it once that field changes", async () => {
+    summary.mockResolvedValue({ profile: null });
+    const { result } = renderHook(() =>
+      useKybWizard({ businessId: 7, enabled: true, kybSummary: null, business: { country: "KE" } }),
+    );
+    await waitFor(() => expect(result.current.step).toBe(1));
+    act(() => result.current.patchDraft({ legalName: "Acme Traders" }));
+    await act(async () => {
+      await result.current.nextStep();
+    });
+    expect(result.current.errorField).toBe("registrationNumber");
+    act(() => result.current.patchDraft({ industry: "Trade" }));
+    expect(result.current.errorField).toBe("registrationNumber");
+    act(() => result.current.patchDraft({ registrationNumber: "PVT-1" }));
+    expect(result.current.errorField).toBeNull();
+  });
+});

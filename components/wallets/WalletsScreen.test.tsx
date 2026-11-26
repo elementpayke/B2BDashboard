@@ -198,3 +198,21 @@ describe("WalletsScreen — accounts run in one horizontal row", () => {
     expect(document.querySelector(".ep-wallets__strip-nav--prev")).toHaveAttribute("hidden");
   });
 });
+
+describe("WalletsScreen — verification gate", () => {
+  it("names the verification status in words, never the raw backend value", () => {
+    render(<WalletsScreen {...baseProps({ eligible: false, verificationStatus: "submitted" })} />);
+    expect(screen.getByText(/Current status: In review/)).toBeInTheDocument();
+    expect(screen.queryByText(/submitted/)).not.toBeInTheDocument();
+  });
+
+  it("offers to start verification when it hasn't been submitted", () => {
+    const onStartVerification = vi.fn();
+    render(
+      <WalletsScreen {...baseProps({ eligible: false, verificationStatus: "pending", onStartVerification })} />,
+    );
+    expect(screen.getByText(/Current status: Not submitted/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start verification" }));
+    expect(onStartVerification).toHaveBeenCalled();
+  });
+});

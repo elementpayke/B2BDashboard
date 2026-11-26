@@ -405,6 +405,25 @@ export function kybTierDisplay(status: string | null | undefined): KybTierDispla
   return KYB_TIER_DISPLAY[(status as KybStatus) || "pending"] ?? KYB_TIER_DISPLAY.pending;
 }
 
+/** How long compliance usually takes, said the same way everywhere. */
+export const KYB_REVIEW_ETA = "1–2 business days";
+
+/** How often to re-check verification while compliance is reviewing it (tab visible only). */
+export const KYB_REVIEW_REFETCH_MS = 60_000;
+
+/** TanStack `refetchInterval` for the profile query: only while in review. */
+export function kybStatusRefetchMs(status: string | null | undefined): number | false {
+  return status === "submitted" ? KYB_REVIEW_REFETCH_MS : false;
+}
+
+/** A review just ended in a decision — accounts and gates need fresh data. */
+export function kybStatusChangedToDecision(
+  previous: string | null | undefined,
+  next: string | null | undefined,
+): boolean {
+  return previous === "submitted" && (next === "approved" || next === "rejected");
+}
+
 export function isKybApproved(status: string | null | undefined): boolean {
   return status === "approved";
 }
@@ -721,62 +740,76 @@ export function profileDraftFromSummary(
   return draft;
 }
 
+/** A validation failure and the draft field it belongs to (owners: `associates.<i>.<field>`). */
+export type KybIssue = { field: string; message: string };
+
 export function validateBusinessStep(draft: KybWizardProfileDraft): string | null {
-  if (!draft.legalName.trim() || draft.legalName.trim().length < 2) {
-    return "Legal business name is required.";
-  }
-  if (!draft.registrationNumber.trim()) return "Registration number is required.";
-  if (!isValidIsoCountryCode(draft.country)) {
-    return "Select a valid business country from the list.";
-  }
-  if (draft.country.trim().toUpperCase() === "US" && !draft.taxId.trim()) {
-    return "Tax ID (EIN) is required for US-incorporated businesses.";
-  }
-  const incorporationDate = normalizeDateOfBirth(draft.incorporationDate);
-  if (!incorporationDate) {
-    return "Incorporation date is required (use the date picker).";
-  }
-  const incorpYear = Number(incorporationDate.slice(0, 4));
-  const thisYear = new Date().getUTCFullYear();
-  if (incorpYear < 1900 || incorpYear > thisYear) {
-    return "Incorporation date year looks invalid.";
-  }
-  if (!draft.businessType) return "Choose a business type.";
-  if (!draft.industry.trim()) return "Industry is required.";
-  if (!draft.website.trim()) {
-    return "A real business website is required (https://…).";
-  }
-  if (!isValidHttpUrl(draft.website) || !draft.website.trim().toLowerCase().startsWith("https://")) {
-    return "Website must be a valid URL starting with https://";
-  }
-  if (!draft.estimatedEmployees) return "Select estimated employees.";
-  if (!draft.annualRevenueRange) return "Select annual revenue range.";
-  if (!draft.sourceOfFunds) return "Select source of funds.";
-  return null;
+  return validateBusinessStepIssue(draft)?.message ?? null;
 }
 
 export function validateAddressUboStep(
   draft: KybWizardProfileDraft,
   requirements?: KybDocumentRequirements | null,
 ): string | null {
-  if (!draft.street.trim() || draft.street.trim().length < 3) {
-    return "Street address is required.";
+  return validateAddressUboStepIssue(draft, requirements)?.message ?? null;
+}
+
+export function validateBusinessStepIssue(draft: KybWizardProfileDraft): KybIssue | null {
+  if (!draft.legalName.trim() || draft.legalName.trim().length < 2) {
+    return { field: "legalName", message: "Legal business name is required." };
   }
-  if (!draft.city.trim()) return "City is required.";
+  if (!draft.registrationNumber.trim()) return { field: "registrationNumber", message: "Registration number is required." };
+  if (!isValidIsoCountryCode(draft.country)) {
+    return { field: "country", message: "Select a valid business country from the list." };
+  }
+  if (draft.country.trim().toUpperCase() === "US" && !draft.taxId.trim()) {
+    return { field: "taxId", message: "Tax ID (EIN) is required for US-incorporated businesses." };
+  }
+  const incorporationDate = normalizeDateOfBirth(draft.incorporationDate);
+  if (!incorporationDate) {
+    return { field: "incorporationDate", message: "Incorporation date is required (use the date picker)." };
+  }
+  const incorpYear = Number(incorporationDate.slice(0, 4));
+  const thisYear = new Date().getUTCFullYear();
+  if (incorpYear < 1900 || incorpYear > thisYear) {
+    return { field: "incorporationDate", message: "Incorporation date year looks invalid." };
+  }
+  if (!draft.businessType) return { field: "businessType", message: "Choose a business type." };
+  if (!draft.industry.trim()) return { field: "industry", message: "Industry is required." };
+  if (!draft.website.trim()) {
+    return { field: "website", message: "A real business website is required (https://…)." };
+  }
+  if (!isValidHttpUrl(draft.website) || !draft.website.trim().toLowerCase().startsWith("https://")) {
+    return { field: "website", message: "Website must be a valid URL starting with https://" };
+  }
+  if (!draft.estimatedEmployees) return { field: "estimatedEmployees", message: "Select estimated employees." };
+  if (!draft.annualRevenueRange) return { field: "annualRevenueRange", message: "Select annual revenue range." };
+  if (!draft.sourceOfFunds) return { field: "sourceOfFunds", message: "Select source of funds." };
+  return null;
+}
+
+export function validateAddressUboStepIssue(
+  draft: KybWizardProfileDraft,
+  requirements?: KybDocumentRequirements | null,
+): KybIssue | null {
+  if (!draft.street.trim() || draft.street.trim().length < 3) {
+    return { field: "street", message: "Street address is required." };
+  }
+  if (!draft.city.trim()) return { field: "city", message: "City is required." };
   if (/^(kenya|nigeria|uganda|ghana|tanzania|south africa)$/i.test(draft.city.trim())) {
-    return "City looks like a country name — enter the city (e.g. Nairobi), not the country.";
+    return { field: "city", message: "City looks like a country name — enter the city (e.g. Nairobi), not the country." };
   }
   if (isRegisteredPostalRequired(requirements) && !draft.postCode.trim()) {
-    return "Registered address post code is required.";
+    return { field: "postCode", message: "Registered address post code is required." };
   }
   if (!isValidIsoCountryCode(draft.addressCountry)) {
-    return "Select a valid address country from the list.";
+    return { field: "addressCountry", message: "Select a valid address country from the list." };
   }
   if (!draft.associates.length) {
-    return "At least one beneficial owner (25%+) is required.";
+    return { field: "uboCount", message: "At least one beneficial owner (25%+) is required." };
   }
   if (draft.associates.length > KYB_MAX_UBOS) {
-    return `You can list up to ${KYB_MAX_UBOS} beneficial owners.`;
+    return { field: "uboCount", message: `You can list up to ${KYB_MAX_UBOS} beneficial owners.` };
   }
 
   let ownershipSum = 0;
@@ -785,23 +818,23 @@ export function validateAddressUboStep(
     const who =
       draft.associates.length === 1 ? "beneficial owner" : `beneficial owner ${i + 1}`;
     if (!NAME_RE.test(associate.firstName.trim())) {
-      return `Enter a valid first name for ${who} (letters only).`;
+      return { field: `associates.${i}.firstName`, message: `Enter a valid first name for ${who} (letters only).` };
     }
     if (!NAME_RE.test(associate.lastName.trim())) {
-      return `Enter a valid last name for ${who} (letters only).`;
+      return { field: `associates.${i}.lastName`, message: `Enter a valid last name for ${who} (letters only).` };
     }
     const dob = normalizeDateOfBirth(associate.dateOfBirth);
     if (!dob) {
-      return `Date of birth for ${who} must be a valid calendar date (use the date picker).`;
+      return { field: `associates.${i}.dateOfBirth`, message: `Date of birth for ${who} must be a valid calendar date (use the date picker).` };
     }
     const age = ageYearsUtc(dob);
-    if (age < 18) return `${who[0].toUpperCase()}${who.slice(1)} must be at least 18 years old.`;
-    if (age > 120) return `Check the date of birth for ${who}.`;
+    if (age < 18) return { field: `associates.${i}.dateOfBirth`, message: `${who[0].toUpperCase()}${who.slice(1)} must be at least 18 years old.` };
+    if (age > 120) return { field: `associates.${i}.dateOfBirth`, message: `Check the date of birth for ${who}.` };
     if (!associate.email.trim() || !EMAIL_RE.test(associate.email.trim())) {
-      return `A valid email is required for ${who}.`;
+      return { field: `associates.${i}.email`, message: `A valid email is required for ${who}.` };
     }
     if (!associate.phoneNumber.trim() || !E164_RE.test(associate.phoneNumber.trim())) {
-      return `Phone for ${who} must be E.164 format, e.g. +254700000000.`;
+      return { field: `associates.${i}.phoneNumber`, message: `Phone for ${who} must be E.164 format, e.g. +254700000000.` };
     }
     const ownership = Number(associate.ownershipPercentage);
     if (
@@ -809,43 +842,43 @@ export function validateAddressUboStep(
       ownership < KYB_MIN_UBO_OWNERSHIP ||
       ownership > 100
     ) {
-      return `Ownership for ${who} must be a number from ${KYB_MIN_UBO_OWNERSHIP} to 100 (decimals allowed, e.g. 51.5).`;
+      return { field: `associates.${i}.ownershipPercentage`, message: `Ownership for ${who} must be a number from ${KYB_MIN_UBO_OWNERSHIP} to 100 (decimals allowed, e.g. 51.5).` };
     }
     ownershipSum += ownership;
     const taxCountry = (associate.country || draft.addressCountry).trim().toUpperCase();
     if (!isValidIsoCountryCode(taxCountry)) {
-      return `Select a valid tax residence country for ${who}.`;
+      return { field: `associates.${i}.country`, message: `Select a valid tax residence country for ${who}.` };
     }
     if (!associate.street.trim() || associate.street.trim().length < 3) {
-      return `Residential street address is required for ${who}.`;
+      return { field: `associates.${i}.street`, message: `Residential street address is required for ${who}.` };
     }
     if (!associate.city.trim()) {
-      return `Residential city is required for ${who}.`;
+      return { field: `associates.${i}.city`, message: `Residential city is required for ${who}.` };
     }
     if (!associate.idType) {
-      return `Select a government ID type for ${who} (passport, national ID, or license).`;
+      return { field: `associates.${i}.idType`, message: `Select a government ID type for ${who} (passport, national ID, or license).` };
     }
     if (!associate.idNumber.trim() || associate.idNumber.trim().length < 4) {
-      return `Enter a valid government ID number for ${who}.`;
+      return { field: `associates.${i}.idNumber`, message: `Enter a valid government ID number for ${who}.` };
     }
     if (taxCountry === "NG") {
       const bvn = associate.bvn.replace(/\D/g, "");
       const nin = associate.nin.replace(/\D/g, "");
       if (bvn.length !== 11) {
-        return `BVN for ${who} must be 11 digits (required for Nigeria).`;
+        return { field: `associates.${i}.bvn`, message: `BVN for ${who} must be 11 digits (required for Nigeria).` };
       }
       if (nin.length !== 11) {
-        return `NIN for ${who} must be 11 digits (required for Nigeria).`;
+        return { field: `associates.${i}.nin`, message: `NIN for ${who} must be 11 digits (required for Nigeria).` };
       }
     }
   }
   // Round to avoid float noise (e.g. 51.5 + 48.5).
   ownershipSum = Math.round(ownershipSum * 100) / 100;
   if (ownershipSum > 100) {
-    return `Ownership percentages add up to ${ownershipSum}% — total cannot exceed 100%.`;
+    return { field: "ownershipRemainderNote", message: `Ownership percentages add up to ${ownershipSum}% — total cannot exceed 100%.` };
   }
   if (ownershipSum < 100 && !draft.ownershipRemainderNote.trim()) {
-    return `Ownership adds up to ${ownershipSum}%. Explain who holds the remaining ${Math.round((100 - ownershipSum) * 100) / 100}% (e.g. persons under 25%, a trust, or corporate owners).`;
+    return { field: "ownershipRemainderNote", message: `Ownership adds up to ${ownershipSum}%. Explain who holds the remaining ${Math.round((100 - ownershipSum) * 100) / 100}% (e.g. persons under 25%, a trust, or corporate owners).` };
   }
   return null;
 }
@@ -951,6 +984,16 @@ export function buildProfilePayload(draft: KybWizardProfileDraft): KybProfileInp
     registered_address,
     associates,
   };
+}
+
+/**
+ * Step 1 only — business details, no address or owners — so Continue can save
+ * them straight away and a closed wizard resumes on step 2. The backend's
+ * create and patch both accept a partial profile.
+ */
+export function buildBusinessStepPayload(draft: KybWizardProfileDraft): KybProfileInput {
+  const { registered_address: _address, associates: _associates, ...business } = buildProfilePayload(draft);
+  return business;
 }
 
 export function buildShareholderPayload(associate: KybWizardAssociateDraft): Record<string, unknown> {

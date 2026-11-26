@@ -2,6 +2,8 @@
 import MbokaMark from "@/components/brand/MbokaMark";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ActivityList from "@/components/ui/ActivityList";
+import { Button } from "@/components/ui/Button";
+import { canOpenKybWizard, describeKybStatus } from "@/lib/services/kyb";
 import AssetMark from "@/components/money/AssetMark";
 
 export type WalletsAccountCard = {
@@ -41,8 +43,10 @@ export type WalletsScreenProps = {
   /** True once verification has confirmed this principal can hold currency accounts. */
   eligible: boolean;
   eligibilityLoading: boolean;
-  /** Human status from the eligibility check (e.g. "pending", "approved") when not yet eligible. */
+  /** Raw KYB status from the eligibility check (e.g. "pending", "submitted") when not yet eligible. */
   verificationStatus?: string;
+  /** Opens the verification wizard from the gate, when the status allows it. */
+  onStartVerification?: () => void;
   /** Set when the eligibility check itself failed (network/5xx) — distinct from a real "not eligible" result. */
   eligibilityErrorMessage?: string;
   accountsLoading: boolean;
@@ -255,10 +259,19 @@ export default function WalletsScreen(p: WalletsScreenProps) {
             Complete business verification before issuing currency accounts.
             {p.verificationStatus ? (
               <span className="ep-wallets__banner-meta">
-                Current status: {p.verificationStatus}
+                Current status: {describeKybStatus(p.verificationStatus)}
               </span>
             ) : null}
           </div>
+          {p.onStartVerification && canOpenKybWizard(p.verificationStatus) ? (
+            <Button size="sm" onClick={p.onStartVerification}>
+              {p.verificationStatus === "pending"
+                ? "Start verification"
+                : p.verificationStatus === "expired"
+                  ? "Start again"
+                  : "Fix and resubmit"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

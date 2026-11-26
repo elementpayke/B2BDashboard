@@ -8,6 +8,7 @@ import {
   SOURCE_OF_FUNDS_OPTIONS,
   KYB_MAX_UBOS,
   KYB_MIN_UBO_OWNERSHIP,
+  KYB_REVIEW_ETA,
   type KybWizardProfileDraft,
 } from "@/lib/services/kyb";
 import type { DocumentUploadState, KybWizardStep } from "@/lib/hooks/useKybWizard";
@@ -33,6 +34,38 @@ const fieldInput: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+const fieldWrap: React.CSSProperties = { display: "block" };
+
+const fieldInputInvalid: React.CSSProperties = { ...fieldInput, borderColor: "var(--red)" };
+
+const fieldError: React.CSSProperties = {
+  marginTop: "4px",
+  fontSize: "11.5px",
+  color: "var(--red-text)",
+  fontWeight: 600,
+};
+
+/** The field the current validation error belongs to, so it can show beside it. */
+const FieldErrorContext = React.createContext<{ field: string | null; message: string }>({ field: null, message: "" });
+
+function useFieldError(field?: string) {
+  const ctx = React.useContext(FieldErrorContext);
+  const message = field && ctx.field === field ? ctx.message : "";
+  return {
+    message,
+    inputProps: {
+      "data-kyb-field": field,
+      "aria-invalid": message ? (true as const) : undefined,
+      "aria-describedby": message && field ? `kyb-err-${field.replace(/\W/g, "-")}` : undefined,
+    },
+    errorNode: message && field ? (
+      <div id={`kyb-err-${field.replace(/\W/g, "-")}`} style={fieldError}>
+        {message}
+      </div>
+    ) : null,
+  };
+}
+
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png";
 
 export type KybWizardModalProps = {
@@ -44,6 +77,8 @@ export type KybWizardModalProps = {
   patchAssociate: (index: number, patch: Partial<KybWizardProfileDraft["associates"][0]>) => void;
   setUboCount?: (count: number) => void;
   error: string;
+  /** Draft key the error belongs to; that field shows it, is marked invalid and takes focus. */
+  errorField?: string | null;
   busy: boolean;
   docRows: DocumentUploadState[];
   setDocumentFile: (index: number, file: File | null) => void;
@@ -67,11 +102,19 @@ function SelectField(p: {
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   placeholder?: string;
+  /** Draft key, so a validation error for it shows here. */
+  field?: string;
 }) {
+  const fe = useFieldError(p.field);
   return (
-    <div>
+    <label style={fieldWrap}>
       <span style={fieldLabel}>{p.label}</span>
-      <select value={p.value} onChange={(e) => p.onChange(e.target.value)} style={fieldInput}>
+      <select
+        value={p.value}
+        onChange={(e) => p.onChange(e.target.value)}
+        style={fe.message ? fieldInputInvalid : fieldInput}
+        {...fe.inputProps}
+      >
         <option value="">{p.placeholder || "Select…"}</option>
         {p.options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -79,7 +122,8 @@ function SelectField(p: {
           </option>
         ))}
       </select>
-    </div>
+      {fe.errorNode}
+    </label>
   );
 }
 
@@ -95,9 +139,12 @@ function TextField(p: {
   max?: string | number;
   step?: string | number;
   hint?: string;
+  /** Draft key, so a validation error for it shows here. */
+  field?: string;
 }) {
+  const fe = useFieldError(p.field);
   return (
-    <div>
+    <label style={fieldWrap}>
       <span style={fieldLabel}>{p.label}</span>
       <input
         type={p.type || "text"}
@@ -109,12 +156,14 @@ function TextField(p: {
         min={p.min}
         max={p.max}
         step={p.step}
-        style={fieldInput}
+        style={fe.message ? fieldInputInvalid : fieldInput}
+        {...fe.inputProps}
       />
-      {p.hint ? (
+      {fe.errorNode}
+      {p.hint && !fe.message ? (
         <div style={{ marginTop: "4px", fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>{p.hint}</div>
       ) : null}
-    </div>
+    </label>
   );
 }
 
@@ -349,6 +398,13 @@ function DocumentDropRow(p: {
 }
 
 export default function KybWizardModal(p: KybWizardModalProps) {
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  // Take the user to the field that failed, so the message is seen where it applies.
+  React.useEffect(() => {
+    if (!p.errorField) return;
+    const el = rootRef.current?.querySelector<HTMLElement>(`[data-kyb-field="${CSS.escape(p.errorField)}"]`);
+    el?.focus();
+  }, [p.errorField, p.error]);
   const doneCount = (p.docRows || []).filter((r) => r.submitted).length;
   const totalCount = (p.docRows || []).length;
   const businessRows = (p.docRows || [])
@@ -371,7 +427,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
         ? "Your business is verified. Deposit accounts and payouts are unlocked."
         : outcome === "rejected"
           ? "Compliance needs changes before you can continue. Close this and use Fix and resubmit from Verification."
-          : "Compliance usually takes 1–2 business days. Deposit accounts unlock once KYB is approved.";
+          : `Compliance usually takes ${KYB_REVIEW_ETA}. Deposit accounts unlock once KYB is approved.`;
     const iconBg =
       outcome === "approved"
         ? "var(--indigo-tint)"
@@ -460,7 +516,8 @@ export default function KybWizardModal(p: KybWizardModalProps) {
   const showRemainderNote = ownershipSum > 0 && ownershipSum < 100;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <FieldErrorContext.Provider value={{ field: p.errorField ?? null, message: p.error }}>
+    <div ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", gap: "6px" }}>
           {(p.stepDots || []).map((d, i) => (
@@ -488,8 +545,8 @@ export default function KybWizardModal(p: KybWizardModalProps) {
       {p.step === 1 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <span style={{ fontSize: "12.5px", fontWeight: "700", color: "var(--muted)" }}>Step 1 · Business details</span>
-          <TextField label="Legal name" value={p.draft.legalName} onChange={(v) => p.patchDraft({ legalName: v })} placeholder="Mboka Ltd" autoComplete="organization" />
-          <TextField label="Registration number" value={p.draft.registrationNumber} onChange={(v) => p.patchDraft({ registrationNumber: v })} placeholder="BN123456" />
+          <TextField label="Legal name" value={p.draft.legalName} field="legalName" onChange={(v) => p.patchDraft({ legalName: v })} placeholder="Mboka Ltd" autoComplete="organization" />
+          <TextField label="Registration number" value={p.draft.registrationNumber} field="registrationNumber" onChange={(v) => p.patchDraft({ registrationNumber: v })} placeholder="BN123456" />
           <CountrySelect
             label="Country of incorporation"
             value={p.draft.country}
@@ -499,7 +556,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
           <TextField
             label="Incorporation date"
             value={p.draft.incorporationDate}
-            onChange={(v) => p.patchDraft({ incorporationDate: v })}
+            field="incorporationDate" onChange={(v) => p.patchDraft({ incorporationDate: v })}
             type="date"
             max={new Date().toISOString().slice(0, 10)}
             min="1900-01-01"
@@ -509,7 +566,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             <TextField
               label="Tax ID (EIN)"
               value={p.draft.taxId}
-              onChange={(v) => p.patchDraft({ taxId: v })}
+              field="taxId" onChange={(v) => p.patchDraft({ taxId: v })}
               placeholder="12-3456789"
               hint="Required for US-incorporated businesses"
             />
@@ -517,17 +574,17 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             <TextField
               label="Tax ID"
               value={p.draft.taxId}
-              onChange={(v) => p.patchDraft({ taxId: v })}
+              field="taxId" onChange={(v) => p.patchDraft({ taxId: v })}
               placeholder="Optional"
               hint="Optional — include if your corridor requires it"
             />
           )}
-          <SelectField label="Business type" value={p.draft.businessType} onChange={(v) => p.patchDraft({ businessType: v as KybWizardProfileDraft["businessType"] })} options={BUSINESS_TYPE_OPTIONS} />
-          <TextField label="Industry" value={p.draft.industry} onChange={(v) => p.patchDraft({ industry: v })} placeholder="Fintech" />
-          <TextField label="Website" value={p.draft.website} onChange={(v) => p.patchDraft({ website: v })} placeholder="https://yourcompany.com" type="url" hint="Required — must start with https://" />
-          <SelectField label="Employees" value={p.draft.estimatedEmployees} onChange={(v) => p.patchDraft({ estimatedEmployees: v as KybWizardProfileDraft["estimatedEmployees"] })} options={EMPLOYEE_RANGE_OPTIONS} />
-          <SelectField label="Annual revenue" value={p.draft.annualRevenueRange} onChange={(v) => p.patchDraft({ annualRevenueRange: v as KybWizardProfileDraft["annualRevenueRange"] })} options={REVENUE_RANGE_OPTIONS} />
-          <SelectField label="Source of funds" value={p.draft.sourceOfFunds} onChange={(v) => p.patchDraft({ sourceOfFunds: v as KybWizardProfileDraft["sourceOfFunds"] })} options={SOURCE_OF_FUNDS_OPTIONS} />
+          <SelectField label="Business type" value={p.draft.businessType} field="businessType" onChange={(v) => p.patchDraft({ businessType: v as KybWizardProfileDraft["businessType"] })} options={BUSINESS_TYPE_OPTIONS} />
+          <TextField label="Industry" value={p.draft.industry} field="industry" onChange={(v) => p.patchDraft({ industry: v })} placeholder="Fintech" />
+          <TextField label="Website" value={p.draft.website} field="website" onChange={(v) => p.patchDraft({ website: v })} placeholder="https://yourcompany.com" type="url" hint="Required — must start with https://" />
+          <SelectField label="Employees" value={p.draft.estimatedEmployees} field="estimatedEmployees" onChange={(v) => p.patchDraft({ estimatedEmployees: v as KybWizardProfileDraft["estimatedEmployees"] })} options={EMPLOYEE_RANGE_OPTIONS} />
+          <SelectField label="Annual revenue" value={p.draft.annualRevenueRange} field="annualRevenueRange" onChange={(v) => p.patchDraft({ annualRevenueRange: v as KybWizardProfileDraft["annualRevenueRange"] })} options={REVENUE_RANGE_OPTIONS} />
+          <SelectField label="Source of funds" value={p.draft.sourceOfFunds} field="sourceOfFunds" onChange={(v) => p.patchDraft({ sourceOfFunds: v as KybWizardProfileDraft["sourceOfFunds"] })} options={SOURCE_OF_FUNDS_OPTIONS} />
         </div>
       ) : null}
 
@@ -608,19 +665,19 @@ export default function KybWizardModal(p: KybWizardModalProps) {
               <TextField
                 label="First name"
                 value={associate.firstName}
-                onChange={(v) => p.patchAssociate(index, { firstName: v })}
+                field={`associates.${index}.firstName`} onChange={(v) => p.patchAssociate(index, { firstName: v })}
                 autoComplete="given-name"
               />
               <TextField
                 label="Last name"
                 value={associate.lastName}
-                onChange={(v) => p.patchAssociate(index, { lastName: v })}
+                field={`associates.${index}.lastName`} onChange={(v) => p.patchAssociate(index, { lastName: v })}
                 autoComplete="family-name"
               />
               <TextField
                 label="Date of birth"
                 value={associate.dateOfBirth}
-                onChange={(v) => p.patchAssociate(index, { dateOfBirth: v })}
+                field={`associates.${index}.dateOfBirth`} onChange={(v) => p.patchAssociate(index, { dateOfBirth: v })}
                 type="date"
                 max={maxAdultDob()}
                 min="1900-01-01"
@@ -629,14 +686,14 @@ export default function KybWizardModal(p: KybWizardModalProps) {
               <TextField
                 label="Email"
                 value={associate.email}
-                onChange={(v) => p.patchAssociate(index, { email: v })}
+                field={`associates.${index}.email`} onChange={(v) => p.patchAssociate(index, { email: v })}
                 type="email"
                 autoComplete="email"
               />
               <TextField
                 label="Phone"
                 value={associate.phoneNumber}
-                onChange={(v) => p.patchAssociate(index, { phoneNumber: v.replace(/[^\d+]/g, "") })}
+                field={`associates.${index}.phoneNumber`} onChange={(v) => p.patchAssociate(index, { phoneNumber: v.replace(/[^\d+]/g, "") })}
                 placeholder="+254700000000"
                 inputMode="tel"
                 autoComplete="tel"
@@ -645,7 +702,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
               <TextField
                 label="Ownership %"
                 value={associate.ownershipPercentage}
-                onChange={(v) => p.patchAssociate(index, { ownershipPercentage: v })}
+                field={`associates.${index}.ownershipPercentage`} onChange={(v) => p.patchAssociate(index, { ownershipPercentage: v })}
                 type="number"
                 min={KYB_MIN_UBO_OWNERSHIP}
                 max={100}
@@ -702,37 +759,37 @@ export default function KybWizardModal(p: KybWizardModalProps) {
               <TextField
                 label="Government ID number"
                 value={associate.idNumber}
-                onChange={(v) => p.patchAssociate(index, { idNumber: v })}
+                field={`associates.${index}.idNumber`} onChange={(v) => p.patchAssociate(index, { idNumber: v })}
                 placeholder="A1234567"
                 hint="Required for the customer vault officer package"
               />
               <TextField
                 label="Residential street"
                 value={associate.street}
-                onChange={(v) => p.patchAssociate(index, { street: v })}
+                field={`associates.${index}.street`} onChange={(v) => p.patchAssociate(index, { street: v })}
                 autoComplete="street-address"
               />
               <TextField
                 label="Residential street line 2"
                 value={associate.street2}
-                onChange={(v) => p.patchAssociate(index, { street2: v })}
+                field={`associates.${index}.street2`} onChange={(v) => p.patchAssociate(index, { street2: v })}
               />
               <TextField
                 label="Residential city"
                 value={associate.city}
-                onChange={(v) => p.patchAssociate(index, { city: v })}
+                field={`associates.${index}.city`} onChange={(v) => p.patchAssociate(index, { city: v })}
                 autoComplete="address-level2"
               />
               <TextField
                 label="Residential post code (optional)"
                 value={associate.postCode}
-                onChange={(v) => p.patchAssociate(index, { postCode: v })}
+                field={`associates.${index}.postCode`} onChange={(v) => p.patchAssociate(index, { postCode: v })}
                 autoComplete="postal-code"
               />
               <TextField
                 label="Residential state / county"
                 value={associate.state}
-                onChange={(v) => p.patchAssociate(index, { state: v })}
+                field={`associates.${index}.state`} onChange={(v) => p.patchAssociate(index, { state: v })}
                 autoComplete="address-level1"
               />
             </div>
@@ -743,7 +800,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
               <TextField
                 label={`Who holds the remaining ${100 - ownershipSum}%?`}
                 value={p.draft.ownershipRemainderNote}
-                onChange={(v) => p.patchDraft({ ownershipRemainderNote: v })}
+                field="ownershipRemainderNote" onChange={(v) => p.patchDraft({ ownershipRemainderNote: v })}
                 placeholder="e.g. minority shareholders under 25%, a trust, or a corporate parent"
                 hint="Required when listed UBOs total less than 100%"
               />
@@ -767,13 +824,13 @@ export default function KybWizardModal(p: KybWizardModalProps) {
             <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)", lineHeight: 1.45 }}>
               The company’s official registered address (not a personal home address).
             </p>
-            <TextField label="Street" value={p.draft.street} onChange={(v) => p.patchDraft({ street: v })} autoComplete="street-address" />
-            <TextField label="Street line 2" value={p.draft.street2} onChange={(v) => p.patchDraft({ street2: v })} />
-            <TextField label="City" value={p.draft.city} onChange={(v) => p.patchDraft({ city: v })} placeholder="Nairobi" autoComplete="address-level2" />
+            <TextField label="Street" value={p.draft.street} field="street" onChange={(v) => p.patchDraft({ street: v })} autoComplete="street-address" />
+            <TextField label="Street line 2" value={p.draft.street2} field="street2" onChange={(v) => p.patchDraft({ street2: v })} />
+            <TextField label="City" value={p.draft.city} field="city" onChange={(v) => p.patchDraft({ city: v })} placeholder="Nairobi" autoComplete="address-level2" />
             <TextField
               label={p.registeredPostalRequired === false ? "Post code (optional)" : "Post code"}
               value={p.draft.postCode}
-              onChange={(v) => p.patchDraft({ postCode: v })}
+              field="postCode" onChange={(v) => p.patchDraft({ postCode: v })}
               autoComplete="postal-code"
               hint={
                 p.registeredPostalRequired === false
@@ -781,7 +838,7 @@ export default function KybWizardModal(p: KybWizardModalProps) {
                   : "Required for the registered business address"
               }
             />
-            <TextField label="State / county" value={p.draft.state} onChange={(v) => p.patchDraft({ state: v })} placeholder="Nairobi County" autoComplete="address-level1" />
+            <TextField label="State / county" value={p.draft.state} field="state" onChange={(v) => p.patchDraft({ state: v })} placeholder="Nairobi County" autoComplete="address-level1" />
             <CountrySelect
               label="Address country"
               value={p.draft.addressCountry}
@@ -969,5 +1026,6 @@ export default function KybWizardModal(p: KybWizardModalProps) {
         </button>
       </div>
     </div>
+    </FieldErrorContext.Provider>
   );
 }

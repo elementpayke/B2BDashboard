@@ -717,3 +717,52 @@ describe("profileDraftFromSummary", () => {
     expect(draft.associates[0].firstName).toBe("Sam");
   });
 });
+
+describe("kybStatusRefetchMs", () => {
+  it("re-checks every minute while compliance is reviewing, and not otherwise", async () => {
+    const { kybStatusRefetchMs, KYB_REVIEW_REFETCH_MS } = await import("./kyb");
+    expect(KYB_REVIEW_REFETCH_MS).toBe(60_000);
+    expect(kybStatusRefetchMs("submitted")).toBe(60_000);
+    for (const s of ["pending", "approved", "rejected", "expired", undefined, null, ""]) {
+      expect(kybStatusRefetchMs(s)).toBe(false);
+    }
+  });
+});
+
+describe("kybStatusChangedToDecision", () => {
+  it("is true only when a review ends in a decision", async () => {
+    const { kybStatusChangedToDecision } = await import("./kyb");
+    expect(kybStatusChangedToDecision("submitted", "approved")).toBe(true);
+    expect(kybStatusChangedToDecision("submitted", "rejected")).toBe(true);
+    expect(kybStatusChangedToDecision("submitted", "submitted")).toBe(false);
+    expect(kybStatusChangedToDecision(undefined, "approved")).toBe(false);
+    expect(kybStatusChangedToDecision("approved", "approved")).toBe(false);
+  });
+});
+
+describe("KYB step issues name the field that failed", () => {
+  it("points the business step at the first bad field", async () => {
+    const { emptyKybWizardDraft, validateBusinessStepIssue, validateBusinessStep } = await import("./kyb");
+    const draft = { ...emptyKybWizardDraft("KE"), legalName: "Acme Traders" };
+    expect(validateBusinessStepIssue(draft)).toEqual({
+      field: "registrationNumber",
+      message: "Registration number is required.",
+    });
+    expect(validateBusinessStep(draft)).toBe("Registration number is required.");
+  });
+
+  it("points the owners step at the owner's own field", async () => {
+    const { emptyKybWizardDraft, validateAddressUboStepIssue } = await import("./kyb");
+    const base = emptyKybWizardDraft("KE");
+    const draft = {
+      ...base,
+      street: "1 Moi Avenue",
+      city: "Nairobi",
+      postCode: "00100",
+      addressCountry: "KE",
+      associates: [{ ...base.associates[0], firstName: "Amina", lastName: "" }],
+    };
+    expect(validateAddressUboStepIssue(draft)?.field).toBe("associates.0.lastName");
+    expect(validateAddressUboStepIssue({ ...draft, city: "" })?.field).toBe("city");
+  });
+});

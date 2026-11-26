@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { track } from "@/lib/analytics/track";
 import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/services/auth";
 import { ApiRequestError } from "@/lib/apiClient";
@@ -89,6 +90,7 @@ export default function HiddenSignupPage() {
         turnstileToken ?? undefined,
       );
       stashVerifyEmail(trimmedEmail);
+      track("signup_completed", { country });
       router.push("/verify-email");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Unable to create your account.");
