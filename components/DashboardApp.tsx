@@ -2415,21 +2415,24 @@ export default function DashboardApp(props: Props = {}) {
     });
   const openCloseAccountChooser = () =>
     setState({ modal: "closeAccount" });
-  const openAfricanFundOnRamp = () => {
+  /** `fiat` given: fund that fiat account from inside the Add money flow (keeps its lock). */
+  const openAfricanFundOnRamp = (fiat?: { id: string; currency: string }) => {
     // Prefer bootstrap-backed lists — depositAccountsQuery / stablecoinAccountsQuery
     // are disabled once bootstrap succeeds.
     const fiatList = fundingDepositAccounts;
     const stableList = resolvedStablecoinAccounts;
-    const currencyKey =
-      state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
+    const currencyKey = fiat
+      ? fiat.currency.toUpperCase()
+      : state.selectedAcctKind === "fiat" && state.selectedAcctKey.startsWith("fiat:")
         ? state.selectedAcctKey.slice("fiat:".length)
         : "";
-    const selectedFiat =
-      state.selectedAcctKind === "fiat"
+    const selectedFiat = fiat
+      ? fiatList.find((a) => String(a.id) === fiat.id) ?? null
+      : state.selectedAcctKind === "fiat"
         ? fiatList.find((a) => a.currency.toUpperCase() === currencyKey) ?? null
         : null;
     const selectedStablecoin =
-      state.selectedAcctKind === "stablecoin" && state.selectedAcctKey.startsWith("stablecoin:")
+      !fiat && state.selectedAcctKind === "stablecoin" && state.selectedAcctKey.startsWith("stablecoin:")
         ? stableList.find(
             (a) => a.id === state.selectedAcctKey.slice("stablecoin:".length),
           ) ?? null
@@ -2450,7 +2453,7 @@ export default function DashboardApp(props: Props = {}) {
       ) ??
       null;
     const intent = resolveAfricanFundOpenIntent({
-      selectedKind: state.selectedAcctKind,
+      selectedKind: fiat ? "fiat" : state.selectedAcctKind,
       selectedFiatCurrency: selectedFiat?.currency || currencyKey || "EUR",
       selectedStablecoin: selectedStablecoin
         ? {
@@ -2488,6 +2491,8 @@ export default function DashboardApp(props: Props = {}) {
       africaFundStatus: "",
       fundConvertStatus: "",
       fundConvertError: "",
+      // Inside the Add money flow: keep the account it was opened on.
+      ...(fiat ? { fundFiatLockedId: state.fundFiatLockedId } : {}),
     });
   };
   const backToWallets = () => setState({ screen: "wallets", modal: null });
@@ -7109,6 +7114,9 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     if (!account) return;
     setState({
       fundTargetAccountId: account.id,
+      // A wallet picked after a fiat account: no background convert.
+      fundAfricanTargetCurrency: null,
+      fundFiatAccountId: null,
       depositAsset: account.currency.trim().toLowerCase() || s.depositAsset,
       depositNetwork: toUiNetworkKey(account.network) || s.depositNetwork,
       depositQuote: null,
@@ -7174,6 +7182,21 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
           : null,
         sections: a.status === "active" ? buildDepositAccountDetailSections(a) : [],
         disclaimer: a.status === "active" ? resolveDepositDisclaimer(a) : null,
+        convertFund: planAfricanFundOrchestration({
+          fiatCurrency: a.currency,
+          fiatAccountId: String(a.id),
+          entityId: fundingUsdcAccount?.entityId ?? null,
+          usdcAccountId: fundingUsdcAccount?.id ?? null,
+          usdcWalletAddress: fundingUsdcAccount?.walletAddress ?? null,
+          treasuryWalletAddress: resolveTreasuryWalletAddress({
+            summaryWallet: summaryQuery.data?.totals.wallet_address,
+            stablecoinAccounts: stablecoinAccountsQuery.data,
+          }),
+          convertNetworkId: null,
+        }).canRunAfricanOnRamp,
+        openBanking:
+          remittanceMethodForCurrency(a.currency) === "open_banking" &&
+          Boolean(String(a.entity_id || "").trim()),
       };
     })}
   onOpenFiatAccount={(id) => {
@@ -7186,6 +7209,19 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     });
   }}
   fiatLockedAccountId={s.fundFiatLockedId}
+  onFiatConvertFund={(id) => {
+    const account = depositAccountsList.find((a) => String(a.id) === id);
+    if (account) openAfricanFundOnRamp({ id, currency: account.currency });
+  }}
+  onFiatOpenBanking={(id) => {
+    const account = depositAccountsList.find((a) => String(a.id) === id);
+    if (!account) return;
+    setState({
+      selectedAcctKind: "fiat",
+      selectedAcctKey: `fiat:${account.currency.toUpperCase()}`,
+      modal: "fundPaymentRequest",
+    });
+  }}
   interacLockedAccountId={s.fundInteracAccountId}
   interacPayerName={meQuery.data?.business?.legal_name || meQuery.data?.business?.name || ""}
   interacDefaultEmail={meQuery.data?.user?.email?.trim() || ""}

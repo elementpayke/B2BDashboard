@@ -35,6 +35,10 @@ export type FiatFundingAccount = {
   sections: { title: string; rows: { label: string; value: string; copyValue?: string }[] }[];
   /** Reference rule from the partner, shown as a warning. */
   disclaimer?: string | null;
+  /** Mobile money / African bank can fund it, converted in the background. */
+  convertFund?: boolean;
+  /** EUR/GBP: open banking request. */
+  openBanking?: boolean;
 };
 
 export type DepositCountryRow = {
@@ -98,6 +102,10 @@ export type DepositFlowProps = {
   fiatLockedAccountId?: string | null;
   /** Called when a fiat account is chosen, so the parent can refresh missing details. */
   onOpenFiatAccount?: (id: string) => void;
+  /** Mobile money or African bank into a fiat account: parent sets up the converted top-up. */
+  onFiatConvertFund?: (id: string) => void;
+  /** Open banking into a EUR/GBP account (its own request screen). */
+  onFiatOpenBanking?: (id: string) => void;
 
   /* Method + corridor (shared OnRamp state in DashboardApp) */
   setGroup: (group: "country" | "crypto") => void;

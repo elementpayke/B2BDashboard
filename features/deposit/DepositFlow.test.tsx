@@ -125,24 +125,45 @@ const usdAccount = {
 };
 
 describe("DepositFlow — fiat accounts", () => {
+  const usdConvert = { ...usdAccount, convertFund: true };
+  const eur = { ...usdAccount, id: "eur-1", currency: "EUR", label: "EUR account", convertFund: true, openBanking: true };
+
   it("lists the fiat accounts the user has opened, with their balance", () => {
     renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
     const row = screen.getByRole("button", { name: /USD account/ });
     expect(row).toHaveTextContent("2,000.00 USD");
-    expect(row).toHaveTextContent("Bank transfer to your account details");
   });
 
-  it("goes straight to the account's details, each copyable, then Done closes", () => {
+  it("asks how the money comes in: bank details always, converted mobile money and bank when available", () => {
     const onOpenFiatAccount = vi.fn();
-    const close = vi.fn();
-    renderFlow(baseProps({ fiatAccounts: [usdAccount], onOpenFiatAccount, close }));
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], onOpenFiatAccount }));
     click(/USD account/);
     expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    const ways = screen.getByRole("list", { name: "Ways to add money" });
+    expect(within(ways).getByRole("button", { name: /Bank transfer/ })).toHaveTextContent("this account’s details");
+    expect(within(ways).getByRole("button", { name: /Mobile money/ })).toHaveTextContent("We convert it to USD");
+    expect(within(ways).getByRole("button", { name: /African bank/ })).toBeInTheDocument();
+    expect(within(ways).queryByRole("button", { name: /Open banking/ })).not.toBeInTheDocument();
+    expect(within(ways).queryByRole("button", { name: /Stablecoin/ })).not.toBeInTheDocument();
+  });
+
+  it("hides the converted options when the account can't take them", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    click(/USD account/);
+    expect(screen.queryByRole("button", { name: /Mobile money/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Bank transfer/ })).toBeInTheDocument();
+  });
+
+  it("bank transfer shows the account's details, each copyable, then Done closes", () => {
+    const close = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdAccount], close }));
+    click(/USD account/);
+    click(/Bank transfer/);
     expect(title()).toHaveTextContent("Fund your USD account");
-    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
     const details = screen.getByRole("region", { name: "USD account details" });
     expect(within(details).getByText("Domestic transfer (ACH/wire)")).toBeInTheDocument();
-    expect(within(details).getByText("021000021")).toBeInTheDocument();
     fireEvent.click(within(details).getByRole("button", { name: "Copy Routing number" }));
     expect(clip.copyText).toHaveBeenCalledWith("021000021");
     expect(screen.getByRole("note")).toHaveTextContent("Include MBK-778");
@@ -150,24 +171,50 @@ describe("DepositFlow — fiat accounts", () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it("mobile money sets up the converted top-up and moves onto the country step", () => {
+    const onFiatConvertFund = vi.fn();
+    const setGroup = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], onFiatConvertFund, setGroup }));
+    click(/USD account/);
+    click(/Mobile money/);
+    expect(onFiatConvertFund).toHaveBeenCalledWith("usd-1");
+    expect(setGroup).toHaveBeenCalledWith("country");
+    expect(screen.getByRole("button", { name: /Change account/ })).toHaveTextContent("Into USD account");
+  });
+
+  it("offers open banking for EUR and hands it to the parent", () => {
+    const onFiatOpenBanking = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [eur], onFiatOpenBanking }));
+    click(/EUR account/);
+    click(/Open banking/);
+    expect(onFiatOpenBanking).toHaveBeenCalledWith("eur-1");
+  });
+
   it("says the details aren't ready instead of showing an empty panel", () => {
     renderFlow(baseProps({ fiatAccounts: [{ ...usdAccount, sections: [], disclaimer: null }] }));
     click(/USD account/);
+    click(/Bank transfer/);
     expect(screen.getByText(/details aren’t ready yet/)).toBeInTheDocument();
   });
 
-  it("opens straight on the details when Fund is pressed inside that account", () => {
+  it("opens on the method step when Fund is pressed inside that account", () => {
     const onOpenFiatAccount = vi.fn();
-    renderFlow(baseProps({ fiatAccounts: [usdAccount], fiatLockedAccountId: "usd-1", onOpenFiatAccount }));
-    expect(title()).toHaveTextContent("Fund your USD account");
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], fiatLockedAccountId: "usd-1", onOpenFiatAccount }));
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
     expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
-    expect(screen.getByText("Step 1 of 1")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+    click(/Bank transfer/);
+    expect(title()).toHaveTextContent("Fund your USD account");
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
   });
 
-  it("can go back to the account list", () => {
+  it("can go back from the details to the method, then to the account list", () => {
     renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
     click(/USD account/);
+    click(/Bank transfer/);
+    click(/Back/);
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
     click(/Back/);
     expect(screen.getByText("Which account are you funding?")).toBeInTheDocument();
   });

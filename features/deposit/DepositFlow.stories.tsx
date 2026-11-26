@@ -44,13 +44,16 @@ const usd = {
     { title: "Mboka transfer", rows: [{ label: "Mboka number", value: "MBK-778", copyValue: "MBK-778" }] },
   ],
   disclaimer: "Include MBK-778 in the payment reference when sending funds.",
+  convertFund: true,
 };
+const eur = { ...usd, id: "eur-1", currency: "EUR", label: "EUR account", openBanking: true };
 
 /** Click through: account → method → country → provider. Pick USD account for its details. */
-export const Steps: Story = { render: () => <Flow {...baseProps({ interacAccounts: [cad], fiatAccounts: [usd] })} /> };
+export const Steps: Story = { render: () => <Flow {...baseProps({ interacAccounts: [cad], fiatAccounts: [usd, eur] })} /> };
 
-export const FiatAccountDetails: Story = {
-  render: () => <Flow {...baseProps({ fiatAccounts: [usd], fiatLockedAccountId: "usd-1" })} />,
+/** Fund pressed inside a EUR account: bank details, mobile money, African bank, open banking. */
+export const FromInsideAFiatAccount: Story = {
+  render: () => <Flow {...baseProps({ fiatAccounts: [usd, eur], fiatLockedAccountId: "eur-1" })} />,
 };
 
 export const FromInsideAnAccount: Story = { render: () => <Flow {...baseProps({ walletLocked: true })} /> };

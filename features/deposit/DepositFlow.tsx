@@ -152,7 +152,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     : null;
   const locked = Boolean(p.walletLocked || lockedInterac || lockedFiat);
 
-  const [view, setView] = React.useState<View>(lockedFiat ? "fiat" : locked ? "method" : "account");
+  const [view, setView] = React.useState<View>(locked ? "method" : "account");
   const [fiatId, setFiatId] = React.useState<string | null>(lockedFiat?.id ?? null);
   const [method, setMethod] = React.useState<DepositMethod | null>(null);
   const [interacId, setInteracId] = React.useState<string | null>(lockedInterac?.id ?? null);
@@ -182,8 +182,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         ? "amount"
         : view;
 
-  const path: Screen[] = screen === "fiat" ? [
+  const fiatConverting = Boolean(fiatAccount && (method === "mobile" || method === "bank"));
+  const path: Screen[] = fiatAccount && !fiatConverting ? [
     ...(locked ? [] : (["account"] as Screen[])),
+    "method",
     "fiat",
   ] : [
     ...(locked ? [] : (["account"] as Screen[])),
@@ -212,7 +214,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     go("country");
   };
 
-  const intoLabel = interacAccount?.label || p.walletLabel || "account";
+  const intoLabel = interacAccount?.label || fiatAccount?.label || p.walletLabel || "account";
   const payText = money(p.amount, p.currency);
   const payerText = isBank ? p.phone.trim() : `${p.dialCode} ${p.phone.trim()}`.trim();
   const expired = useExpired(p.stepIs3 ? p.quoteExpiresAt : null);
@@ -262,7 +264,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
       <FiatAccountDetails
         account={fiatAccount}
         titleId={TITLE_ID}
-        onBack={locked ? undefined : () => go("account")}
+        onBack={() => go("method")}
         onDone={p.close}
       />
     );
@@ -615,6 +617,73 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         )}
       </>
     );
+  } else if (screen === "method" && fiatAccount) {
+    const cur = fiatAccount.currency;
+    const ways: { key: string; glyph: DepositMethod; label: string; desc: string; pick: () => void }[] = [
+      {
+        key: "details",
+        glyph: "bank",
+        label: "Bank transfer",
+        desc: `Send ${cur} from any bank to this account’s details`,
+        pick: () => {
+          setMethod(null);
+          go("fiat");
+        },
+      },
+    ];
+    if (fiatAccount.convertFund) {
+      const convert = (m: "mobile" | "bank") => () => {
+        p.onFiatConvertFund?.(fiatAccount.id);
+        pickMethod(m);
+      };
+      ways.push(
+        {
+          key: "mobile",
+          glyph: "mobile",
+          label: "Mobile money",
+          desc: `Pay in local currency from a mobile wallet. We convert it to ${cur}.`,
+          pick: convert("mobile"),
+        },
+        {
+          key: "bank",
+          glyph: "bank",
+          label: "African bank",
+          desc: `Pay in local currency from a bank in Africa. We convert it to ${cur}.`,
+          pick: convert("bank"),
+        },
+      );
+    }
+    if (fiatAccount.openBanking) {
+      ways.push({
+        key: "open-banking",
+        glyph: "interac",
+        label: "Open banking",
+        desc: `Send an open banking payment request for ${cur}`,
+        pick: () => p.onFiatOpenBanking?.(fiatAccount.id),
+      });
+    }
+    body = (
+      <>
+        <StepHeading
+          title="Add money"
+          titleId={TITLE_ID}
+          sub="How is the money coming in?"
+          onBack={locked ? undefined : () => go("account")}
+          chips={intoChip}
+        />
+        <PickList label="Ways to add money">
+          {ways.map((w) => (
+            <PickRow
+              key={w.key}
+              leading={<GlyphTile {...GLYPHS[w.glyph]} />}
+              title={w.label}
+              meta={w.desc}
+              onClick={w.pick}
+            />
+          ))}
+        </PickList>
+      </>
+    );
   } else if (screen === "method") {
     const hasRail = (t: "mobile" | "bank") =>
       p.catalogLoading || Boolean(p.catalogError) || p.countryRows.some((r) => r.railTypes.includes(t));
@@ -703,13 +772,14 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 key={a.id}
                 leading={<Initials name={a.label} />}
                 title={a.label}
-                meta="Bank transfer to your account details"
                 selected={fiatId === a.id}
                 trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
                 onClick={() => {
                   setFiatId(a.id);
+                  setInteracId(null);
+                  setMethod(null);
                   p.onOpenFiatAccount?.(a.id);
-                  go("fiat");
+                  go("method");
                 }}
               />
             ))}
