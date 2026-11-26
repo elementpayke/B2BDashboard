@@ -7046,6 +7046,8 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
     return {
       value: a.id,
       label: `${a.currency} wallet · ${formatNetworkLabel(a.network)}`,
+      asset: a.currency,
+      network: formatNetworkLabel(a.network),
       meta: a.walletAddress ? `${a.walletAddress.slice(0, 6)}…${a.walletAddress.slice(-4)}` : null,
       balanceText: Number.isFinite(n)
         ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`

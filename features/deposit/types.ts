@@ -12,6 +12,9 @@ export type DepositWalletOption = {
   meta?: string | null;
   /** Formatted balance, e.g. "1,240.50 USDC". Null when it didn't load: shown as —. */
   balanceText?: string | null;
+  /** Coin and network, for the row's brand marks (e.g. "USDC", "Base"). */
+  asset?: string;
+  network?: string;
 };
 
 /** A CAD account that can be funded by Interac e-Transfer (payment requests). */

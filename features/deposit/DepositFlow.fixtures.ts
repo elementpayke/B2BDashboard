@@ -6,8 +6,8 @@ const noop = () => {};
 export function baseProps(overrides: Partial<DepositFlowProps> = {}): DepositFlowProps {
   return {
     walletOptions: [
-      { value: "w-base", label: "USDC wallet · Base", meta: "0x8f3…4f2a", balanceText: "1,240.50 USDC" },
-      { value: "w-stellar", label: "USDC wallet · Stellar", meta: "GDX4…7QPL", balanceText: null },
+      { value: "w-base", label: "USDC wallet · Base", meta: "0x8f3…4f2a", balanceText: "1,240.50 USDC", asset: "USDC", network: "Base" },
+      { value: "w-stellar", label: "USDC wallet · Stellar", meta: "GDX4…7QPL", balanceText: null, asset: "USDC", network: "Stellar" },
     ],
     walletId: "w-base",
     selectWallet: noop,

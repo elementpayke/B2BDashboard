@@ -1,6 +1,9 @@
 "use client";
 import * as React from "react";
+import CoinMark, { isCoinMarkAsset } from "@/components/brand/CoinMark";
 import MbokaLogo from "@/components/brand/MbokaLogo";
+import MobileMoneyMark from "@/components/money/MobileMoneyMark";
+import { NetworkListIcon } from "@/components/brand/NetworkMark";
 import {
   ChoiceChip,
   DetailRow,
@@ -97,6 +100,31 @@ function useExpired(expiresAt: string | null | undefined): boolean {
     return () => window.clearTimeout(t);
   }, [end]);
   return !Number.isNaN(end) && end <= now;
+}
+
+/** A network's brand mark with the coin as a small badge, or the coin alone. */
+function AssetMark({ asset, network, label }: { asset?: string; network?: string; label: string }) {
+  const coin = isCoinMarkAsset(asset) ? asset.toUpperCase() : null;
+  if (network) {
+    return (
+      <span aria-hidden className="relative flex size-11 shrink-0 items-center justify-center">
+        <NetworkListIcon network={network} label={network} size={44} />
+        {coin && isCoinMarkAsset(coin) ? (
+          <span className="absolute -bottom-0.5 -right-0.5 flex rounded-pill bg-card p-0.5">
+            <CoinMark asset={coin} size={18} title={null} />
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  if (coin && isCoinMarkAsset(coin)) {
+    return (
+      <span aria-hidden className="flex shrink-0">
+        <CoinMark asset={coin} size={44} title={null} />
+      </span>
+    );
+  }
+  return <Initials name={label} />;
 }
 
 function money(amount: string, currency: string): string {
@@ -413,7 +441,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
           {p.networks.map((n) => (
             <PickRow
               key={n.key}
-              leading={<Initials name={n.label} />}
+              leading={<AssetMark asset={p.assetCode} network={n.label} label={n.label} />}
               title={`${p.assetCode} on ${n.label}`}
               meta={n.key === "stellar" ? "Scan, copy or connect a Stellar wallet" : "Scan or copy the address"}
               selected={n.selected}
@@ -458,7 +486,15 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             {providers.map((pr) => (
               <PickRow
                 key={pr.name}
-                leading={<Initials name={pr.displayLabel || pr.name} />}
+                leading={
+                  method === "bank" ? (
+                    <Initials name={pr.displayLabel || pr.name} />
+                  ) : (
+                    <span aria-hidden className="flex shrink-0 overflow-hidden rounded-pill shadow-hairline">
+                      <MobileMoneyMark name={pr.name} size={44} />
+                    </span>
+                  )
+                }
                 title={pr.displayLabel || pr.name}
                 meta={p.limitsText || undefined}
                 selected={pr.selected}
@@ -590,7 +626,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             {p.walletOptions.map((w) => (
               <PickRow
                 key={w.value}
-                leading={<Initials name={w.label} />}
+                leading={<AssetMark asset={w.asset} network={w.network} label={w.label} />}
                 title={w.label}
                 meta={w.meta || undefined}
                 selected={!interacId && p.walletId === w.value}
