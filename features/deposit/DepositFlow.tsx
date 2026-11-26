@@ -27,11 +27,12 @@ import { BANK_SEARCH_THRESHOLD } from "@/lib/hooks/depositFlowHelpers";
 import { cn } from "@/lib/utils";
 import BankDetails from "./BankDetails";
 import DepositStatus from "./DepositStatus";
+import FiatAccountDetails from "./FiatAccountDetails";
 import InteracFund from "./InteracFund";
 import StablecoinAddress from "./StablecoinAddress";
 import type { DepositFlowProps, DepositMethod } from "./types";
 
-type View = "account" | "method" | "country" | "provider" | "network" | "interac";
+type View = "account" | "method" | "country" | "provider" | "network" | "interac" | "fiat";
 type Screen = View | "amount" | "review" | "address";
 
 const TITLE_ID = "deposit-flow-title";
@@ -145,14 +146,20 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
   const lockedInterac = p.interacLockedAccountId
     ? interacAccounts.find((a) => a.id === p.interacLockedAccountId) ?? null
     : null;
-  const locked = Boolean(p.walletLocked || lockedInterac);
+  const fiatAccounts = p.fiatAccounts ?? [];
+  const lockedFiat = p.fiatLockedAccountId
+    ? fiatAccounts.find((a) => a.id === p.fiatLockedAccountId) ?? null
+    : null;
+  const locked = Boolean(p.walletLocked || lockedInterac || lockedFiat);
 
-  const [view, setView] = React.useState<View>(locked ? "method" : "account");
+  const [view, setView] = React.useState<View>(lockedFiat ? "fiat" : locked ? "method" : "account");
+  const [fiatId, setFiatId] = React.useState<string | null>(lockedFiat?.id ?? null);
   const [method, setMethod] = React.useState<DepositMethod | null>(null);
   const [interacId, setInteracId] = React.useState<string | null>(lockedInterac?.id ?? null);
   const [query, setQuery] = React.useState("");
 
   const interacAccount = interacAccounts.find((a) => a.id === interacId) ?? null;
+  const fiatAccount = fiatAccounts.find((a) => a.id === fiatId) ?? null;
 
   const selectedRail = p.railGroups.find((g) => g.providers.some((pr) => pr.selected));
   const railType: "mobile" | "bank" = selectedRail?.type ?? (method === "bank" ? "bank" : "mobile");
@@ -166,7 +173,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         ? "amount"
         : view;
 
-  const path: Screen[] = [
+  const path: Screen[] = screen === "fiat" ? [
+    ...(locked ? [] : (["account"] as Screen[])),
+    "fiat",
+  ] : [
     ...(locked ? [] : (["account"] as Screen[])),
     "method",
     ...((method === "crypto" || (method === null && p.group === "crypto" && p.stepIs2)
@@ -236,6 +246,15 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         onDone={p.close}
         onRetry={p.retry}
         onHelp={p.onHelp}
+      />
+    );
+  } else if (screen === "fiat" && fiatAccount) {
+    body = (
+      <FiatAccountDetails
+        account={fiatAccount}
+        titleId={TITLE_ID}
+        onBack={locked ? undefined : () => go("account")}
+        onDone={p.close}
       />
     );
   } else if (screen === "interac" && interacAccount) {
@@ -644,10 +663,11 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 leading={<AssetMark asset={w.asset} network={w.network} label={w.label} />}
                 title={w.label}
                 meta={w.meta || undefined}
-                selected={!interacId && p.walletId === w.value}
+                selected={!interacId && !fiatId && p.walletId === w.value}
                 trailing={<span className="font-mono text-body-lg text-foreground">{w.balanceText || "—"}</span>}
                 onClick={() => {
                   setInteracId(null);
+                  setFiatId(null);
                   p.selectWallet(w.value);
                   go("method");
                 }}
@@ -663,8 +683,24 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
                 onClick={() => {
                   setInteracId(a.id);
+                  setFiatId(null);
                   setMethod(null);
                   go("method");
+                }}
+              />
+            ))}
+            {fiatAccounts.map((a) => (
+              <PickRow
+                key={a.id}
+                leading={<Initials name={a.label} />}
+                title={a.label}
+                meta="Bank transfer to your account details"
+                selected={fiatId === a.id}
+                trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
+                onClick={() => {
+                  setFiatId(a.id);
+                  p.onOpenFiatAccount?.(a.id);
+                  go("fiat");
                 }}
               />
             ))}

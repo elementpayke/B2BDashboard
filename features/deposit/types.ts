@@ -25,6 +25,18 @@ export type InteracAccount = {
   balanceText?: string | null;
 };
 
+/** A fiat account the user opened (USD, EUR, GBP…): funded by a bank transfer to its own details. */
+export type FiatFundingAccount = {
+  id: string;
+  currency: string;
+  label: string;
+  balanceText?: string | null;
+  /** Grouped bank details, e.g. "Domestic transfer" / "International wire". Empty while not issued yet. */
+  sections: { title: string; rows: { label: string; value: string; copyValue?: string }[] }[];
+  /** Reference rule from the partner, shown as a warning. */
+  disclaimer?: string | null;
+};
+
 export type DepositCountryRow = {
   idx: number;
   name: string;
@@ -79,6 +91,13 @@ export type DepositFlowProps = {
   interacPayerName?: string;
   /** Signed-in user's email, filled in as the Interac recipient. */
   interacDefaultEmail?: string;
+
+  /** Fiat accounts funded by bank transfer to their own details. */
+  fiatAccounts?: FiatFundingAccount[];
+  /** Opened from inside a fiat account: go straight to its details. */
+  fiatLockedAccountId?: string | null;
+  /** Called when a fiat account is chosen, so the parent can refresh missing details. */
+  onOpenFiatAccount?: (id: string) => void;
 
   /* Method + corridor (shared OnRamp state in DashboardApp) */
   setGroup: (group: "country" | "crypto") => void;

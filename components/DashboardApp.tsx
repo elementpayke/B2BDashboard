@@ -7104,6 +7104,39 @@ We&apos;ll email them a sign-in link and, if they&apos;re new, a temporary passw
           : null,
       };
     })}
+  fiatAccounts={depositAccountsList
+    .filter(
+      (a) =>
+        Boolean(a.id) &&
+        (a.status === "active" || a.status === "pending") &&
+        !(
+          remittanceMethodForCurrency(a.currency) === "interac" &&
+          Boolean(String(a.entity_id || "").trim())
+        ),
+    )
+    .map((a) => {
+      const available = a.balance?.available;
+      const n = available == null || available === "" ? Number.NaN : Number(available);
+      return {
+        id: String(a.id),
+        currency: a.currency,
+        label: `${a.currency} account`,
+        balanceText: Number.isFinite(n)
+          ? `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency}`
+          : null,
+        sections: a.status === "active" ? buildDepositAccountDetailSections(a) : [],
+        disclaimer: a.status === "active" ? resolveDepositDisclaimer(a) : null,
+      };
+    })}
+  onOpenFiatAccount={(id) => {
+    const account = depositAccountsList.find((a) => String(a.id) === id);
+    if (!account || !needsDepositInstructionsSync(account)) return;
+    if (depositInstructionsSyncAttemptedRef.current.has(id)) return;
+    depositInstructionsSyncAttemptedRef.current.add(id);
+    void refreshDepositAccount(id).catch(() => {
+      depositInstructionsSyncAttemptedRef.current.delete(id);
+    });
+  }}
   interacLockedAccountId={s.fundInteracAccountId}
   interacPayerName={meQuery.data?.business?.legal_name || meQuery.data?.business?.name || ""}
   interacDefaultEmail={meQuery.data?.user?.email?.trim() || ""}

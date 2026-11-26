@@ -21,8 +21,37 @@ const bankPicked = baseProps().railGroups.map((g) => ({
   providers: g.providers.map((p) => ({ ...p, selected: g.type === "bank" })),
 }));
 
-/** Click through: account → method → country → provider. */
-export const Steps: Story = { render: () => <Flow {...baseProps({ interacAccounts: [cad] })} /> };
+const usd = {
+  id: "usd-1",
+  currency: "USD",
+  label: "USD account",
+  balanceText: "2,000.00 USD",
+  sections: [
+    {
+      title: "Domestic transfer (ACH/wire)",
+      rows: [
+        { label: "Account number", value: "123456789", copyValue: "123456789" },
+        { label: "Routing number", value: "021000021", copyValue: "021000021" },
+      ],
+    },
+    {
+      title: "International wire",
+      rows: [
+        { label: "Account number", value: "123456789", copyValue: "123456789" },
+        { label: "SWIFT/BIC", value: "CHASUS33", copyValue: "CHASUS33" },
+      ],
+    },
+    { title: "Mboka transfer", rows: [{ label: "Mboka number", value: "MBK-778", copyValue: "MBK-778" }] },
+  ],
+  disclaimer: "Include MBK-778 in the payment reference when sending funds.",
+};
+
+/** Click through: account → method → country → provider. Pick USD account for its details. */
+export const Steps: Story = { render: () => <Flow {...baseProps({ interacAccounts: [cad], fiatAccounts: [usd] })} /> };
+
+export const FiatAccountDetails: Story = {
+  render: () => <Flow {...baseProps({ fiatAccounts: [usd], fiatLockedAccountId: "usd-1" })} />,
+};
 
 export const FromInsideAnAccount: Story = { render: () => <Flow {...baseProps({ walletLocked: true })} /> };
 

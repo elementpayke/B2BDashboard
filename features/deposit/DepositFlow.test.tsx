@@ -106,6 +106,64 @@ describe("DepositFlow — which account", () => {
   });
 });
 
+const usdAccount = {
+  id: "usd-1",
+  currency: "USD",
+  label: "USD account",
+  balanceText: "2,000.00 USD",
+  sections: [
+    {
+      title: "Domestic transfer (ACH/wire)",
+      rows: [
+        { label: "Account number", value: "123456789", copyValue: "123456789" },
+        { label: "Routing number", value: "021000021", copyValue: "021000021" },
+      ],
+    },
+    { title: "Mboka transfer", rows: [{ label: "Mboka number", value: "MBK-778", copyValue: "MBK-778" }] },
+  ],
+  disclaimer: "Include MBK-778 in the payment reference when sending funds.",
+};
+
+describe("DepositFlow — fiat accounts", () => {
+  it("lists the fiat accounts the user has opened, with their balance", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    const row = screen.getByRole("button", { name: /USD account/ });
+    expect(row).toHaveTextContent("2,000.00 USD");
+    expect(row).toHaveTextContent("Bank transfer to your account details");
+  });
+
+  it("goes straight to the account's details, each copyable, then Done closes", () => {
+    const onOpenFiatAccount = vi.fn();
+    const close = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdAccount], onOpenFiatAccount, close }));
+    click(/USD account/);
+    expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
+    expect(title()).toHaveTextContent("Fund your USD account");
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
+    const details = screen.getByRole("region", { name: "USD account details" });
+    expect(within(details).getByText("Domestic transfer (ACH/wire)")).toBeInTheDocument();
+    expect(within(details).getByText("021000021")).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Copy Routing number" }));
+    expect(clip.copyText).toHaveBeenCalledWith("021000021");
+    expect(screen.getByRole("note")).toHaveTextContent("Include MBK-778");
+    click("Done");
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("says the details aren't ready instead of showing an empty panel", () => {
+    renderFlow(baseProps({ fiatAccounts: [{ ...usdAccount, sections: [], disclaimer: null }] }));
+    click(/USD account/);
+    expect(screen.getByText(/details aren’t ready yet/)).toBeInTheDocument();
+  });
+
+  it("can go back to the account list", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    click(/USD account/);
+    click(/Back/);
+    expect(screen.getByText("Which account are you funding?")).toBeInTheDocument();
+  });
+});
+
 describe("DepositFlow — how is the money coming in", () => {
   it("offers mobile money, bank transfer and stablecoin, with the chosen account as a chip", () => {
     renderFlow(baseProps({ walletLocked: false }));
