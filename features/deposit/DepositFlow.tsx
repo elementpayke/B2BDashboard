@@ -36,8 +36,8 @@ type View = "account" | "method" | "country" | "provider" | "network" | "interac
 type Screen = View | "amount" | "review" | "address";
 
 const TITLE_ID = "deposit-flow-title";
-/** More accounts than this and the account step gets a search box. */
-const ACCOUNT_SEARCH_THRESHOLD = 4;
+/** More rows than this and the account or network step gets a search box. */
+const SEARCH_THRESHOLD = 4;
 
 // Phosphor duotone paths (MIT): device-mobile, bank, coin, envelope.
 const GLYPHS: Record<DepositMethod, { back: string; front: string }> = {
@@ -455,6 +455,11 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     );
   } else if (screen === "network") {
     const picked = p.networks.some((n) => n.selected);
+    const longNetworkList = p.networks.length > SEARCH_THRESHOLD;
+    const networkQ = query.trim().toLowerCase();
+    const shownNetworks = networkQ
+      ? p.networks.filter((n) => haystack(n.label, n.key, `${p.assetCode} on ${n.label}`).includes(networkQ))
+      : p.networks;
     body = (
       <>
         <StepHeading
@@ -484,8 +489,19 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             ))}
           </div>
         ) : null}
-        <PickList label="Network">
-          {p.networks.map((n) => (
+        {longNetworkList ? (
+          <SearchBox
+            label="Search networks"
+            placeholder="Search by network, e.g. Polygon"
+            value={query}
+            onChange={setQuery}
+          />
+        ) : null}
+        {networkQ && shownNetworks.length === 0 ? (
+          <p className="px-1 text-body text-muted-foreground">No networks match “{query.trim()}”.</p>
+        ) : null}
+        <PickList label="Network" scrollable={longNetworkList}>
+          {shownNetworks.map((n) => (
             <PickRow
               key={n.key}
               leading={<AssetMark asset={p.assetCode} network={n.label} label={n.label} />}
@@ -762,7 +778,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
           </div>
         ) : (
           <>
-          {accountCount > ACCOUNT_SEARCH_THRESHOLD ? (
+          {accountCount > SEARCH_THRESHOLD ? (
             <SearchBox
               label="Search accounts"
               placeholder="Search by name, currency or balance"

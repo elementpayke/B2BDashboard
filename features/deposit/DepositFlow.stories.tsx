@@ -111,6 +111,23 @@ export const UsdcOnBase: Story = {
   render: () => <Flow {...baseProps({ walletLocked: true, group: "crypto", stepIs2: true })} />,
 };
 
+/** More networks than fit: the list gets a search box and scrolls in its own card. */
+export const ManyNetworks: Story = {
+  render: () => (
+    <Flow
+      {...baseProps({
+        walletLocked: true,
+        networks: ["Stellar", "Base", "Polygon", "Ethereum", "Arbitrum", "Avalanche", "Optimism", "Solana"].map((label) => ({
+          key: label.toLowerCase(),
+          label,
+          selected: label === "Base",
+          select: () => {},
+        })),
+      })}
+    />
+  ),
+};
+
 export const UsdcOnStellar: Story = {
   render: () => (
     <Flow

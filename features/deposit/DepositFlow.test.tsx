@@ -561,6 +561,28 @@ describe("DepositFlow — stablecoin", () => {
     expect(pickStellar).toHaveBeenCalled();
     click("Continue");
     expect(next).toHaveBeenCalled();
+    expect(screen.queryByRole("searchbox", { name: "Search networks" })).not.toBeInTheDocument();
+  });
+
+  it("searches a long network list, which scrolls in its own region", () => {
+    const noop = () => {};
+    const networks = ["Stellar", "Base", "Polygon", "Ethereum", "Arbitrum", "Avalanche"].map((label) => ({
+      key: label.toLowerCase(),
+      label,
+      selected: false,
+      select: noop,
+    }));
+    renderFlow(baseProps({ walletLocked: true, networks }));
+    click(/Stablecoin/);
+    const region = screen.getByRole("region", { name: "Network" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(within(region).getAllByRole("button")).toHaveLength(6);
+    const search = screen.getByRole("searchbox", { name: "Search networks" });
+    fireEvent.change(search, { target: { value: "poly" } });
+    expect(within(region).getAllByRole("button")).toHaveLength(1);
+    expect(within(region).getByRole("button", { name: /USDC on Polygon/ })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "solana" } });
+    expect(screen.getByText("No networks match “solana”.")).toBeInTheDocument();
   });
 
   it("shows the address with a copy, a QR and the network warning, without wallet connect on Base", async () => {
