@@ -12,6 +12,9 @@ export type DepositWalletOption = {
   meta?: string | null;
   /** Formatted balance, e.g. "1,240.50 USDC". Null when it didn't load: shown as —. */
   balanceText?: string | null;
+  /** Coin and network, for the row's brand marks (e.g. "USDC", "Base"). */
+  asset?: string;
+  network?: string;
 };
 
 /** A CAD account that can be funded by Interac e-Transfer (payment requests). */
@@ -20,6 +23,28 @@ export type InteracAccount = {
   entityId: string;
   label: string;
   balanceText?: string | null;
+  /** Country flag image (Canada). */
+  flagUrl?: string | null;
+};
+
+/** A fiat account the user opened (USD, EUR, GBP…): funded by a bank transfer to its own details. */
+export type FiatFundingAccount = {
+  id: string;
+  currency: string;
+  /** e.g. "Kenyan Shilling", for search. */
+  currencyName?: string;
+  label: string;
+  balanceText?: string | null;
+  /** Country flag image; initials when null (e.g. XOF, which spans several countries). */
+  flagUrl?: string | null;
+  /** Grouped bank details, e.g. "Domestic transfer" / "International wire". Empty while not issued yet. */
+  sections: { title: string; rows: { label: string; value: string; copyValue?: string }[] }[];
+  /** Reference rule from the partner, shown as a warning. */
+  disclaimer?: string | null;
+  /** Mobile money / African bank can fund it, converted in the background. */
+  convertFund?: boolean;
+  /** EUR/GBP: open banking request. */
+  openBanking?: boolean;
 };
 
 export type DepositCountryRow = {
@@ -76,6 +101,19 @@ export type DepositFlowProps = {
   interacPayerName?: string;
   /** Signed-in user's email, filled in as the Interac recipient. */
   interacDefaultEmail?: string;
+
+  /** Fiat accounts funded by bank transfer to their own details. */
+  fiatAccounts?: FiatFundingAccount[];
+  /** Opened from inside a fiat account: go straight to its details. */
+  fiatLockedAccountId?: string | null;
+  /** Coming back (e.g. from open banking): start on this account's method step, not locked. */
+  fiatResumeAccountId?: string | null;
+  /** Called when a fiat account is chosen, so the parent can refresh missing details. */
+  onOpenFiatAccount?: (id: string) => void;
+  /** Mobile money or African bank into a fiat account: parent sets up the converted top-up. */
+  onFiatConvertFund?: (id: string) => void;
+  /** Open banking into a EUR/GBP account (its own request screen). */
+  onFiatOpenBanking?: (id: string) => void;
 
   /* Method + corridor (shared OnRamp state in DashboardApp) */
   setGroup: (group: "country" | "crypto") => void;

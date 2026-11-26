@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "@/components/mockData";
 import {
   BANK_SEARCH_THRESHOLD,
+  fundFromAccountTarget,
+  openBankingBackPatch,
   buildDepositDestinationSummary,
   buildDepositStepDots,
   countryMatchesQuery,
@@ -102,5 +104,57 @@ describe("provider identity across catalog updates", () => {
     const after = ["Equity Bank", "NCBA Bank"];
     expect(ensureSelectedProvider(after, "Prime Bank")[0]).toBe("Prime Bank");
     expect(resolveQuotedProviderName(after, "Prime Bank")).toBe("Prime Bank");
+  });
+});
+
+describe("fundFromAccountTarget", () => {
+  it("locks a stablecoin wallet and carries its coin and network", () => {
+    expect(
+      fundFromAccountTarget({ stablecoin: { id: "w1", currency: "USDT", network: "POLYGON" }, fiat: null }),
+    ).toEqual({ kind: "wallet", id: "w1", asset: "usdt", network: "POLYGON" });
+  });
+
+  it("sends a CAD account with an entity to Interac", () => {
+    expect(
+      fundFromAccountTarget({ stablecoin: null, fiat: { id: "c1", currency: "CAD", entity_id: "e1" } }),
+    ).toEqual({ kind: "interac", id: "c1" });
+  });
+
+  it("sends any other fiat account to its own bank details", () => {
+    expect(
+      fundFromAccountTarget({ stablecoin: null, fiat: { id: "u1", currency: "USD", entity_id: "e1" } }),
+    ).toEqual({ kind: "fiat", id: "u1" });
+    expect(
+      fundFromAccountTarget({ stablecoin: null, fiat: { id: "c2", currency: "CAD", entity_id: null } }),
+    ).toEqual({ kind: "fiat", id: "c2" });
+  });
+
+  it("returns null with nothing selected", () => {
+    expect(fundFromAccountTarget({ stablecoin: null, fiat: null })).toBeNull();
+    expect(fundFromAccountTarget({ stablecoin: null, fiat: { id: null, currency: "USD" } })).toBeNull();
+  });
+});
+
+describe("openBankingBackPatch", () => {
+  it("goes back to the old chooser when open banking wasn't opened from Add money", () => {
+    expect(openBankingBackPatch(null)).toEqual({ modal: "fundChooser" });
+  });
+
+  it("returns to Add money on the account it was opened for", () => {
+    expect(openBankingBackPatch({ fiatId: "eur-1", locked: false })).toEqual({
+      modal: "deposit",
+      fundFiatLockedId: null,
+      depositResumeFiatId: "eur-1",
+      openBankingReturn: null,
+    });
+  });
+
+  it("keeps the account locked when Add money was opened from inside it", () => {
+    expect(openBankingBackPatch({ fiatId: "eur-1", locked: true })).toEqual({
+      modal: "deposit",
+      fundFiatLockedId: "eur-1",
+      depositResumeFiatId: null,
+      openBankingReturn: null,
+    });
   });
 });

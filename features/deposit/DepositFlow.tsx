@@ -1,6 +1,9 @@
 "use client";
 import * as React from "react";
+import CoinMark, { isCoinMarkAsset } from "@/components/brand/CoinMark";
 import MbokaLogo from "@/components/brand/MbokaLogo";
+import MobileMoneyMark from "@/components/money/MobileMoneyMark";
+import { NetworkListIcon } from "@/components/brand/NetworkMark";
 import {
   ChoiceChip,
   DetailRow,
@@ -18,18 +21,23 @@ import { formatAmount } from "@/components/ui/Amount";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
+import ChoicePicker from "@/components/ui/ChoicePicker";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { BANK_SEARCH_THRESHOLD } from "@/lib/hooks/depositFlowHelpers";
 import { cn } from "@/lib/utils";
 import BankDetails from "./BankDetails";
 import DepositStatus from "./DepositStatus";
+import FiatAccountDetails from "./FiatAccountDetails";
 import InteracFund from "./InteracFund";
 import StablecoinAddress from "./StablecoinAddress";
 import type { DepositFlowProps, DepositMethod } from "./types";
 
-type View = "account" | "method" | "country" | "provider" | "network" | "interac";
+type View = "account" | "method" | "country" | "provider" | "network" | "interac" | "fiat";
 type Screen = View | "amount" | "review" | "address";
 
 const TITLE_ID = "deposit-flow-title";
+/** More rows than this and the account or network step gets a search box. */
+const SEARCH_THRESHOLD = 4;
 
 // Phosphor duotone paths (MIT): device-mobile, bank, coin, envelope.
 const GLYPHS: Record<DepositMethod, { back: string; front: string }> = {
@@ -99,6 +107,41 @@ function useExpired(expiresAt: string | null | undefined): boolean {
   return !Number.isNaN(end) && end <= now;
 }
 
+/** A network's brand mark with the coin as a small badge, or the coin alone. */
+/** Fiat account mark: the country flag, or initials when the currency has none. */
+function FiatMark({ flagUrl, label }: { flagUrl?: string | null; label: string }) {
+  return flagUrl ? <Flag url={flagUrl} className="size-11" /> : <Initials name={label} />;
+}
+
+/** Lowercased text an account row can be found by. */
+function haystack(...parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+function AssetMark({ asset, network, label }: { asset?: string; network?: string; label: string }) {
+  const coin = isCoinMarkAsset(asset) ? asset.toUpperCase() : null;
+  if (network) {
+    return (
+      <span aria-hidden className="relative flex size-11 shrink-0 items-center justify-center">
+        <NetworkListIcon network={network} label={network} size={44} />
+        {coin && isCoinMarkAsset(coin) ? (
+          <span className="absolute -bottom-0.5 -right-0.5 flex rounded-pill bg-card p-0.5">
+            <CoinMark asset={coin} size={18} title={null} />
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  if (coin && isCoinMarkAsset(coin)) {
+    return (
+      <span aria-hidden className="flex shrink-0">
+        <CoinMark asset={coin} size={44} title={null} />
+      </span>
+    );
+  }
+  return <Initials name={label} />;
+}
+
 function money(amount: string, currency: string): string {
   const n = formatAmount(amount.replace(/,/g, ""), 2);
   return n ? `${n} ${currency}` : "";
@@ -115,14 +158,32 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
   const lockedInterac = p.interacLockedAccountId
     ? interacAccounts.find((a) => a.id === p.interacLockedAccountId) ?? null
     : null;
-  const locked = Boolean(p.walletLocked || lockedInterac);
+  const fiatAccounts = p.fiatAccounts ?? [];
+  const lockedFiat = p.fiatLockedAccountId
+    ? fiatAccounts.find((a) => a.id === p.fiatLockedAccountId) ?? null
+    : null;
+  const locked = Boolean(p.walletLocked || lockedInterac || lockedFiat);
 
-  const [view, setView] = React.useState<View>(locked ? "method" : "account");
+  const resumeFiat = !locked && p.fiatResumeAccountId
+    ? fiatAccounts.find((a) => a.id === p.fiatResumeAccountId) ?? null
+    : null;
+  const [view, setView] = React.useState<View>(locked || resumeFiat ? "method" : "account");
+  const [fiatId, setFiatId] = React.useState<string | null>(lockedFiat?.id ?? resumeFiat?.id ?? null);
   const [method, setMethod] = React.useState<DepositMethod | null>(null);
   const [interacId, setInteracId] = React.useState<string | null>(lockedInterac?.id ?? null);
   const [query, setQuery] = React.useState("");
 
   const interacAccount = interacAccounts.find((a) => a.id === interacId) ?? null;
+  const fiatAccount = fiatAccounts.find((a) => a.id === fiatId) ?? null;
+  const onOpenFiatAccount = p.onOpenFiatAccount;
+  const lockedFiatId = lockedFiat?.id ?? null;
+  const syncedFiatRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    // Opened from inside the account: refresh its details once, as a pick does.
+    if (!lockedFiatId || syncedFiatRef.current === lockedFiatId) return;
+    syncedFiatRef.current = lockedFiatId;
+    onOpenFiatAccount?.(lockedFiatId);
+  }, [lockedFiatId, onOpenFiatAccount]);
 
   const selectedRail = p.railGroups.find((g) => g.providers.some((pr) => pr.selected));
   const railType: "mobile" | "bank" = selectedRail?.type ?? (method === "bank" ? "bank" : "mobile");
@@ -136,7 +197,12 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         ? "amount"
         : view;
 
-  const path: Screen[] = [
+  const fiatConverting = Boolean(fiatAccount && (method === "mobile" || method === "bank"));
+  const path: Screen[] = fiatAccount && !fiatConverting ? [
+    ...(locked ? [] : (["account"] as Screen[])),
+    "method",
+    "fiat",
+  ] : [
     ...(locked ? [] : (["account"] as Screen[])),
     "method",
     ...((method === "crypto" || (method === null && p.group === "crypto" && p.stepIs2)
@@ -163,7 +229,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     go("country");
   };
 
-  const intoLabel = interacAccount?.label || p.walletLabel || "account";
+  const intoLabel = interacAccount?.label || fiatAccount?.label || p.walletLabel || "account";
   const payText = money(p.amount, p.currency);
   const payerText = isBank ? p.phone.trim() : `${p.dialCode} ${p.phone.trim()}`.trim();
   const expired = useExpired(p.stepIs3 ? p.quoteExpiresAt : null);
@@ -206,6 +272,15 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
         onDone={p.close}
         onRetry={p.retry}
         onHelp={p.onHelp}
+      />
+    );
+  } else if (screen === "fiat" && fiatAccount) {
+    body = (
+      <FiatAccountDetails
+        account={fiatAccount}
+        titleId={TITLE_ID}
+        onBack={() => go("method")}
+        onDone={p.close}
       />
     );
   } else if (screen === "interac" && interacAccount) {
@@ -380,6 +455,11 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
     );
   } else if (screen === "network") {
     const picked = p.networks.some((n) => n.selected);
+    const longNetworkList = p.networks.length > SEARCH_THRESHOLD;
+    const networkQ = query.trim().toLowerCase();
+    const shownNetworks = networkQ
+      ? p.networks.filter((n) => haystack(n.label, n.key, `${p.assetCode} on ${n.label}`).includes(networkQ))
+      : p.networks;
     body = (
       <>
         <StepHeading
@@ -409,11 +489,22 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             ))}
           </div>
         ) : null}
-        <PickList label="Network">
-          {p.networks.map((n) => (
+        {longNetworkList ? (
+          <SearchBox
+            label="Search networks"
+            placeholder="Search by network, e.g. Polygon"
+            value={query}
+            onChange={setQuery}
+          />
+        ) : null}
+        {networkQ && shownNetworks.length === 0 ? (
+          <p className="px-1 text-body text-muted-foreground">No networks match “{query.trim()}”.</p>
+        ) : null}
+        <PickList label="Network" scrollable={longNetworkList}>
+          {shownNetworks.map((n) => (
             <PickRow
               key={n.key}
-              leading={<Initials name={n.label} />}
+              leading={<AssetMark asset={p.assetCode} network={n.label} label={n.label} />}
               title={`${p.assetCode} on ${n.label}`}
               meta={n.key === "stellar" ? "Scan, copy or connect a Stellar wallet" : "Scan or copy the address"}
               selected={n.selected}
@@ -453,20 +544,41 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
           <Notice tone="info" role="status">
             No {method === "bank" ? "banks" : "providers"} take top-ups here yet. Pick another country or method.
           </Notice>
+        ) : providers.length > BANK_SEARCH_THRESHOLD ? (
+          <ChoicePicker
+            id="deposit-provider"
+            label={method === "bank" ? "Bank" : "Provider"}
+            title={method === "bank" ? "Choose a bank" : "Choose a provider"}
+            placeholder={method === "bank" ? "Choose your bank" : "Choose your provider"}
+            searchable
+            value={providers.find((pr) => pr.selected)?.name ?? ""}
+            options={providers.map((pr) => ({ value: pr.name, label: pr.displayLabel || pr.name }))}
+            onChange={(name) => providers.find((pr) => pr.name === name)?.select()}
+          />
         ) : (
           <PickList label={method === "bank" ? "Bank" : "Provider"}>
             {providers.map((pr) => (
               <PickRow
                 key={pr.name}
-                leading={<Initials name={pr.displayLabel || pr.name} />}
+                leading={
+                  method === "bank" ? (
+                    <Initials name={pr.displayLabel || pr.name} />
+                  ) : (
+                    <span aria-hidden className="flex shrink-0 overflow-hidden rounded-pill shadow-hairline">
+                      <MobileMoneyMark name={pr.name} size={44} />
+                    </span>
+                  )
+                }
                 title={pr.displayLabel || pr.name}
-                meta={p.limitsText || undefined}
                 selected={pr.selected}
                 onClick={pr.select}
               />
             ))}
           </PickList>
         )}
+        {providers.length > 0 && p.limitsText ? (
+          <p className="text-body text-muted-foreground">Limits: {p.limitsText}</p>
+        ) : null}
         <div className="flex justify-center">
           <Button className="rounded-pill px-8" disabled={!picked} onClick={p.next}>
             Continue
@@ -477,9 +589,10 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
   } else if (screen === "country") {
     const want = method === "bank" ? "bank" : "mobile";
     const q = query.trim().toLowerCase();
-    const rows = p.countryRows
-      .filter((r) => r.railTypes.includes(want))
-      .filter((r) => !q || [r.name, r.code, ...r.providerNames].join(" ").toLowerCase().includes(q));
+    const forMethod = p.countryRows.filter((r) => r.railTypes.includes(want));
+    const rows = forMethod.filter(
+      (r) => !q || [r.name, r.code, ...r.providerNames].join(" ").toLowerCase().includes(q),
+    );
     body = (
       <>
         <StepHeading
@@ -516,7 +629,7 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
                 {q ? `No country matches “${query.trim()}”.` : "No countries take this method yet."}
               </p>
             ) : (
-              <PickList label="Country">
+              <PickList label="Country" scrollable={forMethod.length > SEARCH_THRESHOLD}>
                 {rows.map((r) => (
                   <PickRow
                     key={r.idx}
@@ -534,6 +647,73 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             )}
           </>
         )}
+      </>
+    );
+  } else if (screen === "method" && fiatAccount) {
+    const cur = fiatAccount.currency;
+    const ways: { key: string; glyph: DepositMethod; label: string; desc: string; pick: () => void }[] = [
+      {
+        key: "details",
+        glyph: "bank",
+        label: "Bank transfer",
+        desc: `Send ${cur} from any bank to this account’s details`,
+        pick: () => {
+          setMethod(null);
+          go("fiat");
+        },
+      },
+    ];
+    if (fiatAccount.convertFund) {
+      const convert = (m: "mobile" | "bank") => () => {
+        p.onFiatConvertFund?.(fiatAccount.id);
+        pickMethod(m);
+      };
+      ways.push(
+        {
+          key: "mobile",
+          glyph: "mobile",
+          label: "Mobile money",
+          desc: `Pay in local currency from a mobile wallet. We convert it to ${cur}.`,
+          pick: convert("mobile"),
+        },
+        {
+          key: "bank",
+          glyph: "bank",
+          label: "African bank",
+          desc: `Pay in local currency from a bank in Africa. We convert it to ${cur}.`,
+          pick: convert("bank"),
+        },
+      );
+    }
+    if (fiatAccount.openBanking) {
+      ways.push({
+        key: "open-banking",
+        glyph: "interac",
+        label: "Open banking",
+        desc: `Send an open banking payment request for ${cur}`,
+        pick: () => p.onFiatOpenBanking?.(fiatAccount.id),
+      });
+    }
+    body = (
+      <>
+        <StepHeading
+          title="Add money"
+          titleId={TITLE_ID}
+          sub="How is the money coming in?"
+          onBack={locked ? undefined : () => go("account")}
+          chips={intoChip}
+        />
+        <PickList label="Ways to add money">
+          {ways.map((w) => (
+            <PickRow
+              key={w.key}
+              leading={<GlyphTile {...GLYPHS[w.glyph]} />}
+              title={w.label}
+              meta={w.desc}
+              onClick={w.pick}
+            />
+          ))}
+        </PickList>
       </>
     );
   } else if (screen === "method") {
@@ -568,6 +748,18 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
       </>
     );
   } else {
+    const accountQ = query.trim().toLowerCase();
+    const matches = (text: string) => !accountQ || text.includes(accountQ);
+    const shownWallets = p.walletOptions.filter((w) =>
+      matches(haystack(w.label, w.meta, w.asset, w.network, w.balanceText)),
+    );
+    const shownInterac = interacAccounts.filter((a) =>
+      matches(haystack(a.label, "Canadian Dollar Interac", a.balanceText)),
+    );
+    const shownFiat = fiatAccounts.filter((a) =>
+      matches(haystack(a.label, a.currency, a.currencyName, a.balanceText)),
+    );
+    const accountCount = p.walletOptions.length + interacAccounts.length + fiatAccounts.length;
     body = (
       <>
         <StepHeading title="Add money" titleId={TITLE_ID} sub="Which account are you funding?" />
@@ -586,38 +778,69 @@ export default function DepositFlow({ containerRef, ...p }: DepositFlowProps) {
             <Skeleton className="h-18 rounded-2xl" />
           </div>
         ) : (
+          <>
+          {accountCount > SEARCH_THRESHOLD ? (
+            <SearchBox
+              label="Search accounts"
+              placeholder="Search by name, currency or balance"
+              value={query}
+              onChange={setQuery}
+            />
+          ) : null}
+          {accountQ && !shownWallets.length && !shownInterac.length && !shownFiat.length ? (
+            <p className="px-1 text-body text-muted-foreground">No accounts match “{query.trim()}”.</p>
+          ) : null}
           <PickList label="Account to fund">
-            {p.walletOptions.map((w) => (
+            {shownWallets.map((w) => (
               <PickRow
                 key={w.value}
-                leading={<Initials name={w.label} />}
+                leading={<AssetMark asset={w.asset} network={w.network} label={w.label} />}
                 title={w.label}
                 meta={w.meta || undefined}
-                selected={!interacId && p.walletId === w.value}
+                selected={!interacId && !fiatId && p.walletId === w.value}
                 trailing={<span className="font-mono text-body-lg text-foreground">{w.balanceText || "—"}</span>}
                 onClick={() => {
                   setInteracId(null);
+                  setFiatId(null);
                   p.selectWallet(w.value);
                   go("method");
                 }}
               />
             ))}
-            {interacAccounts.map((a) => (
+            {shownInterac.map((a) => (
               <PickRow
                 key={a.id}
-                leading={<Initials name={a.label} />}
+                leading={<FiatMark flagUrl={a.flagUrl} label={a.label} />}
                 title={a.label}
                 meta="Fund by Interac e-Transfer"
                 selected={interacId === a.id}
                 trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
                 onClick={() => {
                   setInteracId(a.id);
+                  setFiatId(null);
                   setMethod(null);
                   go("method");
                 }}
               />
             ))}
+            {shownFiat.map((a) => (
+              <PickRow
+                key={a.id}
+                leading={<FiatMark flagUrl={a.flagUrl} label={a.label} />}
+                title={a.label}
+                selected={fiatId === a.id}
+                trailing={<span className="font-mono text-body-lg text-foreground">{a.balanceText || "—"}</span>}
+                onClick={() => {
+                  setFiatId(a.id);
+                  setInteracId(null);
+                  setMethod(null);
+                  p.onOpenFiatAccount?.(a.id);
+                  go("method");
+                }}
+              />
+            ))}
           </PickList>
+          </>
         )}
       </>
     );

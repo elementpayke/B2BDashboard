@@ -172,19 +172,37 @@ export function PickList({
   children,
   label,
   labelledBy,
+  scrollable,
 }: {
   children: React.ReactNode;
   label?: string;
   labelledBy?: string;
+  /** Long lists scroll inside their own card (focusable, so the keyboard can scroll it too). */
+  scrollable?: boolean;
 }) {
-  return (
+  const list = (
     <ul
       aria-label={label}
       aria-labelledby={labelledBy}
-      className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card"
+      className={cn(
+        "divide-y divide-border bg-card",
+        !scrollable && "overflow-hidden rounded-2xl border border-border",
+      )}
     >
       {children}
     </ul>
+  );
+  if (!scrollable) return list;
+  return (
+    <div
+      role="region"
+      aria-label={label}
+      aria-labelledby={labelledBy}
+      tabIndex={0}
+      className="max-h-112 overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card focus-visible:shadow-focus focus-visible:outline-none"
+    >
+      {list}
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DepositFlow from "./DepositFlow";
 import { baseProps, reviewProps } from "./DepositFlow.fixtures";
@@ -100,9 +100,170 @@ describe("DepositFlow — which account", () => {
     expect(onRetryWallets).toHaveBeenCalled();
   });
 
+  it("searches accounts by name, currency, network or balance and keeps each balance showing", () => {
+    renderFlow(
+      baseProps({
+        interacAccounts: [{ id: "cad-1", entityId: "e1", label: "CAD account", balanceText: "40.00 CAD" }],
+        fiatAccounts: [
+          { id: "kes-1", currency: "KES", currencyName: "Kenyan Shilling", label: "KES account", balanceText: "0.00 KES", sections: [] },
+          { id: "ngn-1", currency: "NGN", currencyName: "Nigerian Naira", label: "NGN account", balanceText: "1,017.88 NGN", sections: [] },
+        ],
+      }),
+    );
+    const search = screen.getByRole("searchbox", { name: "Search accounts" });
+    fireEvent.change(search, { target: { value: "naira" } });
+    expect(screen.getByRole("button", { name: /NGN account/ })).toHaveTextContent("1,017.88 NGN");
+    expect(screen.queryByRole("button", { name: /KES account/ })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "stellar" } });
+    expect(screen.getByRole("button", { name: /USDC wallet · Stellar/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /USDC wallet · Base/ })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "1,240" } });
+    expect(screen.getByRole("button", { name: /USDC wallet · Base/ })).toHaveTextContent("1,240.50 USDC");
+    fireEvent.change(search, { target: { value: "yen" } });
+    expect(screen.getByText("No accounts match “yen”.")).toBeInTheDocument();
+  });
+
+  it("shows the country flag for fiat accounts, initials when there is none", () => {
+    const { container } = renderFlow(
+      baseProps({
+        fiatAccounts: [
+          { id: "kes-1", currency: "KES", label: "KES account", flagUrl: "https://flagcdn.com/w80/ke.png", sections: [] },
+          { id: "xof-1", currency: "XOF", label: "XOF account", flagUrl: null, sections: [] },
+        ],
+      }),
+    );
+    const kes = screen.getByRole("button", { name: /KES account/ });
+    expect(kes.querySelector("[style*='flagcdn.com/w80/ke.png']")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /XOF account/ })).toHaveTextContent("XA");
+    expect(container).toBeTruthy();
+  });
+
   it("lists CAD accounts that take Interac", () => {
     renderFlow(baseProps({ interacAccounts: [{ id: "cad-1", entityId: "e1", label: "CAD account", balanceText: "40.00 CAD" }] }));
     expect(screen.getByRole("button", { name: /CAD account/ })).toHaveTextContent("Fund by Interac e-Transfer");
+  });
+});
+
+const usdAccount = {
+  id: "usd-1",
+  currency: "USD",
+  label: "USD account",
+  balanceText: "2,000.00 USD",
+  sections: [
+    {
+      title: "Domestic transfer (ACH/wire)",
+      rows: [
+        { label: "Account number", value: "123456789", copyValue: "123456789" },
+        { label: "Routing number", value: "021000021", copyValue: "021000021" },
+      ],
+    },
+    { title: "Mboka transfer", rows: [{ label: "Mboka number", value: "MBK-778", copyValue: "MBK-778" }] },
+  ],
+  disclaimer: "Include MBK-778 in the payment reference when sending funds.",
+};
+
+describe("DepositFlow — fiat accounts", () => {
+  const usdConvert = { ...usdAccount, convertFund: true };
+  const eur = { ...usdAccount, id: "eur-1", currency: "EUR", label: "EUR account", convertFund: true, openBanking: true };
+
+  it("lists the fiat accounts the user has opened, with their balance", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    const row = screen.getByRole("button", { name: /USD account/ });
+    expect(row).toHaveTextContent("2,000.00 USD");
+  });
+
+  it("asks how the money comes in: bank details always, converted mobile money and bank when available", () => {
+    const onOpenFiatAccount = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], onOpenFiatAccount }));
+    click(/USD account/);
+    expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    const ways = screen.getByRole("list", { name: "Ways to add money" });
+    expect(within(ways).getByRole("button", { name: /Bank transfer/ })).toHaveTextContent("this account’s details");
+    expect(within(ways).getByRole("button", { name: /Mobile money/ })).toHaveTextContent("We convert it to USD");
+    expect(within(ways).getByRole("button", { name: /African bank/ })).toBeInTheDocument();
+    expect(within(ways).queryByRole("button", { name: /Open banking/ })).not.toBeInTheDocument();
+    expect(within(ways).queryByRole("button", { name: /Stablecoin/ })).not.toBeInTheDocument();
+  });
+
+  it("hides the converted options when the account can't take them", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    click(/USD account/);
+    expect(screen.queryByRole("button", { name: /Mobile money/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Bank transfer/ })).toBeInTheDocument();
+  });
+
+  it("bank transfer shows the account's details, each copyable, then Done closes", () => {
+    const close = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdAccount], close }));
+    click(/USD account/);
+    click(/Bank transfer/);
+    expect(title()).toHaveTextContent("Fund your USD account");
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
+    const details = screen.getByRole("region", { name: "USD account details" });
+    expect(within(details).getByText("Domestic transfer (ACH/wire)")).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Copy Routing number" }));
+    expect(clip.copyText).toHaveBeenCalledWith("021000021");
+    expect(screen.getByRole("note")).toHaveTextContent("Include MBK-778");
+    click("Done");
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("mobile money sets up the converted top-up and moves onto the country step", () => {
+    const onFiatConvertFund = vi.fn();
+    const setGroup = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], onFiatConvertFund, setGroup }));
+    click(/USD account/);
+    click(/Mobile money/);
+    expect(onFiatConvertFund).toHaveBeenCalledWith("usd-1");
+    expect(setGroup).toHaveBeenCalledWith("country");
+    expect(screen.getByRole("button", { name: /Change account/ })).toHaveTextContent("Into USD account");
+  });
+
+  it("offers open banking for EUR and hands it to the parent", () => {
+    const onFiatOpenBanking = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [eur], onFiatOpenBanking }));
+    click(/EUR account/);
+    click(/Open banking/);
+    expect(onFiatOpenBanking).toHaveBeenCalledWith("eur-1");
+  });
+
+  it("says the details aren't ready instead of showing an empty panel", () => {
+    renderFlow(baseProps({ fiatAccounts: [{ ...usdAccount, sections: [], disclaimer: null }] }));
+    click(/USD account/);
+    click(/Bank transfer/);
+    expect(screen.getByText(/details aren’t ready yet/)).toBeInTheDocument();
+  });
+
+  it("opens on the method step when Fund is pressed inside that account", () => {
+    const onOpenFiatAccount = vi.fn();
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], fiatLockedAccountId: "usd-1", onOpenFiatAccount }));
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    expect(onOpenFiatAccount).toHaveBeenCalledWith("usd-1");
+    expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+    click(/Bank transfer/);
+    expect(title()).toHaveTextContent("Fund your USD account");
+    expect(screen.getByText("Step 2 of 2")).toBeInTheDocument();
+  });
+
+  it("comes back from open banking on that account's method step, still able to change account", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdConvert], fiatResumeAccountId: "usd-1" }));
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Change account/ })).toHaveTextContent("Into USD account");
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    click(/Back/);
+    expect(screen.getByText("Which account are you funding?")).toBeInTheDocument();
+  });
+
+  it("can go back from the details to the method, then to the account list", () => {
+    renderFlow(baseProps({ fiatAccounts: [usdAccount] }));
+    click(/USD account/);
+    click(/Bank transfer/);
+    click(/Back/);
+    expect(screen.getByText("How is the money coming in?")).toBeInTheDocument();
+    click(/Back/);
+    expect(screen.getByText("Which account are you funding?")).toBeInTheDocument();
   });
 });
 
@@ -157,6 +318,27 @@ describe("DepositFlow — country and provider", () => {
     expect(screen.getByText(/No country matches/)).toBeInTheDocument();
   });
 
+  it("scrolls a long country list in its own region, a short one stays plain", () => {
+    toCountry(/Mobile money/);
+    expect(screen.queryByRole("region", { name: "Country" })).not.toBeInTheDocument();
+    cleanup();
+    const names = ["Kenya", "Uganda", "Tanzania", "Ghana", "Rwanda", "Zambia"];
+    toCountry(/Mobile money/, {
+      countryRows: names.map((name, idx) => ({
+        idx,
+        name,
+        code: "",
+        flagUrl: "",
+        railTypes: ["mobile"],
+        providerNames: ["MTN MoMo"],
+        select: () => {},
+      })),
+    });
+    const region = screen.getByRole("region", { name: "Country" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(within(region).getAllByRole("button")).toHaveLength(6);
+  });
+
   it("shows the catalogue error with a retry, not an empty search", () => {
     const onRetryCatalog = vi.fn();
     toCountry(/Mobile money/, { countryRows: [], catalogError: "Couldn't load countries.", onRetryCatalog });
@@ -201,6 +383,26 @@ describe("DepositFlow — country and provider", () => {
     click(/Kenya/);
     click("Continue");
     expect(next).toHaveBeenCalled();
+  });
+
+  it("uses a searchable dropdown for a long bank list, with Continue right under it", () => {
+    const next = vi.fn();
+    const pick = vi.fn();
+    const banks = Array.from({ length: 9 }, (_, i) => ({
+      name: `Bank ${String.fromCharCode(65 + i)}`,
+      selected: false,
+      select: i === 4 ? pick : vi.fn(),
+    }));
+    toCountry(/Bank transfer/, {
+      next,
+      railGroups: [{ railIdx: 1, type: "bank", label: "Bank transfer", providers: banks }],
+    });
+    click(/Kenya/);
+    expect(screen.queryByRole("button", { name: /Bank A/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Min KES 100 · Max KES 150,000/)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /^Bank:/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Bank E" }));
+    expect(pick).toHaveBeenCalled();
   });
 
   it("uses bank wording and lists banks for a bank transfer", () => {
@@ -380,6 +582,28 @@ describe("DepositFlow — stablecoin", () => {
     expect(pickStellar).toHaveBeenCalled();
     click("Continue");
     expect(next).toHaveBeenCalled();
+    expect(screen.queryByRole("searchbox", { name: "Search networks" })).not.toBeInTheDocument();
+  });
+
+  it("searches a long network list, which scrolls in its own region", () => {
+    const noop = () => {};
+    const networks = ["Stellar", "Base", "Polygon", "Ethereum", "Arbitrum", "Avalanche"].map((label) => ({
+      key: label.toLowerCase(),
+      label,
+      selected: false,
+      select: noop,
+    }));
+    renderFlow(baseProps({ walletLocked: true, networks }));
+    click(/Stablecoin/);
+    const region = screen.getByRole("region", { name: "Network" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(within(region).getAllByRole("button")).toHaveLength(6);
+    const search = screen.getByRole("searchbox", { name: "Search networks" });
+    fireEvent.change(search, { target: { value: "poly" } });
+    expect(within(region).getAllByRole("button")).toHaveLength(1);
+    expect(within(region).getByRole("button", { name: /USDC on Polygon/ })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "solana" } });
+    expect(screen.getByText("No networks match “solana”.")).toBeInTheDocument();
   });
 
   it("shows the address with a copy, a QR and the network warning, without wallet connect on Base", async () => {

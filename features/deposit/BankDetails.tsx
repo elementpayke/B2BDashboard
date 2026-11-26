@@ -20,7 +20,7 @@ export type BankDetailsProps = {
   onSent: () => void;
 };
 
-function CopyButton({ label, value }: { label: string; value: string }) {
+export function CopyButton({ label, value }: { label: string; value: string }) {
   const [state, setState] = React.useState<"idle" | "copied" | "failed">("idle");
   React.useEffect(() => {
     if (state === "idle") return;
